@@ -1,0 +1,8 @@
+﻿packages:
+  - apps/backoffice-web
+  - packages/*
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver

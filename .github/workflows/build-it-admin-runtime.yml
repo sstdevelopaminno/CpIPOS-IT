@@ -1,0 +1,238 @@
+name: Build CpIPOS IT Admin Runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  ITADMIN_RUNTIME_PROJECT: apps/windows-runtime-it-admin/Cpipos.ITAdminRuntime/Cpipos.ITAdminRuntime.csproj
+  ITADMIN_RUNTIME_ICON_B64: apps/windows-runtime-it-admin/Cpipos.ITAdminRuntime/assets/cpipos.ico.b64
+  ITADMIN_RUNTIME_ICON: apps/windows-runtime-it-admin/Cpipos.ITAdminRuntime/assets/cpipos.ico
+  ITADMIN_RUNTIME_OUTPUT: artifacts/CpIPOS-ITAdminRuntime-win-x64
+  ITADMIN_RUNTIME_ZIP: artifacts/CpIPOS-ITAdminRuntime-win-x64.zip
+  ITADMIN_RUNTIME_SETUP: artifacts/CpIPOS-ITAdminRuntime-Setup.exe
+  ITADMIN_RUNTIME_RELEASE_TAG: it-admin-runtime-latest
+  ITADMIN_RUNTIME_SETUP_ASSET_NAME: CpIPOS-ITAdminRuntime-Setup.exe
+  ITADMIN_RUNTIME_ZIP_ASSET_NAME: CpIPOS-ITAdminRuntime-win-x64.zip
+  ITADMIN_RUNTIME_VERSION: 0.1.1
+
+jobs:
+  build-it-admin-runtime:
+    name: Build IT Admin Runtime Installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore app icon from repository
+        shell: pwsh
+        run: |
+          if (!(Test-Path $env:ITADMIN_RUNTIME_ICON_B64)) {
+            throw "Icon source not found: $env:ITADMIN_RUNTIME_ICON_B64"
+          }
+
+          $iconDir = Split-Path -Parent $env:ITADMIN_RUNTIME_ICON
+          New-Item -ItemType Directory -Force -Path $iconDir | Out-Null
+
+          $iconBase64 = (Get-Content $env:ITADMIN_RUNTIME_ICON_B64 -Raw).Trim()
+          [System.IO.File]::WriteAllBytes($env:ITADMIN_RUNTIME_ICON, [Convert]::FromBase64String($iconBase64))
+
+          if (!(Test-Path $env:ITADMIN_RUNTIME_ICON)) {
+            throw "Icon was not restored: $env:ITADMIN_RUNTIME_ICON"
+          }
+
+          $finalBytes = [System.IO.File]::ReadAllBytes($env:ITADMIN_RUNTIME_ICON)
+          if (!($finalBytes.Length -gt 6 -and $finalBytes[0] -eq 0 -and $finalBytes[1] -eq 0 -and $finalBytes[2] -eq 1 -and $finalBytes[3] -eq 0)) {
+            throw "Final app icon is not a valid Windows .ico file: $env:ITADMIN_RUNTIME_ICON"
+          }
+          Write-Host "Using uploaded CpIPOS repository icon: $env:ITADMIN_RUNTIME_ICON ($($finalBytes.Length) bytes)"
+
+      - name: Validate IT Admin runtime version consistency
+        shell: pwsh
+        run: |
+          $expected = $env:ITADMIN_RUNTIME_VERSION
+          $csproj = Get-Content $env:ITADMIN_RUNTIME_PROJECT -Raw
+          $installer = Get-Content "apps/windows-runtime-it-admin/installer/CpIPOSITAdminRuntime.iss" -Raw
+
+          $csprojVersion = "<Version>$expected</Version>"
+          $installerVersion = '#define AppVersion "' + $expected + '"'
+
+          if (-not $csproj.Contains($csprojVersion)) { throw "csproj Version does not match $expected" }
+          if (-not $installer.Contains($installerVersion)) { throw "Installer default AppVersion does not match $expected" }
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore $env:ITADMIN_RUNTIME_PROJECT
+
+      - name: Publish Windows x64 self-contained app
+        shell: pwsh
+        run: |
+          dotnet publish $env:ITADMIN_RUNTIME_PROJECT `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o $env:ITADMIN_RUNTIME_OUTPUT
+
+      - name: Bundle and validate CpIPOS icon
+        shell: pwsh
+        run: |
+          $outputIconDir = Join-Path $env:ITADMIN_RUNTIME_OUTPUT "assets"
+          $outputIcon = Join-Path $outputIconDir "cpipos.ico"
+          $rootOutputIcon = Join-Path $env:ITADMIN_RUNTIME_OUTPUT "cpipos.ico"
+          New-Item -ItemType Directory -Force -Path $outputIconDir | Out-Null
+          Copy-Item -Force $env:ITADMIN_RUNTIME_ICON $outputIcon
+          Copy-Item -Force $env:ITADMIN_RUNTIME_ICON $rootOutputIcon
+
+          foreach ($path in @($outputIcon, $rootOutputIcon)) {
+            if (!(Test-Path $path)) {
+              throw "Bundled icon missing: $path"
+            }
+            $bytes = [System.IO.File]::ReadAllBytes($path)
+            if (!($bytes.Length -gt 6 -and $bytes[0] -eq 0 -and $bytes[1] -eq 0 -and $bytes[2] -eq 1 -and $bytes[3] -eq 0)) {
+              throw "Bundled icon is not a valid Windows .ico file: $path"
+            }
+            Write-Host "Bundled icon ready: $path ($($bytes.Length) bytes)"
+          }
+
+          $exePath = Join-Path $env:ITADMIN_RUNTIME_OUTPUT "Cpipos.ITAdminRuntime.exe"
+          if (!(Test-Path $exePath)) {
+            throw "Published app executable missing: $exePath"
+          }
+
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exePath)
+          if ($null -eq $icon) {
+            throw "Published executable did not return an associated icon: $exePath"
+          }
+          Write-Host "Published executable associated icon size: $($icon.Width)x$($icon.Height)"
+
+      - name: Add README
+        shell: pwsh
+        run: |
+          @'
+          CpIPOS IT Admin Runtime
+          ========================
+
+          Recommended for IT staff:
+            Run CpIPOS-ITAdminRuntime-Setup.exe to install CpIPOS IT Admin.
+
+          Sign-in:
+            Sign in with an email/password account that has been granted the
+            it_admin platform role. This is separate from POS store-code login.
+
+          Portable fallback:
+            Extract CpIPOS-ITAdminRuntime-win-x64.zip and run Cpipos.ITAdminRuntime.exe.
+
+          Optional command line:
+            Cpipos.ITAdminRuntime.exe --fullscreen
+            Cpipos.ITAdminRuntime.exe --windowed
+            Cpipos.ITAdminRuntime.exe --devtools
+            Cpipos.ITAdminRuntime.exe --url=http://localhost:3000/it-admin/login --allow-custom-url
+
+          Security:
+          - Production runtime URLs are restricted to https://cp-ipos-web.vercel.app unless --allow-custom-url is used for local development.
+          - This app has no local print bridge, cash drawer, or POS-terminal bridge methods; it is a plain browser shell for the IT Admin web console.
+
+          Icon behavior:
+          - CpIPOS IT Admin uses the bundled assets/cpipos.ico for title bar and shortcuts.
+          - The installer also installs cpipos.ico at the app root for fallback.
+          - If Windows still shows the old icon after reinstall, clear Windows icon cache.
+
+          Notes:
+          - This package wraps CpIPOS's own /it-admin web surface, not a separate codebase.
+          - It can be installed side by side with CpIPOS Windows Runtime (POS terminal app) on the same machine.
+          '@ | Set-Content -Encoding UTF8 "$env:ITADMIN_RUNTIME_OUTPUT/README-ITADMIN-RUNTIME.txt"
+
+      - name: Zip portable package
+        shell: pwsh
+        run: |
+          if (Test-Path $env:ITADMIN_RUNTIME_ZIP) {
+            Remove-Item -Force $env:ITADMIN_RUNTIME_ZIP
+          }
+          Compress-Archive -Path "$env:ITADMIN_RUNTIME_OUTPUT/*" -DestinationPath $env:ITADMIN_RUNTIME_ZIP -Force
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            throw "Inno Setup compiler not found: $iscc"
+          }
+
+          & $iscc `
+            "apps/windows-runtime-it-admin/installer/CpIPOSITAdminRuntime.iss" `
+            "/DAppVersion=$env:ITADMIN_RUNTIME_VERSION" `
+            "/DSourceDir=$env:GITHUB_WORKSPACE\artifacts\CpIPOS-ITAdminRuntime-win-x64" `
+            "/DOutputDir=$env:GITHUB_WORKSPACE\artifacts" `
+            "/DIconFile=$env:GITHUB_WORKSPACE\apps\windows-runtime-it-admin\Cpipos.ITAdminRuntime\assets\cpipos.ico"
+
+          if (!(Test-Path $env:ITADMIN_RUNTIME_SETUP)) {
+            throw "Installer was not created: $env:ITADMIN_RUNTIME_SETUP"
+          }
+
+      - name: Validate installer and packaged icon
+        shell: pwsh
+        run: |
+          $setupPath = $env:ITADMIN_RUNTIME_SETUP
+          if (!(Test-Path $setupPath)) {
+            throw "Installer missing: $setupPath"
+          }
+          $setupSize = (Get-Item $setupPath).Length
+          if ($setupSize -lt 1000000) {
+            throw "Installer size looks too small: $setupSize bytes"
+          }
+
+          $outputIcon = Join-Path $env:ITADMIN_RUNTIME_OUTPUT "assets\cpipos.ico"
+          $rootOutputIcon = Join-Path $env:ITADMIN_RUNTIME_OUTPUT "cpipos.ico"
+          foreach ($path in @($outputIcon, $rootOutputIcon)) {
+            if (!(Test-Path $path)) {
+              throw "Release package icon missing before upload: $path"
+            }
+          }
+          Write-Host "Installer ready with bundled CpIPOS icon: $setupPath ($setupSize bytes)"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CpIPOS-ITAdminRuntime
+          path: |
+            ${{ env.ITADMIN_RUNTIME_SETUP }}
+            ${{ env.ITADMIN_RUNTIME_ZIP }}
+          if-no-files-found: error
+
+      - name: Publish latest release download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:ITADMIN_RUNTIME_RELEASE_TAG
+          $setupPath = $env:ITADMIN_RUNTIME_SETUP
+          $zipPath = $env:ITADMIN_RUNTIME_ZIP
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag `
+              --target "${{ github.sha }}" `
+              --title "CpIPOS IT Admin Runtime Latest" `
+              --notes "Latest CpIPOS IT Admin Runtime installer and portable ZIP built manually from GitHub Actions."
+          }
+
+          gh release upload $tag $setupPath $zipPath --clobber
+          Write-Host "Installer URL: https://github.com/${{ github.repository }}/releases/download/$tag/$env:ITADMIN_RUNTIME_SETUP_ASSET_NAME"
+          Write-Host "Portable ZIP URL: https://github.com/${{ github.repository }}/releases/download/$tag/$env:ITADMIN_RUNTIME_ZIP_ASSET_NAME"

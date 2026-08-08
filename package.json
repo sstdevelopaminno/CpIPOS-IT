@@ -1,0 +1,21 @@
+{
+  "name": "cpipos-it-platform",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "dev": "corepack pnpm --filter backoffice-web dev",
+    "build": "corepack pnpm --filter backoffice-web build",
+    "lint": "corepack pnpm --filter backoffice-web lint",
+    "typecheck": "corepack pnpm --filter backoffice-web typecheck",
+    "test": "corepack pnpm --filter backoffice-web test"
+  },
+  "devDependencies": {
+    "playwright": "1.55.0",
+    "turbo": "^2.0.12",
+    "typescript": "^5.8.3"
+  }
+}

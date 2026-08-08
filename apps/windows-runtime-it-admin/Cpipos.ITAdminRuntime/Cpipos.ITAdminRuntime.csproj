@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Cpipos.ITAdminRuntime</AssemblyName>
+    <RootNamespace>Cpipos.ITAdminRuntime</RootNamespace>
+    <Version>0.1.1</Version>
+    <FileVersion>0.1.1.0</FileVersion>
+    <AssemblyVersion>0.1.1.0</AssemblyVersion>
+    <ApplicationIcon>assets\cpipos.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="assets\cpipos.ico" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <None Include="assets\cpipos.ico.b64" />
+    <None Include="scripts\restore-cpipos-icon.ps1" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2957.106" />
+  </ItemGroup>
+
+  <Target Name="RestoreCpiposIconFromBase64" BeforeTargets="CoreCompile" Condition="!Exists('assets\cpipos.ico') And Exists('assets\cpipos.ico.b64')">
+    <PropertyGroup>
+      <CpiposRestoreIconScript>$(MSBuildProjectDirectory)\scripts\restore-cpipos-icon.ps1</CpiposRestoreIconScript>
+      <CpiposIconBase64>$(MSBuildProjectDirectory)\assets\cpipos.ico.b64</CpiposIconBase64>
+      <CpiposIconOutput>$(MSBuildProjectDirectory)\assets\cpipos.ico</CpiposIconOutput>
+    </PropertyGroup>
+    <Message Importance="High" Text="Restoring CpIPOS IT Admin icon from assets\cpipos.ico.b64" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(CpiposRestoreIconScript)&quot; -SourceBase64 &quot;$(CpiposIconBase64)&quot; -DestinationIcon &quot;$(CpiposIconOutput)&quot;" />
+  </Target>
+</Project>

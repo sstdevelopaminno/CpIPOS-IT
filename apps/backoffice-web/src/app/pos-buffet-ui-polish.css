@@ -1,0 +1,26 @@
+.posui-mode-selector__grid > .posui-mode-option:first-child .posui-mode-option__icon {
+  position: relative;
+  overflow: hidden;
+}
+
+.posui-mode-selector__grid > .posui-mode-option:first-child .posui-mode-option__icon svg {
+  opacity: 0;
+}
+
+.posui-mode-selector__grid > .posui-mode-option:first-child .posui-mode-option__icon::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  background:
+    center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg%20viewBox='0%200%2064%2064'%20xmlns='http://www.w3.org/2000/svg'%3E%3Cpath%20d='M20%2024h24l4%2030H16l4-30Z'%20fill='%23ffffff'%20stroke='%23173b76'%20stroke-width='4'%20stroke-linejoin='round'/%3E%3Cpath%20d='M25%2024v-5a7%207%200%200%201%2014%200v5'%20fill='none'%20stroke='%232f6fe4'%20stroke-width='4'%20stroke-linecap='round'/%3E%3Cpath%20d='M23%2033h18'%20stroke='%23173b76'%20stroke-width='4'%20stroke-linecap='round'/%3E%3Cpath%20d='M27%2041h10'%20stroke='%23f97316'%20stroke-width='4'%20stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.posui-modal--buffet .posui-modal__actions {
+  margin-top: 2rem;
+  gap: 1rem;
+}
+
+.posui-modal--buffet .posui-btn {
+  min-height: 44px;
+}
