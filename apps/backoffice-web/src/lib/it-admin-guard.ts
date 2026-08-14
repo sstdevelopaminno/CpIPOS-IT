@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { PlatformRole } from "@pos/shared-types";
 import { headers } from "next/headers";
 import { getAuthContext, type AuthContext } from "@/lib/auth-context";
 import { FeatureGateError } from "@/lib/feature-gate";
@@ -33,7 +34,7 @@ function readIpAddress(headerStore: Headers): string | null {
   return forwarded || realIp || null;
 }
 
-export async function requireItAdmin(): Promise<ItAdminContext> {
+async function requirePlatformOperator(allowedRoles: readonly PlatformRole[]): Promise<ItAdminContext> {
   let auth: AuthContext;
   try {
     auth = await getAuthContext({ requireBranchScope: false });
@@ -44,8 +45,8 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
     throw error;
   }
 
-  if (auth.platformRole !== "it_admin") {
-    throw new ItAdminGuardError("forbidden", "Only platform admin can access this endpoint.", 403);
+  if (!allowedRoles.includes(auth.platformRole)) {
+    throw new ItAdminGuardError("forbidden", "This account is not allowed to access platform operations.", 403);
   }
 
   const headerStore = await headers();
@@ -57,6 +58,18 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
       userAgent: headerStore.get("user-agent")
     }
   };
+}
+
+export async function requireItAdmin(): Promise<ItAdminContext> {
+  return requirePlatformOperator(["it_admin"]);
+}
+
+/**
+ * Read-only platform support guard. IT admins inherit support access; callers
+ * must still use requireItAdmin() for commands, tenant changes, and other writes.
+ */
+export async function requireItSupport(): Promise<ItAdminContext> {
+  return requirePlatformOperator(["it_admin", "it_support"]);
 }
 
 export function parseTenantParam(raw: string | undefined): string {
