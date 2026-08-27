@@ -19,8 +19,10 @@ export async function GET() {
 
     const { error } = await supabase.from("tenants").select("id", { count: "exact", head: true }).limit(1);
     const response = ok({
+      service: "cpipos_it_admin",
       status: error ? "degraded" : "ready",
-      production_url: "https://cp-ipos-web.vercel.app",
+      runtime_url: readEnv("IT_ADMIN_PUBLIC_BASE_URL") ?? null,
+      pos_platform_status_endpoint: "/api/it-admin/v1/platform-status",
       supabase_reachable: !error,
       required_env: env,
       table_qr_signing_configured: Boolean(readEnv("TABLE_QR_SIGNING_SECRET")),
