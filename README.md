@@ -22,6 +22,24 @@ This repository is the source of truth for CpIPOS IT Admin and IT/backoffice run
 
 This repository was split from `sstdevelopaminno/CpIPOS` so IT/backoffice work can evolve separately from the customer POS/mobile runtime.
 
+## POS platform integration contract
+
+IT Admin connects to customer POS deployments through explicit server-side contracts. It must not copy POS feature code back into this repository and must not accept arbitrary target URLs from the browser.
+
+The first integration slice is read-only:
+
+- POS Web target: `CPIPOS_POS_WEB_BASE_URL`
+- POS Backoffice target: `CPIPOS_BACKOFFICE_WEB_BASE_URL`
+- Fixed version endpoint: `/api/system/version`
+- Protected IT Admin status API: `/api/it-admin/v1/platform-status`
+- Monitoring UI: `/it-admin/monitoring`
+- Requests are server-side, `no-store`, HTTPS-only for remote hosts, timeout-protected, and fail independently per target.
+- POS Web defaults to the verified canonical runtime `https://cp-ipos-web.vercel.app`.
+- POS Backoffice must be configured with its public runtime URL. Do not use a `vercel.com/.../projects/...` dashboard URL as an application target.
+- This slice does not create sales, mutate tenant data, requeue print jobs, or alter POS configuration.
+
+Future write-capable IT operations must use separately authenticated, audited contracts and must not weaken the read-only monitoring boundary.
+
 ## Vercel deployment contract
 
 For the CpIPOS IT Admin web project in Vercel:
