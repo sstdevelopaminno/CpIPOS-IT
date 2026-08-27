@@ -42,6 +42,40 @@ type MonitorPayload = {
   items: MonitorItem[];
 };
 
+type PlatformConnectionStatus = "online" | "degraded" | "unreachable" | "unconfigured" | "misconfigured";
+
+type PlatformTarget = {
+  id: "pos_web" | "backoffice_web";
+  label: string;
+  status: PlatformConnectionStatus;
+  hostname: string | null;
+  version_endpoint: string;
+  http_status: number | null;
+  latency_ms: number | null;
+  checked_at: string;
+  version: {
+    web: {
+      commit_sha: string | null;
+      commit_ref: string | null;
+      environment: string | null;
+    };
+    source_versions: Record<string, string>;
+    generated_at: string | null;
+  } | null;
+  message: string | null;
+};
+
+type PlatformStatusPayload = {
+  checked_at: string;
+  timeout_ms: number;
+  summary: {
+    total: number;
+    online: number;
+    attention: number;
+  };
+  targets: PlatformTarget[];
+};
+
 const WINDOW_OPTIONS = [
   { value: 15, label: "15 นาที" },
   { value: 30, label: "30 นาที" },
@@ -57,19 +91,50 @@ function levelBadgeClass(level: MonitorItem["level"]) {
   return "pos-monitor-level pos-monitor-level--ok";
 }
 
+function platformBadgeClass(status: PlatformConnectionStatus) {
+  if (status === "online") return "pos-monitor-level pos-monitor-level--ok";
+  if (status === "degraded" || status === "unconfigured") return "pos-monitor-level pos-monitor-level--warn";
+  return "pos-monitor-level pos-monitor-level--critical";
+}
+
+function formatSourceVersions(versions: Record<string, string> | undefined) {
+  if (!versions) return "-";
+  const rows = Object.entries(versions);
+  if (rows.length === 0) return "-";
+  return rows.map(([key, value]) => `${key}: ${value}`).join(", ");
+}
+
 export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [platformError, setPlatformError] = useState<string | null>(null);
   const [minutes, setMinutes] = useState(60);
   const [branchId, setBranchId] = useState<string>("all");
   const [data, setData] = useState<MonitorPayload | null>(null);
+  const [platformData, setPlatformData] = useState<PlatformStatusPayload | null>(null);
+
+  const loadPlatformStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/it-admin/v1/platform-status", { cache: "no-store" });
+      const body = (await response.json()) as { data?: PlatformStatusPayload; error?: { message?: string } };
+      if (!response.ok || body.error || !body.data) {
+        throw new Error(body.error?.message ?? "Failed to load POS platform status.");
+      }
+      setPlatformData(body.data);
+      setPlatformError(null);
+    } catch (loadError) {
+      setPlatformError(loadError instanceof Error ? loadError.message : "Unknown platform connection error");
+    }
+  }, []);
 
   const load = useCallback(
     async (silent = false) => {
       if (silent) setRefreshing(true);
       else setLoading(true);
       setError(null);
+      void loadPlatformStatus();
+
       try {
         const query = new URLSearchParams();
         query.set("minutes", String(minutes));
@@ -89,7 +154,7 @@ export default function MonitoringPage() {
         setRefreshing(false);
       }
     },
-    [minutes, branchId]
+    [minutes, branchId, loadPlatformStatus]
   );
 
   useEffect(() => {
@@ -131,7 +196,7 @@ export default function MonitoringPage() {
       <div className="pos-monitor-head">
         <div>
           <h2 className="pos-monitor-head__title">IT Monitoring: POS Health</h2>
-          <p className="pos-monitor-head__subtitle">กรองตามช่วงเวลาและสาขา พร้อมดู API 4xx/409/5xx ต่อสาขา</p>
+          <p className="pos-monitor-head__subtitle">ตรวจการเชื่อมต่อระบบ POS และกรองสุขภาพรายสาขา พร้อม API 4xx/409/5xx</p>
         </div>
         <div className="pos-monitor-head__actions">
           <label className="pos-monitor-date-field">
@@ -160,6 +225,59 @@ export default function MonitoringPage() {
           </button>
         </div>
       </div>
+
+      <div className="pos-monitor-meta">
+        <span className="pos-monitor-pill">POS Platforms: {platformData ? `${platformData.summary.online}/${platformData.summary.total} online` : "กำลังตรวจสอบ"}</span>
+        {platformData?.summary.attention ? <span className="pos-monitor-pill pos-monitor-pill--warn">Attention: {platformData.summary.attention}</span> : null}
+        {platformData ? <span className="pos-monitor-pill">Checked: {new Date(platformData.checked_at).toLocaleString("th-TH")}</span> : null}
+      </div>
+
+      {platformError ? <div className="pos-monitor-banner pos-monitor-banner--error">POS platform check: {platformError}</div> : null}
+
+      {platformData ? (
+        <div className="pos-monitor-table-wrap">
+          <table className="pos-monitor-table">
+            <thead>
+              <tr>
+                <th>ระบบ POS</th>
+                <th>สถานะ</th>
+                <th>Host</th>
+                <th>HTTP</th>
+                <th>Latency</th>
+                <th>Environment</th>
+                <th>Commit</th>
+                <th>Source Versions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {platformData.targets.map((target) => (
+                <tr key={target.id}>
+                  <td>
+                    <strong>{target.label}</strong>
+                    <br />
+                    <small>{target.version_endpoint}</small>
+                  </td>
+                  <td>
+                    <span className={platformBadgeClass(target.status)}>{target.status.toUpperCase()}</span>
+                    {target.message ? (
+                      <>
+                        <br />
+                        <small>{target.message}</small>
+                      </>
+                    ) : null}
+                  </td>
+                  <td>{target.hostname ?? "-"}</td>
+                  <td>{target.http_status ?? "-"}</td>
+                  <td>{target.latency_ms === null ? "-" : `${target.latency_ms} ms`}</td>
+                  <td>{target.version?.web.environment ?? "-"}</td>
+                  <td>{target.version?.web.commit_sha ? target.version.web.commit_sha.slice(0, 10) : "-"}</td>
+                  <td>{formatSourceVersions(target.version?.source_versions)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {error ? <div className="pos-monitor-banner pos-monitor-banner--error">{error}</div> : null}
       {!error && loading ? <p className="pos-monitor-loading">กำลังโหลดข้อมูล monitoring...</p> : null}
