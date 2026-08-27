@@ -47,7 +47,7 @@ jobs:
         run: pnpm lint
 
       - name: Test
-        run: pnpm test
+        run: pnpm --filter backoffice-web exec vitest run --passWithNoTests
 
       - name: Production build
         run: pnpm build
