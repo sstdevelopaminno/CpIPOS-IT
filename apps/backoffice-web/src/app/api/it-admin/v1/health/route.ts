@@ -5,8 +5,8 @@ import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 export const dynamic = "force-dynamic";
 
 const REQUIRED_SERVER_ENV = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "CPIPOS_SUPABASE_URL",
+  "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "IT_SUPABASE_URL",
   "IT_SUPABASE_SERVICE_ROLE_KEY"
