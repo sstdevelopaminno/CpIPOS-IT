@@ -15,6 +15,7 @@ const loginRoute = source("../../src/app/api/it-admin/auth/login/route.ts");
 const rootPage = source("../../src/app/page.tsx");
 const nextConfig = source("../../next.config.ts");
 const envModule = source("../../src/lib/env.ts");
+const authContext = source("../../src/lib/auth-context.ts");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
 const deviceCommands = source("../../src/lib/device-commands.ts");
 const supabaseServer = source("../../src/lib/supabase-server.ts");
@@ -64,6 +65,14 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(loginRoute).toContain("signOut()");
     expect(supabaseServer).toContain('"CPIPOS_SUPABASE_URL"');
     expect(supabaseServer).toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY"');
+  });
+
+  it("keeps IT admin auth session independent from POS branch membership", () => {
+    expect(authContext).toContain('.from("users_profiles")');
+    expect(authContext).toContain('.eq("id", context.userId)');
+    expect(authContext).toContain('context.platformRole !== "it_admin"');
+    expect(authContext).toContain("requireBranchScope ||");
+    expect(authContext).not.toContain("async function loadPlatformRole");
   });
 
   it("keeps non-secret routing defaults in source and validates privileged credentials at runtime", () => {
