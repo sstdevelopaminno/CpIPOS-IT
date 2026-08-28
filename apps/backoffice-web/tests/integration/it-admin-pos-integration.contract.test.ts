@@ -10,6 +10,7 @@ const monitorRoute = source("../../src/app/api/it-admin/v1/monitor/route.ts");
 const healthRoute = source("../../src/app/api/it-admin/v1/health/route.ts");
 const deviceHealthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
+const deviceCommands = source("../../src/lib/device-commands.ts");
 
 describe("IT Admin <-> POS shared-control-plane contract", () => {
   it("keeps the monitoring page on the IT Admin API namespace", () => {
@@ -33,6 +34,27 @@ describe("IT Admin <-> POS shared-control-plane contract", () => {
     expect(deviceHealthRoute).toContain("device_commands_query_failed");
     expect(deviceHealthRoute).toContain('.eq("tenant_id", device.tenant_id)');
     expect(deviceHealthRoute).toContain('.eq("branch_id", device.branch_id)');
+  });
+
+  it("keeps IT device commands aligned with the POS production command surface", () => {
+    for (const command of [
+      "request_diagnostics_bundle",
+      "request_diagnostics",
+      "reload_ui",
+      "restart_app",
+      "test_network",
+      "test_printer",
+      "clear_print_queue",
+      "restart_local_bridge",
+      "restart_print_service",
+      "refresh_config",
+      "check_update",
+      "disable_device",
+      "enable_device"
+    ]) {
+      expect(deviceCommands).toContain(`"${command}"`);
+    }
+    expect(deviceCommands).toContain('"restart_print_service"');
   });
 
   it("does not return raw internal database errors to API callers", () => {
