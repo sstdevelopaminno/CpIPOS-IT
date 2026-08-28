@@ -70,7 +70,7 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
   it("uses the current Supabase SSR cookie adapter for Next.js sessions", () => {
     expect(supabaseServer).toContain("getAll()");
     expect(supabaseServer).toContain("cookieStore.getAll()");
-    expect(supabaseServer).toContain("setAll(cookiesToSet)");
+    expect(supabaseServer).toContain("setAll(cookiesToSet:");
     expect(supabaseServer).toContain("cookieStore.set(name, value, options)");
     expect(supabaseServer).not.toContain("get(name: string)");
     expect(supabaseServer).not.toContain("remove(name: string");
