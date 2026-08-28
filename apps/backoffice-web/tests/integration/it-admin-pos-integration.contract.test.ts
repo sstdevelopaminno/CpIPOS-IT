@@ -9,6 +9,8 @@ const monitorPage = source("../../src/app/(it-admin)/it-admin/monitoring/page.ts
 const monitorRoute = source("../../src/app/api/it-admin/v1/monitor/route.ts");
 const healthRoute = source("../../src/app/api/it-admin/v1/health/route.ts");
 const deviceHealthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
+const itAdminLayout = source("../../src/app/(it-admin)/layout.tsx");
+const rootPage = source("../../src/app/page.tsx");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
 const deviceCommands = source("../../src/lib/device-commands.ts");
 
@@ -34,6 +36,13 @@ describe("IT Admin <-> POS shared-control-plane contract", () => {
     expect(deviceHealthRoute).toContain("device_commands_query_failed");
     expect(deviceHealthRoute).toContain('.eq("tenant_id", device.tenant_id)');
     expect(deviceHealthRoute).toContain('.eq("branch_id", device.branch_id)');
+  });
+
+  it("guards every IT Admin page at the shared server layout", () => {
+    expect(itAdminLayout).toContain("getAuthContext({ requireBranchScope: false })");
+    expect(itAdminLayout).toContain('auth.platformRole !== "it_admin"');
+    expect(itAdminLayout).toContain('redirect("/it-admin/login")');
+    expect(rootPage).toContain('redirect("/it-admin")');
   });
 
   it("keeps IT device commands aligned with the POS production command surface", () => {
