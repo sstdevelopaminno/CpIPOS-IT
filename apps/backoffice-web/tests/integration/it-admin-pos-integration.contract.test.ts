@@ -37,6 +37,13 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(healthRoute).not.toContain('"TABLE_QR_SIGNING_SECRET"');
   });
 
+  it("does not eagerly construct both service-role clients before a route uses them", () => {
+    expect(itAdminGuard).toContain("get supabase()");
+    expect(itAdminGuard).toContain("get itSupabase()");
+    expect(healthRoute).toContain("server_configuration_missing");
+    expect(healthRoute).toContain("required_env: requiredEnv");
+  });
+
   it("fails closed if any device-health source query fails", () => {
     expect(deviceHealthRoute).toContain("device_health_query_failed");
     expect(deviceHealthRoute).toContain("device_incidents_query_failed");

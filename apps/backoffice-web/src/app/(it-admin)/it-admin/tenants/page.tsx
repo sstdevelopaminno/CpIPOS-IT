@@ -1,51 +1,57 @@
-import { StoreProvisioningConsole, type ProvisioningPackageOption } from "@/components/it-admin/store-provisioning-console";
+import Link from "next/link";
+import { getCurrentLanguage, type Language } from "@/lib/i18n";
 import { requireItAdmin } from "@/lib/it-admin-guard";
 import { listTenantSummaries } from "@/lib/services/it-admin/tenant-admin-service";
+import styles from "./page.module.css";
 
 export const dynamic = "force-dynamic";
 
-type PackageRow = {
-  id: string;
-  code: string;
-  name: string;
-  monthly_price: number | string | null;
-  yearly_price: number | string | null;
-  max_branches: number | null;
-  max_devices: number | null;
-  max_users: number | null;
-  quota_mode: string | null;
-};
-
-function packageOption(row: PackageRow): ProvisioningPackageOption {
-  return {
-    id: row.id,
-    code: row.code,
-    name: row.name,
-    monthly_price: Number(row.monthly_price ?? 0),
-    yearly_price: Number(row.yearly_price ?? 0),
-    max_branches: Number(row.max_branches ?? 0),
-    max_devices: Number(row.max_devices ?? 0),
-    max_users: Number(row.max_users ?? 0),
-    quota_mode: String(row.quota_mode ?? "standard")
-  };
-}
+const copy = {
+  th: {
+    eyebrow: "CUSTOMERS & STORES",
+    title: "Tenants / Stores",
+    description: "รายการลูกค้าจาก CpiPOS-001 สำหรับตรวจ Store Code, แพ็กเกจ, สาขา และสถานะการใช้งาน",
+    create: "เปิดร้านใหม่",
+    total: "ร้านทั้งหมด",
+    storeCode: "Store Code",
+    store: "ร้าน",
+    package: "แพ็กเกจ",
+    branches: "สาขา",
+    devices: "อุปกรณ์",
+    sessions: "Sessions",
+    status: "สถานะ",
+    active: "Active",
+    inactive: "Inactive",
+    noPackage: "ยังไม่ผูกแพ็กเกจ",
+    empty: "ยังไม่มีร้านค้าในรายการ",
+    boundary: "ข้อมูลธุรกิจและ subscription อยู่ใน CpiPOS-001; device health / incident / remote command อยู่ใน CpiPOS-002"
+  },
+  en: {
+    eyebrow: "CUSTOMERS & STORES",
+    title: "Tenants / Stores",
+    description: "CpiPOS-001 customer directory for Store Code, package, branch, and operating-state review.",
+    create: "Provision store",
+    total: "Total stores",
+    storeCode: "Store Code",
+    store: "Store",
+    package: "Package",
+    branches: "Branches",
+    devices: "Devices",
+    sessions: "Sessions",
+    status: "Status",
+    active: "Active",
+    inactive: "Inactive",
+    noPackage: "No package",
+    empty: "No stores in the current result",
+    boundary: "Business/subscription authority stays in CpiPOS-001; device health, incidents, and remote commands stay in CpiPOS-002."
+  }
+} as const;
 
 export default async function TenantsPage() {
   const context = await requireItAdmin();
-  const [result, packageResult] = await Promise.all([
-    listTenantSummaries(context, { limit: 100, status: "all" }),
-    context.supabase
-      .from("subscription_packages")
-      .select("id,code,name,monthly_price,yearly_price,max_branches,max_devices,max_users,quota_mode")
-      .eq("is_active", true)
-      .eq("status", "active")
-      .order("monthly_price", { ascending: true })
-      .returns<PackageRow[]>()
-  ]);
-
-  if (packageResult.error) {
-    throw new Error(`store_provisioning_package_catalog_failed:${packageResult.error.message}`);
-  }
+  const language = await getCurrentLanguage();
+  const text = copy[language as Language];
+  const result = await listTenantSummaries(context, { limit: 100, status: "all" });
 
   const tenantIds = result.tenants.map((tenant) => tenant.id);
   const { data: accessCodes, error: accessCodeError } = tenantIds.length
@@ -56,50 +62,64 @@ export default async function TenantsPage() {
         .eq("is_active", true)
     : { data: [], error: null };
 
-  if (accessCodeError) {
-    throw new Error(`store_code_lookup_failed:${accessCodeError.message}`);
-  }
+  if (accessCodeError) throw new Error(`store_code_lookup_failed:${accessCodeError.message}`);
 
   const codeMap = new Map((accessCodes ?? []).map((row) => [String(row.tenant_id), String(row.access_code)]));
-  const packages = (packageResult.data ?? []).map(packageOption);
 
   return (
-    <section className="surface">
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", marginBottom: 18 }}>
+    <div className={styles.page}>
+      <header className={styles.header}>
         <div>
-          <h2 style={{ margin: 0 }}>Tenant Activation</h2>
-          <p>เปิดร้านใหม่ · Store Code · Package · Branch · Owner · Device Enrollment</p>
+          <span className={styles.eyebrow}>{text.eyebrow}</span>
+          <h2>{text.title}</h2>
+          <p>{text.description}</p>
         </div>
-        <span style={{ fontSize: 12, color: "#607089" }}>ทั้งหมด {result.tenants.length} ร้าน</span>
-      </div>
+        <div className={styles.headerActions}>
+          <span>{text.total}: <strong>{result.tenants.length}{result.next_cursor ? "+" : ""}</strong></span>
+          <Link href="/it-admin/store-provisioning">{text.create}</Link>
+        </div>
+      </header>
 
-      <StoreProvisioningConsole packages={packages} />
+      <section className={styles.card}>
+        {result.tenants.length === 0 ? (
+          <div className={styles.empty}>{text.empty}</div>
+        ) : (
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>{text.storeCode}</th>
+                  <th>{text.store}</th>
+                  <th>{text.package}</th>
+                  <th>{text.branches}</th>
+                  <th>{text.devices}</th>
+                  <th>{text.sessions}</th>
+                  <th>{text.status}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.tenants.map((tenant) => (
+                  <tr key={tenant.id}>
+                    <td><strong className={styles.storeCode}>{codeMap.get(tenant.id) ?? "—"}</strong></td>
+                    <td><strong>{tenant.name}</strong><small>{tenant.code}</small></td>
+                    <td>{tenant.package_name ?? text.noPackage}</td>
+                    <td>{tenant.active_branch_count}/{tenant.branch_count}</td>
+                    <td>{tenant.active_device_count}/{tenant.device_count}</td>
+                    <td>{tenant.active_session_count}</td>
+                    <td>
+                      <span className={`${styles.badge} ${tenant.is_active ? styles.badgeActive : styles.badgeInactive}`}>
+                        {tenant.is_active ? text.active : text.inactive}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#718096" }}>
-              <th style={{ padding: 10 }}>Store Code</th><th>ร้าน</th><th>แพ็กเกจ</th><th>สาขา</th><th>Devices</th><th>Sessions</th><th>สถานะ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.tenants.map((tenant) => (
-              <tr key={tenant.id} style={{ borderTop: "1px solid #e8edf3" }}>
-                <td style={{ padding: 12, fontWeight: 800, color: "#246af0" }}>{codeMap.get(tenant.id) ?? "-"}</td>
-                <td><strong>{tenant.name}</strong><br /><small>{tenant.code}</small></td>
-                <td>{tenant.package_name ?? "-"}</td>
-                <td>{tenant.active_branch_count}/{tenant.branch_count}</td>
-                <td>{tenant.active_device_count}/{tenant.device_count}</td>
-                <td>{tenant.active_session_count}</td>
-                <td>{tenant.is_active ? "Active" : "Inactive"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p style={{ marginTop: 16, fontSize: 11, color: "#77869a" }}>
-        Store Provisioning เขียนข้อมูลธุรกิจไป CpiPOS-001 เท่านั้น; Device Health/Incident/Command ยังคงอยู่ CpiPOS-002 ตาม control-plane boundary
-      </p>
-    </section>
+      <p className={styles.boundary}>{text.boundary}</p>
+    </div>
   );
 }

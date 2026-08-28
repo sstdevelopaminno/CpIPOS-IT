@@ -112,9 +112,7 @@ async function resolveOrCreateOwnerIdentity(context: ItAdminContext, input: { em
     .returns<ProfileRow[]>();
 
   if (profileLookupError) throw new StoreProvisioningError("owner_profile_lookup_failed", "Unable to resolve Owner profile.", 500);
-  if ((profiles ?? []).length > 1) {
-    throw new StoreProvisioningError("owner_email_ambiguous", "More than one Owner profile uses this email.", 409);
-  }
+  if ((profiles ?? []).length > 1) throw new StoreProvisioningError("owner_email_ambiguous", "More than one Owner profile uses this email.", 409);
 
   let profile = profiles?.[0] ?? null;
   if (profile && !profile.is_active) {
@@ -246,6 +244,7 @@ function parseDbProvisioningError(message: string) {
     "invalid_provisioning_request",
     "invalid_provisioning_payload",
     "invalid_contract_status",
+    "paid_activation_requires_approval",
     "invalid_billing_interval",
     "package_not_available",
     "package_requires_manual_contract",
@@ -285,6 +284,12 @@ export async function provisionStore(context: ItAdminContext, input: StoreProvis
   if (!isEmail(ownerEmail)) throw new StoreProvisioningError("invalid_owner_email", "Owner email is invalid.");
   if (!/^\d{1,32}$/.test(employeeCode)) throw new StoreProvisioningError("invalid_owner_employee_code", "Owner employee code must contain digits only.");
   if (!/^\d{4,8}$/.test(pin)) throw new StoreProvisioningError("invalid_owner_pin", "Owner PIN must contain 4 to 8 digits.");
+  if (contractStatus !== "trial") {
+    throw new StoreProvisioningError(
+      "paid_activation_requires_approval",
+      "Store Provisioning may only start a trial; paid activation must use the existing IT approval flow."
+    );
+  }
 
   const { data: rpcData, error: rpcError } = await context.supabase.rpc("provision_it_store_core", {
     p_request_id: requestId,
@@ -298,7 +303,7 @@ export async function provisionStore(context: ItAdminContext, input: StoreProvis
     p_branch_name: branchName,
     p_branch_address: branchAddress || null,
     p_package_id: packageId,
-    p_contract_status: contractStatus,
+    p_contract_status: "trial",
     p_billing_interval: billingInterval
   });
 

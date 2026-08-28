@@ -51,16 +51,24 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
   }
 
   const headerStore = await headers();
+  const requestMeta = {
+    ipAddress: readIpAddress(headerStore),
+    userAgent: headerStore.get("user-agent")
+  };
+
+  // Keep authorization independent from privileged data-plane client creation.
+  // A CpiPOS-001-only route must not fail simply because CpiPOS-002 is degraded,
+  // and vice versa. The getters preserve the existing context contract while
+  // instantiating each service-role client only when a route actually uses it.
   return {
     auth,
-    // Authentication/business control remains authoritative on CpiPOS-001.
-    supabase: getSupabaseServiceClient(),
-    // Device/health/incident/command operations are isolated on CpiPOS-002.
-    itSupabase: getItControlPlaneClient(),
-    requestMeta: {
-      ipAddress: readIpAddress(headerStore),
-      userAgent: headerStore.get("user-agent")
-    }
+    get supabase() {
+      return getSupabaseServiceClient();
+    },
+    get itSupabase() {
+      return getItControlPlaneClient();
+    },
+    requestMeta
   };
 }
 
