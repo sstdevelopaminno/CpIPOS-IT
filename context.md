@@ -15,98 +15,82 @@ Before answering or changing code:
 7. Run Typecheck → Lint → Test → Production Build.
 8. Require exact-head GitHub CI and Vercel Preview before merge.
 9. After merge, verify Vercel Production on the merged `main` commit.
-10. Update this file so the next chat can continue from live state.
+10. Keep this file current so a new chat can continue without reconstructing state from old messages.
 
-If a task touches POS/schema/runtime in `sstdevelopaminno/CpIPOS`, first read `docs/AI-GUARDRAILS-CPIPOS.md` and the current CpIPOS handoff/context, then verify that repo's live GitHub/Vercel/Supabase state before changing anything.
+If a task touches POS/schema/runtime in `sstdevelopaminno/CpIPOS`, first read `docs/AI-GUARDRAILS-CPIPOS.md` and the current CpIPOS context/handoff, then verify that repo's live GitHub/Vercel/Supabase state before changing anything.
 
-Do not reconstruct current state from old chats when it conflicts with this file or live connected sources.
+Do not use old-chat state when it conflicts with this file or live connected sources.
 
 ---
 
-## System boundaries — keep these lanes separate
+# Deployment-efficiency rule
 
-### `sstdevelopaminno/CpIPOS`
-Customer-facing POS Production runtime and business transactions.
+Vercel usage is currently cost-sensitive. During development:
 
-### `sstdevelopaminno/CpIPOS-IT`
+- batch related UI/API changes on one branch instead of pushing every file edit;
+- validate as much as possible before moving the branch ref;
+- target roughly one final Preview and one Production deployment for a large work batch;
+- do not create deploys merely to inspect a small visual change;
+- do not create a replacement Vercel project to solve connector visibility problems.
+
+This is an efficiency rule, not permission to skip Typecheck/Lint/Test/Build or exact-head acceptance.
+
+---
+
+# Architecture boundaries
+
+## `sstdevelopaminno/CpIPOS`
+Customer-facing POS runtime, schema authority and business transactions.
+
+## `sstdevelopaminno/CpIPOS-IT`
 Company IT Control Plane / Backoffice.
 
-### CpiPOS-001
+## CpiPOS-001
 Project ref: `deejlitaivfnsbwqdugy`
 
 Authority for:
 - Supabase Auth
-- tenant / store / branch / user
-- package / subscription / business control-plane data
+- tenant / Store Code / branch / user
+- package / subscription / business control-plane state
 - POS business data and transactions
 
-### CpiPOS-002
+## CpiPOS-002
 Project ref: `kawenyvpentwgugtzqec`
 
-Operational IT/MDM data plane for:
+Operational IT/MDM plane for:
 - device registry
 - device health / telemetry
 - incidents
-- remote commands and ACK/result
+- remote commands / delivered / ACK / result
 - IT operational state
 
-### Non-negotiable architecture rules
+## Non-negotiable rules
 
-- Browser code must never receive a service-role key.
+- Browser/device code must never receive a service-role key.
 - Privileged actions are server-side only.
-- Important actions require an audit trail.
+- Important IT actions require an audit trail.
 - Tenant / branch / device scope must remain correct.
-- Client code must not choose which Supabase database to use.
+- Client code must not choose CpiPOS-001 vs CpiPOS-002.
 - Orders, payments, products, stock and customer transaction history stay out of CpiPOS-002.
-- IT work must not be mixed into a POS Production release.
+- Never reset FF0001.
+- Never fabricate device health.
+- Never mix IT feature work into a POS Production release.
 
 ---
 
-# LIVE IT CONTROL PLANE STATE
+# Vercel IT project — existing project only
 
-## GitHub `CpIPOS-IT/main`
-
-Latest verified `main` commit:
-
-- SHA: `9a461295394553cd7c100789a3a3db760e1d60b3`
-- Commit: `feat(it-ui): production-grade IT Admin shell and dashboard (#16)`
-- PR #16: MERGED
-
-PR #16 was an IT UI-only change. It did not modify POS sales/order/payment logic, database schema/RLS, secrets, FF0001 data, or backend contracts.
-
-### Currently open IT PRs
-
-- PR #4 — DRAFT — `feat(it): add Store Provisioning P0`
-- PR #5 — DRAFT — `feat(it): add Device Enrollment and MDM support console`
-- PR #6 — DRAFT — `MDM P0: bridge legacy telemetry, pairing, and command ACK`
-
-Do not duplicate these features in parallel branches without first inspecting the existing PRs and their dependencies.
-
----
-
-## Vercel
-
-Live GitHub/Vercel integration now identifies the existing IT project as:
+Existing IT project identified by GitHub/Vercel integration:
 
 - Project: `cp-ipos-it-web`
 - Project ID: `prj_9jNjDHyctinDjnvCZ2Ya1zBJs38h`
 - Team ID: `team_ZKmv6uQSU9QUyP08mxAr2YDI`
 
-The older handoff name `cp-ipos-it-backoffice-web` is stale and must not be used to justify creating another project.
+The older name `cp-ipos-it-backoffice-web` is stale. Do not create another project.
 
-Latest verified Production state for `main` SHA `9a461295...`:
+The connected Vercel project/log APIs may return 403/404 even while GitHub's Vercel integration reports exact deployment status successfully. Treat this as connector visibility mismatch, not proof the project is missing.
 
-- Vercel status: `success`
-- Description: `Deployment has completed`
-- Production deployment target is the existing `cp-ipos-it-web` project.
-
-PR #16 exact-head Preview was also `Ready` / success before merge.
-
-The connected Vercel API inventory has shown inconsistent project-list permissions/visibility for this project, while GitHub's Vercel integration reports the exact deployment status. Do not create a replacement project because of that connector visibility mismatch.
-
-### Current server environment contract used by the IT health route
-
-Names only — never paste secret values into chat/docs/source:
+Server environment contract names only — never expose values:
 
 - `CPIPOS_SUPABASE_URL`
 - `CPIPOS_SUPABASE_PUBLISHABLE_KEY`
@@ -116,140 +100,41 @@ Names only — never paste secret values into chat/docs/source:
 
 ---
 
-## Supabase live state
-
-Latest verified during the UI Phase 1 work:
-
-- CpiPOS-001: `ACTIVE_HEALTHY`
-- CpiPOS-002: `ACTIVE_HEALTHY`
-- CpiPOS-001 required control-plane tables checked: `users_profiles`, `tenants`, `branches` exist.
-
-### FF0001 safety + telemetry state
-
-Devices in CpiPOS-002:
-
-- `FF0001-POS-01` — registry status `active`
-- `FF0001-POS-02` — registry status `active`
-
-At the latest live read, both still had no usable row values in `it_device_health_latest` for:
-
-- `last_seen_at`
-- app version
-- runtime version
-- system health
-- runtime health
-- peripheral health
-- offline-sale health
-- last error
-
-Therefore:
-
-- Do **not** call FF0001 healthy merely because its registry row is active.
-- Do **not** insert fake health/heartbeat rows to make MDM look complete.
-- Do **not** reset FF0001.
-- Do **not** alter customer order/payment/shift/transaction history for MDM testing.
-
----
-
 # PHASE 1 — IT ADMIN UI/UX
 
-Status: **App Shell + Dashboard + Navigation foundation merged to Production.**
+Status: **merged previously and Production foundation established.**
 
-## What is now on `main`
-
-### Shared App Shell
-
-Central component:
+Shared shell:
 - `apps/backoffice-web/src/components/layout/app-shell.tsx`
 - `apps/backoffice-web/src/components/layout/app-shell.module.css`
 
-Now provides:
-- CpIPOS-branded left Sidebar
+Provides:
+- CpIPOS branded Sidebar
 - grouped navigation
-- sticky Topbar
+- Topbar
 - Breadcrumb
-- active route state
-- responsive drawer for tablet/mobile
-- existing language switcher reuse
+- responsive tablet/mobile drawer
+- Thai-first UI with English support
+- existing language switcher
 - IT role indicator
-- disabled state for modules not yet present on `main` rather than dead links
 
-### Navigation structure now represented
-
-- Dashboard
-- Tenants / Stores
-- Store Provisioning — currently disabled until its module lands
-- Branches — currently disabled
-- Users / Roles / Permissions
-- Devices / MDM — currently disabled until its module lands
-- Android App Rollout — currently disabled
-- Printer / Print Agent — currently disabled
-- Packages / Subscriptions
-- Feature Entitlements — currently disabled
-- Monitoring
-- Incidents — currently disabled
-- Audit Logs
-- Settings / Security
-
-Thai is primary and English remains supported.
-
-### Dashboard
-
-Files:
+Dashboard:
 - `apps/backoffice-web/src/components/it-admin/it-admin-dashboard.tsx`
 - `apps/backoffice-web/src/components/it-admin/it-admin-dashboard.module.css`
 - `apps/backoffice-web/src/app/(it-admin)/it-admin/page.tsx`
 
-Dashboard uses existing backend contracts only:
-
+Dashboard uses existing contracts:
 - `/api/it-admin/v1/health`
 - `/api/it-admin/v1/tenants?limit=100`
 - `/api/it-admin/v1/monitor?minutes=60`
-
-It includes:
-- Loading state
-- Error + Retry state
-- refresh/degraded state
-- empty stores state
-- live success state
-- Control Plane reachability summary
-- tenant/store summary
-- monitoring/API-error summary
-- recent stores
-- quick operations links
-
-Important: dashboard explicitly distinguishes Control Plane reachability from real device telemetry and does not fabricate device health.
-
-## PR #16 validation evidence
-
-Exact head before merge: `78fd23531b436b208c0aab24b259dce7b60b7633`
-
-GitHub Actions run `33192566457` / `CI IT Admin Web`:
-- Typecheck: SUCCESS
-- Lint: SUCCESS
-- Test: SUCCESS
-- Production Build: SUCCESS
-- Overall job: SUCCESS
-
-Vercel Preview:
-- Project `cp-ipos-it-web`
-- Ready / success
-
-Post-merge Production:
-- `main` SHA `9a461295...`
-- Vercel `success` / `Deployment has completed`
-
-The authenticated `/it-admin` login/session gate was already user-confirmed working before the UI redesign. Tooling in this run could verify deployment/CI state but could not perform an authenticated browser smoke session on behalf of the IT user, so do not claim a post-redesign authenticated UI click-through unless it is actually tested.
 
 ---
 
 # PHASE 2 — STORE PROVISIONING
 
-Business target:
+Status when this file is present on `main`: **implementation landed with PR #4; verify the live merge SHA and Production deployment before claiming final Production acceptance.**
 
-IT staff must be able to open a new SaaS customer entirely from IT Backoffice without manually editing source code, SQL, or building an APK per store.
-
-Required flow:
+Business flow:
 
 Tenant
 → Store Code
@@ -258,25 +143,144 @@ Tenant
 → Owner account
 → Login policy
 → Device Enrollment
-→ Ready to use
+→ Ready for next onboarding step
 
-## Existing work to reuse
+## CpIPOS schema authority
 
-PR #4 already contains Store Provisioning P0 work. Do not build a second provisioning flow before inspecting it.
+CpIPOS PR #156 `feat(it-schema): add Store Provisioning P0 control-plane RPC` was merged into its schema/platform base, not into a POS Production release.
 
-PR #4 says it depends on a schema-only CpIPOS change providing the existing provisioning authority/idempotency path. Because that dependency touches `CpIPOS` schema/runtime boundaries, **before changing or merging PR #4**:
+- PR #156 exact head validated: `c6dfc3c3ce9dcf1556c52e7ab2bcb1ffaa0c68d6`
+- merged source commit: `35d31e7639e7c14f1941ea7ea57feae5857e244a`
+- one migration file only: `supabase/migrations/20260828123000_it_store_provisioning_p0.sql`
+- no POS UI/runtime/order/payment/stock change
+- no FF0001 mutation
 
-1. Read `CpIPOS/docs/AI-GUARDRAILS-CPIPOS.md`.
-2. Read current CpIPOS handoff/context.
-3. Verify current CpIPOS GitHub state and the exact schema dependency.
-4. Confirm it does not alter customer transaction/payment/order history.
-5. Keep any schema-only dependency isolated from POS Production feature work.
+Exact-head validation branch/run evidence:
+- branch: `hotfix/ci-it-store-provisioning-schema-p0-20260828`
+- GitHub Actions run: `33193549967`
+- Typecheck: SUCCESS
+- Lint: SUCCESS
+- Test: SUCCESS
+- Primary schema drift: SUCCESS
+- CpiPOS-002 schema drift: SUCCESS
+- Build: SUCCESS
+
+## CpiPOS-001 Production schema state
+
+The exact provisioning migration was applied to CpiPOS-001 as:
+
+- migration history version: `20260828174600`
+- name: `it_store_provisioning_p0`
+
+Read-back after apply:
+- `public.it_store_provisioning_requests` exists
+- RLS enabled
+- ledger row count = 0 immediately after migration
+- `anon` table SELECT = denied
+- `authenticated` table SELECT = denied
+- `service_role` table SELECT = allowed
+- `anon` RPC EXECUTE = denied
+- `authenticated` RPC EXECUTE = denied
+- `service_role` RPC EXECUTE = allowed
+
+`RLS Enabled No Policy` advisor info for this ledger is intentional: it is a server-only/service-role table and no client RLS policy should be added merely to silence the advisor.
+
+No Production tenant/store was created to test this migration.
+
+## Current package catalog constraints
+
+Latest live CpiPOS-001 package read during Phase 2:
+- Starter: 350 THB/month, yearly price currently 0, Standard
+- Growth: 550 THB/month, yearly price currently 0, Standard
+- Custom: manual/custom package, not eligible for Fast Provisioning
+
+Therefore Fast Provisioning currently offers only priced Standard intervals; yearly remains unavailable until a real yearly price exists.
+
+Paid activation is not part of Fast Provisioning. New Store Provisioning starts as Trial only; paid activation continues through the existing IT approval flow.
+
+## CpIPOS-IT Store Provisioning implementation
+
+Primary files:
+- `apps/backoffice-web/src/app/(it-admin)/it-admin/store-provisioning/page.tsx`
+- `apps/backoffice-web/src/app/(it-admin)/it-admin/store-provisioning/page.module.css`
+- `apps/backoffice-web/src/components/it-admin/store-provisioning-console.tsx`
+- `apps/backoffice-web/src/components/it-admin/store-provisioning-console.module.css`
+- `apps/backoffice-web/src/lib/services/it-admin/store-provisioning-service.ts`
+- `apps/backoffice-web/src/app/api/it-admin/v1/store-provisioning/route.ts`
+
+Behavior:
+- dedicated Store Provisioning page
+- Tenants / Stores directory is separate from the provisioning workflow
+- package catalog loads from CpiPOS-001
+- Standard + priced interval filtering
+- Trial-only enforced both UI and server-side
+- confirmation/review before privileged submit
+- PIN is not shown in confirmation and is never sent to the core DB RPC
+- PIN is bcrypt hashed by trusted server code
+- Owner Auth + `users_profiles` + `pos_user_profiles` + owner `user_branch_roles`
+- stable `request_id` supports retry/recovery
+- important actions are audited
+- onboarding ends at Device Enrollment; it does not fake an enrolled device
+
+## Dashboard `Internal server error` hardening included in Phase 2
+
+Observed Production symptom before this batch:
+- IT Auth `/auth/v1/user` returned 200 repeatedly
+- Dashboard APIs failed before any CpiPOS-001/CpiPOS-002 data query reached the databases
+
+Root design issue:
+- `requireItAdmin()` eagerly created both privileged Supabase clients even when a route needed only one plane.
+- one unavailable privileged plane could therefore fail unrelated IT APIs before their first query.
+
+Fix included with PR #4:
+- authenticate/authorize IT user first
+- lazily instantiate `supabase` (CpiPOS-001) and `itSupabase` (CpiPOS-002) only when a route actually uses them
+- `/api/it-admin/v1/health` reports required configuration as booleans/error codes without exposing secret values
+- missing/degraded plane can be reported as degraded rather than crashing the health probe before diagnosis
+
+Do not guess which secret is missing. Read the health result after Production deploy.
+
+## PR #4 validation evidence before final context-only handoff update
+
+Code batch exact head:
+- `35acb58f9309fcab524fab5b1264e2cd2a4e2e24`
+
+GitHub Actions:
+- run `33195711304`
+- Typecheck: SUCCESS
+- Lint: SUCCESS
+- Test: SUCCESS
+- Production Build: SUCCESS
+
+GitHub/Vercel exact-head status:
+- Vercel: SUCCESS / deployment completed
+- existing project: `cp-ipos-it-web`
+
+The final `context.md` commit may have a newer PR head than the code-batch SHA above. Require exact-head CI/Preview again before merge.
+
+## Production acceptance boundary
+
+Do not create a real Production tenant merely as a smoke test without explicit user approval, because that creates persistent customer/control-plane records.
+
+Safe pre-merge evidence already available:
+- code CI/build green
+- Vercel Preview status green
+- schema CI/drift green
+- Production migration applied and privilege read-back green
+- provisioning ledger still empty after schema installation
+
+After Production merge, authenticated UI smoke still needs to verify actual pages with the IT user's session.
 
 ---
 
 # PHASE 3 — DEVICES / MDM
 
-PR #5 and PR #6 contain existing work. They must be inspected and refreshed after Store Provisioning rather than reimplemented from scratch.
+Existing work to reuse after Phase 2 Production verification:
+
+- PR #5 — Device Enrollment and MDM support console
+- PR #6 — legacy telemetry / pairing / command ACK compatibility bridge
+
+Do not create a second MDM implementation. Inspect and refresh the existing PRs on top of current `main`.
 
 Operational target:
 
@@ -293,14 +297,21 @@ Device Enrollment
 → Remote Command
 → Delivered / ACK / Result
 
-Real telemetry only. CPU/RAM/storage/printer values must remain unknown/not-reported until a real producer sends them.
+Real telemetry only.
+
+## FF0001 telemetry safety
+
+Known devices in CpiPOS-002:
+- `FF0001-POS-01`
+- `FF0001-POS-02`
+
+Latest verified handoff still does not establish trustworthy current device-health values for these terminals. Do not call them healthy solely from registry state and do not insert synthetic rows.
 
 ---
 
 # PHASE 4 — OPERATIONS
 
 After provisioning + MDM foundations:
-
 - Packages / Subscriptions
 - Feature Entitlements
 - Monitoring
@@ -310,42 +321,42 @@ After provisioning + MDM foundations:
 - Security / Change Password
 - IT staff role separation
 
-Reuse existing modules/contracts where they already exist.
+Reuse existing contracts/components where available.
 
 ---
 
 # SAFETY RULES — DO NOT VIOLATE
 
-- Never create a new Vercel project to solve a deployment/linkage problem.
+- Never create a new Vercel project to solve deployment/linkage problems.
 - Never guess env values or secrets.
 - Never paste service-role keys into chat, docs, commits or screenshots.
 - Never reset FF0001.
-- Never delete or rewrite customer transaction/payment/order history.
-- Never fabricate FF0001/device health data.
-- Never expose a service-role key to browser/device code.
-- Never let client code choose CpiPOS-001 vs CpiPOS-002.
-- Never mix IT feature development into the POS Production release lane.
-- Never broad-refactor the repository merely to redesign a UI.
-- Never change backend contracts just because the UI is being redesigned.
+- Never delete/rewrite customer transaction/payment/order history.
+- Never fabricate device health.
+- Never expose service-role credentials to browser/device code.
+- Never let client code choose the Supabase project.
+- Never broad-refactor simply to redesign UI.
+- Never change backend contracts solely for visual redesign.
+- Never turn a Production customer into test data without explicit approval.
 
 ---
 
 # Immediate next action
 
-Proceed with **PHASE 2 — Store Provisioning** using the work that already exists in PR #4.
+When this file is on `main`, do these in order:
 
-Concrete next sequence:
-
-1. Re-read this file from `main`.
-2. Verify live `CpIPOS-IT/main`, PR #4, PR #5 and PR #6.
-3. Inspect PR #4 diff/base/dependency and determine whether it needs to be rebased/refreshed on top of `main` SHA `9a461295...` and the new shared App Shell.
-4. Because PR #4 has a CpIPOS schema dependency, read `CpIPOS/docs/AI-GUARDRAILS-CPIPOS.md` + current CpIPOS context and verify the exact live dependency before touching it.
-5. Finish Store Provisioning as one production-grade flow using existing backend authority; do not require manual SQL/source edits for a new customer.
-6. Add the full UI states required for provisioning: loading, validation, empty/error, success, and confirmation where an action is destructive or privileged.
-7. Run Typecheck → Lint → Test → Production Build → exact-head CI → Vercel Preview.
-8. Merge only when green, verify Production, then update this file again.
-
-Do not start a new MDM implementation while PR #4 is the first unfinished module in the required business order.
+1. Read this file again and verify the exact live `CpIPOS-IT/main` SHA.
+2. Verify Vercel Production for the PR #4 merge commit on existing `cp-ipos-it-web`.
+3. Smoke test without mutating customer data:
+   - `/it-admin/login` loads
+   - unauthenticated protected IT APIs reject with expected 401/403, not 500
+   - authenticated `/it-admin` Dashboard loads and reports health/degraded state rather than generic crash
+   - `/it-admin/tenants` loads the live store directory
+   - `/it-admin/store-provisioning` loads Starter/Growth package choices and Trial-only flow
+4. Do **not** press final Store Provisioning submit against Production merely for testing. A real tenant/store creation requires explicit user approval.
+5. If Production smoke is green, start **PHASE 3** by inspecting PR #5 and PR #6, their bases/dependencies and live CpiPOS-002 telemetry state.
+6. Refresh/reuse those PRs instead of implementing MDM again from scratch.
+7. Keep deployment batching: complete a meaningful MDM batch before the next Preview/Production cycle.
 
 ---
 

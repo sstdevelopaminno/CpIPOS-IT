@@ -1,0 +1,170 @@
+.page {
+  display: grid;
+  gap: 18px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.header h2 {
+  margin: 5px 0 0;
+  color: #172235;
+  font-size: 25px;
+  line-height: 1.2;
+}
+
+.header p {
+  max-width: 760px;
+  margin: 7px 0 0;
+  color: #6e7b8f;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.eyebrow {
+  color: #6d86ac;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.headerActions > span {
+  color: #7a8798;
+  font-size: 10px;
+}
+
+.headerActions a {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 10px;
+  padding: 8px 14px;
+  color: #fff;
+  background: #2f6df6;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.card {
+  overflow: hidden;
+  border: 1px solid #dfe6ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 6px 22px rgba(20, 38, 64, 0.035);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.table th {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e7ecf2;
+  color: #77859a;
+  background: #f8fafc;
+  font-size: 9px;
+  font-weight: 800;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.table td {
+  padding: 13px 14px;
+  border-top: 1px solid #eef2f6;
+  color: #42526a;
+  vertical-align: middle;
+}
+
+.table tbody tr:first-child td {
+  border-top: 0;
+}
+
+.table tbody tr:hover {
+  background: #fbfdff;
+}
+
+.table td strong:not(.storeCode) {
+  display: block;
+  color: #28384f;
+  font-size: 11px;
+}
+
+.table td small {
+  display: block;
+  margin-top: 3px;
+  color: #94a0b0;
+  font-size: 9px;
+}
+
+.storeCode {
+  color: #2c67e8;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.badgeActive {
+  color: #217253;
+  background: #ecf8f2;
+}
+
+.badgeInactive {
+  color: #68778d;
+  background: #eef2f6;
+}
+
+.empty {
+  min-height: 200px;
+  display: grid;
+  place-items: center;
+  padding: 30px;
+  color: #7e8b9d;
+  font-size: 12px;
+}
+
+.boundary {
+  margin: 0;
+  color: #8b97a7;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+@media (max-width: 820px) {
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .headerActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
