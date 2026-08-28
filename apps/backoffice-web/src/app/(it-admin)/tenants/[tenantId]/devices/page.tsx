@@ -1,3 +1,4 @@
+import { DevicePairingConsole } from "@/components/it-admin/device-pairing-console";
 import { TenantSectionConsole } from "@/components/it-admin/tenant-section-console";
 import { getAuthContext } from "@/lib/auth-context";
 
@@ -17,5 +18,10 @@ export default async function TenantDevicesPage({
     );
   }
 
-  return <TenantSectionConsole tenantId={tenantId} section="devices" />;
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <DevicePairingConsole tenantId={tenantId} />
+      <TenantSectionConsole tenantId={tenantId} section="devices" />
+    </div>
+  );
 }
