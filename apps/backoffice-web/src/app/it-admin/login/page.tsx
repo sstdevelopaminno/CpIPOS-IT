@@ -12,8 +12,10 @@ function getCopy(lang: AppLanguage) {
       subtitle: "IT Admin sign in",
       emailLabel: "Email",
       emailPlaceholder: "Enter email",
+      emailPreviewLabel: "Entered email",
       passwordLabel: "Password",
       passwordPlaceholder: "Enter password",
+      showPassword: "Show password",
       submit: "Log in",
       submitting: "Signing in...",
       requiredError: "Please enter email and password.",
@@ -27,8 +29,10 @@ function getCopy(lang: AppLanguage) {
     subtitle: "เข้าสู่ระบบ IT Admin",
     emailLabel: "อีเมล",
     emailPlaceholder: "กรอกอีเมล",
+    emailPreviewLabel: "อีเมลที่กรอก",
     passwordLabel: "รหัสผ่าน",
     passwordPlaceholder: "กรอกรหัสผ่าน",
+    showPassword: "แสดงรหัสผ่าน",
     submit: "ล็อกอิน",
     submitting: "กำลังเข้าสู่ระบบ...",
     requiredError: "กรุณากรอกอีเมลและรหัสผ่าน",
@@ -44,6 +48,7 @@ export default function ItAdminLoginPage() {
   const copy = useMemo(() => getCopy(lang), [lang]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -114,22 +119,42 @@ export default function ItAdminLoginPage() {
             <input
               id="email"
               type="email"
+              inputMode="email"
               value={email}
               onChange={(event) => {
                 setEmail(event.target.value);
                 if (error) setError("");
               }}
               placeholder={copy.emailPlaceholder}
-              autoComplete="username"
+              autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              dir="ltr"
               aria-invalid={Boolean(error)}
+              style={{ fontSize: "15px", letterSpacing: 0, textAlign: "left" }}
             />
           </div>
+          {email.trim() ? (
+            <p
+              aria-live="polite"
+              style={{
+                margin: "-6px 0 2px",
+                color: "#64748b",
+                fontSize: "12px",
+                lineHeight: 1.45,
+                overflowWrap: "anywhere"
+              }}
+            >
+              {copy.emailPreviewLabel}: <span dir="ltr">{email.trim()}</span>
+            </p>
+          ) : null}
 
           <label htmlFor="password">{copy.passwordLabel}</label>
           <div className="store-v2-input-box">
             <input
               id="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(event) => {
                 setPassword(event.target.value);
@@ -140,6 +165,25 @@ export default function ItAdminLoginPage() {
               aria-invalid={Boolean(error)}
             />
           </div>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "-4px",
+              fontSize: "12px",
+              color: "#64748b",
+              cursor: "pointer"
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showPassword}
+              onChange={(event) => setShowPassword(event.target.checked)}
+              style={{ width: "16px", height: "16px" }}
+            />
+            {copy.showPassword}
+          </label>
 
           <button type="submit" className="store-v2-login-btn" disabled={loading || !email.trim() || !password}>
             {loading ? copy.submitting : copy.submit}
