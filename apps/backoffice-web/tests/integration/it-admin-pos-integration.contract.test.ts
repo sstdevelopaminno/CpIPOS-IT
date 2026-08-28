@@ -14,6 +14,7 @@ const loginPage = source("../../src/app/it-admin/login/page.tsx");
 const loginRoute = source("../../src/app/api/it-admin/auth/login/route.ts");
 const rootPage = source("../../src/app/page.tsx");
 const nextConfig = source("../../next.config.ts");
+const envModule = source("../../src/lib/env.ts");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
 const deviceCommands = source("../../src/lib/device-commands.ts");
 const supabaseServer = source("../../src/lib/supabase-server.ts");
@@ -61,15 +62,17 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(supabaseServer).toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY"');
   });
 
-  it("fails Vercel builds when either server-side Supabase plane environment is incomplete", () => {
+  it("keeps non-secret Supabase routing defaults out of the Vercel secret gate", () => {
+    expect(envModule).toContain('CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co"');
+    expect(envModule).toContain('CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
+    expect(envModule).toContain('IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co"');
     expect(nextConfig).toContain('process.env.VERCEL === "1"');
-    expect(nextConfig).toContain('"CPIPOS_SUPABASE_URL"');
-    expect(nextConfig).toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY"');
     expect(nextConfig).toContain('"SUPABASE_SERVICE_ROLE_KEY"');
-    expect(nextConfig).toContain('"IT_SUPABASE_URL"');
     expect(nextConfig).toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
     expect(nextConfig).not.toContain('"NEXT_PUBLIC_SUPABASE_URL",');
     expect(nextConfig).not.toContain('"NEXT_PUBLIC_SUPABASE_ANON_KEY",');
+    expect(nextConfig).not.toContain('"CPIPOS_SUPABASE_URL",');
+    expect(nextConfig).not.toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY",');
     expect(nextConfig).toContain("Missing required CpIPOS IT Admin Vercel environment variables");
   });
 
