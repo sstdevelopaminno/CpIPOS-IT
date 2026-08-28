@@ -70,7 +70,7 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
   return [
     { href: "/it-admin", label: text.items.dashboard, group: text.groups.overview, icon: "dashboard" },
     { href: "/it-admin/tenants", label: text.items.tenants, group: text.groups.customer, icon: "store" },
-    { label: text.items.provisioning, group: text.groups.customer, icon: "provision", disabled: true },
+    { href: "/it-admin/store-provisioning", label: text.items.provisioning, group: text.groups.customer, icon: "provision" },
     { label: text.items.branches, group: text.groups.customer, icon: "branch", disabled: true },
     { href: "/it-admin/platform-users", label: text.items.users, group: text.groups.customer, icon: "users" },
     { label: text.items.devices, group: text.groups.devices, icon: "device", disabled: true },
