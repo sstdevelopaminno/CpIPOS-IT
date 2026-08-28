@@ -1,5 +1,6 @@
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
+import { syncLegacyDeviceCompatibility } from "@/lib/legacy-mdm-compat";
 
 type ItDeviceRow = {
   id: string;
@@ -14,11 +15,20 @@ type HealthLatestRow = {
   id: string;
   status: string;
   summary: unknown;
+  identity: unknown;
+  connectivity: unknown;
+  system_health: unknown;
+  runtime_health: unknown;
+  peripheral_health: unknown;
+  offline_sale_health: unknown;
+  security_signals: unknown;
+  last_error: string | null;
   machine_id: string;
   app_version: string | null;
   runtime_version: string | null;
   last_seen_at: string;
   captured_at: string;
+  synced_at: string | null;
 };
 
 type IncidentRow = {
@@ -45,7 +55,7 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
   const startedAt = Date.now();
 
   try {
-    const { itSupabase } = await requireItAdmin();
+    const { supabase, itSupabase } = await requireItAdmin();
     const { deviceId } = await context.params;
     const id = String(deviceId ?? "").trim();
     if (!id) return fail("invalid_device_id", "Device id is required.", 422);
@@ -58,10 +68,32 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
     if (deviceError) throw new Error(`it_device_query_failed:${deviceError.message}`);
     if (!device) return fail("device_not_found", "Device was not found.", 404);
 
+    let compatibility: Record<string, unknown> = {
+      mode: "native_it_plane",
+      attempted: false
+    };
+    try {
+      const sync = await syncLegacyDeviceCompatibility({ supabase, itSupabase }, device);
+      compatibility = {
+        mode: sync.health.source === "CpiPOS-001" ? "legacy_bridge" : "native_it_plane",
+        attempted: true,
+        ...sync
+      };
+    } catch (compatError) {
+      console.error("[it-admin-mdm] legacy compatibility sync failed", compatError);
+      compatibility = {
+        mode: "native_it_plane",
+        attempted: true,
+        warning: compatError instanceof Error ? compatError.message : "legacy_compatibility_sync_failed"
+      };
+    }
+
     const [healthResult, incidentResult, commandResult] = await Promise.all([
       itSupabase
         .from("it_device_health_latest")
-        .select("id,status,summary,machine_id,app_version,runtime_version,last_seen_at,captured_at")
+        .select(
+          "id,status,summary,identity,connectivity,system_health,runtime_health,peripheral_health,offline_sale_health,security_signals,last_error,machine_id,app_version,runtime_version,last_seen_at,captured_at,synced_at"
+        )
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
         .eq("pos_device_id", device.id)
@@ -100,7 +132,8 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
       integration: {
         mode: "split_supabase",
         operational_plane: "CpiPOS-002",
-        heartbeat_writer: "cpipos_pos_runtime"
+        heartbeat_writer: "cpipos_pos_runtime",
+        compatibility
       }
     });
     response.headers.set("cache-control", "no-store");
