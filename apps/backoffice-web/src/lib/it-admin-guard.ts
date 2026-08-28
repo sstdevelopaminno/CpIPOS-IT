@@ -81,5 +81,6 @@ export function guardItAdminError(error: unknown): Response {
     return fail(error.code, error.message, error.status);
   }
 
-  return fail("it_admin_internal_error", error instanceof Error ? error.message : "Internal server error.", 500);
+  console.error("[it-admin-api] internal error", error);
+  return fail("it_admin_internal_error", "Internal server error.", 500);
 }
