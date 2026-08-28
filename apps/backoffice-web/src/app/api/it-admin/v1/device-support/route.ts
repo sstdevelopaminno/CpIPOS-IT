@@ -1,4 +1,4 @@
-import { fail, ok } from "@/lib/http";
+import { ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 
 type ItDeviceRow = {
@@ -66,8 +66,45 @@ type CommandRow = {
   result: Record<string, unknown> | null;
 };
 
+type PrintAgentRow = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  device_id: string | null;
+  device_code: string;
+  agent_name: string;
+  status: string;
+  last_seen_at: string | null;
+  last_claim_at: string | null;
+  app_version: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+type PrintJobRow = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  claimed_by_agent_id: string | null;
+  printer_id: string | null;
+  status: string;
+  created_at: string;
+  claimed_at: string | null;
+  agent_error_code: string | null;
+  last_error: string | null;
+  updated_at: string;
+};
+
 function textParam(value: string | null) {
   return value?.trim() || null;
+}
+
+function resolvePrintAgentState(agent: PrintAgentRow | null, nowMs: number) {
+  if (!agent) return "not_provisioned";
+  if (agent.status !== "active") return agent.status;
+  if (!agent.last_seen_at) return "awaiting_heartbeat";
+  const lastSeenMs = Date.parse(agent.last_seen_at);
+  if (!Number.isFinite(lastSeenMs)) return "unknown";
+  return nowMs - lastSeenMs <= 3 * 60_000 ? "online" : "stale";
 }
 
 export async function GET(request: Request) {
@@ -108,7 +145,7 @@ export async function GET(request: Request) {
     const deviceCodes = Array.from(new Set(devices.map((row) => row.device_code).filter(Boolean)));
     const deviceIds = Array.from(new Set(devices.map((row) => row.id).filter(Boolean)));
 
-    const [healthResult, enrollmentResult, commandResult] = await Promise.all([
+    const [healthResult, enrollmentResult, commandResult, printAgentResult] = await Promise.all([
       itSupabase
         .from("it_device_health_latest")
         .select(
@@ -135,12 +172,39 @@ export async function GET(request: Request) {
         .in("pos_device_id", deviceIds)
         .order("issued_at", { ascending: false })
         .limit(Math.max(deviceIds.length * 5, 100))
-        .returns<CommandRow[]>()
+        .returns<CommandRow[]>(),
+      supabase
+        .from("print_agents")
+        .select(
+          "id,tenant_id,branch_id,device_id,device_code,agent_name,status,last_seen_at,last_claim_at,app_version,metadata"
+        )
+        .in("device_code", deviceCodes)
+        .order("last_seen_at", { ascending: false, nullsFirst: false })
+        .limit(Math.max(deviceCodes.length * 3, 50))
+        .returns<PrintAgentRow[]>()
     ]);
 
     if (healthResult.error) throw new Error(`it_device_health_query_failed:${healthResult.error.message}`);
     if (enrollmentResult.error) throw new Error(`device_enrollment_query_failed:${enrollmentResult.error.message}`);
     if (commandResult.error) throw new Error(`it_device_command_query_failed:${commandResult.error.message}`);
+    if (printAgentResult.error) throw new Error(`print_agent_query_failed:${printAgentResult.error.message}`);
+
+    const printAgents = printAgentResult.data ?? [];
+    const printAgentIds = Array.from(new Set(printAgents.map((row) => row.id).filter(Boolean)));
+    let printJobs: PrintJobRow[] = [];
+    if (printAgentIds.length > 0) {
+      const { data: printJobData, error: printJobError } = await supabase
+        .from("print_jobs")
+        .select(
+          "id,tenant_id,branch_id,claimed_by_agent_id,printer_id,status,created_at,claimed_at,agent_error_code,last_error,updated_at"
+        )
+        .in("claimed_by_agent_id", printAgentIds)
+        .order("updated_at", { ascending: false })
+        .limit(Math.max(printAgentIds.length * 10, 100))
+        .returns<PrintJobRow[]>();
+      if (printJobError) throw new Error(`print_job_query_failed:${printJobError.message}`);
+      printJobs = printJobData ?? [];
+    }
 
     const healthByKey = new Map<string, HealthRow>();
     for (const row of healthResult.data ?? []) {
@@ -159,26 +223,47 @@ export async function GET(request: Request) {
       if (!commandByDevice.has(row.pos_device_id)) commandByDevice.set(row.pos_device_id, row);
     }
 
+    const printAgentByKey = new Map<string, PrintAgentRow>();
+    for (const row of printAgents) {
+      const key = `${row.tenant_id}:${row.branch_id}:${row.device_code}`;
+      if (!printAgentByKey.has(key)) printAgentByKey.set(key, row);
+    }
+
+    const lastPrintByAgent = new Map<string, PrintJobRow>();
+    for (const row of printJobs) {
+      if (row.claimed_by_agent_id && !lastPrintByAgent.has(row.claimed_by_agent_id)) {
+        lastPrintByAgent.set(row.claimed_by_agent_id, row);
+      }
+    }
+
+    const generatedAt = new Date().toISOString();
+    const nowMs = Date.parse(generatedAt);
     const response = ok({
       devices: devices.map((device) => {
         const scopeKey = `${device.tenant_id}:${device.branch_id}:${device.device_code}`;
         const health = healthByKey.get(scopeKey) ?? null;
         const enrollment = enrollmentByKey.get(scopeKey) ?? null;
         const lastCommand = commandByDevice.get(device.id) ?? null;
+        const printAgent = printAgentByKey.get(scopeKey) ?? null;
+        const lastPrint = printAgent ? lastPrintByAgent.get(printAgent.id) ?? null : null;
         return {
           ...device,
           health,
           enrollment,
           last_command: lastCommand,
+          print_agent: printAgent,
+          print_agent_state: resolvePrintAgentState(printAgent, nowMs),
+          last_print: lastPrint,
           telemetry_state: health?.last_seen_at ? "reporting" : "awaiting_heartbeat",
           pairing_state: enrollment?.enrollment_status ?? "not_enrolled"
         };
       }),
-      generated_at: new Date().toISOString(),
+      generated_at: generatedAt,
       integration: {
         identity_plane: "CpiPOS-001",
         operational_plane: "CpiPOS-002",
-        heartbeat_writer: "cpipos_pos_runtime"
+        heartbeat_writer: "cpipos_pos_runtime",
+        print_agent_source: "CpiPOS-001.print_agents/print_jobs"
       }
     });
     response.headers.set("cache-control", "no-store");
