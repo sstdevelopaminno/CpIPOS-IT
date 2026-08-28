@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AppLanguageSwitcher } from "@/components/i18n/app-language-switcher";
 import { useAppLanguage, type AppLanguage } from "@/lib/app-language-client";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 function getCopy(lang: AppLanguage) {
   if (lang === "en") {
@@ -62,14 +61,22 @@ export default function ItAdminLoginPage() {
     setError("");
 
     try {
-      const supabase = getSupabaseBrowserClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password
+      const response = await fetch("/api/it-admin/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, password }),
+        cache: "no-store"
       });
+      const result = (await response.json().catch(() => null)) as { code?: string } | null;
 
-      if (signInError) {
-        setError(signInError.status === 400 ? copy.invalidCredentialsError : copy.defaultError);
+      if (!response.ok) {
+        if (response.status === 401 || result?.code === "invalid_credentials") {
+          setError(copy.invalidCredentialsError);
+        } else if (response.status === 403 || result?.code === "not_authorized") {
+          setError(copy.notAuthorizedError);
+        } else {
+          setError(copy.defaultError);
+        }
         return;
       }
 
