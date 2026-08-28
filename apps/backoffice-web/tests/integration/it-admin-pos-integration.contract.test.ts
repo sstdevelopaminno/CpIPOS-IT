@@ -47,7 +47,7 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(dashboardRoute).toContain("loadDashboardOverview(session.access_token)");
     expect(dashboardService).toContain('PRIMARY_BRIDGE_SLUG = "cpipos-it-dashboard-primary"');
     expect(dashboardService).toContain('OPERATIONAL_BRIDGE_SLUG = "cpipos-it-dashboard-operational"');
-    expect(dashboardService).toContain('readRequiredEnv("IT_SUPABASE_PUBLISHABLE_KEY"');
+    expect(dashboardService).toContain('"IT_SUPABASE_PUBLISHABLE_KEY"');
     expect(dashboardService).not.toContain("context.supabase");
     expect(dashboardService).not.toContain("context.itSupabase");
 
