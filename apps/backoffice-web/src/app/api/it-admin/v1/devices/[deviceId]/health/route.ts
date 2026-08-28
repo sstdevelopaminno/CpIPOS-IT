@@ -1,7 +1,7 @@
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 
-type BranchDeviceRow = {
+type ItDeviceRow = {
   id: string;
   tenant_id: string;
   branch_id: string;
@@ -45,22 +45,22 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
   const startedAt = Date.now();
 
   try {
-    const { supabase } = await requireItAdmin();
+    const { itSupabase } = await requireItAdmin();
     const { deviceId } = await context.params;
     const id = String(deviceId ?? "").trim();
     if (!id) return fail("invalid_device_id", "Device id is required.", 422);
 
-    const { data: device, error: deviceError } = await supabase
-      .from("branch_devices")
+    const { data: device, error: deviceError } = await itSupabase
+      .from("it_devices")
       .select("id,tenant_id,branch_id,device_code,device_name,status")
       .eq("id", id)
-      .maybeSingle<BranchDeviceRow>();
-    if (deviceError) throw new Error(`branch_device_query_failed:${deviceError.message}`);
+      .maybeSingle<ItDeviceRow>();
+    if (deviceError) throw new Error(`it_device_query_failed:${deviceError.message}`);
     if (!device) return fail("device_not_found", "Device was not found.", 404);
 
     const [healthResult, incidentResult, commandResult] = await Promise.all([
-      supabase
-        .from("pos_device_health_latest")
+      itSupabase
+        .from("it_device_health_latest")
         .select("id,status,summary,machine_id,app_version,runtime_version,last_seen_at,captured_at")
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
@@ -68,8 +68,8 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
         .order("last_seen_at", { ascending: false })
         .limit(1)
         .maybeSingle<HealthLatestRow>(),
-      supabase
-        .from("pos_device_incidents")
+      itSupabase
+        .from("it_device_incidents")
         .select("id,code,severity,title,message,detected_at,resolved_at")
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
@@ -77,8 +77,8 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
         .order("detected_at", { ascending: false })
         .limit(20)
         .returns<IncidentRow[]>(),
-      supabase
-        .from("device_commands")
+      itSupabase
+        .from("it_device_commands")
         .select("id,command_type,status,issued_at,delivered_at,expires_at,result")
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
@@ -98,7 +98,8 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
       incidents: incidentResult.data ?? [],
       commands: commandResult.data ?? [],
       integration: {
-        mode: "shared_supabase",
+        mode: "split_supabase",
+        operational_plane: "CpiPOS-002",
         heartbeat_writer: "cpipos_pos_runtime"
       }
     });
