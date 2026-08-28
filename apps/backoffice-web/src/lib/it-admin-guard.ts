@@ -4,11 +4,13 @@ import { headers } from "next/headers";
 import { getAuthContext, type AuthContext } from "@/lib/auth-context";
 import { FeatureGateError } from "@/lib/feature-gate";
 import { fail } from "@/lib/http";
+import { getItControlPlaneClient } from "@/lib/it-control-plane";
 import { getSupabaseServiceClient } from "@/lib/supabase-admin";
 
 export type ItAdminContext = {
   auth: AuthContext;
   supabase: ReturnType<typeof getSupabaseServiceClient>;
+  itSupabase: ReturnType<typeof getItControlPlaneClient>;
   requestMeta: {
     ipAddress: string | null;
     userAgent: string | null;
@@ -51,7 +53,10 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
   const headerStore = await headers();
   return {
     auth,
+    // Authentication/business control remains authoritative on CpiPOS-001.
     supabase: getSupabaseServiceClient(),
+    // Device/health/incident/command operations are isolated on CpiPOS-002.
+    itSupabase: getItControlPlaneClient(),
     requestMeta: {
       ipAddress: readIpAddress(headerStore),
       userAgent: headerStore.get("user-agent")
@@ -81,5 +86,6 @@ export function guardItAdminError(error: unknown): Response {
     return fail(error.code, error.message, error.status);
   }
 
-  return fail("it_admin_internal_error", error instanceof Error ? error.message : "Internal server error.", 500);
+  console.error("[it-admin-api] internal error", error);
+  return fail("it_admin_internal_error", "Internal server error.", 500);
 }

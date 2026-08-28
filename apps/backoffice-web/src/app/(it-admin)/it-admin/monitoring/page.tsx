@@ -26,6 +26,11 @@ type MonitorPayload = {
     minutes: number;
     branch_id: string | null;
   };
+  integration?: {
+    mode: string;
+    source: string;
+  };
+  degraded_sources?: string[];
   totals: {
     branches: number;
     queued_orders: number;
@@ -73,10 +78,12 @@ export default function MonitoringPage() {
       try {
         const query = new URLSearchParams();
         query.set("minutes", String(minutes));
-        if (branchId !== "all") {
-          query.set("branch_id", branchId);
-        }
-        const response = await fetch(`/api/admin/pos/monitor?${query.toString()}`, { cache: "no-store" });
+        if (branchId !== "all") query.set("branch_id", branchId);
+
+        const response = await fetch(`/api/it-admin/v1/monitor?${query.toString()}`, {
+          cache: "no-store",
+          credentials: "include"
+        });
         const body = (await response.json()) as { data?: MonitorPayload; error?: { message?: string } };
         if (!response.ok || body.error || !body.data) {
           throw new Error(body.error?.message ?? "Failed to load monitor data.");
@@ -97,32 +104,27 @@ export default function MonitoringPage() {
   }, [load]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      void load(true);
-    }, 15000);
+    const timer = window.setInterval(() => void load(true), 15_000);
     return () => window.clearInterval(timer);
   }, [load]);
 
   const branchOptions = useMemo(() => {
-    const rows = data?.items ?? [];
     const unique = new Map<string, string>();
-    for (const item of rows) {
-      unique.set(item.branch_id, item.branch_name);
-    }
+    for (const item of data?.items ?? []) unique.set(item.branch_id, item.branch_name);
     return Array.from(unique.entries())
       .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((left, right) => left.name.localeCompare(right.name));
   }, [data?.items]);
 
   const sortedRows = useMemo(() => {
     const rows = [...(data?.items ?? [])];
     const score = (level: MonitorItem["level"]) => (level === "critical" ? 3 : level === "warn" ? 2 : 1);
-    return rows.sort((a, b) => {
-      const byLevel = score(b.level) - score(a.level);
+    return rows.sort((left, right) => {
+      const byLevel = score(right.level) - score(left.level);
       if (byLevel !== 0) return byLevel;
-      const byApiErrors = b.api_errors_recent_total - a.api_errors_recent_total;
+      const byApiErrors = right.api_errors_recent_total - left.api_errors_recent_total;
       if (byApiErrors !== 0) return byApiErrors;
-      return b.queued_orders - a.queued_orders;
+      return right.queued_orders - left.queued_orders;
     });
   }, [data?.items]);
 
@@ -155,7 +157,12 @@ export default function MonitoringPage() {
               ))}
             </select>
           </label>
-          <button type="button" className="pos-monitor-btn pos-monitor-btn--primary" onClick={() => void load(false)} disabled={loading || refreshing}>
+          <button
+            type="button"
+            className="pos-monitor-btn pos-monitor-btn--primary"
+            onClick={() => void load(false)}
+            disabled={loading || refreshing}
+          >
             {loading || refreshing ? "กำลังรีเฟรช..." : "รีเฟรช"}
           </button>
         </div>
@@ -163,6 +170,11 @@ export default function MonitoringPage() {
 
       {error ? <div className="pos-monitor-banner pos-monitor-banner--error">{error}</div> : null}
       {!error && loading ? <p className="pos-monitor-loading">กำลังโหลดข้อมูล monitoring...</p> : null}
+      {!loading && !error && data?.degraded_sources?.length ? (
+        <div className="pos-monitor-banner pos-monitor-banner--error">
+          Monitoring บางส่วนยังไม่พร้อม: {data.degraded_sources.join(", ")}
+        </div>
+      ) : null}
 
       {!loading && !error && data ? (
         <>
@@ -207,7 +219,11 @@ export default function MonitoringPage() {
                     <td>{row.api_errors_4xx_recent}</td>
                     <td>{row.api_errors_409_recent}</td>
                     <td>{row.api_errors_5xx_recent}</td>
-                    <td>{row.api_error_routes_top.length > 0 ? row.api_error_routes_top.map((entry) => `${entry.route} (${entry.count})`).join(", ") : "-"}</td>
+                    <td>
+                      {row.api_error_routes_top.length > 0
+                        ? row.api_error_routes_top.map((entry) => `${entry.route} (${entry.count})`).join(", ")
+                        : "-"}
+                    </td>
                   </tr>
                 ))}
               </tbody>

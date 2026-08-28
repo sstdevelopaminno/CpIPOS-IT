@@ -1,0 +1,84 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+function source(relativePath: string) {
+  return readFileSync(new URL(relativePath, import.meta.url), "utf8");
+}
+
+const monitorPage = source("../../src/app/(it-admin)/it-admin/monitoring/page.tsx");
+const monitorRoute = source("../../src/app/api/it-admin/v1/monitor/route.ts");
+const healthRoute = source("../../src/app/api/it-admin/v1/health/route.ts");
+const deviceHealthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
+const itAdminLayout = source("../../src/app/(it-admin)/layout.tsx");
+const rootPage = source("../../src/app/page.tsx");
+const nextConfig = source("../../next.config.ts");
+const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
+const deviceCommands = source("../../src/lib/device-commands.ts");
+
+describe("IT Admin <-> POS split-control-plane contract", () => {
+  it("keeps business monitoring on the IT Admin API namespace", () => {
+    expect(monitorPage).toContain("/api/it-admin/v1/monitor");
+    expect(monitorPage).not.toContain("/api/admin/pos/monitor");
+    expect(monitorRoute).toContain("requireItAdmin()");
+  });
+
+  it("checks both Supabase planes without requiring POS runtime secrets", () => {
+    expect(healthRoute).toContain('"it_device_health_latest"');
+    expect(healthRoute).toContain('"it_device_commands"');
+    expect(healthRoute).toContain('mode: "split_supabase"');
+    expect(healthRoute).toContain('auth_business_plane: "CpiPOS-001"');
+    expect(healthRoute).toContain('it_operational_plane: "CpiPOS-002"');
+    expect(healthRoute).not.toContain('"POS_SESSION_HANDOFF_SECRET"');
+    expect(healthRoute).not.toContain('"TABLE_QR_SIGNING_SECRET"');
+  });
+
+  it("fails closed if any device-health source query fails", () => {
+    expect(deviceHealthRoute).toContain("device_health_query_failed");
+    expect(deviceHealthRoute).toContain("device_incidents_query_failed");
+    expect(deviceHealthRoute).toContain("device_commands_query_failed");
+    expect(deviceHealthRoute).toContain('from("it_device_health_latest")');
+    expect(deviceHealthRoute).toContain('from("it_device_incidents")');
+    expect(deviceHealthRoute).toContain('from("it_device_commands")');
+  });
+
+  it("guards every IT Admin page at the shared server layout", () => {
+    expect(itAdminLayout).toContain("getAuthContext({ requireBranchScope: false })");
+    expect(itAdminLayout).toContain('auth.platformRole !== "it_admin"');
+    expect(itAdminLayout).toContain('redirect("/it-admin/login")');
+    expect(rootPage).toContain('redirect("/it-admin")');
+  });
+
+  it("fails Vercel builds when either Supabase plane environment is incomplete", () => {
+    expect(nextConfig).toContain('process.env.VERCEL === "1"');
+    expect(nextConfig).toContain('"NEXT_PUBLIC_SUPABASE_URL"');
+    expect(nextConfig).toContain('"NEXT_PUBLIC_SUPABASE_ANON_KEY"');
+    expect(nextConfig).toContain('"SUPABASE_SERVICE_ROLE_KEY"');
+    expect(nextConfig).toContain('"IT_SUPABASE_URL"');
+    expect(nextConfig).toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
+    expect(nextConfig).toContain("Missing required CpIPOS IT Admin Vercel environment variables");
+  });
+
+  it("keeps IT device commands aligned with the live POS production command surface", () => {
+    for (const command of [
+      "request_diagnostics_bundle",
+      "reload_ui",
+      "clear_print_queue",
+      "restart_local_bridge",
+      "refresh_config",
+      "disable_device",
+      "enable_device",
+      "test_printer"
+    ]) {
+      expect(deviceCommands).toContain(`"${command}"`);
+    }
+
+    for (const removedCommand of ["request_diagnostics", "restart_app", "test_network", "restart_print_service", "check_update"]) {
+      expect(deviceCommands).not.toContain(`"${removedCommand}"`);
+    }
+  });
+
+  it("does not return raw internal database errors to API callers", () => {
+    expect(itAdminGuard).toContain('fail("it_admin_internal_error", "Internal server error.", 500)');
+    expect(itAdminGuard).not.toContain('error instanceof Error ? error.message : "Internal server error."');
+  });
+});

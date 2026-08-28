@@ -22,6 +22,19 @@ This repository is the source of truth for CpIPOS IT Admin and IT/backoffice run
 
 This repository was split from `sstdevelopaminno/CpIPOS` so IT/backoffice work can evolve separately from the customer POS/mobile runtime.
 
+## POS control-plane integration
+
+`CpIPOS-IT` and the customer POS runtime do not use a privileged browser-to-browser or server-to-server API as the primary trust bridge. The authoritative integration is the shared Supabase control plane.
+
+- Customer POS writes device telemetry through `/api/pos/device-heartbeat` into `pos_device_health_latest`, `pos_device_health_snapshots`, and `pos_device_incidents`.
+- IT Admin reads device health from those shared tables through `/api/it-admin/v1/devices/[deviceId]/health`.
+- IT Admin writes remote actions to `device_commands` through `/api/it-admin/v1/device-commands`.
+- Customer POS receives pending commands during heartbeat and acknowledges execution through its existing POS command acknowledgement endpoint.
+- IT Monitoring reads shared operational tables through `/api/it-admin/v1/monitor`; IT pages must not call `/api/admin/pos/*` from the customer POS repository.
+- Tenant/branch/device scope remains authoritative in Supabase. IT Admin endpoints require the platform `it_admin` role and use the service client only after the guard succeeds.
+
+The optional `CPIPOS_PRODUCTION_URL` variable identifies the customer POS production surface for metadata/navigation. It is not a privileged authentication channel.
+
 ## Vercel deployment contract
 
 For the CpIPOS IT Admin web project in Vercel:
