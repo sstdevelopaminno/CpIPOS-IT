@@ -3,8 +3,8 @@ import type { NextConfig } from "next";
 // Deploy marker: production-readiness hardening after database housekeeping (2026-08-08).
 
 const REQUIRED_VERCEL_ENV = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "CPIPOS_SUPABASE_URL",
+  "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "IT_SUPABASE_URL",
   "IT_SUPABASE_SERVICE_ROLE_KEY"
