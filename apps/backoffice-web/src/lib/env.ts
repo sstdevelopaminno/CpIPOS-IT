@@ -9,7 +9,8 @@ function stripTrailingEscapedNewlines(value: string): string {
 const SAFE_ENV_DEFAULTS: Record<string, string> = {
   CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co",
   CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_nGX5abZtEmd7Ynzyofop1A_caORaUII",
-  IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co"
+  IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co",
+  IT_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_1MbMKrhZkWIEv4PtRd4Hag_xzHOPlKY"
 };
 
 const SERVER_ENV_ALIASES: Record<string, readonly string[]> = {

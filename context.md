@@ -37,43 +37,76 @@ Vercel usage is cost-sensitive. Batch related UI/API work on one branch, validat
 ## Existing Vercel project only
 
 - Project: `cp-ipos-it-web`
-- Project ID: `prj_9jNjDHyctinDjnvCZ2Ya1zBJs38h`
+- Historical project ID recorded by GitHub/Vercel integration: `prj_9jNjDHyctinDjnvCZ2Ya1zBJs38h`
 - Team ID: `team_ZKmv6uQSU9QUyP08mxAr2YDI`
 
-Do not create another project. Vercel direct runtime-log API may return 403 while GitHub Vercel status checks still work.
+Do not create another project. The live Vercel connector currently does not enumerate `cp-ipos-it-web` and direct project/runtime-log requests can return 403/404, while GitHub's `Vercel` commit status continues to report Preview/Production successfully. Use exact-head GitHub Vercel status as the release gate until connector visibility is restored; never create a replacement project to work around this.
 
-## Current CpIPOS-IT main before this Dashboard batch
+## Current CpIPOS-IT main before the Dashboard readability/live-bridge batch
 
-- main SHA before batch: `d6db9a304326e2cf2f52d26662a6b4c86563a84b`
-- PR #18 merged: collapsible Sidebar, hidden scrollbar, larger navigation.
-- Vercel Production for `d6db9a30...`: success.
-- Authenticated Dashboard was still user-confirmed to show `Internal server error` after PR #18.
+- main SHA: `4ff81c82577910f7e19aa78827c43fd53aacaf30`.
+- PR #19 merged: live Control Plane Dashboard foundation + corrected CpIPOS Sidebar symbol.
+- GitHub Vercel Production status for `4ff81c82...`: success.
+- User-authenticated Production screenshot after PR #19 showed the Dashboard UI rendering, but most live metric values were `—`, both database panels reported metric failures, and API/Control Plane showed `0/2`.
+- The failure pattern was consistent with the Dashboard depending on privileged Vercel runtime service-role credentials even though IT login itself no longer depends on those credentials.
 
-## Sidebar branding correction in current Dashboard batch
+## Sidebar branding
 
-The expanded Sidebar must use the existing CpIPOS symbol asset:
+The expanded Sidebar uses the existing CpIPOS symbol asset:
 - `/brand/cpipos-symbol-sidebar.png`
 
-Do not use the SST iPOS wordmark in the IT Sidebar header. The symbol is centered above `IT Control Plane` and the company-backoffice subtitle. Collapsed mode continues to show the same symbol only.
+Do not use the SST iPOS wordmark in the IT Sidebar header. The symbol is centered above `IT Control Plane` and the company-backoffice subtitle. Collapsed mode uses the same symbol only.
 
 ## Phase 2 Store Provisioning
 
 Store Provisioning P0 is on CpIPOS-IT main from PR #4. The CpiPOS-001 provisioning schema authority is installed. Do not create a real Production tenant merely to smoke test; final submit requires explicit approval because it creates persistent customer/control-plane records.
 
-## Dashboard Control Plane batch
+## Dashboard Control Plane
 
-Goal: replace the fragile three-request Dashboard fan-out with one fail-soft IT endpoint and show real compact Control Plane metrics, with detail moved into modal dialogs instead of a long page.
+Goal: one compact Dashboard that reads real Control Plane aggregates, remains fail-soft per data plane, uses readable Desktop/Tablet typography, and keeps deeper detail inside modal dialogs rather than creating a long page.
 
-### New server contract
+### Server contract
 
 `GET /api/it-admin/v1/dashboard`
 
-- authenticates IT admin first;
-- CpiPOS-001 queries always use the explicit Primary authority client, not tenant business-data routing;
-- CpiPOS-002 uses the existing IT Control Plane client;
-- each metric source is isolated/fail-soft, so one degraded plane does not turn the entire Dashboard into a generic 500;
-- no secrets are returned;
-- no customer business row contents are returned by database diagnostics.
+- authenticates the current CpiPOS-001 IT Admin session first;
+- retrieves the current access token only inside the server route and never returns it to the browser;
+- forwards the token to two read-only Supabase Edge Function bridges;
+- each bridge independently validates the CpiPOS-001 user and requires `users_profiles.is_active=true` plus `platform_role=it_admin` before privileged aggregate reads;
+- CpiPOS-001 bridge reads business/control aggregates only;
+- CpiPOS-002 bridge reads IT/MDM operational aggregates only;
+- service/secret keys stay inside each Supabase Edge Function runtime and are never moved into browser code or committed source;
+- bridge calls use only public project URLs/publishable keys from the IT server plus the authenticated user bearer token;
+- each plane remains fail-soft, so one degraded plane does not turn the whole Dashboard into a generic 500;
+- no customer business row contents or secrets are returned.
+
+### Supabase read-only Dashboard bridges
+
+CpiPOS-001:
+- Edge Function: `cpipos-it-dashboard-primary`
+- live function ID: `3c058166-11d6-4045-965e-e14c9bc37612`
+- live version at this handoff: `1`
+- validates CpiPOS-001 bearer via `auth.getUser`, then checks active IT Admin profile with the project admin client.
+- returns aggregate store counts, database metrics RPC output, and recent POS API-error aggregates.
+
+CpiPOS-002:
+- Edge Function: `cpipos-it-dashboard-operational`
+- live function ID: `498c99d5-2edb-4602-b7dd-8a4e3eac321b`
+- live version at this handoff: `2`
+- validates the CpiPOS-001 bearer against CpiPOS-001 and always reads the caller's `users_profiles` row under authenticated RLS; app metadata alone is not sufficient.
+- requires `is_active=true` and `platform_role=it_admin`, then uses the CpiPOS-002 built-in backend key for aggregate IT reads.
+- returns device/online-store aggregates, incident/command counts, and database metrics RPC output.
+
+Both functions currently use `verify_jwt=false` because CpiPOS-002 cannot natively verify the CpiPOS-001 JWT and the functions implement explicit custom authorization. Missing/invalid bearer returns unauthorized/forbidden before aggregate data is read. Function source is versioned under `supabase/control-plane-functions/` in the IT repo. No writes are performed.
+
+### Dashboard UI readability/layout
+
+- Remove the large bordered `ภาพรวมระบบ` hero/header card.
+- Use a compact plain header directly above the metric cards.
+- Title/subtitle stay on the left; live status/update time and actions stay on the right.
+- Move `จัดการร้านค้า`, `Monitoring`, and `รีเฟรช` into the top header action row; remove the duplicate bottom quick-action strip.
+- Increase primary metric labels/numbers/supporting text, panel headings/descriptions, storage labels, API status text, donut/legend labels, and modal typography.
+- Preserve the compact overall page height; larger type should not become a long full-page report.
 
 ### Dashboard main surface
 
@@ -83,7 +116,7 @@ Compact cards/panels show:
 - approximate total rows and table count;
 - CpiPOS-001 used + remaining database capacity;
 - CpiPOS-002 used + remaining database capacity;
-- Control Plane API connectivity/response measurements;
+- Control Plane bridge connectivity/response measurements;
 - API errors in the recent 60-minute window;
 - open/critical incidents and pending remote commands.
 
@@ -100,9 +133,9 @@ Details open in modal dialogs:
 - Never convert registry `active` into online/healthy without telemetry.
 - Estimated rows come from PostgreSQL live statistics (`pg_stat_user_tables.n_live_tup`) to avoid expensive `COUNT(*)` across every Production table; UI must label this as approximate.
 - Database used bytes come from `pg_database_size(current_database())`.
-- Current Supabase organization was live-verified as Free plan during this batch. Runtime quota display uses the current Free database quota baseline of 500 MiB/project; if the plan changes, update the quota source rather than pretending the quota is dynamically discovered by SQL.
+- Current Supabase organization was live-verified as Free plan. Runtime quota display uses the current Free database quota baseline of 500 MiB/project; if the plan changes, update the quota source rather than pretending the quota is dynamically discovered by SQL.
 
-### Live baseline measured during this batch
+### Live baseline measured during the first Dashboard batch
 
 At approximately 2026-08-29 01:xx ICT:
 - Stores: total 4, open 3, closed 1.
@@ -143,10 +176,11 @@ Do not create a second MDM implementation. Real telemetry only.
 ## Immediate next action
 
 When this file is present on `main`:
-1. Verify exact live CpIPOS-IT main SHA and Vercel Production.
-2. Authenticated smoke `/it-admin` and confirm the Dashboard no longer shows the generic `Internal server error` state.
-3. Verify live cards for stores, online telemetry, CpiPOS-001/CpiPOS-002 storage, rows/tables, and API plane status.
-4. Open each Dashboard detail modal; confirm no secret/token/raw service credential is displayed.
-5. Confirm Sidebar expanded logo is `/brand/cpipos-symbol-sidebar.png` and collapsed mode uses the same symbol.
-6. Do not create a store or synthetic telemetry for smoke testing.
-7. If Dashboard Production smoke is green, proceed to Phase 3 by inspecting/refreshing existing PR #5 and PR #6 on top of current main, batching changes before the next Preview/Production cycle.
+1. Verify exact live CpIPOS-IT main SHA and GitHub Vercel Production status.
+2. Authenticated smoke `/it-admin` and confirm real values populate instead of `—` for both Control Plane bridges.
+3. Confirm current live store totals/open/closed, online telemetry, rows/tables, and CpiPOS-001/CpiPOS-002 storage are queried at runtime rather than copied from the baseline snapshot.
+4. Confirm top Dashboard area is no longer a bordered hero card, typography is readable on Desktop/Tablet, and `จัดการร้านค้า / Monitoring / รีเฟรช` are in the compact top action row.
+5. Open each detail modal; confirm no access token, service key, raw secret, or customer business row content is displayed.
+6. Check CpiPOS-001/CpiPOS-002 Edge Function logs for authorization/query failures if either plane remains degraded.
+7. Do not create a store or synthetic telemetry for smoke testing.
+8. If Dashboard Production smoke is green, proceed to Phase 3 by inspecting/refreshing existing PR #5 and PR #6 on top of current main, batching changes before the next Preview/Production cycle.
