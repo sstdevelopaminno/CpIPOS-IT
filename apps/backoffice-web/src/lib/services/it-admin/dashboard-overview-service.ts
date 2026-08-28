@@ -1,9 +1,12 @@
 import "server-only";
 
-import type { ItAdminContext } from "@/lib/it-admin-guard";
+import { readRequiredEnv } from "@/lib/env";
 
 export const DASHBOARD_ONLINE_WINDOW_MINUTES = 5;
 export const SUPABASE_FREE_DATABASE_QUOTA_BYTES = 500 * 1024 * 1024;
+const DASHBOARD_BRIDGE_TIMEOUT_MS = 8_000;
+const PRIMARY_BRIDGE_SLUG = "cpipos-it-dashboard-primary";
+const OPERATIONAL_BRIDGE_SLUG = "cpipos-it-dashboard-operational";
 
 export type DatabaseTopTable = {
   schema: string;
@@ -23,6 +26,13 @@ export type DatabaseMetrics = {
   connections_active: number;
   top_tables: DatabaseTopTable[];
   checked_at: string | null;
+};
+
+export type SourceState<T> = {
+  ready: boolean;
+  data: T | null;
+  error_code: string | null;
+  duration_ms: number | null;
 };
 
 export type DashboardOverview = {
@@ -73,15 +83,50 @@ export type DashboardOverview = {
   degraded_sources: string[];
 };
 
-export type SourceState<T> = {
-  ready: boolean;
-  data: T | null;
-  error_code: string | null;
-  duration_ms: number | null;
+type PrimaryBridgePayload = {
+  plane: "business";
+  checked_at: string;
+  stores: {
+    total: number;
+    open: number;
+    closed: number;
+  };
+  database: unknown;
+  api_errors_60m: {
+    total: number;
+    http_4xx: number;
+    http_5xx: number;
+    top_routes: Array<{ route: string; count: number }>;
+  };
 };
 
-type ApiPerfRow = { metadata?: Record<string, unknown> | null };
-type DeviceSeenRow = { tenant_id?: string | null; last_seen_at?: string | null };
+type OperationalBridgePayload = {
+  plane: "operational";
+  checked_at: string;
+  online_window_minutes: number;
+  devices: {
+    total: number;
+    online: number;
+    stores_online: number;
+    latest_seen_at: string | null;
+  };
+  operations: {
+    open_incidents: number;
+    critical_incidents: number;
+    pending_commands: number;
+  };
+  database: unknown;
+};
+
+type PrimaryBridgeResult = {
+  payload: PrimaryBridgePayload;
+  database: DatabaseMetrics;
+};
+
+type OperationalBridgeResult = {
+  payload: OperationalBridgePayload;
+  database: DatabaseMetrics;
+};
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -143,57 +188,6 @@ export function normalizeDatabaseMetrics(raw: unknown, quotaBytes = SUPABASE_FRE
   };
 }
 
-export function summarizeApiPerf(rows: ApiPerfRow[]) {
-  let total = 0;
-  let http4xx = 0;
-  let http5xx = 0;
-  const routeCounts = new Map<string, number>();
-
-  for (const row of rows) {
-    const metadata = row.metadata ?? {};
-    const status = Number(metadata.status_code);
-    if (!Number.isFinite(status) || status < 400 || status > 599) continue;
-    total += 1;
-    if (status >= 500) http5xx += 1;
-    else http4xx += 1;
-    const rawRoute = typeof metadata.route === "string" ? metadata.route.trim() : "";
-    const route = rawRoute.startsWith("/") ? rawRoute.slice(0, 120) : "unknown";
-    routeCounts.set(route, (routeCounts.get(route) ?? 0) + 1);
-  }
-
-  return {
-    total,
-    http_4xx: http4xx,
-    http_5xx: http5xx,
-    top_routes: [...routeCounts.entries()]
-      .map(([route, count]) => ({ route, count }))
-      .sort((left, right) => right.count - left.count)
-      .slice(0, 5)
-  };
-}
-
-export function summarizeOnlineStores(rows: DeviceSeenRow[], onlineSinceMs: number) {
-  const onlineTenants = new Set<string>();
-  let onlineDevices = 0;
-  let latestSeenAt: string | null = null;
-  let latestSeenMs = 0;
-
-  for (const row of rows) {
-    const tenantId = asString(row.tenant_id);
-    const seenAt = asString(row.last_seen_at);
-    const seenMs = seenAt ? new Date(seenAt).getTime() : Number.NaN;
-    if (Number.isFinite(seenMs) && seenMs > latestSeenMs) {
-      latestSeenMs = seenMs;
-      latestSeenAt = seenAt;
-    }
-    if (!tenantId || !Number.isFinite(seenMs) || seenMs < onlineSinceMs) continue;
-    onlineDevices += 1;
-    onlineTenants.add(tenantId);
-  }
-
-  return { stores_online: onlineTenants.size, devices_online: onlineDevices, latest_seen_at: latestSeenAt };
-}
-
 async function capture<T>(fallbackCode: string, loader: () => Promise<T>): Promise<SourceState<T>> {
   const startedAt = Date.now();
   try {
@@ -213,130 +207,139 @@ async function capture<T>(fallbackCode: string, loader: () => Promise<T>): Promi
   }
 }
 
-async function exactCount(query: PromiseLike<{ count: number | null; error: { code?: string | null } | null }>, code: string) {
-  const result = await query;
-  if (result.error) throw new Error(`${code}:${result.error.code ?? "query_failed"}`);
-  return result.count ?? 0;
+async function invokeBridge<T>(args: {
+  baseUrl: string;
+  publishableKey: string;
+  slug: string;
+  accessToken: string;
+  expectedPlane: "business" | "operational";
+  errorCode: string;
+}): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DASHBOARD_BRIDGE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${args.baseUrl.replace(/\/$/, "")}/functions/v1/${args.slug}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${args.accessToken}`,
+        apikey: args.publishableKey,
+        "content-type": "application/json"
+      },
+      body: "{}",
+      cache: "no-store",
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`${args.errorCode}:http_${response.status}`);
+    }
+
+    const body = (await response.json().catch(() => null)) as unknown;
+    const record = asRecord(body);
+    if (!record || record.plane !== args.expectedPlane) {
+      throw new Error(`${args.errorCode}:invalid_payload`);
+    }
+
+    return body as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`${args.errorCode}:timeout`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-async function databaseMetrics(client: ItAdminContext["supabase"] | ItAdminContext["itSupabase"], code: string) {
-  const { data, error } = await client.rpc("get_it_database_metrics");
-  if (error) throw new Error(`${code}:${error.code ?? "rpc_failed"}`);
-  const normalized = normalizeDatabaseMetrics(data);
-  if (!normalized) throw new Error(`${code}:invalid_payload`);
-  return normalized;
+function databaseSource<T extends { database: DatabaseMetrics }>(source: SourceState<T>): SourceState<DatabaseMetrics> {
+  return {
+    ready: source.ready,
+    data: source.data?.database ?? null,
+    error_code: source.error_code,
+    duration_ms: source.duration_ms
+  };
 }
 
-export async function loadDashboardOverview(context: ItAdminContext): Promise<DashboardOverview> {
+export async function loadDashboardOverview(accessToken: string): Promise<DashboardOverview> {
   const checkedAt = new Date();
-  const onlineSinceMs = checkedAt.getTime() - DASHBOARD_ONLINE_WINDOW_MINUTES * 60_000;
-  const onlineSince = new Date(onlineSinceMs).toISOString();
-  const perfSince = new Date(checkedAt.getTime() - 60 * 60_000).toISOString();
+  const primaryUrl = readRequiredEnv("CPIPOS_SUPABASE_URL", "Missing CpiPOS-001 Supabase URL.");
+  const primaryPublishableKey = readRequiredEnv(
+    "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
+    "Missing CpiPOS-001 Supabase publishable key."
+  );
+  const operationalUrl = readRequiredEnv("IT_SUPABASE_URL", "Missing CpiPOS-002 Supabase URL.");
+  const operationalPublishableKey = readRequiredEnv(
+    "IT_SUPABASE_PUBLISHABLE_KEY",
+    "Missing CpiPOS-002 Supabase publishable key."
+  );
 
-  const [businessDb, operationalDb, storeTotal, storeOpen, storeClosed, deviceRows, deviceTotal, incidentsOpen, incidentsCritical, commandsPending, apiPerf] =
-    await Promise.all([
-      capture("business_database_metrics_failed", () => databaseMetrics(context.supabase, "business_database_metrics_failed")),
-      capture("operational_database_metrics_failed", () => databaseMetrics(context.itSupabase, "operational_database_metrics_failed")),
-      capture("store_total_query_failed", () =>
-        exactCount(context.supabase.from("tenants").select("id", { count: "exact", head: true }), "store_total_query_failed")
-      ),
-      capture("store_open_query_failed", () =>
-        exactCount(context.supabase.from("tenants").select("id", { count: "exact", head: true }).eq("is_active", true), "store_open_query_failed")
-      ),
-      capture("store_closed_query_failed", () =>
-        exactCount(context.supabase.from("tenants").select("id", { count: "exact", head: true }).eq("is_active", false), "store_closed_query_failed")
-      ),
-      capture("device_seen_query_failed", async () => {
-        const { data, error } = await context.itSupabase
-          .from("it_devices")
-          .select("tenant_id,last_seen_at")
-          .order("last_seen_at", { ascending: false, nullsFirst: false })
-          .limit(1000)
-          .returns<DeviceSeenRow[]>();
-        if (error) throw new Error(`device_seen_query_failed:${error.code ?? "query_failed"}`);
-        return data ?? [];
-      }),
-      capture("device_total_query_failed", () =>
-        exactCount(context.itSupabase.from("it_devices").select("id", { count: "exact", head: true }), "device_total_query_failed")
-      ),
-      capture("incident_open_query_failed", () =>
-        exactCount(
-          context.itSupabase.from("it_device_incidents").select("id", { count: "exact", head: true }).is("resolved_at", null),
-          "incident_open_query_failed"
-        )
-      ),
-      capture("incident_critical_query_failed", () =>
-        exactCount(
-          context.itSupabase
-            .from("it_device_incidents")
-            .select("id", { count: "exact", head: true })
-            .is("resolved_at", null)
-            .eq("severity", "critical"),
-          "incident_critical_query_failed"
-        )
-      ),
-      capture("command_pending_query_failed", () =>
-        exactCount(
-          context.itSupabase
-            .from("it_device_commands")
-            .select("id", { count: "exact", head: true })
-            .in("status", ["queued", "pending", "delivered"]),
-          "command_pending_query_failed"
-        )
-      ),
-      capture("api_perf_query_failed", async () => {
-        const { data, error } = await context.supabase
-          .from("audit_logs")
-          .select("metadata")
-          .eq("action", "pos_route_perf")
-          .gte("created_at", perfSince)
-          .order("created_at", { ascending: false })
-          .limit(500)
-          .returns<ApiPerfRow[]>();
-        if (error) throw new Error(`api_perf_query_failed:${error.code ?? "query_failed"}`);
-        return summarizeApiPerf(data ?? []);
-      })
-    ]);
+  const [primary, operational] = await Promise.all([
+    capture<PrimaryBridgeResult>("business_control_plane_bridge_failed", async () => {
+      const payload = await invokeBridge<PrimaryBridgePayload>({
+        baseUrl: primaryUrl,
+        publishableKey: primaryPublishableKey,
+        slug: PRIMARY_BRIDGE_SLUG,
+        accessToken,
+        expectedPlane: "business",
+        errorCode: "business_control_plane_bridge_failed"
+      });
+      const database = normalizeDatabaseMetrics(payload.database);
+      if (!database) throw new Error("business_database_metrics_invalid");
+      return { payload, database };
+    }),
+    capture<OperationalBridgeResult>("operational_control_plane_bridge_failed", async () => {
+      const payload = await invokeBridge<OperationalBridgePayload>({
+        baseUrl: operationalUrl,
+        publishableKey: operationalPublishableKey,
+        slug: OPERATIONAL_BRIDGE_SLUG,
+        accessToken,
+        expectedPlane: "operational",
+        errorCode: "operational_control_plane_bridge_failed"
+      });
+      const database = normalizeDatabaseMetrics(payload.database);
+      if (!database) throw new Error("operational_database_metrics_invalid");
+      return { payload, database };
+    })
+  ]);
 
-  const online = deviceRows.ready && deviceRows.data ? summarizeOnlineStores(deviceRows.data, onlineSinceMs) : null;
-  const businessMetrics = businessDb.data;
-  const operationalMetrics = operationalDb.data;
-  const degradedSources = [
-    businessDb,
-    operationalDb,
-    storeTotal,
-    storeOpen,
-    storeClosed,
-    deviceRows,
-    deviceTotal,
-    incidentsOpen,
-    incidentsCritical,
-    commandsPending,
-    apiPerf
-  ]
+  const businessDatabase = databaseSource(primary);
+  const operationalDatabase = databaseSource(operational);
+  const businessMetrics = businessDatabase.data;
+  const operationalMetrics = operationalDatabase.data;
+  const primaryPayload = primary.data?.payload ?? null;
+  const operationalPayload = operational.data?.payload ?? null;
+  const degradedSources = [primary, operational]
     .filter((source) => !source.ready)
     .map((source) => source.error_code)
     .filter((code): code is string => Boolean(code));
 
+  const recentErrors = primaryPayload?.api_errors_60m ?? {
+    total: null,
+    http_4xx: null,
+    http_5xx: null,
+    top_routes: []
+  };
+
   return {
     status: degradedSources.length ? "degraded" : "ready",
     checked_at: checkedAt.toISOString(),
-    online_window_minutes: DASHBOARD_ONLINE_WINDOW_MINUTES,
+    online_window_minutes: operationalPayload?.online_window_minutes ?? DASHBOARD_ONLINE_WINDOW_MINUTES,
     quota: {
       plan: "free",
       database_quota_bytes: SUPABASE_FREE_DATABASE_QUOTA_BYTES,
       source: "supabase_free_plan"
     },
     stores: {
-      total: storeTotal.data,
-      open: storeOpen.data,
-      closed: storeClosed.data,
-      online: online?.stores_online ?? null
+      total: primaryPayload?.stores.total ?? null,
+      open: primaryPayload?.stores.open ?? null,
+      closed: primaryPayload?.stores.closed ?? null,
+      online: operationalPayload?.devices.stores_online ?? null
     },
     devices: {
-      total: deviceTotal.data,
-      online: online?.devices_online ?? null,
-      latest_seen_at: online?.latest_seen_at ?? null
+      total: operationalPayload?.devices.total ?? null,
+      online: operationalPayload?.devices.online ?? null,
+      latest_seen_at: operationalPayload?.devices.latest_seen_at ?? null
     },
     data: {
       estimated_rows_total:
@@ -344,20 +347,20 @@ export async function loadDashboardOverview(context: ItAdminContext): Promise<Da
       user_tables_total: businessMetrics && operationalMetrics ? businessMetrics.user_tables + operationalMetrics.user_tables : null
     },
     databases: {
-      business: businessDb,
-      operational: operationalDb
+      business: businessDatabase,
+      operational: operationalDatabase
     },
     api: {
-      business_plane_ready: businessDb.ready,
-      operational_plane_ready: operationalDb.ready,
-      business_latency_ms: businessDb.duration_ms,
-      operational_latency_ms: operationalDb.duration_ms,
-      recent_errors_60m: apiPerf.data ?? { total: null, http_4xx: null, http_5xx: null, top_routes: [] }
+      business_plane_ready: primary.ready,
+      operational_plane_ready: operational.ready,
+      business_latency_ms: primary.duration_ms,
+      operational_latency_ms: operational.duration_ms,
+      recent_errors_60m: recentErrors
     },
     operations: {
-      open_incidents: incidentsOpen.data,
-      critical_incidents: incidentsCritical.data,
-      pending_commands: commandsPending.data
+      open_incidents: operationalPayload?.operations.open_incidents ?? null,
+      critical_incidents: operationalPayload?.operations.critical_incidents ?? null,
+      pending_commands: operationalPayload?.operations.pending_commands ?? null
     },
     degraded_sources: degradedSources
   };

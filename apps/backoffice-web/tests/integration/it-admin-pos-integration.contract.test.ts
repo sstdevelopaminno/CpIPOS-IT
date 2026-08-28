@@ -8,6 +8,8 @@ function source(relativePath: string) {
 const monitorPage = source("../../src/app/(it-admin)/it-admin/monitoring/page.tsx");
 const monitorRoute = source("../../src/app/api/it-admin/v1/monitor/route.ts");
 const healthRoute = source("../../src/app/api/it-admin/v1/health/route.ts");
+const dashboardRoute = source("../../src/app/api/it-admin/v1/dashboard/route.ts");
+const dashboardService = source("../../src/lib/services/it-admin/dashboard-overview-service.ts");
 const deviceHealthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
 const itAdminLayout = source("../../src/app/(it-admin)/layout.tsx");
 const loginPage = source("../../src/app/it-admin/login/page.tsx");
@@ -19,6 +21,8 @@ const authContext = source("../../src/lib/auth-context.ts");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
 const deviceCommands = source("../../src/lib/device-commands.ts");
 const supabaseServer = source("../../src/lib/supabase-server.ts");
+const primaryDashboardBridge = source("../../../../supabase/control-plane-functions/cpipos-it-dashboard-primary/index.ts");
+const operationalDashboardBridge = source("../../../../supabase/control-plane-functions/cpipos-it-dashboard-operational/index.ts");
 
 describe("IT Admin <-> POS split-control-plane contract", () => {
   it("keeps business monitoring on the IT Admin API namespace", () => {
@@ -35,6 +39,30 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(healthRoute).toContain('it_operational_plane: "CpiPOS-002"');
     expect(healthRoute).not.toContain('"POS_SESSION_HANDOFF_SECRET"');
     expect(healthRoute).not.toContain('"TABLE_QR_SIGNING_SECRET"');
+  });
+
+  it("keeps Dashboard metrics on authenticated read-only Control Plane bridges", () => {
+    expect(dashboardRoute).toContain("requireItAdmin()");
+    expect(dashboardRoute).toContain("supabase.auth.getSession()");
+    expect(dashboardRoute).toContain("loadDashboardOverview(session.access_token)");
+    expect(dashboardService).toContain('PRIMARY_BRIDGE_SLUG = "cpipos-it-dashboard-primary"');
+    expect(dashboardService).toContain('OPERATIONAL_BRIDGE_SLUG = "cpipos-it-dashboard-operational"');
+    expect(dashboardService).toContain('"IT_SUPABASE_PUBLISHABLE_KEY"');
+    expect(dashboardService).not.toContain("context.supabase");
+    expect(dashboardService).not.toContain("context.itSupabase");
+
+    for (const bridge of [primaryDashboardBridge, operationalDashboardBridge]) {
+      expect(bridge).toContain("bearerToken(req)");
+      expect(bridge).toContain("readAdminKey()");
+      expect(bridge).toContain('Deno.env.get("SUPABASE_SECRET_KEYS")');
+      expect(bridge).toContain('Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")');
+      expect(bridge).not.toContain("IT_SUPABASE_SERVICE_ROLE_KEY");
+    }
+
+    expect(primaryDashboardBridge).toContain("userClient.auth.getUser(token)");
+    expect(primaryDashboardBridge).toContain('profile.platform_role !== "it_admin"');
+    expect(operationalDashboardBridge).toContain("primary.auth.getUser(token)");
+    expect(operationalDashboardBridge).toContain('profile.platform_role === "it_admin"');
   });
 
   it("does not eagerly construct both service-role clients before a route uses them", () => {
@@ -97,6 +125,7 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(envModule).toContain('CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co"');
     expect(envModule).toContain('CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
     expect(envModule).toContain('IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co"');
+    expect(envModule).toContain('IT_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
 
     expect(nextConfig).not.toContain('process.env.VERCEL === "1"');
     expect(nextConfig).not.toContain('"SUPABASE_SERVICE_ROLE_KEY"');

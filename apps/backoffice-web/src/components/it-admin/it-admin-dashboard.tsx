@@ -90,8 +90,8 @@ type ModalKind = "stores" | "data" | "databases" | "api" | null;
 const copy = {
   th: {
     title: "ภาพรวมระบบ",
-    subtitle: "สถานะร้านค้า ฐานข้อมูล และการเชื่อมต่อจาก Control Plane จริง",
-    ready: "ระบบพร้อม",
+    subtitle: "ข้อมูลสดจาก CpiPOS-001 และ CpiPOS-002 ผ่าน IT Control Plane",
+    ready: "เชื่อมต่อข้อมูลจริง",
     degraded: "บางส่วนต้องตรวจสอบ",
     refresh: "รีเฟรช",
     refreshing: "กำลังอัปเดต",
@@ -119,7 +119,7 @@ const copy = {
     databaseUsage: "การใช้พื้นที่ฐานข้อมูล",
     databaseUsageDesc: "เทียบกับโควตา Supabase Free 500 MB ต่อโปรเจกต์",
     apiHealth: "การเชื่อมต่อและการวัดค่า",
-    apiHealthDesc: "Response time ฝั่ง server → database และข้อผิดพลาด API ล่าสุด",
+    apiHealthDesc: "Response time จาก IT Server ไปยัง Control Plane bridge และข้อผิดพลาด API ล่าสุด",
     businessPlane: "CpiPOS-001 API",
     operationalPlane: "CpiPOS-002 API",
     response: "ตอบกลับ",
@@ -136,9 +136,6 @@ const copy = {
     connections: "Database connections",
     activeConnections: "Active",
     topTables: "ตารางที่ใช้พื้นที่มาก",
-    tableName: "ตาราง",
-    tableRows: "แถวโดยประมาณ",
-    tableSize: "พื้นที่",
     onlineWindow: "นิยามออนไลน์",
     latestSeen: "อุปกรณ์ seen ล่าสุด",
     noTelemetry: "ยังไม่มี telemetry ล่าสุดในช่วงออนไลน์",
@@ -155,8 +152,8 @@ const copy = {
   },
   en: {
     title: "System overview",
-    subtitle: "Live store, database, and Control Plane connectivity metrics",
-    ready: "System ready",
+    subtitle: "Live data from CpiPOS-001 and CpiPOS-002 through the IT Control Plane",
+    ready: "Live data connected",
     degraded: "Some sources need attention",
     refresh: "Refresh",
     refreshing: "Refreshing",
@@ -184,7 +181,7 @@ const copy = {
     databaseUsage: "Database usage",
     databaseUsageDesc: "Compared with the Supabase Free 500 MB database quota per project",
     apiHealth: "Connectivity and measurements",
-    apiHealthDesc: "Server-to-database response time and recent API errors",
+    apiHealthDesc: "IT Server to Control Plane bridge response time and recent API errors",
     businessPlane: "CpiPOS-001 API",
     operationalPlane: "CpiPOS-002 API",
     response: "Response",
@@ -201,9 +198,6 @@ const copy = {
     connections: "Database connections",
     activeConnections: "Active",
     topTables: "Largest tables",
-    tableName: "Table",
-    tableRows: "Estimated rows",
-    tableSize: "Size",
     onlineWindow: "Online definition",
     latestSeen: "Latest device seen",
     noTelemetry: "No recent telemetry inside the online window",
@@ -366,19 +360,25 @@ export function ItAdminDashboard({ language }: { language: Language }) {
 
   return (
     <div className={styles.dashboard}>
-      <section className={styles.headerCard}>
-        <div>
+      <header className={styles.dashboardHeader}>
+        <div className={styles.dashboardHeading}>
+          <h2>{text.title}</h2>
+          <p>{text.subtitle}</p>
+        </div>
+        <div className={styles.dashboardHeaderActions}>
           <div className={styles.headerStatus}>
             <MiniStatus ready={data.status === "ready"} yes={text.ready} no={text.degraded} />
             <span>{text.updated}: {formatDate(data.checked_at, language)}</span>
           </div>
-          <h2>{text.title}</h2>
-          <p>{text.subtitle}</p>
+          <div className={styles.headerActionRow}>
+            <Link className={styles.headerLink} href="/it-admin/tenants">{text.manageStores}</Link>
+            <Link className={styles.headerLink} href="/it-admin/monitoring">{text.monitoring}</Link>
+            <button type="button" className={styles.refreshButton} onClick={() => void load(true)} disabled={refreshing}>
+              {refreshing ? text.refreshing : text.refresh}
+            </button>
+          </div>
         </div>
-        <button type="button" className={styles.refreshButton} onClick={() => void load(true)} disabled={refreshing}>
-          {refreshing ? text.refreshing : text.refresh}
-        </button>
-      </section>
+      </header>
 
       {error ? <div className={styles.inlineWarning}>{error}</div> : null}
 
@@ -466,11 +466,6 @@ export function ItAdminDashboard({ language }: { language: Language }) {
           <div className={styles.apiStat}><span>{text.commands}</span><strong>{data.operations.pending_commands ?? "—"}</strong><small>Queued / Pending / Delivered</small></div>
         </div>
       </section>
-
-      <div className={styles.quickLinks}>
-        <Link href="/it-admin/tenants">{text.manageStores}</Link>
-        <Link href="/it-admin/monitoring">{text.monitoring}</Link>
-      </div>
 
       {modal ? (
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setModal(null)}>

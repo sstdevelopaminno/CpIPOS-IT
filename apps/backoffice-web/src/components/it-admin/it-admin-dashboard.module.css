@@ -1,53 +1,70 @@
 .dashboard {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   color: #172033;
 }
 
-.headerCard {
-  min-height: 108px;
+.dashboardHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 22px;
-  padding: 20px 22px;
-  border: 1px solid #dfe6ef;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
-  box-shadow: 0 5px 18px rgba(31, 50, 81, 0.04);
+  gap: 24px;
+  padding: 2px 4px 5px;
 }
 
-.headerCard h2 {
-  margin: 7px 0 2px;
-  color: #17233b;
-  font-size: clamp(22px, 2.1vw, 28px);
-  line-height: 1.2;
+.dashboardHeading {
+  min-width: 0;
 }
 
-.headerCard p {
+.dashboardHeading h2 {
   margin: 0;
-  color: #718096;
-  font-size: 11px;
-  line-height: 1.55;
+  color: #17233b;
+  font-size: clamp(27px, 2.25vw, 34px);
+  font-weight: 820;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+}
+
+.dashboardHeading p {
+  margin: 6px 0 0;
+  color: #66758a;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.dashboardHeaderActions {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: end;
+  gap: 8px;
 }
 
 .headerStatus {
   display: flex;
   align-items: center;
-  gap: 9px;
-  color: #8a96a8;
-  font-size: 9px;
+  justify-content: flex-end;
+  gap: 10px;
+  color: #7d899b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.headerActionRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .statusPill {
-  min-height: 24px;
+  min-height: 27px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 9px;
+  padding: 5px 10px;
   border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -65,29 +82,37 @@
 }
 
 .refreshButton,
+.headerLink,
 .panelHeader button,
 .errorState button {
-  min-height: 36px;
-  border: 1px solid #d9e2ef;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d7e0ec;
   border-radius: 9px;
-  padding: 7px 11px;
+  padding: 8px 12px;
   color: #31517f;
   background: #ffffff;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 760;
+  line-height: 1.2;
   cursor: pointer;
-  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
 .refreshButton:hover,
+.headerLink:hover,
 .panelHeader button:hover,
 .errorState button:hover {
   border-color: #a9c0ef;
   background: #f5f8ff;
+  box-shadow: 0 3px 10px rgba(45, 91, 170, 0.07);
 }
 
 .refreshButton:active,
+.headerLink:active,
 .panelHeader button:active,
 .errorState button:active {
   transform: translateY(1px);
@@ -99,74 +124,76 @@
 }
 
 .inlineWarning {
-  padding: 9px 11px;
+  padding: 10px 12px;
   border: 1px solid #f0d7b0;
   border-radius: 9px;
   color: #8d641e;
   background: #fff9ee;
-  font-size: 9px;
+  font-size: 10.5px;
   overflow-wrap: anywhere;
 }
 
 .metricGrid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
+  gap: 11px;
 }
 
 .metricCard {
   min-width: 0;
-  min-height: 104px;
+  min-height: 122px;
   display: grid;
   align-content: space-between;
-  gap: 7px;
-  padding: 14px;
-  border: 1px solid #e1e7ef;
-  border-radius: 13px;
+  gap: 9px;
+  padding: 17px 16px;
+  border: 1px solid #dfe6ef;
+  border-radius: 14px;
   color: inherit;
   background: #ffffff;
   text-align: left;
   font: inherit;
   cursor: pointer;
-  box-shadow: 0 3px 14px rgba(28, 47, 75, 0.03);
+  box-shadow: 0 3px 14px rgba(28, 47, 75, 0.035);
   transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .metricCard:hover {
   transform: translateY(-1px);
-  border-color: #c4d3ec;
-  box-shadow: 0 7px 18px rgba(28, 47, 75, 0.065);
+  border-color: #bfd0eb;
+  box-shadow: 0 7px 20px rgba(28, 47, 75, 0.07);
 }
 
 .metricCard > span {
   overflow: hidden;
-  color: #75839a;
-  font-size: 10px;
-  font-weight: 720;
+  color: #65758d;
+  font-size: 12.5px;
+  font-weight: 760;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .metricCard > strong {
-  color: #18263f;
-  font-size: clamp(22px, 2.1vw, 30px);
-  font-weight: 820;
+  color: #162641;
+  font-size: clamp(30px, 2.45vw, 38px);
+  font-weight: 840;
   line-height: 1;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.035em;
 }
 
 .metricCard > strong em {
-  color: #8a96a8;
-  font-size: 12px;
+  color: #7e8b9d;
+  font-size: 15px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 720;
+  letter-spacing: 0;
 }
 
 .metricCard > small {
   overflow: hidden;
-  color: #8a96a8;
-  font-size: 8.5px;
-  line-height: 1.4;
+  color: #7e8b9d;
+  font-size: 10.5px;
+  line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -174,58 +201,59 @@
 .contentGrid {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
-  gap: 12px;
+  gap: 13px;
 }
 
 .panel,
 .apiPanel {
   min-width: 0;
-  padding: 16px;
-  border: 1px solid #e1e7ef;
+  padding: 18px;
+  border: 1px solid #dfe6ef;
   border-radius: 14px;
   background: #ffffff;
-  box-shadow: 0 3px 14px rgba(28, 47, 75, 0.03);
+  box-shadow: 0 3px 14px rgba(28, 47, 75, 0.035);
 }
 
 .panelHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 13px;
+  gap: 15px;
+  margin-bottom: 15px;
 }
 
 .panelHeader h3 {
   margin: 0;
   color: #1f2e45;
-  font-size: 13px;
+  font-size: 15.5px;
+  font-weight: 790;
   line-height: 1.35;
 }
 
 .panelHeader p {
-  margin: 3px 0 0;
-  color: #8b97a9;
-  font-size: 8.5px;
-  line-height: 1.45;
+  margin: 4px 0 0;
+  color: #7f8c9f;
+  font-size: 10.5px;
+  line-height: 1.5;
 }
 
 .panelHeader button {
-  min-height: 29px;
-  padding: 5px 8px;
-  font-size: 8.5px;
+  min-height: 33px;
+  padding: 6px 10px;
+  font-size: 10.5px;
 }
 
 .storeVisual {
-  min-height: 126px;
+  min-height: 142px;
   display: grid;
-  grid-template-columns: 116px minmax(0, 1fr);
+  grid-template-columns: 126px minmax(0, 1fr);
   align-items: center;
-  gap: 18px;
+  gap: 20px;
 }
 
 .donut {
-  width: 104px;
-  height: 104px;
+  width: 116px;
+  height: 116px;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -234,8 +262,8 @@
 .donut::before {
   content: "";
   grid-area: 1 / 1;
-  width: 72px;
-  height: 72px;
+  width: 78px;
+  height: 78px;
   border-radius: 999px;
   background: #ffffff;
   box-shadow: inset 0 0 0 1px #edf1f5;
@@ -246,37 +274,38 @@
   grid-area: 1 / 1;
   display: grid;
   justify-items: center;
-  gap: 2px;
+  gap: 3px;
 }
 
 .donut strong {
   color: #17233b;
-  font-size: 23px;
+  font-size: 27px;
+  font-weight: 820;
   line-height: 1;
 }
 
 .donut span {
-  color: #8794a6;
-  font-size: 8px;
+  color: #7b889b;
+  font-size: 10px;
 }
 
 .legend {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .legend > div {
   display: grid;
-  grid-template-columns: 9px minmax(0, 1fr) auto;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 7px;
-  color: #718096;
-  font-size: 9px;
+  gap: 8px;
+  color: #65758d;
+  font-size: 11px;
 }
 
 .legend > div > span {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
 }
 
@@ -285,22 +314,22 @@
 .legendOnline { background: #25a36f; }
 
 .legend b {
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .legend strong {
   color: #26364d;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .storageList {
   display: grid;
-  gap: 12px;
+  gap: 15px;
 }
 
 .storageRow {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 
 .storageHead,
@@ -314,28 +343,28 @@
 .storageHead > div {
   min-width: 0;
   display: grid;
-  gap: 1px;
+  gap: 2px;
 }
 
 .storageHead strong {
   color: #27374d;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .storageHead span,
 .storageFoot {
-  color: #8b97a9;
-  font-size: 8px;
+  color: #7f8c9f;
+  font-size: 10px;
 }
 
 .storageHead b {
   flex: 0 0 auto;
   color: #52627a;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .progressTrack {
-  height: 8px;
+  height: 9px;
   overflow: hidden;
   border-radius: 999px;
   background: #edf1f6;
@@ -350,35 +379,35 @@
 }
 
 .apiPanel {
-  padding-bottom: 14px;
+  padding-bottom: 16px;
 }
 
 .apiGrid {
   display: grid;
-  grid-template-columns: minmax(190px, 1.35fr) minmax(190px, 1.35fr) repeat(3, minmax(100px, 0.7fr));
-  gap: 8px;
+  grid-template-columns: minmax(210px, 1.35fr) minmax(210px, 1.35fr) repeat(3, minmax(110px, 0.7fr));
+  gap: 9px;
 }
 
 .apiRow,
 .apiStat {
   min-width: 0;
-  min-height: 66px;
-  border: 1px solid #e8edf3;
+  min-height: 78px;
+  border: 1px solid #e4eaf1;
   border-radius: 10px;
   background: #fbfcfe;
 }
 
 .apiRow {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 11px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 10px;
+  gap: 9px;
+  padding: 12px;
 }
 
 .apiDot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
 }
 
@@ -395,78 +424,54 @@
 .apiRow > div {
   min-width: 0;
   display: grid;
-  gap: 2px;
+  gap: 3px;
 }
 
 .apiRow strong {
   overflow: hidden;
   color: #33435a;
-  font-size: 9.5px;
+  font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .apiRow small {
-  color: #8c98a9;
-  font-size: 8px;
+  color: #7f8c9f;
+  font-size: 10px;
 }
 
 .apiStat {
   display: grid;
   align-content: center;
-  gap: 3px;
-  padding: 9px 10px;
+  gap: 4px;
+  padding: 11px 12px;
 }
 
 .apiStat span {
-  color: #8290a3;
-  font-size: 8px;
+  color: #748298;
+  font-size: 10px;
 }
 
 .apiStat strong {
   color: #26364d;
-  font-size: 18px;
+  font-size: 23px;
+  font-weight: 820;
   line-height: 1;
 }
 
 .apiStat small {
-  color: #9aa4b1;
-  font-size: 7.5px;
-}
-
-.quickLinks {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.quickLinks a {
-  min-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 9px;
-  border: 1px solid #dfe6ef;
-  border-radius: 8px;
-  color: #426492;
-  background: #ffffff;
-  font-size: 8.5px;
-  font-weight: 750;
-}
-
-.quickLinks a:hover {
-  border-color: #b9cbea;
-  background: #f7f9fd;
+  color: #8b96a7;
+  font-size: 9px;
 }
 
 .loadingState,
 .errorState {
-  min-height: 190px;
+  min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 24px;
+  gap: 13px;
+  padding: 26px;
   border: 1px solid #e1e7ef;
   border-radius: 14px;
   background: #ffffff;
@@ -474,12 +479,12 @@
 
 .loadingState strong {
   color: #46566e;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .spinner {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border: 3px solid #e4ebf6;
   border-top-color: #2f6df6;
   border-radius: 999px;
@@ -492,17 +497,17 @@
 
 .errorState > div {
   display: grid;
-  gap: 4px;
+  gap: 5px;
 }
 
 .errorState strong {
   color: #6b3535;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .errorState span {
   color: #9a6464;
-  font-size: 9px;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 
@@ -518,8 +523,8 @@
 }
 
 .modal {
-  width: min(920px, 100%);
-  max-height: min(760px, calc(100dvh - 44px));
+  width: min(940px, 100%);
+  max-height: min(780px, calc(100dvh - 44px));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -530,41 +535,41 @@
 }
 
 .modal > header {
-  min-height: 64px;
+  min-height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 17px;
+  padding: 15px 18px;
   border-bottom: 1px solid #e9edf3;
 }
 
 .modal > header > div {
   display: grid;
-  gap: 2px;
+  gap: 3px;
 }
 
 .modal > header h3 {
   margin: 0;
   color: #223249;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .modal > header span {
-  color: #929dad;
-  font-size: 8px;
+  color: #8793a5;
+  font-size: 10px;
 }
 
 .modal > header button {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   border: 1px solid #e2e7ee;
   border-radius: 9px;
   color: #657388;
   background: #ffffff;
-  font-size: 20px;
+  font-size: 21px;
   line-height: 1;
   cursor: pointer;
 }
@@ -572,53 +577,53 @@
 .modalBody {
   overflow-y: auto;
   display: grid;
-  gap: 13px;
-  padding: 16px 17px 18px;
+  gap: 14px;
+  padding: 17px 18px 20px;
 }
 
 .detailCards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 9px;
 }
 
 .detailCards > div {
-  min-height: 76px;
+  min-height: 84px;
   display: grid;
   align-content: center;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 5px;
+  padding: 12px 13px;
   border: 1px solid #e7ecf2;
   border-radius: 10px;
   background: #fbfcfe;
 }
 
 .detailCards span {
-  color: #8290a3;
-  font-size: 8px;
+  color: #748298;
+  font-size: 10px;
 }
 
 .detailCards strong {
   color: #26364d;
-  font-size: 21px;
+  font-size: 25px;
   line-height: 1;
 }
 
 .detailCards small {
-  color: #9aa4b1;
-  font-size: 7.5px;
+  color: #8793a5;
+  font-size: 9.5px;
 }
 
 .infoBox {
   display: grid;
-  gap: 3px;
-  padding: 10px 11px;
+  gap: 4px;
+  padding: 11px 12px;
   border: 1px solid #dfe7f3;
   border-radius: 9px;
   color: #68778c;
   background: #f8faff;
-  font-size: 8.5px;
-  line-height: 1.5;
+  font-size: 10.5px;
+  line-height: 1.55;
 }
 
 .infoBox strong {
@@ -628,15 +633,15 @@
 .databaseDetailGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 13px;
 }
 
 .databaseDetail {
   min-width: 0;
   display: grid;
   align-content: start;
-  gap: 10px;
-  padding: 13px;
+  gap: 11px;
+  padding: 14px;
   border: 1px solid #e5eaf1;
   border-radius: 11px;
 }
@@ -647,29 +652,29 @@
   color: #33445b;
 }
 
-.databaseDetail h4 { font-size: 12px; }
-.databaseDetail h5 { font-size: 9px; }
+.databaseDetail h4 { font-size: 14px; }
+.databaseDetail h5 { font-size: 11px; }
 
 .connectionLine {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  gap: 9px;
+  padding: 9px 0;
   border-top: 1px solid #edf1f5;
   border-bottom: 1px solid #edf1f5;
-  color: #7e8c9f;
-  font-size: 8px;
+  color: #718096;
+  font-size: 10px;
 }
 
 .connectionLine strong {
   color: #2d3d54;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .connectionLine small {
-  color: #8e9aab;
-  font-size: 8px;
+  color: #7e8b9d;
+  font-size: 10px;
 }
 
 .tableWrap {
@@ -681,11 +686,11 @@
 .detailTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .detailTable td {
-  padding: 7px 8px;
+  padding: 9px;
   border-bottom: 1px solid #edf1f5;
   color: #68778c;
   text-align: right;
@@ -696,7 +701,7 @@
 }
 
 .detailTable td:first-child {
-  max-width: 180px;
+  max-width: 190px;
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
@@ -709,17 +714,17 @@
 }
 
 .modalEmpty {
-  padding: 16px;
+  padding: 17px;
   border: 1px dashed #d9e0e9;
   border-radius: 8px;
-  color: #8b97a9;
-  font-size: 8px;
+  color: #7f8c9f;
+  font-size: 10px;
   text-align: center;
 }
 
 .routeList {
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 
 .routeList > div {
@@ -727,7 +732,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 9px;
+  padding: 9px 10px;
   border: 1px solid #e8edf3;
   border-radius: 8px;
   background: #fbfcfe;
@@ -736,14 +741,14 @@
 .routeList code {
   overflow: hidden;
   color: #53647b;
-  font-size: 8px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .routeList strong {
   color: #30445f;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 @keyframes spin {
@@ -758,14 +763,10 @@
   .apiGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-
-  .apiRow {
-    grid-column: span 1;
-  }
 }
 
 @media (max-width: 900px) {
-  .headerCard {
+  .dashboardHeader {
     align-items: flex-start;
   }
 
@@ -783,13 +784,20 @@
   }
 }
 
-@media (max-width: 640px) {
-  .headerCard {
+@media (max-width: 720px) {
+  .dashboardHeader {
     display: grid;
-    padding: 16px;
+    gap: 12px;
+    padding-inline: 1px;
   }
 
-  .headerStatus {
+  .dashboardHeaderActions {
+    justify-items: start;
+  }
+
+  .headerStatus,
+  .headerActionRow {
+    justify-content: flex-start;
     flex-wrap: wrap;
   }
 
@@ -798,22 +806,23 @@
   }
 
   .metricCard {
-    min-height: 96px;
+    min-height: 112px;
+    padding: 15px;
   }
 
   .storeVisual {
-    grid-template-columns: 94px minmax(0, 1fr);
-    gap: 10px;
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 12px;
   }
 
   .donut {
-    width: 88px;
-    height: 88px;
+    width: 98px;
+    height: 98px;
   }
 
   .donut::before {
-    width: 60px;
-    height: 60px;
+    width: 66px;
+    height: 66px;
   }
 
   .apiGrid,
@@ -830,9 +839,16 @@
   }
 }
 
+@media (max-width: 480px) {
+  .metricGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .metricCard,
   .refreshButton,
+  .headerLink,
   .panelHeader button,
   .progressTrack span,
   .spinner {
