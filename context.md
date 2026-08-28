@@ -2,341 +2,151 @@
 
 Last updated: 2026-08-29 (ICT)
 
-## Mandatory workflow for every new session
+## Mandatory workflow
 
 Before answering or changing code:
-
 1. Read this `context.md` from `sstdevelopaminno/CpIPOS-IT` branch `main` first.
-2. Verify current GitHub state for `CpIPOS-IT`.
-3. Verify the existing Vercel deployment state. **Never create a new Vercel project.**
+2. Verify live GitHub state for CpIPOS-IT.
+3. Verify the existing Vercel project/deployment. Never create a replacement Vercel project.
 4. Verify only the Supabase state needed for the task.
 5. Continue from **Immediate next action** below.
-6. Change only relevant files; do not broad-refactor or invent a second architecture when the existing one supports the task.
+6. Change only relevant files; no broad refactor.
 7. Run Typecheck → Lint → Test → Production Build.
-8. Require exact-head GitHub CI and Vercel Preview before merge.
-9. After merge, verify Vercel Production on the merged `main` commit.
-10. Keep this file current so a new chat can continue without reconstructing state from old messages.
+8. Require exact-head CI + Vercel Preview before merge.
+9. After merge, verify Vercel Production on the exact merge commit.
+10. Keep this file current.
 
-If a task touches POS/schema/runtime in `sstdevelopaminno/CpIPOS`, first read `docs/AI-GUARDRAILS-CPIPOS.md` and the current CpIPOS context/handoff, then verify that repo's live GitHub/Vercel/Supabase state before changing anything.
+If a task touches `sstdevelopaminno/CpIPOS` schema/runtime, read `docs/AI-GUARDRAILS-CPIPOS.md` and current CpIPOS context first, then verify live state. Do not use old-chat state when it conflicts with live sources.
 
-Do not use old-chat state when it conflicts with this file or live connected sources.
+## Deployment-efficiency rule
 
----
+Vercel usage is cost-sensitive. Batch related UI/API work on one branch, validate as much as possible before moving the branch ref, and target roughly one final Preview + one Production deployment for a meaningful IT batch. This does not waive CI/build gates.
 
-# Deployment-efficiency rule
+## Architecture boundaries
 
-Vercel usage is currently cost-sensitive. During development:
+- `CpIPOS` = customer-facing POS/runtime/schema lane.
+- `CpIPOS-IT` = company IT Control Plane / Backoffice.
+- CpiPOS-001 `deejlitaivfnsbwqdugy` = Auth, tenant/store/branch/user/package/subscription/business authority.
+- CpiPOS-002 `kawenyvpentwgugtzqec` = IT/MDM operational data: device registry/health/incidents/commands.
+- Browser/device code never receives service-role credentials.
+- Privileged IT operations stay server-side and important mutations require audit trail.
+- Client code never chooses the Supabase project.
+- Never reset FF0001, fabricate telemetry, or rewrite/delete customer order/payment/transaction history.
+- Never mix IT feature development into a POS Production release.
 
-- batch related UI/API changes on one branch instead of pushing every file edit;
-- validate as much as possible before moving the branch ref;
-- target roughly one final Preview and one Production deployment for a large work batch;
-- do not create deploys merely to inspect a small visual change;
-- do not create a replacement Vercel project to solve connector visibility problems.
-
-This is an efficiency rule, not permission to skip Typecheck/Lint/Test/Build or exact-head acceptance.
-
----
-
-# Architecture boundaries
-
-## `sstdevelopaminno/CpIPOS`
-Customer-facing POS runtime, schema authority and business transactions.
-
-## `sstdevelopaminno/CpIPOS-IT`
-Company IT Control Plane / Backoffice.
-
-## CpiPOS-001
-Project ref: `deejlitaivfnsbwqdugy`
-
-Authority for:
-- Supabase Auth
-- tenant / Store Code / branch / user
-- package / subscription / business control-plane state
-- POS business data and transactions
-
-## CpiPOS-002
-Project ref: `kawenyvpentwgugtzqec`
-
-Operational IT/MDM plane for:
-- device registry
-- device health / telemetry
-- incidents
-- remote commands / delivered / ACK / result
-- IT operational state
-
-## Non-negotiable rules
-
-- Browser/device code must never receive a service-role key.
-- Privileged actions are server-side only.
-- Important IT actions require an audit trail.
-- Tenant / branch / device scope must remain correct.
-- Client code must not choose CpiPOS-001 vs CpiPOS-002.
-- Orders, payments, products, stock and customer transaction history stay out of CpiPOS-002.
-- Never reset FF0001.
-- Never fabricate device health.
-- Never mix IT feature work into a POS Production release.
-
----
-
-# Vercel IT project — existing project only
-
-Existing IT project identified by GitHub/Vercel integration:
+## Existing Vercel project only
 
 - Project: `cp-ipos-it-web`
 - Project ID: `prj_9jNjDHyctinDjnvCZ2Ya1zBJs38h`
 - Team ID: `team_ZKmv6uQSU9QUyP08mxAr2YDI`
 
-The older name `cp-ipos-it-backoffice-web` is stale. Do not create another project.
+Do not create another project. Vercel direct runtime-log API may return 403 while GitHub Vercel status checks still work.
 
-The connected Vercel project/log APIs may return 403/404 even while GitHub's Vercel integration reports exact deployment status successfully. Treat this as connector visibility mismatch, not proof the project is missing.
+## Current CpIPOS-IT main before this Dashboard batch
 
-Server environment contract names only — never expose values:
+- main SHA before batch: `d6db9a304326e2cf2f52d26662a6b4c86563a84b`
+- PR #18 merged: collapsible Sidebar, hidden scrollbar, larger navigation.
+- Vercel Production for `d6db9a30...`: success.
+- Authenticated Dashboard was still user-confirmed to show `Internal server error` after PR #18.
 
-- `CPIPOS_SUPABASE_URL`
-- `CPIPOS_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `IT_SUPABASE_URL`
-- `IT_SUPABASE_SERVICE_ROLE_KEY`
+## Sidebar branding correction in current Dashboard batch
 
----
+The expanded Sidebar must use the existing CpIPOS symbol asset:
+- `/brand/cpipos-symbol-sidebar.png`
 
-# PHASE 1 — IT ADMIN UI/UX
+Do not use the SST iPOS wordmark in the IT Sidebar header. The symbol is centered above `IT Control Plane` and the company-backoffice subtitle. Collapsed mode continues to show the same symbol only.
 
-Status: **merged previously and Production foundation established.**
+## Phase 2 Store Provisioning
 
-Shared shell:
-- `apps/backoffice-web/src/components/layout/app-shell.tsx`
-- `apps/backoffice-web/src/components/layout/app-shell.module.css`
+Store Provisioning P0 is on CpIPOS-IT main from PR #4. The CpiPOS-001 provisioning schema authority is installed. Do not create a real Production tenant merely to smoke test; final submit requires explicit approval because it creates persistent customer/control-plane records.
 
-Provides:
-- CpIPOS branded Sidebar
-- grouped navigation
-- Topbar
-- Breadcrumb
-- responsive tablet/mobile drawer
-- Thai-first UI with English support
-- existing language switcher
-- IT role indicator
+## Dashboard Control Plane batch
 
-## Sidebar visual polish batch
+Goal: replace the fragile three-request Dashboard fan-out with one fail-soft IT endpoint and show real compact Control Plane metrics, with detail moved into modal dialogs instead of a long page.
 
-When this section is present on `main`, the shared IT Sidebar also includes:
-- SST iPOS logo reused from the POS brand asset `/brand/sst-ipos-logo.svg`
-- logo and `IT Control Plane` / company-backoffice subtitle centered in the expanded Sidebar
-- native Sidebar scrollbar hidden while wheel/touch scrolling remains available
-- desktop collapse/expand control with the preference kept in browser local storage
-- collapsed mode shows navigation icons only; labels remain available through accessible labels/tooltips
-- compact CpIPOS symbol shown when collapsed
-- larger primary navigation icons and labels for improved readability
-- mobile drawer remains full-width navigation even if desktop was previously collapsed
+### New server contract
 
-Dashboard:
-- `apps/backoffice-web/src/components/it-admin/it-admin-dashboard.tsx`
-- `apps/backoffice-web/src/components/it-admin/it-admin-dashboard.module.css`
-- `apps/backoffice-web/src/app/(it-admin)/it-admin/page.tsx`
+`GET /api/it-admin/v1/dashboard`
 
-Dashboard uses existing contracts:
-- `/api/it-admin/v1/health`
-- `/api/it-admin/v1/tenants?limit=100`
-- `/api/it-admin/v1/monitor?minutes=60`
+- authenticates IT admin first;
+- CpiPOS-001 queries always use the explicit Primary authority client, not tenant business-data routing;
+- CpiPOS-002 uses the existing IT Control Plane client;
+- each metric source is isolated/fail-soft, so one degraded plane does not turn the entire Dashboard into a generic 500;
+- no secrets are returned;
+- no customer business row contents are returned by database diagnostics.
 
----
+### Dashboard main surface
 
-# PHASE 2 — STORE PROVISIONING
+Compact cards/panels show:
+- total/open/closed/online stores;
+- online devices;
+- approximate total rows and table count;
+- CpiPOS-001 used + remaining database capacity;
+- CpiPOS-002 used + remaining database capacity;
+- Control Plane API connectivity/response measurements;
+- API errors in the recent 60-minute window;
+- open/critical incidents and pending remote commands.
 
-Status: **PR #4 merged to `main` at `14da383fac4c9265e9a4f82f5fad7430daa39e52`; Vercel status for that merge commit is success. Production functional acceptance is not complete because authenticated Dashboard smoke still fails.**
+Details open in modal dialogs:
+- store/online definition and latest device seen;
+- row/table detail;
+- database connection counts and largest tables by size;
+- API error/top-route/degraded-source details.
 
-Business flow:
+### Real-data semantics
 
-Tenant
-→ Store Code
-→ Package / Trial
-→ Main Branch
-→ Owner account
-→ Login policy
-→ Device Enrollment
-→ Ready for next onboarding step
+- Store open/closed = CpiPOS-001 `tenants.is_active`.
+- Store online = at least one CpiPOS-002 `it_devices.last_seen_at` inside the configured 5-minute window.
+- Never convert registry `active` into online/healthy without telemetry.
+- Estimated rows come from PostgreSQL live statistics (`pg_stat_user_tables.n_live_tup`) to avoid expensive `COUNT(*)` across every Production table; UI must label this as approximate.
+- Database used bytes come from `pg_database_size(current_database())`.
+- Current Supabase organization was live-verified as Free plan during this batch. Runtime quota display uses the current Free database quota baseline of 500 MiB/project; if the plan changes, update the quota source rather than pretending the quota is dynamically discovered by SQL.
 
-## CpIPOS schema authority
+### Live baseline measured during this batch
 
-CpIPOS PR #156 `feat(it-schema): add Store Provisioning P0 control-plane RPC` was merged into its schema/platform base, not into a POS Production release.
+At approximately 2026-08-29 01:xx ICT:
+- Stores: total 4, open 3, closed 1.
+- CpiPOS-002 devices: 8 total.
+- Stores/devices seen inside 5 minutes at that measurement: 0 / 0; this is telemetry-derived, not a fabricated health state.
+- CpiPOS-001: ~119,229,587 bytes (~114 MiB), ~67,809 estimated rows, 144 user tables.
+- CpiPOS-002: ~16,632,979 bytes (~15.9 MiB), ~324 estimated rows, 82 user tables.
+- Open CpiPOS-002 incidents: 0; critical: 0; pending commands: 0 at measurement time.
 
-- PR #156 exact head validated: `c6dfc3c3ce9dcf1556c52e7ab2bcb1ffaa0c68d6`
-- merged source commit: `35d31e7639e7c14f1941ea7ea57feae5857e244a`
-- one migration file only: `supabase/migrations/20260828123000_it_store_provisioning_p0.sql`
-- no POS UI/runtime/order/payment/stock change
-- no FF0001 mutation
+These are a handoff snapshot only; Dashboard must query live values rather than hard-code them.
 
-Exact-head validation branch/run evidence:
-- branch: `hotfix/ci-it-store-provisioning-schema-p0-20260828`
-- GitHub Actions run: `33193549967`
-- Typecheck: SUCCESS
-- Lint: SUCCESS
-- Test: SUCCESS
-- Primary schema drift: SUCCESS
-- CpiPOS-002 schema drift: SUCCESS
-- Build: SUCCESS
+## Database metrics schema support
 
-## CpiPOS-001 Production schema state
+CpIPOS PR #159: `feat(it-schema): expose read-only database metrics to IT Control Plane`
 
-The exact provisioning migration was applied to CpiPOS-001 as:
+- exact schema head: `5ca223cac50c38ca5c2f9e6cc2fcd4dde8fca5d3`
+- schema/platform merge commit: `0fd41e1c94191a25569d58968702c9591ecf90c1`
+- base: `agent/fg-ff-platform-normalization`, not POS Production release.
+- files:
+  - `supabase/migrations/20260829011500_it_database_metrics_rpc.sql`
+  - `supabase/trial-data-plane/migrations/20260829011501_it_database_metrics_rpc.sql`
+- function on each plane: `public.get_it_database_metrics()`
+- read-only metrics only; no customer row contents; no POS/order/payment/stock mutation.
+- `anon` execute = false.
+- `authenticated` execute = false.
+- `service_role` execute = true.
+- exact-head CI run `33199179981`: Typecheck/Lint/Test/Primary schema drift/CpiPOS-002 schema drift/Build = SUCCESS.
+- migrations applied successfully to CpiPOS-001 and CpiPOS-002 and privilege read-back passed.
 
-- migration history version: `20260828174600`
-- name: `it_store_provisioning_p0`
+## Phase 3 — Devices / MDM
 
-Read-back after apply:
-- `public.it_store_provisioning_requests` exists
-- RLS enabled
-- ledger row count = 0 immediately after migration
-- `anon` table SELECT = denied
-- `authenticated` table SELECT = denied
-- `service_role` table SELECT = allowed
-- `anon` RPC EXECUTE = denied
-- `authenticated` RPC EXECUTE = denied
-- `service_role` RPC EXECUTE = allowed
+Existing PRs to reuse after Dashboard Production acceptance:
+- PR #5 — Device Enrollment / MDM support console.
+- PR #6 — telemetry / pairing / command ACK bridge.
 
-`RLS Enabled No Policy` advisor info for this ledger is intentional: it is a server-only/service-role table and no client RLS policy should be added merely to silence the advisor.
+Do not create a second MDM implementation. Real telemetry only.
 
-No Production tenant/store was created to test this migration.
+## Immediate next action
 
-## Current package catalog constraints
-
-Latest live CpiPOS-001 package read during Phase 2:
-- Starter: 350 THB/month, yearly price currently 0, Standard
-- Growth: 550 THB/month, yearly price currently 0, Standard
-- Custom: manual/custom package, not eligible for Fast Provisioning
-
-Therefore Fast Provisioning currently offers only priced Standard intervals; yearly remains unavailable until a real yearly price exists.
-
-Paid activation is not part of Fast Provisioning. New Store Provisioning starts as Trial only; paid activation continues through the existing IT approval flow.
-
-## CpIPOS-IT Store Provisioning implementation
-
-Primary files:
-- `apps/backoffice-web/src/app/(it-admin)/it-admin/store-provisioning/page.tsx`
-- `apps/backoffice-web/src/app/(it-admin)/it-admin/store-provisioning/page.module.css`
-- `apps/backoffice-web/src/components/it-admin/store-provisioning-console.tsx`
-- `apps/backoffice-web/src/components/it-admin/store-provisioning-console.module.css`
-- `apps/backoffice-web/src/lib/services/it-admin/store-provisioning-service.ts`
-- `apps/backoffice-web/src/app/api/it-admin/v1/store-provisioning/route.ts`
-
-Behavior:
-- dedicated Store Provisioning page
-- Tenants / Stores directory is separate from the provisioning workflow
-- package catalog loads from CpiPOS-001
-- Standard + priced interval filtering
-- Trial-only enforced both UI and server-side
-- confirmation/review before privileged submit
-- PIN is not shown in confirmation and is never sent to the core DB RPC
-- PIN is bcrypt hashed by trusted server code
-- Owner Auth + `users_profiles` + `pos_user_profiles` + owner `user_branch_roles`
-- stable `request_id` supports retry/recovery
-- important actions are audited
-- onboarding ends at Device Enrollment; it does not fake an enrolled device
-
-## Dashboard `Internal server error` Production smoke status
-
-Phase 2 included lazy privileged Supabase clients and safe health diagnostics, and merge commit `14da383f...` deployed successfully.
-
-However, on 2026-08-29 the authenticated Production `/it-admin` screenshot still showed:
-- `โหลด Dashboard ไม่สำเร็จ`
-- `Internal server error.`
-
-This is current user-observed Production evidence. Therefore:
-- do not claim Dashboard Production acceptance yet;
-- do not start Phase 3 MDM until this error is diagnosed and resolved;
-- do not guess which env/secret is missing;
-- use the health route/runtime evidence when available and keep fixes server-side without exposing secret values.
-
----
-
-# PHASE 3 — DEVICES / MDM
-
-Existing work to reuse only after Dashboard Production smoke is green:
-
-- PR #5 — Device Enrollment and MDM support console
-- PR #6 — legacy telemetry / pairing / command ACK compatibility bridge
-
-Do not create a second MDM implementation. Inspect and refresh the existing PRs on top of current `main`.
-
-Operational target:
-
-Device Enrollment
-→ Pairing token
-→ IT approval
-→ Android / Print Agent binding
-→ CPU / RAM / Storage
-→ Network / Battery
-→ POS/App version
-→ Printer / Print Agent health
-→ Last print/error
-→ Incidents
-→ Remote Command
-→ Delivered / ACK / Result
-
-Real telemetry only.
-
-## FF0001 telemetry safety
-
-Known devices in CpiPOS-002:
-- `FF0001-POS-01`
-- `FF0001-POS-02`
-
-Latest verified handoff still does not establish trustworthy current device-health values for these terminals. Do not call them healthy solely from registry state and do not insert synthetic rows.
-
----
-
-# PHASE 4 — OPERATIONS
-
-After provisioning + MDM foundations:
-- Packages / Subscriptions
-- Feature Entitlements
-- Monitoring
-- Incident Management
-- Audit
-- Remote Operations
-- Security / Change Password
-- IT staff role separation
-
-Reuse existing contracts/components where available.
-
----
-
-# SAFETY RULES — DO NOT VIOLATE
-
-- Never create a new Vercel project to solve deployment/linkage problems.
-- Never guess env values or secrets.
-- Never paste service-role keys into chat, docs, commits or screenshots.
-- Never reset FF0001.
-- Never delete/rewrite customer transaction/payment/order history.
-- Never fabricate device health.
-- Never expose service-role credentials to browser/device code.
-- Never let client code choose the Supabase project.
-- Never broad-refactor simply to redesign UI.
-- Never change backend contracts solely for visual redesign.
-- Never turn a Production customer into test data without explicit approval.
-
----
-
-# Immediate next action
-
-When this file is on `main`, do these in order:
-
-1. Verify exact live `CpIPOS-IT/main` and Vercel Production for the Sidebar polish merge commit.
-2. Smoke the Sidebar without mutating data:
-   - SST iPOS logo is centered and readable in expanded mode;
-   - `IT Control Plane` and company-backoffice subtitle are centered;
-   - no visible Sidebar scrollbar while wheel/touch scrolling still works;
-   - desktop collapse shows icons only and can expand again;
-   - menu labels/icons are visibly larger;
-   - mobile navigation remains full-width and usable.
-3. Diagnose and resolve the authenticated `/it-admin` Dashboard `Internal server error` using safe health/runtime evidence. Do not guess secrets or expose their values.
-4. Re-run authenticated Dashboard/Tenants/Store Provisioning smoke without pressing the final provisioning submit.
-5. Only after Production smoke is green, start **PHASE 3** by refreshing/reusing PR #5 and PR #6.
-6. Keep deployment batching: complete a meaningful batch before the next Preview/Production cycle.
-
----
-
-## New-chat startup prompt
-
-`ทำงานต่อระบบ IT Admin / IT Control Plane ของ CpIPOS โดยก่อนตอบหรือแก้โค้ดทุกครั้งให้อ่าน sstdevelopaminno/CpIPOS-IT context.md จาก main ก่อน แล้วตรวจสถานะสด GitHub/Vercel/Supabase จากนั้นทำต่อจาก Immediate next action ในไฟล์ ถ้าแตะ CpIPOS schema/runtime ต้องอ่าน docs/AI-GUARDRAILS-CPIPOS.md และ CpIPOS context ก่อน ห้ามสร้าง Vercel project ใหม่ ห้ามเดา env/secret ห้าม reset FF0001 ห้ามแก้ transaction/payment/order history ห้ามสร้าง health ปลอม และต้องแยก POS Production lane ออกจาก IT Control Plane เสมอ`
+When this file is present on `main`:
+1. Verify exact live CpIPOS-IT main SHA and Vercel Production.
+2. Authenticated smoke `/it-admin` and confirm the Dashboard no longer shows the generic `Internal server error` state.
+3. Verify live cards for stores, online telemetry, CpiPOS-001/CpiPOS-002 storage, rows/tables, and API plane status.
+4. Open each Dashboard detail modal; confirm no secret/token/raw service credential is displayed.
+5. Confirm Sidebar expanded logo is `/brand/cpipos-symbol-sidebar.png` and collapsed mode uses the same symbol.
+6. Do not create a store or synthetic telemetry for smoke testing.
+7. If Dashboard Production smoke is green, proceed to Phase 3 by inspecting/refreshing existing PR #5 and PR #6 on top of current main, batching changes before the next Preview/Production cycle.

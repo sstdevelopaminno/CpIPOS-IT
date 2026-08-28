@@ -5,11 +5,11 @@ import { getAuthContext, type AuthContext } from "@/lib/auth-context";
 import { FeatureGateError } from "@/lib/feature-gate";
 import { fail } from "@/lib/http";
 import { getItControlPlaneClient } from "@/lib/it-control-plane";
-import { getSupabaseServiceClient } from "@/lib/supabase-admin";
+import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 
 export type ItAdminContext = {
   auth: AuthContext;
-  supabase: ReturnType<typeof getSupabaseServiceClient>;
+  supabase: ReturnType<typeof getPrimarySupabaseServiceClient>;
   itSupabase: ReturnType<typeof getItControlPlaneClient>;
   requestMeta: {
     ipAddress: string | null;
@@ -56,14 +56,13 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
     userAgent: headerStore.get("user-agent")
   };
 
-  // Keep authorization independent from privileged data-plane client creation.
-  // A CpiPOS-001-only route must not fail simply because CpiPOS-002 is degraded,
-  // and vice versa. The getters preserve the existing context contract while
-  // instantiating each service-role client only when a route actually uses it.
+  // IT Control Plane authority is always CpiPOS-001 for identity/business state
+  // and CpiPOS-002 for MDM/operational state. Never route an IT-admin authority
+  // query through tenant business-data routing.
   return {
     auth,
     get supabase() {
-      return getSupabaseServiceClient();
+      return getPrimarySupabaseServiceClient();
     },
     get itSupabase() {
       return getItControlPlaneClient();

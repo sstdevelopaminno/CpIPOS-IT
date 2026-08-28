@@ -10,209 +10,313 @@ type ApiEnvelope<T> = {
   error: { code?: string; message?: string } | null;
 };
 
-type HealthPayload = {
+type DatabaseTopTable = {
+  schema: string;
+  table: string;
+  estimated_rows: number;
+  total_bytes: number;
+};
+
+type DatabaseMetrics = {
+  database_bytes: number;
+  quota_bytes: number;
+  remaining_bytes: number;
+  usage_percent: number;
+  estimated_rows: number;
+  user_tables: number;
+  connections_total: number;
+  connections_active: number;
+  top_tables: DatabaseTopTable[];
+  checked_at: string | null;
+};
+
+type SourceState<T> = {
+  ready: boolean;
+  data: T | null;
+  error_code: string | null;
+  duration_ms: number | null;
+};
+
+type DashboardPayload = {
   status: "ready" | "degraded";
   checked_at: string;
-  integration: {
-    mode: string;
-    auth_business_plane: string;
-    it_operational_plane: string;
-    pos_runtime: string;
-    control_plane: string;
-    auth_plane_ready: boolean;
-    data_bridge_ready: boolean;
+  online_window_minutes: number;
+  quota: {
+    plan: "free";
+    database_quota_bytes: number;
+    source: string;
   };
-};
-
-type TenantSummary = {
-  id: string;
-  code: string;
-  name: string;
-  store_code?: string | null;
-  package_name: string | null;
-  contract_status: string | null;
-  is_active: boolean;
-  branch_count: number;
-  active_branch_count: number;
-  device_count: number;
-  active_device_count: number;
-};
-
-type TenantsPayload = {
-  tenants: TenantSummary[];
-  next_cursor: string | null;
-  source: string;
-};
-
-type MonitorPayload = {
-  generated_at: string;
-  degraded_sources?: string[];
-  totals: {
-    branches: number;
-    queued_orders: number;
-    dead_letters_recent: number;
-    critical: number;
-    warn: number;
-    api_errors_recent_total: number;
-    api_errors_4xx_recent: number;
-    api_errors_409_recent: number;
-    api_errors_5xx_recent: number;
+  stores: {
+    total: number | null;
+    open: number | null;
+    closed: number | null;
+    online: number | null;
   };
+  devices: {
+    total: number | null;
+    online: number | null;
+    latest_seen_at: string | null;
+  };
+  data: {
+    estimated_rows_total: number | null;
+    user_tables_total: number | null;
+  };
+  databases: {
+    business: SourceState<DatabaseMetrics>;
+    operational: SourceState<DatabaseMetrics>;
+  };
+  api: {
+    business_plane_ready: boolean;
+    operational_plane_ready: boolean;
+    business_latency_ms: number | null;
+    operational_latency_ms: number | null;
+    recent_errors_60m: {
+      total: number | null;
+      http_4xx: number | null;
+      http_5xx: number | null;
+      top_routes: Array<{ route: string; count: number }>;
+    };
+  };
+  operations: {
+    open_incidents: number | null;
+    critical_incidents: number | null;
+    pending_commands: number | null;
+  };
+  degraded_sources: string[];
 };
 
-type DashboardData = {
-  health: HealthPayload;
-  tenants: TenantsPayload;
-  monitor: MonitorPayload;
-};
+type ModalKind = "stores" | "data" | "databases" | "api" | null;
 
 const copy = {
   th: {
-    eyebrow: "CPIPOS · IT CONTROL PLANE",
-    title: "ศูนย์ควบคุมระบบ CpIPOS",
-    description: "ภาพรวมสถานะระบบ ลูกค้า และงานปฏิบัติการจาก API จริงของ IT Backoffice โดยไม่ผสมกับ POS Production release lane",
+    title: "ภาพรวมระบบ",
+    subtitle: "สถานะร้านค้า ฐานข้อมูล และการเชื่อมต่อจาก Control Plane จริง",
+    ready: "ระบบพร้อม",
+    degraded: "บางส่วนต้องตรวจสอบ",
     refresh: "รีเฟรช",
-    refreshing: "กำลังรีเฟรช...",
-    lastUpdated: "อัปเดตล่าสุด",
-    controlPlane: "Control Plane",
-    ready: "พร้อมใช้งาน",
-    degraded: "ต้องตรวจสอบ",
-    stores: "ร้านค้า",
-    activeStores: "ร้านที่ Active",
-    monitoredBranches: "สาขาที่ Monitoring",
-    branchWarnings: "เตือน / Critical",
-    apiErrors: "API Errors · 60 นาที",
+    refreshing: "กำลังอัปเดต",
+    updated: "อัปเดต",
+    stores: "ร้านค้าทั้งหมด",
+    open: "เปิด",
+    closed: "ปิด",
+    online: "ออนไลน์",
+    devices: "อุปกรณ์ออนไลน์",
+    rows: "ข้อมูลทั้งหมด",
+    rowsHint: "ประมาณจำนวนแถวจาก PostgreSQL statistics",
+    tables: "ตาราง",
+    businessDb: "CpiPOS-001",
+    businessRole: "Identity / Business Authority",
+    operationalDb: "CpiPOS-002",
+    operationalRole: "IT / MDM Operations",
+    used: "ใช้แล้ว",
+    remaining: "คงเหลือ",
+    api: "API / Control Plane",
+    connected: "เชื่อมต่อ",
+    partial: "บางส่วนไม่พร้อม",
+    view: "ดูรายละเอียด",
+    storeStatus: "สถานะร้านค้า",
+    storeStatusDesc: "ร้านออนไลน์ = มีอุปกรณ์ส่ง last_seen ภายในช่วงเวลาที่กำหนด",
+    databaseUsage: "การใช้พื้นที่ฐานข้อมูล",
+    databaseUsageDesc: "เทียบกับโควตา Supabase Free 500 MB ต่อโปรเจกต์",
+    apiHealth: "การเชื่อมต่อและการวัดค่า",
+    apiHealthDesc: "Response time ฝั่ง server → database และข้อผิดพลาด API ล่าสุด",
+    businessPlane: "CpiPOS-001 API",
+    operationalPlane: "CpiPOS-002 API",
+    response: "ตอบกลับ",
+    errors60: "API errors · 60 นาที",
     serverErrors: "5xx",
-    architecture: "โครงสร้าง Control Plane",
-    architectureDesc: "แยก authority และ operational data plane ตามสถาปัตยกรรมปัจจุบัน",
-    businessPlane: "CpiPOS-001 · Identity / Business",
-    operationalPlane: "CpiPOS-002 · IT / MDM Operations",
-    posRuntime: "CpIPOS · POS Production",
-    reachable: "เชื่อมต่อได้",
-    unavailable: "ไม่พร้อม",
-    isolated: "แยก release lane",
-    telemetryNote: "สถานะด้านบนตรวจเฉพาะการเชื่อมต่อ control plane ไม่ได้แปลว่าเครื่องลูกค้าส่ง device telemetry แล้ว Dashboard จะไม่สร้าง health data จำลอง",
-    operations: "สถานะปฏิบัติการ 60 นาทีล่าสุด",
-    operationsDesc: "ตัวเลขจาก Monitoring API ปัจจุบัน",
-    queued: "Queued Orders",
-    deadLetters: "Dead Letters",
-    http4xx: "4xx",
-    conflicts: "409",
-    http5xx: "5xx",
-    noAlerts: "ไม่พบสาขาระดับ Warning/Critical ในข้อมูลล่าสุด",
-    degradedSources: "Monitoring บางแหล่งข้อมูลยังไม่พร้อม",
-    recentStores: "ร้านค้าล่าสุด",
-    recentStoresDesc: "สรุปจาก Tenant API สูงสุด 100 รายการต่อการโหลดหนึ่งครั้ง",
-    viewAll: "ดูร้านค้าทั้งหมด",
-    store: "ร้าน",
-    package: "แพ็กเกจ",
-    branches: "สาขา",
-    devices: "อุปกรณ์",
-    status: "สถานะ",
-    active: "Active",
-    inactive: "Inactive",
-    noPackage: "ยังไม่ผูกแพ็กเกจ",
-    emptyStores: "ยังไม่มีข้อมูลร้านค้าในรายการนี้",
-    quickActions: "ทางลัด",
-    manageStores: "จัดการร้านค้า",
-    openMonitoring: "เปิด Monitoring",
-    auditLogs: "ดู Audit Logs",
-    loadErrorTitle: "โหลด Dashboard ไม่สำเร็จ",
-    loadErrorDesc: "ระบบไม่แสดงค่าประมาณแทนข้อมูลจริง กรุณาลองโหลดใหม่หรือตรวจ API ที่เกี่ยวข้อง",
+    incidents: "Incident เปิดอยู่",
+    commands: "Remote command รอดำเนินการ",
+    detailsStores: "รายละเอียดร้านค้า",
+    detailsData: "รายละเอียดข้อมูล",
+    detailsDatabases: "รายละเอียดฐานข้อมูล",
+    detailsApi: "รายละเอียด API / Operations",
+    totalRows: "จำนวนแถวโดยประมาณ",
+    totalTables: "จำนวนตาราง",
+    connections: "Database connections",
+    activeConnections: "Active",
+    topTables: "ตารางที่ใช้พื้นที่มาก",
+    tableName: "ตาราง",
+    tableRows: "แถวโดยประมาณ",
+    tableSize: "พื้นที่",
+    onlineWindow: "นิยามออนไลน์",
+    latestSeen: "อุปกรณ์ seen ล่าสุด",
+    noTelemetry: "ยังไม่มี telemetry ล่าสุดในช่วงออนไลน์",
+    dataNote: "จำนวนแถวเป็นค่าประมาณจาก PostgreSQL live statistics เพื่อหลีกเลี่ยง COUNT(*) ทุกตารางบน Production",
+    quotaNote: "โควตา 500 MB อ้างอิงแผน Supabase Free ที่ตรวจยืนยันปัจจุบัน หากเปลี่ยนแผนต้องอัปเดต quota source",
+    degradedSources: "แหล่งข้อมูลที่ยังไม่พร้อม",
+    none: "ไม่มี",
+    close: "ปิด",
+    loading: "กำลังโหลดข้อมูล Dashboard...",
+    loadError: "โหลด Dashboard ไม่สำเร็จ",
     retry: "ลองใหม่",
-    loading: "กำลังโหลดข้อมูล Control Plane..."
+    manageStores: "จัดการร้านค้า",
+    monitoring: "Monitoring"
   },
   en: {
-    eyebrow: "CPIPOS · IT CONTROL PLANE",
-    title: "CpIPOS Control Center",
-    description: "Live IT Backoffice overview for system, customer, and operations state without mixing changes into the POS Production release lane.",
+    title: "System overview",
+    subtitle: "Live store, database, and Control Plane connectivity metrics",
+    ready: "System ready",
+    degraded: "Some sources need attention",
     refresh: "Refresh",
-    refreshing: "Refreshing...",
-    lastUpdated: "Last updated",
-    controlPlane: "Control Plane",
-    ready: "Ready",
-    degraded: "Needs attention",
-    stores: "Stores",
-    activeStores: "Active stores",
-    monitoredBranches: "Monitored branches",
-    branchWarnings: "Warning / Critical",
-    apiErrors: "API Errors · 60 min",
+    refreshing: "Refreshing",
+    updated: "Updated",
+    stores: "Total stores",
+    open: "Open",
+    closed: "Closed",
+    online: "Online",
+    devices: "Online devices",
+    rows: "Total data",
+    rowsHint: "Estimated rows from PostgreSQL statistics",
+    tables: "tables",
+    businessDb: "CpiPOS-001",
+    businessRole: "Identity / Business Authority",
+    operationalDb: "CpiPOS-002",
+    operationalRole: "IT / MDM Operations",
+    used: "Used",
+    remaining: "Remaining",
+    api: "API / Control Plane",
+    connected: "Connected",
+    partial: "Partially unavailable",
+    view: "View details",
+    storeStatus: "Store status",
+    storeStatusDesc: "Online means at least one device reported last_seen within the configured window",
+    databaseUsage: "Database usage",
+    databaseUsageDesc: "Compared with the Supabase Free 500 MB database quota per project",
+    apiHealth: "Connectivity and measurements",
+    apiHealthDesc: "Server-to-database response time and recent API errors",
+    businessPlane: "CpiPOS-001 API",
+    operationalPlane: "CpiPOS-002 API",
+    response: "Response",
+    errors60: "API errors · 60 min",
     serverErrors: "5xx",
-    architecture: "Control Plane Architecture",
-    architectureDesc: "Current authority and operational data-plane separation",
-    businessPlane: "CpiPOS-001 · Identity / Business",
-    operationalPlane: "CpiPOS-002 · IT / MDM Operations",
-    posRuntime: "CpIPOS · POS Production",
-    reachable: "Reachable",
-    unavailable: "Unavailable",
-    isolated: "Separate release lane",
-    telemetryNote: "These checks validate control-plane reachability only. They do not imply that customer devices are reporting telemetry, and this dashboard never fabricates health data.",
-    operations: "Operations · Last 60 minutes",
-    operationsDesc: "Current values from the Monitoring API",
-    queued: "Queued Orders",
-    deadLetters: "Dead Letters",
-    http4xx: "4xx",
-    conflicts: "409",
-    http5xx: "5xx",
-    noAlerts: "No Warning/Critical branches in the latest monitoring payload",
-    degradedSources: "Some monitoring sources are degraded",
-    recentStores: "Recent Stores",
-    recentStoresDesc: "Summary from the Tenant API, up to 100 records per load",
-    viewAll: "View all stores",
-    store: "Store",
-    package: "Package",
-    branches: "Branches",
-    devices: "Devices",
-    status: "Status",
-    active: "Active",
-    inactive: "Inactive",
-    noPackage: "No package",
-    emptyStores: "No stores in the current result",
-    quickActions: "Quick actions",
-    manageStores: "Manage stores",
-    openMonitoring: "Open Monitoring",
-    auditLogs: "View Audit Logs",
-    loadErrorTitle: "Dashboard failed to load",
-    loadErrorDesc: "The dashboard will not substitute estimates for live data. Retry or inspect the relevant APIs.",
+    incidents: "Open incidents",
+    commands: "Pending remote commands",
+    detailsStores: "Store details",
+    detailsData: "Data details",
+    detailsDatabases: "Database details",
+    detailsApi: "API / Operations details",
+    totalRows: "Estimated rows",
+    totalTables: "Tables",
+    connections: "Database connections",
+    activeConnections: "Active",
+    topTables: "Largest tables",
+    tableName: "Table",
+    tableRows: "Estimated rows",
+    tableSize: "Size",
+    onlineWindow: "Online definition",
+    latestSeen: "Latest device seen",
+    noTelemetry: "No recent telemetry inside the online window",
+    dataNote: "Row counts use PostgreSQL live statistics to avoid running COUNT(*) across every Production table.",
+    quotaNote: "The 500 MB quota reflects the currently verified Supabase Free plan. Update the quota source if the plan changes.",
+    degradedSources: "Unavailable sources",
+    none: "None",
+    close: "Close",
+    loading: "Loading Dashboard metrics...",
+    loadError: "Dashboard failed to load",
     retry: "Retry",
-    loading: "Loading Control Plane data..."
+    manageStores: "Manage stores",
+    monitoring: "Monitoring"
   }
 } as const;
 
-async function readApi<T>(url: string): Promise<T> {
-  const response = await fetch(url, { cache: "no-store", credentials: "include" });
-  const body = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
+async function readDashboard(): Promise<DashboardPayload> {
+  const response = await fetch("/api/it-admin/v1/dashboard", { cache: "no-store", credentials: "include" });
+  const body = (await response.json().catch(() => null)) as ApiEnvelope<DashboardPayload> | null;
   if (!response.ok || !body?.data) {
-    throw new Error(body?.error?.message ?? `Request failed with status ${response.status}.`);
+    throw new Error(body?.error?.message ?? `Dashboard request failed (${response.status}).`);
   }
   return body.data;
 }
 
-function StatusBadge({ ok, yes, no }: { ok: boolean; yes: string; no: string }) {
-  return <span className={`${styles.statusBadge} ${ok ? styles.statusOk : styles.statusWarn}`}>{ok ? yes : no}</span>;
+function formatNumber(value: number | null, language: Language) {
+  if (value === null) return "—";
+  return new Intl.NumberFormat(language === "th" ? "th-TH" : "en-US", { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatBytes(value: number | null) {
+  if (value === null) return "—";
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(0)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(value < 100 * 1024 * 1024 ? 1 : 0)} MB`;
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function formatDate(value: string | null, language: Language) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-US", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+}
+
+function percent(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function MiniStatus({ ready, yes, no }: { ready: boolean; yes: string; no: string }) {
+  return <span className={`${styles.statusPill} ${ready ? styles.statusReady : styles.statusWarn}`}>{ready ? yes : no}</span>;
+}
+
+function StorageRow({ label, role, source }: { label: string; role: string; source: SourceState<DatabaseMetrics> }) {
+  const data = source.data;
+  return (
+    <div className={styles.storageRow}>
+      <div className={styles.storageHead}>
+        <div>
+          <strong>{label}</strong>
+          <span>{role}</span>
+        </div>
+        <b>{data ? `${formatBytes(data.database_bytes)} / ${formatBytes(data.quota_bytes)}` : "—"}</b>
+      </div>
+      <div className={styles.progressTrack} aria-hidden="true">
+        <span style={{ width: `${percent(data?.usage_percent ?? null)}%` }} />
+      </div>
+      <div className={styles.storageFoot}>
+        <span>{data ? `${data.usage_percent.toFixed(1)}%` : source.error_code ?? "unavailable"}</span>
+        <span>{data ? formatBytes(data.remaining_bytes) : "—"}</span>
+      </div>
+    </div>
+  );
+}
+
+function DatabaseTable({ source, language }: { source: SourceState<DatabaseMetrics>; language: Language }) {
+  if (!source.data) return <div className={styles.modalEmpty}>{source.error_code ?? "unavailable"}</div>;
+  return (
+    <div className={styles.tableWrap}>
+      <table className={styles.detailTable}>
+        <tbody>
+          {source.data.top_tables.map((row) => (
+            <tr key={`${row.schema}.${row.table}`}>
+              <td><strong>{row.schema}.{row.table}</strong></td>
+              <td>{formatNumber(row.estimated_rows, language)}</td>
+              <td>{formatBytes(row.total_bytes)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export function ItAdminDashboard({ language }: { language: Language }) {
   const text = copy[language];
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modal, setModal] = useState<ModalKind>(null);
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
     else setLoading(true);
     setError(null);
-
     try {
-      const [health, tenants, monitor] = await Promise.all([
-        readApi<HealthPayload>("/api/it-admin/v1/health"),
-        readApi<TenantsPayload>("/api/it-admin/v1/tenants?limit=100"),
-        readApi<MonitorPayload>("/api/it-admin/v1/monitor?minutes=60")
-      ]);
-      setData({ health, tenants, monitor });
+      setData(await readDashboard());
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unknown dashboard error.");
+      setError(loadError instanceof Error ? loadError.message : "dashboard_load_failed");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -221,221 +325,228 @@ export function ItAdminDashboard({ language }: { language: Language }) {
 
   useEffect(() => {
     void load(false);
-    const timer = window.setInterval(() => void load(true), 30_000);
+    const timer = window.setInterval(() => void load(true), 60_000);
     return () => window.clearInterval(timer);
   }, [load]);
 
-  const summary = useMemo(() => {
-    if (!data) return null;
-    const tenants = data.tenants.tenants;
-    const activeTenants = tenants.filter((tenant) => tenant.is_active).length;
-    const tenantLabel = data.tenants.next_cursor ? `${tenants.length}+` : String(tenants.length);
-    return {
-      tenantLabel,
-      activeTenants,
-      recentTenants: tenants.slice(0, 5),
-      warnings: data.monitor.totals.warn + data.monitor.totals.critical
+  useEffect(() => {
+    if (!modal) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModal(null);
     };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modal]);
+
+  const storeChart = useMemo(() => {
+    const total = data?.stores.total ?? 0;
+    const open = data?.stores.open ?? 0;
+    const openAngle = total > 0 ? (open / total) * 360 : 0;
+    return `conic-gradient(#2f6df6 0deg ${openAngle}deg, #dfe6ef ${openAngle}deg 360deg)`;
   }, [data]);
 
-  const updatedAt = data?.monitor.generated_at ?? data?.health.checked_at ?? null;
-  const formattedUpdatedAt = updatedAt
-    ? new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-US", {
-        dateStyle: "medium",
-        timeStyle: "short"
-      }).format(new Date(updatedAt))
-    : null;
-
   if (loading && !data) {
-    return (
-      <section className={styles.loadingState} aria-live="polite">
-        <div className={styles.loadingPulse} />
-        <div>
-          <strong>{text.loading}</strong>
-          <span>Health · Tenants · Monitoring</span>
-        </div>
-      </section>
-    );
+    return <section className={styles.loadingState}><span className={styles.spinner} /><strong>{text.loading}</strong></section>;
   }
 
   if (error && !data) {
     return (
       <section className={styles.errorState} role="alert">
-        <div className={styles.errorIcon}>!</div>
-        <div className={styles.errorCopy}>
-          <h2>{text.loadErrorTitle}</h2>
-          <p>{text.loadErrorDesc}</p>
-          <code>{error}</code>
-        </div>
+        <div><strong>{text.loadError}</strong><span>{error}</span></div>
         <button type="button" onClick={() => void load(false)}>{text.retry}</button>
       </section>
     );
   }
 
-  if (!data || !summary) return null;
+  if (!data) return null;
+
+  const businessDb = data.databases.business.data;
+  const operationalDb = data.databases.operational.data;
+  const planesReady = Number(data.api.business_plane_ready) + Number(data.api.operational_plane_ready);
 
   return (
     <div className={styles.dashboard}>
-      <section className={styles.hero}>
+      <section className={styles.headerCard}>
         <div>
-          <div className={styles.eyebrow}>{text.eyebrow}</div>
+          <div className={styles.headerStatus}>
+            <MiniStatus ready={data.status === "ready"} yes={text.ready} no={text.degraded} />
+            <span>{text.updated}: {formatDate(data.checked_at, language)}</span>
+          </div>
           <h2>{text.title}</h2>
-          <p>{text.description}</p>
+          <p>{text.subtitle}</p>
         </div>
-        <div className={styles.heroActions}>
-          {formattedUpdatedAt ? <span>{text.lastUpdated}: {formattedUpdatedAt}</span> : null}
-          <button type="button" onClick={() => void load(true)} disabled={refreshing}>
-            {refreshing ? text.refreshing : text.refresh}
-          </button>
+        <button type="button" className={styles.refreshButton} onClick={() => void load(true)} disabled={refreshing}>
+          {refreshing ? text.refreshing : text.refresh}
+        </button>
+      </section>
+
+      {error ? <div className={styles.inlineWarning}>{error}</div> : null}
+
+      <section className={styles.metricGrid}>
+        <button type="button" className={styles.metricCard} onClick={() => setModal("stores")}>
+          <span>{text.stores}</span>
+          <strong>{formatNumber(data.stores.total, language)}</strong>
+          <small>{text.open} {formatNumber(data.stores.open, language)} · {text.closed} {formatNumber(data.stores.closed, language)} · {text.online} {formatNumber(data.stores.online, language)}</small>
+        </button>
+        <button type="button" className={styles.metricCard} onClick={() => setModal("stores")}>
+          <span>{text.devices}</span>
+          <strong>{formatNumber(data.devices.online, language)} <em>/ {formatNumber(data.devices.total, language)}</em></strong>
+          <small>{data.devices.latest_seen_at ? formatDate(data.devices.latest_seen_at, language) : text.noTelemetry}</small>
+        </button>
+        <button type="button" className={styles.metricCard} onClick={() => setModal("data")}>
+          <span>{text.rows}</span>
+          <strong>{formatNumber(data.data.estimated_rows_total, language)}</strong>
+          <small>{formatNumber(data.data.user_tables_total, language)} {text.tables} · {text.rowsHint}</small>
+        </button>
+        <button type="button" className={styles.metricCard} onClick={() => setModal("databases")}>
+          <span>{text.businessDb}</span>
+          <strong>{formatBytes(businessDb?.database_bytes ?? null)}</strong>
+          <small>{text.remaining} {formatBytes(businessDb?.remaining_bytes ?? null)}</small>
+        </button>
+        <button type="button" className={styles.metricCard} onClick={() => setModal("databases")}>
+          <span>{text.operationalDb}</span>
+          <strong>{formatBytes(operationalDb?.database_bytes ?? null)}</strong>
+          <small>{text.remaining} {formatBytes(operationalDb?.remaining_bytes ?? null)}</small>
+        </button>
+        <button type="button" className={styles.metricCard} onClick={() => setModal("api")}>
+          <span>{text.api}</span>
+          <strong>{planesReady}/2</strong>
+          <small>{data.api.recent_errors_60m.http_5xx ?? "—"} {text.serverErrors} · {data.operations.open_incidents ?? "—"} Incident</small>
+        </button>
+      </section>
+
+      <section className={styles.contentGrid}>
+        <article className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div><h3>{text.storeStatus}</h3><p>{text.storeStatusDesc}</p></div>
+            <button type="button" onClick={() => setModal("stores")}>{text.view}</button>
+          </div>
+          <div className={styles.storeVisual}>
+            <div className={styles.donut} style={{ background: storeChart }}>
+              <div><strong>{formatNumber(data.stores.online, language)}</strong><span>{text.online}</span></div>
+            </div>
+            <div className={styles.legend}>
+              <div><span className={styles.legendOpen} /><b>{text.open}</b><strong>{formatNumber(data.stores.open, language)}</strong></div>
+              <div><span className={styles.legendClosed} /><b>{text.closed}</b><strong>{formatNumber(data.stores.closed, language)}</strong></div>
+              <div><span className={styles.legendOnline} /><b>{text.online}</b><strong>{formatNumber(data.stores.online, language)}</strong></div>
+            </div>
+          </div>
+        </article>
+
+        <article className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div><h3>{text.databaseUsage}</h3><p>{text.databaseUsageDesc}</p></div>
+            <button type="button" onClick={() => setModal("databases")}>{text.view}</button>
+          </div>
+          <div className={styles.storageList}>
+            <StorageRow label={text.businessDb} role={text.businessRole} source={data.databases.business} />
+            <StorageRow label={text.operationalDb} role={text.operationalRole} source={data.databases.operational} />
+          </div>
+        </article>
+      </section>
+
+      <section className={styles.apiPanel}>
+        <div className={styles.panelHeader}>
+          <div><h3>{text.apiHealth}</h3><p>{text.apiHealthDesc}</p></div>
+          <button type="button" onClick={() => setModal("api")}>{text.view}</button>
+        </div>
+        <div className={styles.apiGrid}>
+          <div className={styles.apiRow}>
+            <span className={`${styles.apiDot} ${data.api.business_plane_ready ? styles.dotReady : styles.dotWarn}`} />
+            <div><strong>{text.businessPlane}</strong><small>{text.response} {data.api.business_latency_ms ?? "—"} ms</small></div>
+            <MiniStatus ready={data.api.business_plane_ready} yes={text.connected} no={text.partial} />
+          </div>
+          <div className={styles.apiRow}>
+            <span className={`${styles.apiDot} ${data.api.operational_plane_ready ? styles.dotReady : styles.dotWarn}`} />
+            <div><strong>{text.operationalPlane}</strong><small>{text.response} {data.api.operational_latency_ms ?? "—"} ms</small></div>
+            <MiniStatus ready={data.api.operational_plane_ready} yes={text.connected} no={text.partial} />
+          </div>
+          <div className={styles.apiStat}><span>{text.errors60}</span><strong>{data.api.recent_errors_60m.total ?? "—"}</strong><small>{data.api.recent_errors_60m.http_5xx ?? "—"} {text.serverErrors}</small></div>
+          <div className={styles.apiStat}><span>{text.incidents}</span><strong>{data.operations.open_incidents ?? "—"}</strong><small>{data.operations.critical_incidents ?? "—"} critical</small></div>
+          <div className={styles.apiStat}><span>{text.commands}</span><strong>{data.operations.pending_commands ?? "—"}</strong><small>Queued / Pending / Delivered</small></div>
         </div>
       </section>
 
-      {error ? (
-        <div className={styles.inlineWarning} role="status">
-          <strong>{text.loadErrorTitle}</strong>
-          <span>{error}</span>
+      <div className={styles.quickLinks}>
+        <Link href="/it-admin/tenants">{text.manageStores}</Link>
+        <Link href="/it-admin/monitoring">{text.monitoring}</Link>
+      </div>
+
+      {modal ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setModal(null)}>
+          <section className={styles.modal} role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <div>
+                <h3>{modal === "stores" ? text.detailsStores : modal === "data" ? text.detailsData : modal === "databases" ? text.detailsDatabases : text.detailsApi}</h3>
+                <span>{formatDate(data.checked_at, language)}</span>
+              </div>
+              <button type="button" aria-label={text.close} onClick={() => setModal(null)}>×</button>
+            </header>
+
+            {modal === "stores" ? (
+              <div className={styles.modalBody}>
+                <div className={styles.detailCards}>
+                  <div><span>{text.stores}</span><strong>{formatNumber(data.stores.total, language)}</strong></div>
+                  <div><span>{text.open}</span><strong>{formatNumber(data.stores.open, language)}</strong></div>
+                  <div><span>{text.closed}</span><strong>{formatNumber(data.stores.closed, language)}</strong></div>
+                  <div><span>{text.online}</span><strong>{formatNumber(data.stores.online, language)}</strong></div>
+                </div>
+                <div className={styles.infoBox}><strong>{text.onlineWindow}</strong><span>{data.online_window_minutes} min · {text.storeStatusDesc}</span></div>
+                <div className={styles.infoBox}><strong>{text.latestSeen}</strong><span>{data.devices.latest_seen_at ? formatDate(data.devices.latest_seen_at, language) : text.noTelemetry}</span></div>
+              </div>
+            ) : null}
+
+            {modal === "data" ? (
+              <div className={styles.modalBody}>
+                <div className={styles.detailCards}>
+                  <div><span>{text.totalRows}</span><strong>{formatNumber(data.data.estimated_rows_total, language)}</strong></div>
+                  <div><span>{text.totalTables}</span><strong>{formatNumber(data.data.user_tables_total, language)}</strong></div>
+                  <div><span>{text.businessDb}</span><strong>{formatNumber(businessDb?.estimated_rows ?? null, language)}</strong></div>
+                  <div><span>{text.operationalDb}</span><strong>{formatNumber(operationalDb?.estimated_rows ?? null, language)}</strong></div>
+                </div>
+                <div className={styles.infoBox}><span>{text.dataNote}</span></div>
+              </div>
+            ) : null}
+
+            {modal === "databases" ? (
+              <div className={styles.modalBody}>
+                <div className={styles.databaseDetailGrid}>
+                  <div className={styles.databaseDetail}>
+                    <h4>{text.businessDb}</h4>
+                    <StorageRow label={text.businessDb} role={text.businessRole} source={data.databases.business} />
+                    <div className={styles.connectionLine}><span>{text.connections}</span><strong>{businessDb?.connections_total ?? "—"}</strong><small>{text.activeConnections} {businessDb?.connections_active ?? "—"}</small></div>
+                    <h5>{text.topTables}</h5>
+                    <DatabaseTable source={data.databases.business} language={language} />
+                  </div>
+                  <div className={styles.databaseDetail}>
+                    <h4>{text.operationalDb}</h4>
+                    <StorageRow label={text.operationalDb} role={text.operationalRole} source={data.databases.operational} />
+                    <div className={styles.connectionLine}><span>{text.connections}</span><strong>{operationalDb?.connections_total ?? "—"}</strong><small>{text.activeConnections} {operationalDb?.connections_active ?? "—"}</small></div>
+                    <h5>{text.topTables}</h5>
+                    <DatabaseTable source={data.databases.operational} language={language} />
+                  </div>
+                </div>
+                <div className={styles.infoBox}><span>{text.quotaNote}</span></div>
+              </div>
+            ) : null}
+
+            {modal === "api" ? (
+              <div className={styles.modalBody}>
+                <div className={styles.detailCards}>
+                  <div><span>{text.businessPlane}</span><strong>{data.api.business_plane_ready ? "OK" : "—"}</strong><small>{data.api.business_latency_ms ?? "—"} ms</small></div>
+                  <div><span>{text.operationalPlane}</span><strong>{data.api.operational_plane_ready ? "OK" : "—"}</strong><small>{data.api.operational_latency_ms ?? "—"} ms</small></div>
+                  <div><span>{text.errors60}</span><strong>{data.api.recent_errors_60m.total ?? "—"}</strong><small>4xx {data.api.recent_errors_60m.http_4xx ?? "—"} · 5xx {data.api.recent_errors_60m.http_5xx ?? "—"}</small></div>
+                  <div><span>{text.incidents}</span><strong>{data.operations.open_incidents ?? "—"}</strong><small>{data.operations.critical_incidents ?? "—"} critical</small></div>
+                </div>
+                {data.api.recent_errors_60m.top_routes.length ? (
+                  <div className={styles.routeList}>{data.api.recent_errors_60m.top_routes.map((route) => <div key={route.route}><code>{route.route}</code><strong>{route.count}</strong></div>)}</div>
+                ) : null}
+                <div className={styles.infoBox}><strong>{text.degradedSources}</strong><span>{data.degraded_sources.length ? data.degraded_sources.join(" · ") : text.none}</span></div>
+              </div>
+            ) : null}
+          </section>
         </div>
       ) : null}
-
-      <section className={styles.metricsGrid} aria-label="IT control plane summary">
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span>{text.controlPlane}</span>
-            <span className={`${styles.metricDot} ${data.health.status === "ready" ? styles.dotOk : styles.dotWarn}`} />
-          </div>
-          <strong>{data.health.status === "ready" ? text.ready : text.degraded}</strong>
-          <small>{data.health.integration.mode}</small>
-        </article>
-
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}><span>{text.stores}</span></div>
-          <strong>{summary.tenantLabel}</strong>
-          <small>{text.activeStores}: {summary.activeTenants}</small>
-        </article>
-
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}><span>{text.monitoredBranches}</span></div>
-          <strong>{data.monitor.totals.branches}</strong>
-          <small>{text.branchWarnings}: {summary.warnings}</small>
-        </article>
-
-        <article className={styles.metricCard}>
-          <div className={styles.metricHeader}><span>{text.apiErrors}</span></div>
-          <strong>{data.monitor.totals.api_errors_recent_total}</strong>
-          <small>{text.serverErrors}: {data.monitor.totals.api_errors_5xx_recent}</small>
-        </article>
-      </section>
-
-      <section className={styles.mainGrid}>
-        <article className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <h3>{text.architecture}</h3>
-              <p>{text.architectureDesc}</p>
-            </div>
-          </div>
-
-          <div className={styles.planeList}>
-            <div className={styles.planeRow}>
-              <div><strong>{text.businessPlane}</strong><span>Auth · Tenant · Store · Branch · Subscription</span></div>
-              <StatusBadge ok={data.health.integration.auth_plane_ready} yes={text.reachable} no={text.unavailable} />
-            </div>
-            <div className={styles.planeRow}>
-              <div><strong>{text.operationalPlane}</strong><span>Device registry · Health · Incident · Remote commands</span></div>
-              <StatusBadge ok={data.health.integration.data_bridge_ready} yes={text.reachable} no={text.unavailable} />
-            </div>
-            <div className={styles.planeRow}>
-              <div><strong>{text.posRuntime}</strong><span>Customer sales runtime</span></div>
-              <span className={`${styles.statusBadge} ${styles.statusNeutral}`}>{text.isolated}</span>
-            </div>
-          </div>
-
-          <div className={styles.noteBox}>{text.telemetryNote}</div>
-        </article>
-
-        <article className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <h3>{text.operations}</h3>
-              <p>{text.operationsDesc}</p>
-            </div>
-            {summary.warnings === 0 ? <span className={`${styles.statusBadge} ${styles.statusOk}`}>{text.ready}</span> : null}
-          </div>
-
-          {data.monitor.degraded_sources?.length ? (
-            <div className={styles.opsWarning}>{text.degradedSources}: {data.monitor.degraded_sources.join(", ")}</div>
-          ) : null}
-
-          <div className={styles.opsGrid}>
-            <div><span>{text.queued}</span><strong>{data.monitor.totals.queued_orders}</strong></div>
-            <div><span>{text.deadLetters}</span><strong>{data.monitor.totals.dead_letters_recent}</strong></div>
-            <div><span>{text.http4xx}</span><strong>{data.monitor.totals.api_errors_4xx_recent}</strong></div>
-            <div><span>{text.conflicts}</span><strong>{data.monitor.totals.api_errors_409_recent}</strong></div>
-            <div><span>{text.http5xx}</span><strong>{data.monitor.totals.api_errors_5xx_recent}</strong></div>
-          </div>
-
-          {summary.warnings === 0 && !data.monitor.degraded_sources?.length ? (
-            <div className={styles.clearState}>{text.noAlerts}</div>
-          ) : null}
-        </article>
-      </section>
-
-      <section className={styles.bottomGrid}>
-        <article className={`${styles.panel} ${styles.storePanel}`}>
-          <div className={styles.panelHeader}>
-            <div>
-              <h3>{text.recentStores}</h3>
-              <p>{text.recentStoresDesc}</p>
-            </div>
-            <Link href="/it-admin/tenants" className={styles.textLink}>{text.viewAll}</Link>
-          </div>
-
-          {summary.recentTenants.length === 0 ? (
-            <div className={styles.emptyState}>{text.emptyStores}</div>
-          ) : (
-            <div className={styles.tableWrap}>
-              <table className={styles.storeTable}>
-                <thead>
-                  <tr>
-                    <th>{text.store}</th>
-                    <th>{text.package}</th>
-                    <th>{text.branches}</th>
-                    <th>{text.devices}</th>
-                    <th>{text.status}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.recentTenants.map((tenant) => (
-                    <tr key={tenant.id}>
-                      <td>
-                        <strong>{tenant.name}</strong>
-                        <span>{tenant.store_code ?? tenant.code}</span>
-                      </td>
-                      <td>{tenant.package_name ?? text.noPackage}</td>
-                      <td>{tenant.active_branch_count}/{tenant.branch_count}</td>
-                      <td>{tenant.active_device_count}/{tenant.device_count}</td>
-                      <td>
-                        <span className={`${styles.statusBadge} ${tenant.is_active ? styles.statusOk : styles.statusNeutral}`}>
-                          {tenant.is_active ? text.active : text.inactive}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </article>
-
-        <aside className={`${styles.panel} ${styles.quickPanel}`}>
-          <div className={styles.panelHeader}><div><h3>{text.quickActions}</h3></div></div>
-          <div className={styles.quickLinks}>
-            <Link href="/it-admin/tenants"><span>01</span><strong>{text.manageStores}</strong><small>Tenant / Store</small></Link>
-            <Link href="/it-admin/monitoring"><span>02</span><strong>{text.openMonitoring}</strong><small>POS Health</small></Link>
-            <Link href="/audit-logs"><span>03</span><strong>{text.auditLogs}</strong><small>Traceability</small></Link>
-          </div>
-        </aside>
-      </section>
     </div>
   );
 }
