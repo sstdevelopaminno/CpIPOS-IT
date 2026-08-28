@@ -281,15 +281,16 @@ export function AppShell({
           <Link
             href="/it-admin"
             className={styles.brandLink}
-            aria-label="SST iPOS IT Control Plane"
+            aria-label="CpIPOS IT Control Plane"
             onClick={() => setMobileOpen(false)}
           >
             <Image
-              src="/brand/sst-ipos-logo.svg"
+              src="/brand/cpipos-symbol-sidebar.png"
               alt=""
-              width={190}
-              height={100}
+              width={78}
+              height={78}
               className={`${styles.brandLogo} ${styles.brandLogoFull}`}
+              style={{ width: 78, height: 78, objectFit: "contain", objectPosition: "center" }}
               priority
             />
             <Image
