@@ -21,10 +21,11 @@ describe("Device Enrollment + MDM P0 contract", () => {
   });
 
   it("reads business enrollment from CpiPOS-001 and operational telemetry from CpiPOS-002", () => {
-    expect(supportRoute).toContain('supabase.from("device_enrollments")');
-    expect(supportRoute).toContain('itSupabase.from("it_devices")');
-    expect(supportRoute).toContain('itSupabase.from("it_device_health_latest")');
-    expect(supportRoute).toContain('itSupabase.from("it_device_commands")');
+    expect(supportRoute).toContain("const { supabase, itSupabase } = await requireItAdmin()");
+    expect(supportRoute).toContain('.from("device_enrollments")');
+    expect(supportRoute).toContain('.from("it_devices")');
+    expect(supportRoute).toContain('.from("it_device_health_latest")');
+    expect(supportRoute).toContain('.from("it_device_commands")');
     expect(supportRoute).toContain('identity_plane: "CpiPOS-001"');
     expect(supportRoute).toContain('operational_plane: "CpiPOS-002"');
   });
@@ -47,8 +48,8 @@ describe("Device Enrollment + MDM P0 contract", () => {
   });
 
   it("keeps Print Agent telemetry separate from generic MDM health", () => {
-    expect(supportRoute).toContain('supabase.from("print_agents")');
-    expect(supportRoute).toContain('supabase.from("print_jobs")');
+    expect(supportRoute).toContain('.from("print_agents")');
+    expect(supportRoute).toContain('.from("print_jobs")');
     expect(supportRoute).toContain("print_agent_state");
     expect(supportRoute).toContain("last_print");
     expect(supportRoute).toContain('print_agent_source: "CpiPOS-001.print_agents/print_jobs"');
