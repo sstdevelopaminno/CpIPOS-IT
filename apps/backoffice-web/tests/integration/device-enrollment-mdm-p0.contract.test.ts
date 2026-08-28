@@ -9,6 +9,7 @@ const supportPage = source("../../src/app/(it-admin)/it-admin/devices/page.tsx")
 const supportRoute = source("../../src/app/api/it-admin/v1/device-support/route.ts");
 const healthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
 const activationRoute = source("../../src/app/api/it-admin/admin/activation-tokens/route.ts");
+const approvalRoute = source("../../src/app/api/it-admin/admin/device-enrollments/[id]/approve/route.ts");
 const commandRoute = source("../../src/app/api/it-admin/v1/device-commands/route.ts");
 
 describe("Device Enrollment + MDM P0 contract", () => {
@@ -56,6 +57,17 @@ describe("Device Enrollment + MDM P0 contract", () => {
     expect(supportPage).toContain("Print Agent");
     expect(supportPage).toContain("Last Print / Error");
     expect(supportPage).toContain("selected.print_agent_state");
+  });
+
+  it("binds activation-token Android enrollment only after IT approval", () => {
+    expect(approvalRoute).toContain('metadata.pairing_source !== "android_activation_token"');
+    expect(approvalRoute).toContain('.from("branch_devices")');
+    expect(approvalRoute).toContain('.contains("metadata", { android_mdm_install_id: installId })');
+    expect(approvalRoute).toContain('enrollment_status: "active"');
+    expect(approvalRoute).toContain('trust_level: "trusted"');
+    expect(approvalRoute).toContain('android_mdm_pair_source: "device_enrollment_approval"');
+    expect(approvalRoute).toContain("android_mdm_install_id: androidBinding.installId");
+    expect(approvalRoute).toContain("approval compensation failed");
   });
 
   it("keeps remote commands scoped and shows ACK execution result", () => {
