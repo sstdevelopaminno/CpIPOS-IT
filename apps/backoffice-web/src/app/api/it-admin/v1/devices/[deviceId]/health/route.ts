@@ -7,18 +7,33 @@ type ItDeviceRow = {
   branch_id: string;
   device_code: string;
   device_name: string;
+  device_type: string | null;
   status: string;
+  is_locked: boolean | null;
+  last_seen_at: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type HealthLatestRow = {
   id: string;
+  pos_device_id: string | null;
+  device_code: string;
   status: string;
-  summary: unknown;
-  machine_id: string;
+  summary: Record<string, unknown> | null;
+  identity: Record<string, unknown> | null;
+  connectivity: Record<string, unknown> | null;
+  system_health: Record<string, unknown> | null;
+  runtime_health: Record<string, unknown> | null;
+  peripheral_health: Record<string, unknown> | null;
+  offline_sale_health: Record<string, unknown> | null;
+  security_signals: Record<string, unknown> | null;
+  machine_id: string | null;
+  hostname: string | null;
   app_version: string | null;
   runtime_version: string | null;
-  last_seen_at: string;
-  captured_at: string;
+  last_error: string | null;
+  last_seen_at: string | null;
+  captured_at: string | null;
 };
 
 type IncidentRow = {
@@ -29,6 +44,7 @@ type IncidentRow = {
   message: string;
   detected_at: string;
   resolved_at: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type CommandRow = {
@@ -38,7 +54,7 @@ type CommandRow = {
   issued_at: string;
   delivered_at: string | null;
   expires_at: string;
-  result: unknown;
+  result: Record<string, unknown> | null;
 };
 
 export async function GET(_req: Request, context: { params: Promise<{ deviceId: string }> }) {
@@ -52,7 +68,7 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
 
     const { data: device, error: deviceError } = await itSupabase
       .from("it_devices")
-      .select("id,tenant_id,branch_id,device_code,device_name,status")
+      .select("id,tenant_id,branch_id,device_code,device_name,device_type,status,is_locked,last_seen_at,metadata")
       .eq("id", id)
       .maybeSingle<ItDeviceRow>();
     if (deviceError) throw new Error(`it_device_query_failed:${deviceError.message}`);
@@ -61,19 +77,21 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
     const [healthResult, incidentResult, commandResult] = await Promise.all([
       itSupabase
         .from("it_device_health_latest")
-        .select("id,status,summary,machine_id,app_version,runtime_version,last_seen_at,captured_at")
+        .select(
+          "id,pos_device_id,device_code,status,summary,identity,connectivity,system_health,runtime_health,peripheral_health,offline_sale_health,security_signals,machine_id,hostname,app_version,runtime_version,last_error,last_seen_at,captured_at"
+        )
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
-        .eq("pos_device_id", device.id)
-        .order("last_seen_at", { ascending: false })
+        .eq("device_code", device.device_code)
+        .order("last_seen_at", { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle<HealthLatestRow>(),
       itSupabase
         .from("it_device_incidents")
-        .select("id,code,severity,title,message,detected_at,resolved_at")
+        .select("id,code,severity,title,message,detected_at,resolved_at,metadata")
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
-        .eq("pos_device_id", device.id)
+        .eq("device_code", device.device_code)
         .order("detected_at", { ascending: false })
         .limit(20)
         .returns<IncidentRow[]>(),
@@ -92,15 +110,18 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
     if (incidentResult.error) throw new Error(`device_incidents_query_failed:${incidentResult.error.message}`);
     if (commandResult.error) throw new Error(`device_commands_query_failed:${commandResult.error.message}`);
 
+    const health = healthResult.data ?? null;
     const response = ok({
       device,
-      health: healthResult.data ?? null,
+      health,
+      telemetry_state: health?.last_seen_at ? "reporting" : "awaiting_heartbeat",
       incidents: incidentResult.data ?? [],
       commands: commandResult.data ?? [],
       integration: {
         mode: "split_supabase",
         operational_plane: "CpiPOS-002",
-        heartbeat_writer: "cpipos_pos_runtime"
+        heartbeat_writer: "cpipos_pos_runtime",
+        ack_contract: "device_command.result.execution_status"
       }
     });
     response.headers.set("cache-control", "no-store");
