@@ -55,13 +55,15 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
       .select("id,tenant_id,branch_id,device_code,device_name,status")
       .eq("id", id)
       .maybeSingle<BranchDeviceRow>();
-    if (deviceError) throw new Error(deviceError.message);
+    if (deviceError) throw new Error(`branch_device_query_failed:${deviceError.message}`);
     if (!device) return fail("device_not_found", "Device was not found.", 404);
 
-    const [{ data: latest }, { data: incidents }, { data: commands }] = await Promise.all([
+    const [healthResult, incidentResult, commandResult] = await Promise.all([
       supabase
         .from("pos_device_health_latest")
         .select("id,status,summary,machine_id,app_version,runtime_version,last_seen_at,captured_at")
+        .eq("tenant_id", device.tenant_id)
+        .eq("branch_id", device.branch_id)
         .eq("pos_device_id", device.id)
         .order("last_seen_at", { ascending: false })
         .limit(1)
@@ -69,6 +71,8 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
       supabase
         .from("pos_device_incidents")
         .select("id,code,severity,title,message,detected_at,resolved_at")
+        .eq("tenant_id", device.tenant_id)
+        .eq("branch_id", device.branch_id)
         .eq("pos_device_id", device.id)
         .order("detected_at", { ascending: false })
         .limit(20)
@@ -76,22 +80,34 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
       supabase
         .from("device_commands")
         .select("id,command_type,status,issued_at,delivered_at,expires_at,result")
+        .eq("tenant_id", device.tenant_id)
+        .eq("branch_id", device.branch_id)
         .eq("pos_device_id", device.id)
         .order("issued_at", { ascending: false })
         .limit(20)
         .returns<CommandRow[]>()
     ]);
 
+    if (healthResult.error) throw new Error(`device_health_query_failed:${healthResult.error.message}`);
+    if (incidentResult.error) throw new Error(`device_incidents_query_failed:${incidentResult.error.message}`);
+    if (commandResult.error) throw new Error(`device_commands_query_failed:${commandResult.error.message}`);
+
     const response = ok({
       device,
-      health: latest ?? null,
-      incidents: incidents ?? [],
-      commands: commands ?? []
+      health: healthResult.data ?? null,
+      incidents: incidentResult.data ?? [],
+      commands: commandResult.data ?? [],
+      integration: {
+        mode: "shared_supabase",
+        heartbeat_writer: "cpipos_pos_runtime"
+      }
     });
+    response.headers.set("cache-control", "no-store");
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
     return response;
   } catch (error) {
     const response = guardItAdminError(error);
+    response.headers.set("cache-control", "no-store");
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
     return response;
   }
