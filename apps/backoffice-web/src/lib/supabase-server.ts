@@ -23,14 +23,18 @@ export async function getSupabaseServerClient() {
 
   return createServerClient(url, publishableKey, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
+      getAll() {
+        return cookieStore.getAll();
       },
-      set(name: string, value: string, options: Record<string, unknown>) {
-        cookieStore.set(name, value, options);
-      },
-      remove(name: string, options: Record<string, unknown>) {
-        cookieStore.set(name, "", options);
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          // Server Components cannot write cookies. Route Handlers and Server
+          // Actions can, which is where login/session mutations occur.
+        }
       }
     }
   });
