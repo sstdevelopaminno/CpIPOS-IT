@@ -44,6 +44,27 @@ type Health = {
   last_seen_at: string | null;
 };
 
+type PrintAgent = {
+  id: string;
+  agent_name: string;
+  status: string;
+  last_seen_at: string | null;
+  last_claim_at: string | null;
+  app_version: string | null;
+  metadata: JsonRecord | null;
+};
+
+type LastPrint = {
+  id: string;
+  printer_id: string | null;
+  status: string;
+  created_at: string;
+  claimed_at: string | null;
+  agent_error_code: string | null;
+  last_error: string | null;
+  updated_at: string;
+};
+
 type SupportDevice = {
   id: string;
   tenant_id: string;
@@ -57,9 +78,12 @@ type SupportDevice = {
   last_seen_at: string | null;
   telemetry_state: "reporting" | "awaiting_heartbeat";
   pairing_state: string;
+  print_agent_state: string;
   health: Health | null;
   enrollment: Enrollment | null;
   last_command: Command | null;
+  print_agent: PrintAgent | null;
+  last_print: LastPrint | null;
 };
 
 type SupportPayload = {
@@ -281,7 +305,7 @@ export default function DeviceSupportPage() {
           <div>
             <h2 style={{ margin: 0 }}>Device Enrollment / MDM Support</h2>
             <p style={{ marginBottom: 0, opacity: 0.75 }}>
-              Pair Android/Print Agent, ดู CPU/RAM/storage/printer/error และติดตาม Remote Command → ACK จาก CpiPOS-002
+              Pair Android/Print Agent, ดู CPU/RAM/storage และแยก Print Agent heartbeat/last print/error พร้อมติดตาม Remote Command → ACK
             </p>
           </div>
           <button type="button" onClick={() => void load(false)} disabled={loading || refreshing}>
@@ -346,7 +370,8 @@ export default function DeviceSupportPage() {
               >
                 <strong>{device.device_code}</strong><br />
                 <small>{device.device_name} · {device.status}</small><br />
-                <small>Pair: {device.pairing_state} · Telemetry: {device.telemetry_state}</small>
+                <small>Pair: {device.pairing_state} · Telemetry: {device.telemetry_state}</small><br />
+                <small>Print Agent: {device.print_agent_state}</small>
               </button>
             ))}
             {!loading && (data?.devices.length ?? 0) === 0 ? <p>ยังไม่มี device registry ใน CpiPOS-002</p> : null}
@@ -367,6 +392,7 @@ export default function DeviceSupportPage() {
                     <div><strong>Telemetry:</strong> {detail?.telemetry_state ?? selected.telemetry_state}</div>
                     <div><strong>Health:</strong> {detail?.health?.status ?? selected.health?.status ?? "no data"}</div>
                     <div><strong>Health last seen:</strong> {fmt(detail?.health?.last_seen_at ?? selected.health?.last_seen_at)}</div>
+                    <div><strong>Print Agent:</strong> {selected.print_agent_state}</div>
                   </div>
                 </div>
 
@@ -375,6 +401,8 @@ export default function DeviceSupportPage() {
                   <article><strong>CPU / RAM / Storage</strong><pre style={{ whiteSpace: "pre-wrap" }}>{pretty(detail?.health?.system_health)}</pre></article>
                   <article><strong>Runtime / Errors</strong><pre style={{ whiteSpace: "pre-wrap" }}>{pretty({ runtime: detail?.health?.runtime_health, last_error: detail?.health?.last_error })}</pre></article>
                   <article><strong>Printer / Peripheral</strong><pre style={{ whiteSpace: "pre-wrap" }}>{pretty(detail?.health?.peripheral_health)}</pre></article>
+                  <article><strong>Print Agent</strong><pre style={{ whiteSpace: "pre-wrap" }}>{pretty(selected.print_agent ? { state: selected.print_agent_state, agent_name: selected.print_agent.agent_name, status: selected.print_agent.status, app_version: selected.print_agent.app_version, last_seen_at: selected.print_agent.last_seen_at, last_claim_at: selected.print_agent.last_claim_at, metadata: selected.print_agent.metadata } : { state: selected.print_agent_state })}</pre></article>
+                  <article><strong>Last Print / Error</strong><pre style={{ whiteSpace: "pre-wrap" }}>{pretty(selected.last_print ? { status: selected.last_print.status, printer_id: selected.last_print.printer_id, created_at: selected.last_print.created_at, claimed_at: selected.last_print.claimed_at, updated_at: selected.last_print.updated_at, agent_error_code: selected.last_print.agent_error_code, last_error: selected.last_print.last_error } : null)}</pre></article>
                   <article><strong>Connectivity</strong><pre style={{ whiteSpace: "pre-wrap" }}>{pretty(detail?.health?.connectivity)}</pre></article>
                   <article><strong>Offline Sale Sync</strong><pre style={{ whiteSpace: "pre-wrap" }}>{pretty(detail?.health?.offline_sale_health)}</pre></article>
                 </div>
