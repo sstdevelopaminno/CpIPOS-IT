@@ -56,6 +56,8 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
   it("keeps IT login credentials inside the IT server boundary", () => {
     expect(loginPage).toContain('fetch("/api/it-admin/auth/login"');
     expect(loginPage).not.toContain("getSupabaseBrowserClient");
+    expect(loginPage).toContain('window.location.assign("/it-admin")');
+    expect(loginPage).not.toContain('router.push("/it-admin")');
     expect(loginRoute).toContain("signInWithPassword");
     expect(loginRoute).toContain('.from("users_profiles")');
     expect(loginRoute).toContain('.eq("id", data.user.id)');
