@@ -5,7 +5,9 @@ import type { NextConfig } from "next";
 const REQUIRED_VERCEL_ENV = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY"
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "IT_SUPABASE_URL",
+  "IT_SUPABASE_SERVICE_ROLE_KEY"
 ] as const;
 
 if (process.env.VERCEL === "1") {
