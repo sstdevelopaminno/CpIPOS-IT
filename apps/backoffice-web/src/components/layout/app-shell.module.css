@@ -13,6 +13,11 @@
   grid-template-columns: 282px minmax(0, 1fr);
   background: #f4f7fb;
   color: var(--it-text);
+  transition: grid-template-columns 180ms ease;
+}
+
+.shellCollapsed {
+  grid-template-columns: 88px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -21,53 +26,140 @@
   z-index: 40;
   height: 100vh;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   display: flex;
   flex-direction: column;
   gap: 22px;
-  padding: 22px 16px 18px;
+  padding: 20px 16px 18px;
   color: #f8fafc;
   background:
     radial-gradient(circle at 22% -5%, rgba(54, 118, 246, 0.22), transparent 34%),
     linear-gradient(180deg, #12243a 0%, var(--it-sidebar) 58%, #0b1726 100%);
   border-right: 1px solid #182a40;
+  transition: padding 180ms ease, gap 180ms ease, transform 190ms ease;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.sidebarCollapsed {
+  gap: 15px;
+  padding: 18px 10px 16px;
 }
 
 .brandBlock {
+  position: relative;
   display: grid;
-  gap: 12px;
-  padding: 0 8px 14px;
+  justify-items: center;
+  gap: 7px;
+  padding: 0 8px 16px;
+  text-align: center;
   border-bottom: 1px solid var(--it-sidebar-border);
 }
 
 .brandLink {
-  width: fit-content;
-  min-height: 44px;
-  display: inline-flex;
+  width: 100%;
+  min-height: 92px;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .brandLogo {
-  width: 148px;
-  height: 44px;
+  display: block;
   object-fit: contain;
-  object-position: left center;
+  object-position: center;
+}
+
+.brandLogoFull {
+  width: 190px;
+  height: 100px;
+  object-fit: cover;
+  object-position: center 56%;
+}
+
+.brandLogoCompact {
+  display: none;
+  width: 52px;
+  height: 52px;
 }
 
 .brandCopy {
   display: grid;
-  gap: 2px;
+  justify-items: center;
+  gap: 3px;
+  width: 100%;
+  text-align: center;
 }
 
 .brandCopy strong {
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 800;
   line-height: 1.3;
   letter-spacing: 0.01em;
 }
 
 .brandCopy span {
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.45;
   color: var(--it-sidebar-muted);
+}
+
+.sidebarToggle {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  color: #d5dfec;
+  background: rgba(7, 18, 31, 0.46);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.sidebarToggle:hover {
+  color: #ffffff;
+  border-color: rgba(132, 168, 255, 0.34);
+  background: rgba(47, 109, 246, 0.28);
+}
+
+.sidebarToggle:focus-visible {
+  outline: 2px solid #86a8ff;
+  outline-offset: 2px;
+}
+
+.sidebarCollapsed .brandBlock {
+  gap: 9px;
+  padding: 0 0 14px;
+}
+
+.sidebarCollapsed .brandLink {
+  min-height: 56px;
+}
+
+.sidebarCollapsed .brandLogoFull,
+.sidebarCollapsed .brandCopy {
+  display: none;
+}
+
+.sidebarCollapsed .brandLogoCompact {
+  display: block;
+}
+
+.sidebarCollapsed .sidebarToggle {
+  position: static;
+  width: 34px;
+  height: 34px;
 }
 
 .navigation {
@@ -92,21 +184,21 @@
 
 .navGroupItems {
   display: grid;
-  gap: 4px;
+  gap: 5px;
 }
 
 .navItem {
-  min-height: 42px;
+  min-height: 48px;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 9px;
+  padding: 9px 11px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 11px;
   color: #c8d4e4;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 700;
   line-height: 1.35;
   transition: background 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
@@ -142,8 +234,8 @@
 }
 
 .navIcon {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -155,7 +247,7 @@
 }
 
 .soonBadge {
-  padding: 3px 5px;
+  padding: 4px 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   color: #8294aa;
@@ -164,6 +256,36 @@
   line-height: 1;
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+.sidebarCollapsed .navigation {
+  gap: 12px;
+}
+
+.sidebarCollapsed .navGroup {
+  gap: 4px;
+}
+
+.sidebarCollapsed .navGroupLabel,
+.sidebarCollapsed .navLabel,
+.sidebarCollapsed .soonBadge,
+.sidebarCollapsed .sidebarFooter {
+  display: none;
+}
+
+.sidebarCollapsed .navItem {
+  width: 56px;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  padding: 9px;
+  border-radius: 12px;
+}
+
+.sidebarCollapsed .navItemActive {
+  box-shadow: inset 3px 0 0 #5d8cff;
 }
 
 .sidebarFooter {
@@ -353,8 +475,20 @@
     grid-template-columns: 248px minmax(0, 1fr);
   }
 
+  .shellCollapsed {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+
   .sidebar {
     padding-inline: 12px;
+  }
+
+  .sidebarCollapsed {
+    padding-inline: 9px;
+  }
+
+  .brandLogoFull {
+    width: 174px;
   }
 
   .topbar {
@@ -367,15 +501,19 @@
 }
 
 @media (max-width: 980px) {
-  .shell {
+  .shell,
+  .shellCollapsed {
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
+  .sidebar,
+  .sidebarCollapsed {
     position: fixed;
     inset: 0 auto 0 0;
     width: min(292px, calc(100vw - 46px));
     height: 100dvh;
+    gap: 22px;
+    padding: 20px 16px 18px;
     transform: translateX(-102%);
     transition: transform 190ms ease;
     box-shadow: 18px 0 50px rgba(15, 29, 46, 0.24);
@@ -383,6 +521,72 @@
 
   .sidebarOpen {
     transform: translateX(0);
+  }
+
+  .sidebarCollapsed .brandBlock {
+    gap: 7px;
+    padding: 0 8px 16px;
+  }
+
+  .sidebarCollapsed .brandLink {
+    min-height: 92px;
+  }
+
+  .sidebarCollapsed .brandLogoFull,
+  .sidebarCollapsed .brandCopy,
+  .sidebarCollapsed .navGroupLabel,
+  .sidebarCollapsed .navLabel,
+  .sidebarCollapsed .soonBadge,
+  .sidebarCollapsed .sidebarFooter {
+    display: initial;
+  }
+
+  .sidebarCollapsed .brandLogoFull {
+    display: block;
+  }
+
+  .sidebarCollapsed .brandCopy {
+    display: grid;
+  }
+
+  .sidebarCollapsed .brandLogoCompact {
+    display: none;
+  }
+
+  .sidebarCollapsed .navGroupLabel {
+    display: block;
+  }
+
+  .sidebarCollapsed .soonBadge {
+    display: inline-flex;
+  }
+
+  .sidebarCollapsed .sidebarFooter {
+    display: grid;
+  }
+
+  .sidebarCollapsed .navigation {
+    gap: 20px;
+  }
+
+  .sidebarCollapsed .navGroup {
+    gap: 7px;
+  }
+
+  .sidebarCollapsed .navItem {
+    width: auto;
+    min-height: 48px;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    align-items: center;
+    justify-content: initial;
+    margin: 0;
+    padding: 9px 11px;
+    border-radius: 11px;
+  }
+
+  .sidebarToggle {
+    display: none;
   }
 
   .menuButton {
@@ -452,9 +656,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .shell,
   .sidebar,
   .backdrop,
-  .navItem {
+  .navItem,
+  .sidebarToggle {
     transition: none;
   }
 }

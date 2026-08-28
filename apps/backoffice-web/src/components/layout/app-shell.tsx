@@ -3,10 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { LanguageSwitcher } from "@/components/language/language-switcher";
 import type { Language } from "@/lib/i18n";
 import styles from "./app-shell.module.css";
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "cpipos-it-sidebar-collapsed";
 
 export type AppShellNavIcon =
   | "dashboard"
@@ -34,12 +36,12 @@ export type AppShellNavItem = {
 
 function NavIcon({ name }: { name: AppShellNavIcon }) {
   const common = {
-    width: 18,
-    height: 18,
+    width: 21,
+    height: 21,
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
-    strokeWidth: 1.8,
+    strokeWidth: 1.9,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
     "aria-hidden": true
@@ -169,6 +171,24 @@ function NavIcon({ name }: { name: AppShellNavIcon }) {
   );
 }
 
+function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={collapsed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} />
+    </svg>
+  );
+}
+
 function matchesPath(pathname: string, href: string) {
   if (href === "/it-admin") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -199,6 +219,15 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
+    } catch {
+      // Storage can be unavailable in hardened/private browser contexts.
+    }
+  }, []);
 
   const groups = useMemo(() => {
     const ordered = new Map<string, AppShellNavItem[]>();
@@ -221,8 +250,20 @@ export function AppShell({
 
   const dashboardItem = nav.find((item) => item.href === "/it-admin") ?? null;
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // Keep the in-memory preference when storage is unavailable.
+      }
+      return next;
+    });
+  };
+
   return (
-    <div className={styles.shell}>
+    <div className={`${styles.shell} ${sidebarCollapsed ? styles.shellCollapsed : ""}`}>
       <button
         type="button"
         className={`${styles.backdrop} ${mobileOpen ? styles.backdropVisible : ""}`}
@@ -232,15 +273,48 @@ export function AppShell({
         onClick={() => setMobileOpen(false)}
       />
 
-      <aside className={`${styles.sidebar} ${mobileOpen ? styles.sidebarOpen : ""}`} aria-label="IT Admin navigation">
+      <aside
+        className={`${styles.sidebar} ${sidebarCollapsed ? styles.sidebarCollapsed : ""} ${mobileOpen ? styles.sidebarOpen : ""}`}
+        aria-label="IT Admin navigation"
+      >
         <div className={styles.brandBlock}>
-          <Link href="/it-admin" className={styles.brandLink} onClick={() => setMobileOpen(false)}>
-            <Image src="/brand/cpipos-logo.png" alt="CpIPOS" width={148} height={44} className={styles.brandLogo} priority />
+          <Link
+            href="/it-admin"
+            className={styles.brandLink}
+            aria-label="SST iPOS IT Control Plane"
+            onClick={() => setMobileOpen(false)}
+          >
+            <Image
+              src="/brand/sst-ipos-logo.svg"
+              alt=""
+              width={190}
+              height={100}
+              className={`${styles.brandLogo} ${styles.brandLogoFull}`}
+              priority
+            />
+            <Image
+              src="/brand/cpipos-symbol-sidebar.png"
+              alt=""
+              width={52}
+              height={52}
+              className={`${styles.brandLogo} ${styles.brandLogoCompact}`}
+              priority
+            />
           </Link>
           <div className={styles.brandCopy}>
             <strong>IT Control Plane</strong>
             <span>{subtitle}</span>
           </div>
+          <button
+            type="button"
+            className={styles.sidebarToggle}
+            aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarCollapsed ? "ขยายเมนู" : "หุบเมนู"}
+            onClick={toggleSidebar}
+          >
+            <SidebarToggleIcon collapsed={sidebarCollapsed} />
+          </button>
         </div>
 
         <nav className={styles.navigation}>
@@ -252,7 +326,13 @@ export function AppShell({
                   const active = Boolean(item.href && !item.disabled && matchesPath(pathname, item.href));
                   if (!item.href || item.disabled) {
                     return (
-                      <div key={`${group}-${item.label}`} className={`${styles.navItem} ${styles.navItemDisabled}`} aria-disabled="true">
+                      <div
+                        key={`${group}-${item.label}`}
+                        className={`${styles.navItem} ${styles.navItemDisabled}`}
+                        aria-disabled="true"
+                        aria-label={sidebarCollapsed ? item.label : undefined}
+                        title={sidebarCollapsed ? item.label : undefined}
+                      >
                         <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
                         <span className={styles.navLabel}>{item.label}</span>
                         <span className={styles.soonBadge}>{unavailableLabel}</span>
@@ -267,6 +347,8 @@ export function AppShell({
                       onClick={() => setMobileOpen(false)}
                       className={`${styles.navItem} ${active ? styles.navItemActive : ""}`}
                       aria-current={active ? "page" : undefined}
+                      aria-label={sidebarCollapsed ? item.label : undefined}
+                      title={sidebarCollapsed ? item.label : undefined}
                     >
                       <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
                       <span className={styles.navLabel}>{item.label}</span>

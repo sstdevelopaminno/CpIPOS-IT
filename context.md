@@ -118,6 +118,18 @@ Provides:
 - existing language switcher
 - IT role indicator
 
+## Sidebar visual polish batch
+
+When this section is present on `main`, the shared IT Sidebar also includes:
+- SST iPOS logo reused from the POS brand asset `/brand/sst-ipos-logo.svg`
+- logo and `IT Control Plane` / company-backoffice subtitle centered in the expanded Sidebar
+- native Sidebar scrollbar hidden while wheel/touch scrolling remains available
+- desktop collapse/expand control with the preference kept in browser local storage
+- collapsed mode shows navigation icons only; labels remain available through accessible labels/tooltips
+- compact CpIPOS symbol shown when collapsed
+- larger primary navigation icons and labels for improved readability
+- mobile drawer remains full-width navigation even if desktop was previously collapsed
+
 Dashboard:
 - `apps/backoffice-web/src/components/it-admin/it-admin-dashboard.tsx`
 - `apps/backoffice-web/src/components/it-admin/it-admin-dashboard.module.css`
@@ -132,7 +144,7 @@ Dashboard uses existing contracts:
 
 # PHASE 2 — STORE PROVISIONING
 
-Status when this file is present on `main`: **implementation landed with PR #4; verify the live merge SHA and Production deployment before claiming final Production acceptance.**
+Status: **PR #4 merged to `main` at `14da383fac4c9265e9a4f82f5fad7430daa39e52`; Vercel status for that merge commit is success. Production functional acceptance is not complete because authenticated Dashboard smoke still fails.**
 
 Business flow:
 
@@ -222,60 +234,25 @@ Behavior:
 - important actions are audited
 - onboarding ends at Device Enrollment; it does not fake an enrolled device
 
-## Dashboard `Internal server error` hardening included in Phase 2
+## Dashboard `Internal server error` Production smoke status
 
-Observed Production symptom before this batch:
-- IT Auth `/auth/v1/user` returned 200 repeatedly
-- Dashboard APIs failed before any CpiPOS-001/CpiPOS-002 data query reached the databases
+Phase 2 included lazy privileged Supabase clients and safe health diagnostics, and merge commit `14da383f...` deployed successfully.
 
-Root design issue:
-- `requireItAdmin()` eagerly created both privileged Supabase clients even when a route needed only one plane.
-- one unavailable privileged plane could therefore fail unrelated IT APIs before their first query.
+However, on 2026-08-29 the authenticated Production `/it-admin` screenshot still showed:
+- `โหลด Dashboard ไม่สำเร็จ`
+- `Internal server error.`
 
-Fix included with PR #4:
-- authenticate/authorize IT user first
-- lazily instantiate `supabase` (CpiPOS-001) and `itSupabase` (CpiPOS-002) only when a route actually uses them
-- `/api/it-admin/v1/health` reports required configuration as booleans/error codes without exposing secret values
-- missing/degraded plane can be reported as degraded rather than crashing the health probe before diagnosis
-
-Do not guess which secret is missing. Read the health result after Production deploy.
-
-## PR #4 validation evidence before final context-only handoff update
-
-Code batch exact head:
-- `35acb58f9309fcab524fab5b1264e2cd2a4e2e24`
-
-GitHub Actions:
-- run `33195711304`
-- Typecheck: SUCCESS
-- Lint: SUCCESS
-- Test: SUCCESS
-- Production Build: SUCCESS
-
-GitHub/Vercel exact-head status:
-- Vercel: SUCCESS / deployment completed
-- existing project: `cp-ipos-it-web`
-
-The final `context.md` commit may have a newer PR head than the code-batch SHA above. Require exact-head CI/Preview again before merge.
-
-## Production acceptance boundary
-
-Do not create a real Production tenant merely as a smoke test without explicit user approval, because that creates persistent customer/control-plane records.
-
-Safe pre-merge evidence already available:
-- code CI/build green
-- Vercel Preview status green
-- schema CI/drift green
-- Production migration applied and privilege read-back green
-- provisioning ledger still empty after schema installation
-
-After Production merge, authenticated UI smoke still needs to verify actual pages with the IT user's session.
+This is current user-observed Production evidence. Therefore:
+- do not claim Dashboard Production acceptance yet;
+- do not start Phase 3 MDM until this error is diagnosed and resolved;
+- do not guess which env/secret is missing;
+- use the health route/runtime evidence when available and keep fixes server-side without exposing secret values.
 
 ---
 
 # PHASE 3 — DEVICES / MDM
 
-Existing work to reuse after Phase 2 Production verification:
+Existing work to reuse only after Dashboard Production smoke is green:
 
 - PR #5 — Device Enrollment and MDM support console
 - PR #6 — legacy telemetry / pairing / command ACK compatibility bridge
@@ -345,18 +322,18 @@ Reuse existing contracts/components where available.
 
 When this file is on `main`, do these in order:
 
-1. Read this file again and verify the exact live `CpIPOS-IT/main` SHA.
-2. Verify Vercel Production for the PR #4 merge commit on existing `cp-ipos-it-web`.
-3. Smoke test without mutating customer data:
-   - `/it-admin/login` loads
-   - unauthenticated protected IT APIs reject with expected 401/403, not 500
-   - authenticated `/it-admin` Dashboard loads and reports health/degraded state rather than generic crash
-   - `/it-admin/tenants` loads the live store directory
-   - `/it-admin/store-provisioning` loads Starter/Growth package choices and Trial-only flow
-4. Do **not** press final Store Provisioning submit against Production merely for testing. A real tenant/store creation requires explicit user approval.
-5. If Production smoke is green, start **PHASE 3** by inspecting PR #5 and PR #6, their bases/dependencies and live CpiPOS-002 telemetry state.
-6. Refresh/reuse those PRs instead of implementing MDM again from scratch.
-7. Keep deployment batching: complete a meaningful MDM batch before the next Preview/Production cycle.
+1. Verify exact live `CpIPOS-IT/main` and Vercel Production for the Sidebar polish merge commit.
+2. Smoke the Sidebar without mutating data:
+   - SST iPOS logo is centered and readable in expanded mode;
+   - `IT Control Plane` and company-backoffice subtitle are centered;
+   - no visible Sidebar scrollbar while wheel/touch scrolling still works;
+   - desktop collapse shows icons only and can expand again;
+   - menu labels/icons are visibly larger;
+   - mobile navigation remains full-width and usable.
+3. Diagnose and resolve the authenticated `/it-admin` Dashboard `Internal server error` using safe health/runtime evidence. Do not guess secrets or expose their values.
+4. Re-run authenticated Dashboard/Tenants/Store Provisioning smoke without pressing the final provisioning submit.
+5. Only after Production smoke is green, start **PHASE 3** by refreshing/reusing PR #5 and PR #6.
+6. Keep deployment batching: complete a meaningful batch before the next Preview/Production cycle.
 
 ---
 
