@@ -11,6 +11,7 @@ const healthRoute = source("../../src/app/api/it-admin/v1/health/route.ts");
 const deviceHealthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
 const itAdminLayout = source("../../src/app/(it-admin)/layout.tsx");
 const rootPage = source("../../src/app/page.tsx");
+const nextConfig = source("../../next.config.ts");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
 const deviceCommands = source("../../src/lib/device-commands.ts");
 
@@ -43,6 +44,14 @@ describe("IT Admin <-> POS shared-control-plane contract", () => {
     expect(itAdminLayout).toContain('auth.platformRole !== "it_admin"');
     expect(itAdminLayout).toContain('redirect("/it-admin/login")');
     expect(rootPage).toContain('redirect("/it-admin")');
+  });
+
+  it("fails Vercel builds when the shared Supabase environment is incomplete", () => {
+    expect(nextConfig).toContain('process.env.VERCEL === "1"');
+    expect(nextConfig).toContain('"NEXT_PUBLIC_SUPABASE_URL"');
+    expect(nextConfig).toContain('"NEXT_PUBLIC_SUPABASE_ANON_KEY"');
+    expect(nextConfig).toContain('"SUPABASE_SERVICE_ROLE_KEY"');
+    expect(nextConfig).toContain("Missing required CpIPOS IT Admin Vercel environment variables");
   });
 
   it("keeps IT device commands aligned with the POS production command surface", () => {
