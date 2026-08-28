@@ -42,6 +42,11 @@ function getCopy(lang: AppLanguage) {
   };
 }
 
+const fullWidthInputBoxStyle = {
+  gridTemplateColumns: "minmax(0, 1fr)",
+  width: "100%"
+} as const;
+
 export default function ItAdminLoginPage() {
   const router = useRouter();
   const { lang, setLanguage } = useAppLanguage("th");
@@ -115,7 +120,7 @@ export default function ItAdminLoginPage() {
 
         <form className="store-v2-form" onSubmit={handleSubmit}>
           <label htmlFor="email">{copy.emailLabel}</label>
-          <div className="store-v2-input-box">
+          <div className="store-v2-input-box" style={fullWidthInputBoxStyle}>
             <input
               id="email"
               type="email"
@@ -132,7 +137,7 @@ export default function ItAdminLoginPage() {
               spellCheck={false}
               dir="ltr"
               aria-invalid={Boolean(error)}
-              style={{ fontSize: "15px", letterSpacing: 0, textAlign: "left" }}
+              style={{ minWidth: 0, width: "100%", fontSize: "15px", letterSpacing: 0, textAlign: "left" }}
             />
           </div>
           {email.trim() ? (
@@ -151,7 +156,7 @@ export default function ItAdminLoginPage() {
           ) : null}
 
           <label htmlFor="password">{copy.passwordLabel}</label>
-          <div className="store-v2-input-box">
+          <div className="store-v2-input-box" style={fullWidthInputBoxStyle}>
             <input
               id="password"
               type={showPassword ? "text" : "password"}
@@ -163,6 +168,7 @@ export default function ItAdminLoginPage() {
               placeholder={copy.passwordPlaceholder}
               autoComplete="current-password"
               aria-invalid={Boolean(error)}
+              style={{ minWidth: 0, width: "100%" }}
             />
           </div>
           <label
