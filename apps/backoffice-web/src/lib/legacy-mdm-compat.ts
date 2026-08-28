@@ -9,6 +9,7 @@ export type CompatDevice = {
   tenant_id: string;
   branch_id: string;
   device_code: string;
+  last_seen_at?: string | null;
 };
 
 type LegacyDeviceRow = {
@@ -95,15 +96,28 @@ function hasMeaningfulResult(value: unknown): boolean {
 }
 
 async function resolveLegacyDevice(context: CompatContext, device: CompatDevice): Promise<LegacyDeviceRow | null> {
-  const { data, error } = await context.supabase
-    .from("branch_devices")
-    .select("id,tenant_id,branch_id,device_code")
-    .eq("tenant_id", device.tenant_id)
-    .eq("branch_id", device.branch_id)
-    .eq("device_code", device.device_code)
-    .maybeSingle<LegacyDeviceRow>();
+  const [{ data: activeEnrollment, error: enrollmentError }, { data, error }] = await Promise.all([
+    context.supabase
+      .from("device_enrollments")
+      .select("id")
+      .eq("tenant_id", device.tenant_id)
+      .eq("branch_id", device.branch_id)
+      .eq("device_code", device.device_code)
+      .eq("enrollment_status", "active")
+      .limit(1)
+      .maybeSingle<{ id: string }>(),
+    context.supabase
+      .from("branch_devices")
+      .select("id,tenant_id,branch_id,device_code")
+      .eq("tenant_id", device.tenant_id)
+      .eq("branch_id", device.branch_id)
+      .eq("device_code", device.device_code)
+      .maybeSingle<LegacyDeviceRow>()
+  ]);
 
+  if (enrollmentError) throw new Error(`device_enrollment_query_failed:${enrollmentError.message}`);
   if (error) throw new Error(`legacy_device_query_failed:${error.message}`);
+  if (activeEnrollment) return null;
   return data ?? null;
 }
 
@@ -179,17 +193,15 @@ export async function syncLegacyDeviceHealth(context: CompatContext, device: Com
       synced_at: syncedAt
     }));
 
-    const { error } = await context.itSupabase
+    const { error: upsertError } = await context.itSupabase
       .from("it_device_health_latest")
       .upsert(payload, { onConflict: "tenant_id,branch_id,pos_device_id,machine_id" });
-    if (error) throw new Error(`it_health_mirror_failed:${error.message}`);
+    if (upsertError) throw new Error(`it_health_mirror_failed:${upsertError.message}`);
 
-    const newestSeenAt = validHealthRows
-      .map((row) => row.last_seen_at)
-      .filter(Boolean)
-      .sort()
-      .at(-1);
-    if (newestSeenAt) {
+    const newestSeenAt = validHealthRows.map((row) => row.last_seen_at).filter(Boolean).sort().slice(-1)[0];
+    const currentSeenMs = device.last_seen_at ? Date.parse(device.last_seen_at) : Number.NaN;
+    const sourceSeenMs = newestSeenAt ? Date.parse(newestSeenAt) : Number.NaN;
+    if (newestSeenAt && Number.isFinite(sourceSeenMs) && (!Number.isFinite(currentSeenMs) || sourceSeenMs > currentSeenMs)) {
       const { error: deviceUpdateError } = await context.itSupabase
         .from("it_devices")
         .update({ last_seen_at: newestSeenAt, synced_at: syncedAt })
@@ -228,8 +240,8 @@ export async function syncLegacyDeviceHealth(context: CompatContext, device: Com
       synced_at: syncedAt
     }));
 
-    const { error } = await context.itSupabase.from("it_device_incidents").upsert(incidentPayload, { onConflict: "id" });
-    if (error) throw new Error(`it_incident_mirror_failed:${error.message}`);
+    const { error: incidentUpsertError } = await context.itSupabase.from("it_device_incidents").upsert(incidentPayload, { onConflict: "id" });
+    if (incidentUpsertError) throw new Error(`it_incident_mirror_failed:${incidentUpsertError.message}`);
   }
 
   return {
@@ -255,7 +267,7 @@ export async function mirrorLegacyDeviceCommand(
   }
 ) {
   const legacyDevice = await resolveLegacyDevice(context, device);
-  if (!legacyDevice) throw new Error("legacy_device_not_found");
+  if (!legacyDevice) return { source: "none", legacyPosDeviceId: null };
 
   const { error } = await context.supabase.from("device_commands").upsert(
     {
@@ -342,12 +354,7 @@ export async function reconcileLegacyDeviceCommands(context: CompatContext, devi
 
     const { error: updateError } = await context.itSupabase
       .from("it_device_commands")
-      .update({
-        status: nextStatus,
-        delivered_at: legacy.delivered_at,
-        result: legacy.result ?? {},
-        metadata: nextMetadata
-      })
+      .update({ status: nextStatus, delivered_at: legacy.delivered_at, result: legacy.result ?? {}, metadata: nextMetadata })
       .eq("id", legacy.id)
       .eq("tenant_id", device.tenant_id)
       .eq("branch_id", device.branch_id)
