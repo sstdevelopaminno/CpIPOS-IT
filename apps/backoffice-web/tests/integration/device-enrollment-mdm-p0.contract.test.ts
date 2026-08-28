@@ -46,6 +46,17 @@ describe("Device Enrollment + MDM P0 contract", () => {
     expect(supportPage).toContain("Printer / Peripheral");
   });
 
+  it("keeps Print Agent telemetry separate from generic MDM health", () => {
+    expect(supportRoute).toContain('supabase.from("print_agents")');
+    expect(supportRoute).toContain('supabase.from("print_jobs")');
+    expect(supportRoute).toContain("print_agent_state");
+    expect(supportRoute).toContain("last_print");
+    expect(supportRoute).toContain('print_agent_source: "CpiPOS-001.print_agents/print_jobs"');
+    expect(supportPage).toContain("Print Agent");
+    expect(supportPage).toContain("Last Print / Error");
+    expect(supportPage).toContain("selected.print_agent_state");
+  });
+
   it("keeps remote commands scoped and shows ACK execution result", () => {
     expect(commandRoute).toContain("tenant_id, branch_id, and pos_device_id are required");
     expect(commandRoute).toContain('.eq("tenant_id", tenantId)');
