@@ -15,18 +15,19 @@ const nextConfig = source("../../next.config.ts");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
 const deviceCommands = source("../../src/lib/device-commands.ts");
 
-describe("IT Admin <-> POS shared-control-plane contract", () => {
-  it("keeps the monitoring page on the IT Admin API namespace", () => {
+describe("IT Admin <-> POS split-control-plane contract", () => {
+  it("keeps business monitoring on the IT Admin API namespace", () => {
     expect(monitorPage).toContain("/api/it-admin/v1/monitor");
     expect(monitorPage).not.toContain("/api/admin/pos/monitor");
     expect(monitorRoute).toContain("requireItAdmin()");
-    expect(monitorRoute).toContain('mode: "shared_supabase"');
   });
 
-  it("checks the shared Supabase bridge instead of requiring POS runtime secrets", () => {
-    expect(healthRoute).toContain('"pos_device_health_latest"');
-    expect(healthRoute).toContain('"device_commands"');
-    expect(healthRoute).toContain('mode: "shared_supabase"');
+  it("checks both Supabase planes without requiring POS runtime secrets", () => {
+    expect(healthRoute).toContain('"it_device_health_latest"');
+    expect(healthRoute).toContain('"it_device_commands"');
+    expect(healthRoute).toContain('mode: "split_supabase"');
+    expect(healthRoute).toContain('auth_business_plane: "CpiPOS-001"');
+    expect(healthRoute).toContain('it_operational_plane: "CpiPOS-002"');
     expect(healthRoute).not.toContain('"POS_SESSION_HANDOFF_SECRET"');
     expect(healthRoute).not.toContain('"TABLE_QR_SIGNING_SECRET"');
   });
@@ -35,8 +36,9 @@ describe("IT Admin <-> POS shared-control-plane contract", () => {
     expect(deviceHealthRoute).toContain("device_health_query_failed");
     expect(deviceHealthRoute).toContain("device_incidents_query_failed");
     expect(deviceHealthRoute).toContain("device_commands_query_failed");
-    expect(deviceHealthRoute).toContain('.eq("tenant_id", device.tenant_id)');
-    expect(deviceHealthRoute).toContain('.eq("branch_id", device.branch_id)');
+    expect(deviceHealthRoute).toContain('from("it_device_health_latest")');
+    expect(deviceHealthRoute).toContain('from("it_device_incidents")');
+    expect(deviceHealthRoute).toContain('from("it_device_commands")');
   });
 
   it("guards every IT Admin page at the shared server layout", () => {
@@ -46,33 +48,33 @@ describe("IT Admin <-> POS shared-control-plane contract", () => {
     expect(rootPage).toContain('redirect("/it-admin")');
   });
 
-  it("fails Vercel builds when the shared Supabase environment is incomplete", () => {
+  it("fails Vercel builds when either Supabase plane environment is incomplete", () => {
     expect(nextConfig).toContain('process.env.VERCEL === "1"');
     expect(nextConfig).toContain('"NEXT_PUBLIC_SUPABASE_URL"');
     expect(nextConfig).toContain('"NEXT_PUBLIC_SUPABASE_ANON_KEY"');
     expect(nextConfig).toContain('"SUPABASE_SERVICE_ROLE_KEY"');
+    expect(nextConfig).toContain('"IT_SUPABASE_URL"');
+    expect(nextConfig).toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
     expect(nextConfig).toContain("Missing required CpIPOS IT Admin Vercel environment variables");
   });
 
-  it("keeps IT device commands aligned with the POS production command surface", () => {
+  it("keeps IT device commands aligned with the live POS production command surface", () => {
     for (const command of [
       "request_diagnostics_bundle",
-      "request_diagnostics",
       "reload_ui",
-      "restart_app",
-      "test_network",
-      "test_printer",
       "clear_print_queue",
       "restart_local_bridge",
-      "restart_print_service",
       "refresh_config",
-      "check_update",
       "disable_device",
-      "enable_device"
+      "enable_device",
+      "test_printer"
     ]) {
       expect(deviceCommands).toContain(`"${command}"`);
     }
-    expect(deviceCommands).toContain('"restart_print_service"');
+
+    for (const removedCommand of ["request_diagnostics", "restart_app", "test_network", "restart_print_service", "check_update"]) {
+      expect(deviceCommands).not.toContain(`"${removedCommand}"`);
+    }
   });
 
   it("does not return raw internal database errors to API callers", () => {
