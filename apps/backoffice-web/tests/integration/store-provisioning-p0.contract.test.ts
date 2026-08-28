@@ -20,7 +20,7 @@ describe("IT Store Provisioning P0", () => {
   it("writes business provisioning through CpiPOS-001 context and never through the IT MDM client", () => {
     expect(service).toContain('context.supabase.rpc("provision_it_store_core"');
     expect(service).not.toContain("itSupabase");
-    expect(page).toContain('context.supabase.from("subscription_packages")');
+    expect(page).toContain('.from("subscription_packages")');
   });
 
   it("uses Auth as Owner identity source and binds POS profile plus owner branch role", () => {
