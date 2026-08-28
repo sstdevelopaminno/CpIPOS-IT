@@ -109,17 +109,6 @@ async function loadBranchMemberships(userId: string): Promise<BranchMembershipRo
     .filter((row): row is BranchMembershipRow => Boolean(row));
 }
 
-async function loadPlatformRole(userId: string): Promise<PlatformRole | null> {
-  const supabase = getSupabaseServiceClient();
-  const { data } = await supabase
-    .from("users_profiles")
-    .select("platform_role")
-    .eq("id", userId)
-    .maybeSingle<{ platform_role: PlatformRole | null }>();
-
-  return parseRole(data?.platform_role, platformRoles);
-}
-
 function resolveMembership(args: {
   memberships: BranchMembershipRow[];
   preferredTenantId: string | null;
@@ -224,12 +213,29 @@ export async function getAuthContext(input: AuthContextInput = {}): Promise<Auth
     platformRole: parseRole(claims.platform_role, platformRoles) ?? "tenant_user"
   };
 
+  if (!parseRole(claims.platform_role, platformRoles)) {
+    const { data: profile, error: profileError } = await supabase
+      .from("users_profiles")
+      .select("platform_role,is_active")
+      .eq("id", context.userId)
+      .maybeSingle<{ platform_role: PlatformRole | null; is_active: boolean | null }>();
+
+    if (profileError) {
+      throw new Error("Failed to load authenticated user profile.");
+    }
+
+    if (profile?.is_active) {
+      const resolvedPlatformRole = parseRole(profile.platform_role, platformRoles);
+      if (resolvedPlatformRole) {
+        context.platformRole = resolvedPlatformRole;
+      }
+    }
+  }
+
   const shouldResolveMembership =
     requireBranchScope ||
     Boolean(requestedBranchIdFromCookie) ||
-    !context.tenantId ||
-    !context.branchId ||
-    !context.branchRole;
+    (context.platformRole !== "it_admin" && (!context.tenantId || !context.branchId || !context.branchRole));
 
   if (shouldResolveMembership) {
     const memberships = await loadBranchMemberships(context.userId);
@@ -244,13 +250,6 @@ export async function getAuthContext(input: AuthContextInput = {}): Promise<Auth
       context.branchId = resolvedMembership.branch_id;
       context.branchRole = resolvedMembership.role;
     }
-
-    if (!parseRole(claims.platform_role, platformRoles)) {
-      const resolvedPlatformRole = await loadPlatformRole(context.userId);
-      if (resolvedPlatformRole) {
-        context.platformRole = resolvedPlatformRole;
-      }
-    }
   }
 
   if (requireBranchScope) {
@@ -259,4 +258,3 @@ export async function getAuthContext(input: AuthContextInput = {}): Promise<Auth
 
   return context;
 }
-
