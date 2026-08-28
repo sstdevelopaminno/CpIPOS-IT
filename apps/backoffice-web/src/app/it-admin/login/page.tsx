@@ -2,10 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { AppLanguageSwitcher } from "@/components/i18n/app-language-switcher";
 import { useAppLanguage, type AppLanguage } from "@/lib/app-language-client";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 function getCopy(lang: AppLanguage) {
   if (lang === "en") {
@@ -13,8 +11,10 @@ function getCopy(lang: AppLanguage) {
       subtitle: "IT Admin sign in",
       emailLabel: "Email",
       emailPlaceholder: "Enter email",
+      emailPreviewLabel: "Entered email",
       passwordLabel: "Password",
       passwordPlaceholder: "Enter password",
+      showPassword: "Show password",
       submit: "Log in",
       submitting: "Signing in...",
       requiredError: "Please enter email and password.",
@@ -28,8 +28,10 @@ function getCopy(lang: AppLanguage) {
     subtitle: "เข้าสู่ระบบ IT Admin",
     emailLabel: "อีเมล",
     emailPlaceholder: "กรอกอีเมล",
+    emailPreviewLabel: "อีเมลที่กรอก",
     passwordLabel: "รหัสผ่าน",
     passwordPlaceholder: "กรอกรหัสผ่าน",
+    showPassword: "แสดงรหัสผ่าน",
     submit: "ล็อกอิน",
     submitting: "กำลังเข้าสู่ระบบ...",
     requiredError: "กรุณากรอกอีเมลและรหัสผ่าน",
@@ -39,12 +41,17 @@ function getCopy(lang: AppLanguage) {
   };
 }
 
+const fullWidthInputBoxStyle = {
+  gridTemplateColumns: "minmax(0, 1fr)",
+  width: "100%"
+} as const;
+
 export default function ItAdminLoginPage() {
-  const router = useRouter();
   const { lang, setLanguage } = useAppLanguage("th");
   const copy = useMemo(() => getCopy(lang), [lang]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -62,19 +69,29 @@ export default function ItAdminLoginPage() {
     setError("");
 
     try {
-      const supabase = getSupabaseBrowserClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password
+      const response = await fetch("/api/it-admin/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, password }),
+        cache: "no-store"
       });
+      const result = (await response.json().catch(() => null)) as { code?: string } | null;
 
-      if (signInError) {
-        setError(signInError.status === 400 ? copy.invalidCredentialsError : copy.defaultError);
+      if (!response.ok) {
+        if (response.status === 401 || result?.code === "invalid_credentials") {
+          setError(copy.invalidCredentialsError);
+        } else if (response.status === 403 || result?.code === "not_authorized") {
+          setError(copy.notAuthorizedError);
+        } else {
+          setError(copy.defaultError);
+        }
         return;
       }
 
-      router.push("/it-admin");
-      router.refresh();
+      // Force a fresh document request after the Route Handler has written the
+      // Supabase auth cookies. This avoids reusing a cached unauthenticated RSC
+      // navigation state immediately after login.
+      window.location.assign("/it-admin");
     } catch {
       setError(copy.defaultError);
     } finally {
@@ -103,26 +120,46 @@ export default function ItAdminLoginPage() {
 
         <form className="store-v2-form" onSubmit={handleSubmit}>
           <label htmlFor="email">{copy.emailLabel}</label>
-          <div className="store-v2-input-box">
+          <div className="store-v2-input-box" style={fullWidthInputBoxStyle}>
             <input
               id="email"
               type="email"
+              inputMode="email"
               value={email}
               onChange={(event) => {
                 setEmail(event.target.value);
                 if (error) setError("");
               }}
               placeholder={copy.emailPlaceholder}
-              autoComplete="username"
+              autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              dir="ltr"
               aria-invalid={Boolean(error)}
+              style={{ minWidth: 0, width: "100%", fontSize: "15px", letterSpacing: 0, textAlign: "left" }}
             />
           </div>
+          {email.trim() ? (
+            <p
+              aria-live="polite"
+              style={{
+                margin: "-6px 0 2px",
+                color: "#64748b",
+                fontSize: "12px",
+                lineHeight: 1.45,
+                overflowWrap: "anywhere"
+              }}
+            >
+              {copy.emailPreviewLabel}: <span dir="ltr">{email.trim()}</span>
+            </p>
+          ) : null}
 
           <label htmlFor="password">{copy.passwordLabel}</label>
-          <div className="store-v2-input-box">
+          <div className="store-v2-input-box" style={fullWidthInputBoxStyle}>
             <input
               id="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(event) => {
                 setPassword(event.target.value);
@@ -131,8 +168,28 @@ export default function ItAdminLoginPage() {
               placeholder={copy.passwordPlaceholder}
               autoComplete="current-password"
               aria-invalid={Boolean(error)}
+              style={{ minWidth: 0, width: "100%" }}
             />
           </div>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "-4px",
+              fontSize: "12px",
+              color: "#64748b",
+              cursor: "pointer"
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showPassword}
+              onChange={(event) => setShowPassword(event.target.checked)}
+              style={{ width: "16px", height: "16px" }}
+            />
+            {copy.showPassword}
+          </label>
 
           <button type="submit" className="store-v2-login-btn" disabled={loading || !email.trim() || !password}>
             {loading ? copy.submitting : copy.submit}

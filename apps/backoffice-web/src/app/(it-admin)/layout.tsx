@@ -1,20 +1,89 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { AppShell, type AppShellNavItem } from "@/components/layout/app-shell";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth-context";
-import { getCurrentLanguage, t } from "@/lib/i18n";
+import { getCurrentLanguage, t, type Language } from "@/lib/i18n";
 
-const nav = [
-  { href: "/it-admin", key: "dashboard" },
-  { href: "/it-admin/tenants", key: "tenants" },
-  { href: "/tenants", key: "tenants" },
-  { href: "/audit-logs", key: "audit_report" },
-  { href: "/it-admin/packages", key: "packages" },
-  { href: "/it-admin/customer-display", key: "customer_display_devices" },
-  { href: "/it-admin/platform-users", key: "platform_users" },
-  { href: "/it-admin/monitoring", key: "monitoring" },
-  { href: "/it-admin/settings/language", key: "common_settings" }
-] as const;
+const copy = {
+  th: {
+    subtitle: "ระบบหลังบ้านบริษัท",
+    role: "ผู้ดูแล IT",
+    unavailable: "เร็ว ๆ นี้",
+    groups: {
+      overview: "ภาพรวม",
+      customer: "ลูกค้าและร้านค้า",
+      devices: "อุปกรณ์และแอป",
+      commercial: "แพ็กเกจและสิทธิ์",
+      operations: "ปฏิบัติการ",
+      system: "ระบบ"
+    },
+    items: {
+      dashboard: "แดชบอร์ด",
+      tenants: "Tenants / Stores",
+      provisioning: "เปิดร้านใหม่",
+      branches: "สาขา",
+      users: "ผู้ใช้ / บทบาท / สิทธิ์",
+      devices: "Devices / MDM",
+      android: "Android App Rollout",
+      printer: "Printer / Print Agent",
+      packages: "แพ็กเกจ / Subscription",
+      entitlements: "Feature Entitlements",
+      monitoring: "Monitoring",
+      incidents: "Incidents",
+      audit: "Audit Logs",
+      settings: "ตั้งค่า / Security"
+    }
+  },
+  en: {
+    subtitle: "Company backoffice",
+    role: "IT Administrator",
+    unavailable: "Soon",
+    groups: {
+      overview: "Overview",
+      customer: "Customers & Stores",
+      devices: "Devices & Apps",
+      commercial: "Plans & Access",
+      operations: "Operations",
+      system: "System"
+    },
+    items: {
+      dashboard: "Dashboard",
+      tenants: "Tenants / Stores",
+      provisioning: "Store Provisioning",
+      branches: "Branches",
+      users: "Users / Roles / Permissions",
+      devices: "Devices / MDM",
+      android: "Android App Rollout",
+      printer: "Printer / Print Agent",
+      packages: "Packages / Subscriptions",
+      entitlements: "Feature Entitlements",
+      monitoring: "Monitoring",
+      incidents: "Incidents",
+      audit: "Audit Logs",
+      settings: "Settings / Security"
+    }
+  }
+} as const;
+
+function buildNavigation(lang: Language): AppShellNavItem[] {
+  const text = copy[lang];
+  return [
+    { href: "/it-admin", label: text.items.dashboard, group: text.groups.overview, icon: "dashboard" },
+    { href: "/it-admin/tenants", label: text.items.tenants, group: text.groups.customer, icon: "store" },
+    { label: text.items.provisioning, group: text.groups.customer, icon: "provision", disabled: true },
+    { label: text.items.branches, group: text.groups.customer, icon: "branch", disabled: true },
+    { href: "/it-admin/platform-users", label: text.items.users, group: text.groups.customer, icon: "users" },
+    { label: text.items.devices, group: text.groups.devices, icon: "device", disabled: true },
+    { label: text.items.android, group: text.groups.devices, icon: "android", disabled: true },
+    { label: text.items.printer, group: text.groups.devices, icon: "printer", disabled: true },
+    { href: "/it-admin/packages", label: text.items.packages, group: text.groups.commercial, icon: "package" },
+    { label: text.items.entitlements, group: text.groups.commercial, icon: "entitlement", disabled: true },
+    { href: "/it-admin/monitoring", label: text.items.monitoring, group: text.groups.operations, icon: "monitoring" },
+    { label: text.items.incidents, group: text.groups.operations, icon: "incident", disabled: true },
+    { href: "/audit-logs", label: text.items.audit, group: text.groups.operations, icon: "audit" },
+    { href: "/it-admin/settings/language", label: text.items.settings, group: text.groups.system, icon: "settings" }
+  ];
+}
 
 export default async function ItAdminLayout({ children }: { children: ReactNode }) {
   const auth = await getAuthContext({ requireBranchScope: false }).catch(() => null);
@@ -23,15 +92,19 @@ export default async function ItAdminLayout({ children }: { children: ReactNode 
   }
 
   const lang = await getCurrentLanguage();
+  const text = copy[lang];
 
   return (
     <AppShell
       title={t(lang, "it_admin_title")}
-      nav={nav.map((item) => ({ href: item.href, label: t(lang, item.key) }))}
+      subtitle={text.subtitle}
+      nav={buildNavigation(lang)}
       language={lang}
       languageLabel={t(lang, "language")}
       thaiLabel={t(lang, "thai")}
       englishLabel={t(lang, "english")}
+      roleLabel={text.role}
+      unavailableLabel={text.unavailable}
     >
       {children}
     </AppShell>
