@@ -56,7 +56,11 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(loginPage).toContain('fetch("/api/it-admin/auth/login"');
     expect(loginPage).not.toContain("getSupabaseBrowserClient");
     expect(loginRoute).toContain("signInWithPassword");
-    expect(loginRoute).toContain('profile?.platform_role !== "it_admin"');
+    expect(loginRoute).toContain('.from("users_profiles")');
+    expect(loginRoute).toContain('.eq("id", data.user.id)');
+    expect(loginRoute).toContain('!profile?.is_active');
+    expect(loginRoute).toContain('profile.platform_role !== "it_admin"');
+    expect(loginRoute).not.toContain("getPrimarySupabaseServiceClient");
     expect(loginRoute).toContain("signOut()");
     expect(supabaseServer).toContain('"CPIPOS_SUPABASE_URL"');
     expect(supabaseServer).toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY"');

@@ -1,4 +1,3 @@
-import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 function json(body: Record<string, unknown>, status: number) {
@@ -28,23 +27,25 @@ export async function POST(request: Request) {
     return json({ ok: false, code: "invalid_credentials" }, 401);
   }
 
-  const primary = getPrimarySupabaseServiceClient();
-  const { data: profile, error: profileError } = await primary
+  // Use the authenticated session that was just created to read the caller's
+  // own profile. users_profiles RLS explicitly permits id = auth.uid(), so the
+  // login path does not need a service-role client merely to authorize IT Admin.
+  const { data: profile, error: profileError } = await supabase
     .from("users_profiles")
-    .select("platform_role")
+    .select("platform_role,is_active")
     .eq("id", data.user.id)
-    .maybeSingle<{ platform_role: string | null }>();
+    .maybeSingle<{ platform_role: string | null; is_active: boolean | null }>();
 
   if (profileError) {
     await supabase.auth.signOut();
-    console.error("[it-admin-auth] platform role lookup failed", {
+    console.error("[it-admin-auth] own profile lookup failed", {
       user_id: data.user.id,
       error: profileError.message
     });
     return json({ ok: false, code: "auth_profile_lookup_failed" }, 503);
   }
 
-  if (profile?.platform_role !== "it_admin") {
+  if (!profile?.is_active || profile.platform_role !== "it_admin") {
     await supabase.auth.signOut();
     return json({ ok: false, code: "not_authorized" }, 403);
   }
