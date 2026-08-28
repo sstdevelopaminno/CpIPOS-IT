@@ -9,6 +9,7 @@ type ItDeviceRow = {
   device_code: string;
   device_name: string;
   status: string;
+  last_seen_at: string | null;
 };
 
 type HealthLatestRow = {
@@ -69,7 +70,7 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
 
     const { data: device, error: deviceError } = await itSupabase
       .from("it_devices")
-      .select("id,tenant_id,branch_id,device_code,device_name,status")
+      .select("id,tenant_id,branch_id,device_code,device_name,status,last_seen_at")
       .eq("id", id)
       .maybeSingle<ItDeviceRow>();
     if (deviceError) throw new Error(`it_device_query_failed:${deviceError.message}`);
