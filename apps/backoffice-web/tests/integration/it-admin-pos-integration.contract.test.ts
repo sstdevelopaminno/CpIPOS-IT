@@ -62,18 +62,25 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(supabaseServer).toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY"');
   });
 
-  it("keeps non-secret Supabase routing defaults out of the Vercel secret gate", () => {
+  it("keeps non-secret routing defaults in source and validates privileged credentials at runtime", () => {
     expect(envModule).toContain('CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co"');
     expect(envModule).toContain('CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
     expect(envModule).toContain('IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co"');
-    expect(nextConfig).toContain('process.env.VERCEL === "1"');
-    expect(nextConfig).toContain('"SUPABASE_SERVICE_ROLE_KEY"');
-    expect(nextConfig).toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
-    expect(nextConfig).not.toContain('"NEXT_PUBLIC_SUPABASE_URL",');
-    expect(nextConfig).not.toContain('"NEXT_PUBLIC_SUPABASE_ANON_KEY",');
-    expect(nextConfig).not.toContain('"CPIPOS_SUPABASE_URL",');
-    expect(nextConfig).not.toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY",');
-    expect(nextConfig).toContain("Missing required CpIPOS IT Admin Vercel environment variables");
+
+    expect(nextConfig).not.toContain('process.env.VERCEL === "1"');
+    expect(nextConfig).not.toContain('"SUPABASE_SERVICE_ROLE_KEY"');
+    expect(nextConfig).not.toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
+    expect(nextConfig).not.toContain("Missing required CpIPOS IT Admin Vercel environment variables");
+
+    for (const envName of [
+      "CPIPOS_SUPABASE_URL",
+      "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "IT_SUPABASE_URL",
+      "IT_SUPABASE_SERVICE_ROLE_KEY"
+    ]) {
+      expect(healthRoute).toContain(`"${envName}"`);
+    }
   });
 
   it("keeps IT device commands aligned with the live POS production command surface", () => {
