@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { AppLanguageSwitcher } from "@/components/i18n/app-language-switcher";
 import { useAppLanguage, type AppLanguage } from "@/lib/app-language-client";
 
@@ -48,7 +47,6 @@ const fullWidthInputBoxStyle = {
 } as const;
 
 export default function ItAdminLoginPage() {
-  const router = useRouter();
   const { lang, setLanguage } = useAppLanguage("th");
   const copy = useMemo(() => getCopy(lang), [lang]);
   const [email, setEmail] = useState("");
@@ -90,8 +88,10 @@ export default function ItAdminLoginPage() {
         return;
       }
 
-      router.push("/it-admin");
-      router.refresh();
+      // Force a fresh document request after the Route Handler has written the
+      // Supabase auth cookies. This avoids reusing a cached unauthenticated RSC
+      // navigation state immediately after login.
+      window.location.assign("/it-admin");
     } catch {
       setError(copy.defaultError);
     } finally {
