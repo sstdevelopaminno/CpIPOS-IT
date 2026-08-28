@@ -2,6 +2,22 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { readEnv, readRequiredEnv } from "@/lib/env";
 
+type SupabaseCookieToSet = {
+  name: string;
+  value: string;
+  options?: {
+    path?: string;
+    domain?: string;
+    maxAge?: number;
+    expires?: Date;
+    httpOnly?: boolean;
+    secure?: boolean;
+    sameSite?: boolean | "lax" | "strict" | "none";
+    priority?: "low" | "medium" | "high";
+    partitioned?: boolean;
+  };
+};
+
 function readPrimaryAuthUrl() {
   return (
     readEnv("CPIPOS_SUPABASE_URL") ??
@@ -23,14 +39,18 @@ export async function getSupabaseServerClient() {
 
   return createServerClient(url, publishableKey, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
+      getAll() {
+        return cookieStore.getAll();
       },
-      set(name: string, value: string, options: Record<string, unknown>) {
-        cookieStore.set(name, value, options);
-      },
-      remove(name: string, options: Record<string, unknown>) {
-        cookieStore.set(name, "", options);
+      setAll(cookiesToSet: SupabaseCookieToSet[]) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          // Server Components cannot write cookies. Route Handlers and Server
+          // Actions can, which is where login/session mutations occur.
+        }
       }
     }
   });

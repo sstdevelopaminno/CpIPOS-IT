@@ -67,6 +67,15 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(supabaseServer).toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY"');
   });
 
+  it("uses the current Supabase SSR cookie adapter for Next.js sessions", () => {
+    expect(supabaseServer).toContain("getAll()");
+    expect(supabaseServer).toContain("cookieStore.getAll()");
+    expect(supabaseServer).toContain("setAll(cookiesToSet:");
+    expect(supabaseServer).toContain("cookieStore.set(name, value, options)");
+    expect(supabaseServer).not.toContain("get(name: string)");
+    expect(supabaseServer).not.toContain("remove(name: string");
+  });
+
   it("keeps IT admin auth session independent from POS branch membership", () => {
     expect(authContext).toContain('.from("users_profiles")');
     expect(authContext).toContain('.eq("id", context.userId)');
