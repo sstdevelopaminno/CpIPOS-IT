@@ -10,10 +10,14 @@ const monitorRoute = source("../../src/app/api/it-admin/v1/monitor/route.ts");
 const healthRoute = source("../../src/app/api/it-admin/v1/health/route.ts");
 const deviceHealthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
 const itAdminLayout = source("../../src/app/(it-admin)/layout.tsx");
+const loginPage = source("../../src/app/it-admin/login/page.tsx");
+const loginRoute = source("../../src/app/api/it-admin/auth/login/route.ts");
 const rootPage = source("../../src/app/page.tsx");
 const nextConfig = source("../../next.config.ts");
+const envModule = source("../../src/lib/env.ts");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
 const deviceCommands = source("../../src/lib/device-commands.ts");
+const supabaseServer = source("../../src/lib/supabase-server.ts");
 
 describe("IT Admin <-> POS split-control-plane contract", () => {
   it("keeps business monitoring on the IT Admin API namespace", () => {
@@ -48,14 +52,35 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(rootPage).toContain('redirect("/it-admin")');
   });
 
-  it("fails Vercel builds when either Supabase plane environment is incomplete", () => {
-    expect(nextConfig).toContain('process.env.VERCEL === "1"');
-    expect(nextConfig).toContain('"NEXT_PUBLIC_SUPABASE_URL"');
-    expect(nextConfig).toContain('"NEXT_PUBLIC_SUPABASE_ANON_KEY"');
-    expect(nextConfig).toContain('"SUPABASE_SERVICE_ROLE_KEY"');
-    expect(nextConfig).toContain('"IT_SUPABASE_URL"');
-    expect(nextConfig).toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
-    expect(nextConfig).toContain("Missing required CpIPOS IT Admin Vercel environment variables");
+  it("keeps IT login credentials inside the IT server boundary", () => {
+    expect(loginPage).toContain('fetch("/api/it-admin/auth/login"');
+    expect(loginPage).not.toContain("getSupabaseBrowserClient");
+    expect(loginRoute).toContain("signInWithPassword");
+    expect(loginRoute).toContain('profile?.platform_role !== "it_admin"');
+    expect(loginRoute).toContain("signOut()");
+    expect(supabaseServer).toContain('"CPIPOS_SUPABASE_URL"');
+    expect(supabaseServer).toContain('"CPIPOS_SUPABASE_PUBLISHABLE_KEY"');
+  });
+
+  it("keeps non-secret routing defaults in source and validates privileged credentials at runtime", () => {
+    expect(envModule).toContain('CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co"');
+    expect(envModule).toContain('CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
+    expect(envModule).toContain('IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co"');
+
+    expect(nextConfig).not.toContain('process.env.VERCEL === "1"');
+    expect(nextConfig).not.toContain('"SUPABASE_SERVICE_ROLE_KEY"');
+    expect(nextConfig).not.toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
+    expect(nextConfig).not.toContain("Missing required CpIPOS IT Admin Vercel environment variables");
+
+    for (const envName of [
+      "CPIPOS_SUPABASE_URL",
+      "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "IT_SUPABASE_URL",
+      "IT_SUPABASE_SERVICE_ROLE_KEY"
+    ]) {
+      expect(healthRoute).toContain(`"${envName}"`);
+    }
   });
 
   it("keeps IT device commands aligned with the live POS production command surface", () => {

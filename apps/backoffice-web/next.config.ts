@@ -1,21 +1,11 @@
 import type { NextConfig } from "next";
 
 // Deploy marker: production-readiness hardening after database housekeeping (2026-08-08).
-
-const REQUIRED_VERCEL_ENV = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
-  "IT_SUPABASE_URL",
-  "IT_SUPABASE_SERVICE_ROLE_KEY"
-] as const;
-
-if (process.env.VERCEL === "1") {
-  const missing = REQUIRED_VERCEL_ENV.filter((name) => !String(process.env[name] ?? "").trim());
-  if (missing.length > 0) {
-    throw new Error(`Missing required CpIPOS IT Admin Vercel environment variables: ${missing.join(", ")}`);
-  }
-}
+//
+// Supabase service-role credentials are runtime-only server secrets. Do not
+// reject a Vercel build merely because a runtime secret is unavailable to the
+// build process; protected IT APIs still fail closed when those credentials are
+// actually required, and the IT health endpoint reports runtime readiness.
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
