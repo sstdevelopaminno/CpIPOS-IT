@@ -2,16 +2,10 @@ import type { NextConfig } from "next";
 
 // Deploy marker: production-readiness hardening after database housekeeping (2026-08-08).
 
-const REQUIRED_VERCEL_ENV = [
-  "CPIPOS_SUPABASE_URL",
-  "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
-  "IT_SUPABASE_URL",
-  "IT_SUPABASE_SERVICE_ROLE_KEY"
-] as const;
+const REQUIRED_VERCEL_SECRET_ENV = ["SUPABASE_SERVICE_ROLE_KEY", "IT_SUPABASE_SERVICE_ROLE_KEY"] as const;
 
 if (process.env.VERCEL === "1") {
-  const missing = REQUIRED_VERCEL_ENV.filter((name) => !String(process.env[name] ?? "").trim());
+  const missing = REQUIRED_VERCEL_SECRET_ENV.filter((name) => !String(process.env[name] ?? "").trim());
   if (missing.length > 0) {
     throw new Error(`Missing required CpIPOS IT Admin Vercel environment variables: ${missing.join(", ")}`);
   }
