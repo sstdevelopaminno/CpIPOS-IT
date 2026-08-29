@@ -10,7 +10,7 @@ const moduleRoute = source("../../src/app/api/it-admin/v1/modules/[module]/route
 const service = source("../../src/lib/services/it-admin/store-provisioning-service.ts");
 const provisioningPage = source("../../src/app/(it-admin)/it-admin/store-provisioning/page.tsx");
 const tenantsPage = source("../../src/app/(it-admin)/it-admin/tenants/page.tsx");
-const moduleConsole = source("../../src/components/it-admin/it-admin-module-console.tsx");
+const tenantDirectory = source("../../src/components/it-admin/tenant-directory-console.tsx");
 const connectedProvisioning = source("../../src/components/it-admin/connected-store-provisioning.tsx");
 const consoleUi = source("../../src/components/it-admin/store-provisioning-console.tsx");
 const layout = source("../../src/app/(it-admin)/layout.tsx");
@@ -27,9 +27,9 @@ describe("IT Store Provisioning P0", () => {
   });
 
   it("separates the Store directory from the privileged provisioning workflow", () => {
-    expect(tenantsPage).toContain('module="tenants"');
+    expect(tenantsPage).toContain("TenantDirectoryConsole");
     expect(tenantsPage).not.toContain("StoreProvisioningConsole");
-    expect(moduleConsole).toContain('href: "/it-admin/store-provisioning"');
+    expect(tenantDirectory).toContain('href="/it-admin/store-provisioning"');
     expect(provisioningPage).toContain("ConnectedStoreProvisioning");
     expect(connectedProvisioning).toContain("StoreProvisioningConsole");
     expect(connectedProvisioning).toContain("language={language}");
