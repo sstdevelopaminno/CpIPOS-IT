@@ -6,31 +6,41 @@ function source(relativePath: string) {
 }
 
 const route = source("../../src/app/api/it-admin/v1/store-provisioning/route.ts");
+const moduleRoute = source("../../src/app/api/it-admin/v1/modules/[module]/route.ts");
 const service = source("../../src/lib/services/it-admin/store-provisioning-service.ts");
 const provisioningPage = source("../../src/app/(it-admin)/it-admin/store-provisioning/page.tsx");
 const tenantsPage = source("../../src/app/(it-admin)/it-admin/tenants/page.tsx");
+const moduleConsole = source("../../src/components/it-admin/it-admin-module-console.tsx");
+const connectedProvisioning = source("../../src/components/it-admin/connected-store-provisioning.tsx");
 const consoleUi = source("../../src/components/it-admin/store-provisioning-console.tsx");
 const layout = source("../../src/app/(it-admin)/layout.tsx");
+const primaryModuleBridge = source("../../../../supabase/control-plane-functions/cpipos-it-module-primary/index.ts");
 
 describe("IT Store Provisioning P0", () => {
-  it("keeps Store Provisioning behind the shared IT Admin guard", () => {
+  it("keeps Store Provisioning behind shared IT Admin guards", () => {
     expect(route).toContain("requireItAdmin()");
-    expect(provisioningPage).toContain("requireItAdmin()");
+    expect(moduleRoute).toContain("requireItAdmin()");
     expect(route).toContain("x-provisioning-request-id");
+    expect(layout).toContain("getAuthContext({ requireBranchScope: false })");
+    expect(layout).toContain('auth.platformRole !== "it_admin"');
     expect(layout).toContain('href: "/it-admin/store-provisioning"');
   });
 
   it("separates the Store directory from the privileged provisioning workflow", () => {
-    expect(tenantsPage).toContain('href="/it-admin/store-provisioning"');
+    expect(tenantsPage).toContain('module="tenants"');
     expect(tenantsPage).not.toContain("StoreProvisioningConsole");
-    expect(provisioningPage).toContain("StoreProvisioningConsole");
-    expect(provisioningPage).toContain("language={language}");
+    expect(moduleConsole).toContain('href: "/it-admin/store-provisioning"');
+    expect(provisioningPage).toContain("ConnectedStoreProvisioning");
+    expect(connectedProvisioning).toContain("StoreProvisioningConsole");
+    expect(connectedProvisioning).toContain("language={language}");
   });
 
-  it("writes business provisioning through CpiPOS-001 and never through the IT MDM client", () => {
+  it("writes business provisioning through CpiPOS-001 while package reads use the authenticated read-only bridge", () => {
     expect(service).toContain('context.supabase.rpc("provision_it_store_core"');
     expect(service).not.toContain("itSupabase");
-    expect(provisioningPage).toContain('.from("subscription_packages")');
+    expect(primaryModuleBridge).toContain('.from("subscription_packages")');
+    expect(primaryModuleBridge).toContain('module === "packages" || module === "provisioning"');
+    expect(provisioningPage).not.toContain("context.supabase");
   });
 
   it("uses Auth as Owner identity source and binds POS profile plus owner branch role", () => {
