@@ -8,6 +8,7 @@ import {
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { appendItAuditLog } from "@/lib/it-control-plane";
+import { mirrorLegacyDeviceCommand } from "@/lib/legacy-mdm-compat";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
 type DeviceCommandRequestBody = {
@@ -92,6 +93,12 @@ export async function POST(req: Request) {
       if (itUpdateError) throw new Error(`it_device_update_failed:${itUpdateError.message}`);
     }
 
+    const commandMetadata = {
+      source: "cpipos_it_admin",
+      operational_plane: "CpiPOS-002",
+      compatibility_bridge: isImmediate ? "not_required" : "CpiPOS-001.device_commands"
+    };
+
     const { data: commandRow, error: insertError } = await itSupabase
       .from("it_device_commands")
       .insert({
@@ -105,7 +112,7 @@ export async function POST(req: Request) {
         expires_at: new Date(now.getTime() + DEVICE_COMMAND_TTL_MS).toISOString(),
         delivered_at: isImmediate ? now.toISOString() : null,
         result: isImmediate ? { applied: true, primary_plane_updated: true } : {},
-        metadata: { source: "cpipos_it_admin", operational_plane: "CpiPOS-002" }
+        metadata: commandMetadata
       })
       .select("id,command_type,status,issued_at,expires_at,delivered_at")
       .single();
@@ -114,12 +121,48 @@ export async function POST(req: Request) {
       throw new Error(insertError?.message ?? "Failed to issue device command.");
     }
 
+    if (!isImmediate) {
+      try {
+        await mirrorLegacyDeviceCommand(
+          { supabase, itSupabase },
+          device,
+          {
+            id: commandRow.id,
+            command_type: commandType,
+            issued_by_user_id: auth.userId,
+            issued_at: commandRow.issued_at,
+            expires_at: commandRow.expires_at,
+            result: {},
+            metadata: commandMetadata
+          }
+        );
+      } catch (bridgeError) {
+        const bridgeMessage = bridgeError instanceof Error ? bridgeError.message : "legacy_command_bridge_failed";
+        const { error: markFailedError } = await itSupabase
+          .from("it_device_commands")
+          .update({
+            status: "failed",
+            result: { bridge_error: bridgeMessage },
+            metadata: { ...commandMetadata, compatibility_bridge_failed: true }
+          })
+          .eq("id", commandRow.id)
+          .eq("tenant_id", tenantId)
+          .eq("branch_id", branchId)
+          .eq("pos_device_id", device.id);
+        if (markFailedError) {
+          console.error("[it-admin-mdm] failed to mark compatibility command as failed", markFailedError);
+        }
+        throw bridgeError;
+      }
+    }
+
     const auditMetadata = {
       device_id: device.id,
       device_code: device.device_code,
       command_type: commandType,
       immediate: isImmediate,
-      operational_plane: "CpiPOS-002"
+      operational_plane: "CpiPOS-002",
+      compatibility_bridge: isImmediate ? "not_required" : "CpiPOS-001.device_commands"
     };
 
     await Promise.all([
@@ -150,7 +193,11 @@ export async function POST(req: Request) {
 
     const response = ok({
       command: commandRow,
-      integration: { mode: "split_supabase", operational_plane: "CpiPOS-002" }
+      integration: {
+        mode: "split_supabase",
+        operational_plane: "CpiPOS-002",
+        compatibility_bridge: isImmediate ? "not_required" : "CpiPOS-001.device_commands"
+      }
     });
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
     return response;
