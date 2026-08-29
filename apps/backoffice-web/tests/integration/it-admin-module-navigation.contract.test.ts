@@ -6,6 +6,7 @@ function source(relativePath: string) {
 }
 
 const layout = source("../../src/app/(it-admin)/layout.tsx");
+const scrollCss = source("../../src/app/(it-admin)/it-admin-scroll.css");
 const moduleRoute = source("../../src/app/api/it-admin/v1/modules/[module]/route.ts");
 const moduleService = source("../../src/lib/services/it-admin/control-plane-module-service.ts");
 const tenantsPage = source("../../src/app/(it-admin)/it-admin/tenants/page.tsx");
@@ -42,6 +43,14 @@ describe("IT Admin connected module navigation", () => {
     expect(provisioningPage).not.toContain("context.supabase");
     expect(monitoringPage).toContain('module="monitoring"');
     expect(monitoringPage).not.toContain("/api/it-admin/v1/monitor");
+  });
+
+  it("keeps the topbar/sidebar stable while the IT content pane scrolls independently", () => {
+    expect(layout).toContain('import "./it-admin-scroll.css"');
+    expect(scrollCss).toContain('aside[aria-label="IT Admin navigation"] ~ div > main');
+    expect(scrollCss).toContain("overflow-y: auto");
+    expect(scrollCss).toContain("height: 100dvh");
+    expect(scrollCss).toContain("overscroll-behavior: contain");
   });
 
   it("keeps a route-level recovery UI so one module failure cannot blank the whole IT portal", () => {

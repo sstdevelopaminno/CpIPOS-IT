@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth-context";
 import { getCurrentLanguage, t, type Language } from "@/lib/i18n";
+import "./it-admin-scroll.css";
 
 const copy = {
   th: {

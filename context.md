@@ -47,7 +47,7 @@ Vercel usage is cost-sensitive. Batch related UI/API work on one branch and move
 - CpIPOS-IT main: `35c418788ac901a24986f8a603aa6d45243954f4`.
 - PR #20 is the current Production Dashboard bridge/readability release.
 - GitHub Vercel status for `35c41878...` is success.
-- CpiPOS-001 and CpiPOS-002 were live-verified `ACTIVE_HEALTHY` on 2026-08-29.
+- CpiPOS-001 and CpiPOS-002 were live-verified healthy during the current IT work.
 
 ## PR #21 — all-menu Control Plane foundation
 
@@ -72,7 +72,7 @@ Shared module API:
 Primary bridge:
 - CpiPOS-001 Edge Function `cpipos-it-module-primary`
 - function ID `2131ca5c-5075-4c12-9a01-df1bf866e173`
-- current live version before tenant-detail enrichment: 2
+- live version before the current Tenant-detail enrichment: 2
 
 Operational bridge:
 - CpiPOS-002 Edge Function `cpipos-it-module-operational`
@@ -105,35 +105,55 @@ Rules:
 - no IT menu/button should point to `/login/store` on the IT domain;
 - if a future Tenant action needs “Open POS”, resolve the existing POS URL from an approved server-side config/contract only.
 
-Repository search on 2026-08-29 found no `/login/store` reference in CpIPOS-IT.
+Repository search found no `/login/store` reference in CpIPOS-IT.
 
-## Tenants / Stores — first detail pass
+## Tenants / Stores — detail and capacity pass
 
-This is the first menu being polished after the all-menu foundation.
+`/it-admin/tenants` uses the dedicated client-side `TenantDirectoryConsole` and remains read-only. It must not create, reset, suspend, or mutate Production tenant data during smoke testing.
 
-The dedicated `TenantDirectoryConsole` replaces the generic module table for `/it-admin/tenants` and must remain read-only until an explicit mutation contract is designed.
+Authority reused instead of creating new schema:
+- `public.it_admin_tenant_summary_v` already exists on CpiPOS-001 with `security_invoker=true`.
+- It provides tenant/package/contract/branch/device/session/shift summary fields.
+- Package quota fields come from the existing `subscription_packages` authority.
+- Tenant user-role counts come from `user_branch_roles`, counting distinct users per tenant.
+- Active access code / Store Code comes from `tenant_access_codes`; internal tenant code remains `tenants.code` / the summary-view `code` field.
 
-UI requirements implemented in this pass:
-- larger Production-grade Desktop/Tablet typography;
-- header with `เปิดร้านใหม่` and refresh actions;
-- summary cards for total/active/inactive stores, branches, and registered devices;
-- search by store name, Store Code, internal code, or package;
-- active/inactive filter;
-- responsive table;
-- detail modal for Store Code, internal code, package, branch count, device registry count, store status, and last update;
-- links from the detail modal to Branches and Devices/MDM menus;
-- explicit note that registry state is not Online/Health telemetry;
-- loading, empty, error, retry, and refresh states;
-- no `/login/store` link in the IT Tenant UI.
+Tenant directory main surface:
+- summary cards for total stores, active stores, Trial stores, branches, registered devices, and users;
+- search by store name, Store Code, internal code, Owner, package, or contract state;
+- active/inactive store filter;
+- table shows Package + Contract, active/total branches, active/total registered devices, distinct users, Active POS Sessions, Open Shifts, and store status;
+- loading, empty, error, retry, refresh states;
+- no `/login/store` link.
 
-Current Tenant data is served by the authenticated CpiPOS-001 module bridge and is real Production control-plane data, not hard-coded test numbers.
+Tenant detail modal:
+- Store Code / internal code / Owner / last update;
+- Package / package code / quota mode;
+- contract status/start/end;
+- branch, device, and user usage versus package quota;
+- Owner/Manager/Staff distinct-user counts;
+- monthly bill limit, package storage limit, retention months when defined;
+- Active POS Sessions and Open Shifts runtime snapshot;
+- links to Branches and Devices/MDM.
 
-Existing CpiPOS-001 authority discovered and preferred for later Tenant enrichment:
-- `public.it_admin_tenant_summary_v` already exists with `security_invoker=true` and exposes tenant/package/contract/branch/device/session/shift summary fields.
-- Do not create a replacement tenant-summary schema/view unless the existing authority cannot satisfy a documented requirement.
-- Live read-only verification on 2026-08-29 showed 4 tenants: 3 active and 1 inactive. This is a diagnostic snapshot only; UI must query runtime values.
+Semantics:
+- `active_device_count` in the CpiPOS-001 summary view is registry/control-plane state, not Online/Health telemetry.
+- Online/Health must continue to come from real CpiPOS-002 telemetry only.
+- no synthetic health is allowed.
+- no customer order/payment/transaction row contents are returned by the Tenant bridge.
 
-Future Tenant detail enrichment should reuse existing authority to add package/contract and quota/runtime details rather than invent new tables.
+Live read-only diagnostic snapshot during this pass showed 4 tenants (3 active / 1 inactive), with Trial/active/cancelled contract states and existing branch/device/user/session/shift counts. These values are diagnostic only and must never be hard-coded into the UI.
+
+## IT content scrolling
+
+The IT App Shell keeps the Sidebar and Topbar stable while the right-side page content scrolls independently.
+
+Implementation contract:
+- `(it-admin)/it-admin-scroll.css` is imported only by the IT route layout;
+- the IT workspace is constrained to `100dvh` with outer overflow hidden;
+- the direct `<main>` content pane is the vertical scroll container with `overflow-y:auto`, `min-height:0`, stable scrollbar gutter, and contained overscroll;
+- the Sidebar keeps its existing independent scrolling and hidden scrollbar behavior;
+- this must work on Desktop and Tablet and must not modify global layout behavior outside the IT Admin route segment.
 
 ## Dashboard Control Plane
 
@@ -165,9 +185,11 @@ Do not create a second MDM implementation. Real telemetry only.
 ## Immediate next action
 
 1. Verify exact PR #21 head before moving it; do not overwrite concurrent work.
-2. Validate the Tenants detail pass with Typecheck → Lint → Test → Production Build and exact-head Vercel Preview.
-3. Authenticated-smoke `/it-admin/tenants`: real data, search, status filter, detail modal, refresh/error handling, and no full-page server crash.
-4. Confirm `/login/store` remains outside the IT app and no Tenant action points to the IT-domain `/login/store` path.
-5. Keep Tenant mutations read-only in this pass; do not reset/modify FF0001 or other Production tenants for smoke testing.
-6. PR #21 is still Draft due a GitHub connector Ready-for-review bug. Do not bypass the Draft gate with force/direct-main changes. When Ready is available, merge only the exact validated head.
-7. After the Tenants menu is accepted, polish the next menu: Branches, reusing the existing CpiPOS-001 branch authority and module bridge.
+2. Validate the combined Tenant-detail + independent-content-scroll batch with Typecheck → Lint → Test → Production Build and exact-head Vercel Preview.
+3. Ensure the checked-in `cpipos-it-module-primary` Tenant implementation matches the deployed CpiPOS-001 Edge Function before Production acceptance.
+4. Authenticated-smoke `/it-admin/tenants`: real data, search, status filter, contract/quota/runtime modal, refresh/error handling, and content-pane vertical scrolling.
+5. Confirm Topbar/Sidebar remain stable while the right content pane scrolls on Desktop/Tablet.
+6. Confirm `/login/store` remains outside the IT app and no Tenant action points to the IT-domain `/login/store` path.
+7. Keep Tenant mutations read-only; do not reset/modify FF0001 or other Production tenants for smoke testing.
+8. PR #21 is still Draft. Do not bypass the Draft gate with force/direct-main changes. When Ready is available, merge only the exact validated head.
+9. After Tenants is accepted, polish the next menu: Branches, reusing the existing CpiPOS-001 branch authority and module bridge.

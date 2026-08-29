@@ -25,11 +25,18 @@ describe("IT Admin tenant directory", () => {
     expect(tenantsUi).toContain('href="/it-admin/devices"');
   });
 
-  it("reads tenant data through the authenticated primary module bridge", () => {
+  it("enriches tenant detail from the existing IT authority view without exposing credentials", () => {
     expect(primaryBridge).toContain('module === "tenants"');
-    expect(primaryBridge).toContain('admin.from("tenants")');
-    expect(primaryBridge).toContain('admin.from("tenant_access_codes")');
-    expect(primaryBridge).toContain('admin.from("subscription_packages")');
+    expect(primaryBridge).toContain('.from("it_admin_tenant_summary_v")');
+    expect(primaryBridge).toContain('.from("tenant_access_codes")');
+    expect(primaryBridge).toContain('.from("subscription_packages")');
+    expect(primaryBridge).toContain('.from("user_branch_roles")');
+    expect(primaryBridge).toContain("contract_status");
+    expect(primaryBridge).toContain("active_session_count");
+    expect(primaryBridge).toContain("open_shift_count");
     expect(primaryBridge).not.toContain('select("pin_hash');
+    expect(tenantsUi).toContain("การใช้งานเทียบโควตา");
+    expect(tenantsUi).toContain("Active POS sessions");
+    expect(tenantsUi).toContain("Open shifts");
   });
 });
