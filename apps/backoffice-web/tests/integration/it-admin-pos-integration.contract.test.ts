@@ -25,9 +25,10 @@ const primaryDashboardBridge = source("../../../../supabase/control-plane-functi
 const operationalDashboardBridge = source("../../../../supabase/control-plane-functions/cpipos-it-dashboard-operational/index.ts");
 
 describe("IT Admin <-> POS split-control-plane contract", () => {
-  it("keeps business monitoring on the IT Admin API namespace", () => {
-    expect(monitorPage).toContain("/api/it-admin/v1/monitor");
+  it("keeps business monitoring inside the IT Admin Control Plane", () => {
+    expect(monitorPage).toContain('module="monitoring"');
     expect(monitorPage).not.toContain("/api/admin/pos/monitor");
+    expect(monitorPage).not.toContain("/api/it-admin/v1/monitor");
     expect(monitorRoute).toContain("requireItAdmin()");
   });
 

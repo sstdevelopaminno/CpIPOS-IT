@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth-context";
 import { getCurrentLanguage, t, type Language } from "@/lib/i18n";
+import "./it-admin-scroll.css";
 
 const copy = {
   th: {
@@ -71,29 +72,26 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
     { href: "/it-admin", label: text.items.dashboard, group: text.groups.overview, icon: "dashboard" },
     { href: "/it-admin/tenants", label: text.items.tenants, group: text.groups.customer, icon: "store" },
     { href: "/it-admin/store-provisioning", label: text.items.provisioning, group: text.groups.customer, icon: "provision" },
-    { label: text.items.branches, group: text.groups.customer, icon: "branch", disabled: true },
+    { href: "/it-admin/branches", label: text.items.branches, group: text.groups.customer, icon: "branch" },
     { href: "/it-admin/platform-users", label: text.items.users, group: text.groups.customer, icon: "users" },
-    { label: text.items.devices, group: text.groups.devices, icon: "device", disabled: true },
-    { label: text.items.android, group: text.groups.devices, icon: "android", disabled: true },
-    { label: text.items.printer, group: text.groups.devices, icon: "printer", disabled: true },
+    { href: "/it-admin/devices", label: text.items.devices, group: text.groups.devices, icon: "device" },
+    { href: "/it-admin/android", label: text.items.android, group: text.groups.devices, icon: "android" },
+    { href: "/it-admin/printer", label: text.items.printer, group: text.groups.devices, icon: "printer" },
     { href: "/it-admin/packages", label: text.items.packages, group: text.groups.commercial, icon: "package" },
-    { label: text.items.entitlements, group: text.groups.commercial, icon: "entitlement", disabled: true },
+    { href: "/it-admin/entitlements", label: text.items.entitlements, group: text.groups.commercial, icon: "entitlement" },
     { href: "/it-admin/monitoring", label: text.items.monitoring, group: text.groups.operations, icon: "monitoring" },
-    { label: text.items.incidents, group: text.groups.operations, icon: "incident", disabled: true },
-    { href: "/audit-logs", label: text.items.audit, group: text.groups.operations, icon: "audit" },
+    { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
+    { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/settings/language", label: text.items.settings, group: text.groups.system, icon: "settings" }
   ];
 }
 
 export default async function ItAdminLayout({ children }: { children: ReactNode }) {
   const auth = await getAuthContext({ requireBranchScope: false }).catch(() => null);
-  if (!auth || auth.platformRole !== "it_admin") {
-    redirect("/it-admin/login");
-  }
+  if (!auth || auth.platformRole !== "it_admin") redirect("/it-admin/login");
 
   const lang = await getCurrentLanguage();
   const text = copy[lang];
-
   return (
     <AppShell
       title={t(lang, "it_admin_title")}

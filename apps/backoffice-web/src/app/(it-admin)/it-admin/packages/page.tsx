@@ -1,5 +1,5 @@
-import { PackageBillingConsole } from "@/components/it-admin/package-billing-console";
+import { ItAdminModuleConsole } from "@/components/it-admin/it-admin-module-console";
 
 export default function PackagesPage() {
-  return <PackageBillingConsole />;
+  return <ItAdminModuleConsole module="packages" />;
 }
