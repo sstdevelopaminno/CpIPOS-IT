@@ -9,8 +9,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ mod
   const startedAt = Date.now();
   try {
     const { module: rawModule } = await params;
-    const module = parseItAdminModule(rawModule);
-    if (!module) return fail("unknown_it_admin_module", "Unknown IT Admin module.", 404);
+    const moduleName = parseItAdminModule(rawModule);
+    if (!moduleName) return fail("unknown_it_admin_module", "Unknown IT Admin module.", 404);
 
     const context = await requireItAdmin();
     const supabase = await getSupabaseServerClient();
@@ -20,7 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ mod
       throw new ItAdminGuardError("unauthorized", "Authentication is required.", 401);
     }
 
-    const payload = await loadItAdminModule(module, session.access_token);
+    const payload = await loadItAdminModule(moduleName, session.access_token);
     const response = ok(payload);
     response.headers.set("cache-control", "no-store");
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));

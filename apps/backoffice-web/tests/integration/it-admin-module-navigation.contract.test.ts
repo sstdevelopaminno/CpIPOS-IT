@@ -30,7 +30,7 @@ describe("IT Admin connected module navigation", () => {
   it("loads module data through authenticated Control Plane bridges", () => {
     expect(moduleRoute).toContain("requireItAdmin()");
     expect(moduleRoute).toContain("session.access_token");
-    expect(moduleRoute).toContain("loadItAdminModule(module, session.access_token)");
+    expect(moduleRoute).toContain("loadItAdminModule(moduleName, session.access_token)");
     expect(moduleService).toContain("cpipos-it-module-primary");
     expect(moduleService).toContain("cpipos-it-module-operational");
     expect(moduleService).not.toContain("SERVICE_ROLE");
