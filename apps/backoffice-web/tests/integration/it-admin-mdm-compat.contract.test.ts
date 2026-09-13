@@ -6,6 +6,7 @@ function source(relativePath: string) {
 }
 
 const compat = source("../../src/lib/legacy-mdm-compat.ts");
+const deviceCommands = source("../../src/lib/device-commands.ts");
 const healthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
 const commandRoute = source("../../src/app/api/it-admin/v1/device-commands/route.ts");
 const pairingConsole = source("../../src/components/it-admin/device-pairing-console.tsx");
@@ -30,6 +31,28 @@ describe("IT Admin MDM compatibility and pairing contract", () => {
     expect(compat).toContain('from("device_enrollments")');
     expect(compat).toContain('.eq("enrollment_status", "active")');
     expect(compat).toContain("if (activeEnrollment) return null");
+  });
+
+  it("keeps the IT legacy device command contract aligned with CpIPOS production", () => {
+    for (const command of [
+      "request_diagnostics_bundle",
+      "request_diagnostics",
+      "reload_ui",
+      "restart_app",
+      "test_network",
+      "test_printer",
+      "clear_print_queue",
+      "restart_local_bridge",
+      "restart_print_service",
+      "refresh_config",
+      "check_update",
+      "disable_device",
+      "enable_device"
+    ]) {
+      expect(deviceCommands).toContain(`"${command}"`);
+    }
+    expect(deviceCommands).toContain('"restart_print_service"');
+    expect(deviceCommands).toContain("UNSUPPORTED_DEVICE_COMMAND_TYPES");
   });
 
   it("keeps CpiPOS-001 as command authority and reconciles the CpiPOS-002 mirror by primary_command_id", () => {
