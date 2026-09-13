@@ -1,4 +1,4 @@
-﻿node_modules
+node_modules
 .next
 out
 dist
@@ -12,6 +12,7 @@ package-lock.json
 .wrangler
 **/.open-next
 .env*.local
+**/next-env.d.ts
 
 .vercel
 .env*.local

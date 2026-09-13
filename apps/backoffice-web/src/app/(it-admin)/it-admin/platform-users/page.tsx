@@ -1,8 +1,5 @@
+import { ItAdminModuleConsole } from "@/components/it-admin/it-admin-module-console";
+
 export default function PlatformUsersPage() {
-  return (
-    <section className="surface">
-      <h2>Platform Users</h2>
-      <p>จัดการ IT Admin users และสิทธิ์เข้าถึง portal</p>
-    </section>
-  );
+  return <ItAdminModuleConsole module="users" />;
 }

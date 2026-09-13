@@ -20,7 +20,7 @@ If a task touches `sstdevelopaminno/CpIPOS` schema/runtime, read `docs/AI-GUARDR
 
 ## Deployment-efficiency rule
 
-Vercel usage is cost-sensitive. Batch related UI/API work on one branch, validate as much as possible before moving the branch ref, and target roughly one final Preview + one Production deployment for a meaningful IT batch. This does not waive CI/build gates.
+Vercel usage is cost-sensitive. Batch related UI/API work on one branch and move the branch ref only when the batch is ready for CI/Preview. Target roughly one final Preview + one Production deployment for a meaningful batch.
 
 ## Architecture boundaries
 
@@ -37,137 +37,146 @@ Vercel usage is cost-sensitive. Batch related UI/API work on one branch, validat
 ## Existing Vercel project only
 
 - Project: `cp-ipos-it-web`
-- Historical project ID recorded by GitHub/Vercel integration: `prj_9jNjDHyctinDjnvCZ2Ya1zBJs38h`
+- Historical project ID: `prj_9jNjDHyctinDjnvCZ2Ya1zBJs38h`
 - Team ID: `team_ZKmv6uQSU9QUyP08mxAr2YDI`
+- Direct Vercel connector visibility may return 403/404; GitHub `Vercel` exact-commit status remains the release gate.
+- Never create another Vercel project as a workaround.
 
-Do not create another project. The live Vercel connector currently does not enumerate `cp-ipos-it-web` and direct project/runtime-log requests can return 403/404, while GitHub's `Vercel` commit status continues to report Preview/Production successfully. Use exact-head GitHub Vercel status as the release gate until connector visibility is restored; never create a replacement project to work around this.
+## Current Production before PR #21
 
-## Current CpIPOS-IT main before the Dashboard readability/live-bridge batch
+- CpIPOS-IT main: `35c418788ac901a24986f8a603aa6d45243954f4`.
+- PR #20 is the current Production Dashboard bridge/readability release.
+- GitHub Vercel status for `35c41878...` is success.
+- CpiPOS-001 and CpiPOS-002 were live-verified healthy during the current IT work.
 
-- main SHA: `4ff81c82577910f7e19aa78827c43fd53aacaf30`.
-- PR #19 merged: live Control Plane Dashboard foundation + corrected CpIPOS Sidebar symbol.
-- GitHub Vercel Production status for `4ff81c82...`: success.
-- User-authenticated Production screenshot after PR #19 showed the Dashboard UI rendering, but most live metric values were `—`, both database panels reported metric failures, and API/Control Plane showed `0/2`.
-- The failure pattern was consistent with the Dashboard depending on privileged Vercel runtime service-role credentials even though IT login itself no longer depends on those credentials.
+## PR #21 — all-menu Control Plane foundation
 
-## Sidebar branding
+Branch: `feature/all-it-modules-connected-20260829`.
 
-The expanded Sidebar uses the existing CpIPOS symbol asset:
-- `/brand/cpipos-symbol-sidebar.png`
+Purpose:
+- every Sidebar menu has a real route;
+- read-heavy pages use authenticated read-only Control Plane bridges rather than page-level Vercel service-role clients;
+- module failures render inline retry/degraded UI instead of taking down the entire portal;
+- Store Provisioning keeps its existing privileged mutation authority/audit flow;
+- Devices/MDM remains read-only in this foundation and mutation-rich behavior must reuse PR #5/#6.
 
-Do not use the SST iPOS wordmark in the IT Sidebar header. The symbol is centered above `IT Control Plane` and the company-backoffice subtitle. Collapsed mode uses the same symbol only.
+Shared module API:
+- `GET /api/it-admin/v1/modules/[module]`
+- authenticates current CpiPOS-001 IT Admin session;
+- obtains the user access token server-side only;
+- selects the correct data plane server-side;
+- forwards the user bearer to the proper Supabase Edge Function;
+- returns curated rows/summaries only;
+- no service key, access token, PIN hash, raw Android metadata, or audit before/after payload is returned.
 
-## Phase 2 Store Provisioning
+Primary bridge:
+- CpiPOS-001 Edge Function `cpipos-it-module-primary`
+- function ID `2131ca5c-5075-4c12-9a01-df1bf866e173`
+- live version before the current Tenant-detail enrichment: 2
 
-Store Provisioning P0 is on CpIPOS-IT main from PR #4. The CpiPOS-001 provisioning schema authority is installed. Do not create a real Production tenant merely to smoke test; final submit requires explicit approval because it creates persistent customer/control-plane records.
+Operational bridge:
+- CpiPOS-002 Edge Function `cpipos-it-module-operational`
+- function ID `8ef11659-0aa4-4c09-97f8-7813865314b9`
+- current live version: 1
+
+Connected menu routes:
+- `/it-admin`
+- `/it-admin/tenants`
+- `/it-admin/store-provisioning`
+- `/it-admin/branches`
+- `/it-admin/platform-users`
+- `/it-admin/devices`
+- `/it-admin/android`
+- `/it-admin/printer`
+- `/it-admin/packages`
+- `/it-admin/entitlements`
+- `/it-admin/monitoring`
+- `/it-admin/incidents`
+- `/it-admin/audit`
+- `/it-admin/settings/language`
+
+## POS login route separation
+
+`/login/store` is not an IT Control Plane route. A user screenshot on `cp-ipos-it-web.vercel.app/login/store` correctly produced 404 because the IT Vercel app does not own the POS store-login route.
+
+Rules:
+- do not create a duplicate POS login flow inside CpIPOS-IT;
+- do not guess a POS domain;
+- no IT menu/button should point to `/login/store` on the IT domain;
+- if a future Tenant action needs “Open POS”, resolve the existing POS URL from an approved server-side config/contract only.
+
+Repository search found no `/login/store` reference in CpIPOS-IT.
+
+## Tenants / Stores — detail and capacity pass
+
+`/it-admin/tenants` uses the dedicated client-side `TenantDirectoryConsole` and remains read-only. It must not create, reset, suspend, or mutate Production tenant data during smoke testing.
+
+Authority reused instead of creating new schema:
+- `public.it_admin_tenant_summary_v` already exists on CpiPOS-001 with `security_invoker=true`.
+- It provides tenant/package/contract/branch/device/session/shift summary fields.
+- Package quota fields come from the existing `subscription_packages` authority.
+- Tenant user-role counts come from `user_branch_roles`, counting distinct users per tenant.
+- Active access code / Store Code comes from `tenant_access_codes`; internal tenant code remains `tenants.code` / the summary-view `code` field.
+
+Tenant directory main surface:
+- summary cards for total stores, active stores, Trial stores, branches, registered devices, and users;
+- search by store name, Store Code, internal code, Owner, package, or contract state;
+- active/inactive store filter;
+- table shows Package + Contract, active/total branches, active/total registered devices, distinct users, Active POS Sessions, Open Shifts, and store status;
+- loading, empty, error, retry, refresh states;
+- no `/login/store` link.
+
+Tenant detail modal:
+- Store Code / internal code / Owner / last update;
+- Package / package code / quota mode;
+- contract status/start/end;
+- branch, device, and user usage versus package quota;
+- Owner/Manager/Staff distinct-user counts;
+- monthly bill limit, package storage limit, retention months when defined;
+- Active POS Sessions and Open Shifts runtime snapshot;
+- links to Branches and Devices/MDM.
+
+Semantics:
+- `active_device_count` in the CpiPOS-001 summary view is registry/control-plane state, not Online/Health telemetry.
+- Online/Health must continue to come from real CpiPOS-002 telemetry only.
+- no synthetic health is allowed.
+- no customer order/payment/transaction row contents are returned by the Tenant bridge.
+
+Live read-only diagnostic snapshot during this pass showed 4 tenants (3 active / 1 inactive), with Trial/active/cancelled contract states and existing branch/device/user/session/shift counts. These values are diagnostic only and must never be hard-coded into the UI.
+
+## IT content scrolling
+
+The IT App Shell keeps the Sidebar and Topbar stable while the right-side page content scrolls independently.
+
+Implementation contract:
+- `(it-admin)/it-admin-scroll.css` is imported only by the IT route layout;
+- the IT workspace is constrained to `100dvh` with outer overflow hidden;
+- the direct `<main>` content pane is the vertical scroll container with `overflow-y:auto`, `min-height:0`, stable scrollbar gutter, and contained overscroll;
+- the Sidebar keeps its existing independent scrolling and hidden scrollbar behavior;
+- this must work on Desktop and Tablet and must not modify global layout behavior outside the IT Admin route segment.
 
 ## Dashboard Control Plane
 
-Goal: one compact Dashboard that reads real Control Plane aggregates, remains fail-soft per data plane, uses readable Desktop/Tablet typography, and keeps deeper detail inside modal dialogs rather than creating a long page.
+Dashboard uses authenticated read-only bridges:
+- CpiPOS-001 `cpipos-it-dashboard-primary`, function ID `3c058166-11d6-4045-965e-e14c9bc37612`.
+- CpiPOS-002 `cpipos-it-dashboard-operational`, function ID `498c99d5-2edb-4602-b7dd-8a4e3eac321b`.
 
-### Server contract
+Real-data semantics:
+- store open/closed = CpiPOS-001 `tenants.is_active`;
+- store online = CpiPOS-002 `it_devices.last_seen_at` within the configured window;
+- registry Active must never be presented as Online/Healthy without telemetry;
+- database row totals may be approximate PostgreSQL live statistics and must be labelled accordingly.
 
-`GET /api/it-admin/v1/dashboard`
+## Store Provisioning
 
-- authenticates the current CpiPOS-001 IT Admin session first;
-- retrieves the current access token only inside the server route and never returns it to the browser;
-- forwards the token to two read-only Supabase Edge Function bridges;
-- each bridge independently validates the CpiPOS-001 user and requires `users_profiles.is_active=true` plus `platform_role=it_admin` before privileged aggregate reads;
-- CpiPOS-001 bridge reads business/control aggregates only;
-- CpiPOS-002 bridge reads IT/MDM operational aggregates only;
-- service/secret keys stay inside each Supabase Edge Function runtime and are never moved into browser code or committed source;
-- bridge calls use only public project URLs/publishable keys from the IT server plus the authenticated user bearer token;
-- each plane remains fail-soft, so one degraded plane does not turn the whole Dashboard into a generic 500;
-- no customer business row contents or secrets are returned.
-
-### Supabase read-only Dashboard bridges
-
-CpiPOS-001:
-- Edge Function: `cpipos-it-dashboard-primary`
-- live function ID: `3c058166-11d6-4045-965e-e14c9bc37612`
-- live version at this handoff: `1`
-- validates CpiPOS-001 bearer via `auth.getUser`, then checks active IT Admin profile with the project admin client.
-- returns aggregate store counts, database metrics RPC output, and recent POS API-error aggregates.
-
-CpiPOS-002:
-- Edge Function: `cpipos-it-dashboard-operational`
-- live function ID: `498c99d5-2edb-4602-b7dd-8a4e3eac321b`
-- live version at this handoff: `2`
-- validates the CpiPOS-001 bearer against CpiPOS-001 and always reads the caller's `users_profiles` row under authenticated RLS; app metadata alone is not sufficient.
-- requires `is_active=true` and `platform_role=it_admin`, then uses the CpiPOS-002 built-in backend key for aggregate IT reads.
-- returns device/online-store aggregates, incident/command counts, and database metrics RPC output.
-
-Both functions currently use `verify_jwt=false` because CpiPOS-002 cannot natively verify the CpiPOS-001 JWT and the functions implement explicit custom authorization. Missing/invalid bearer returns unauthorized/forbidden before aggregate data is read. Function source is versioned under `supabase/control-plane-functions/` in the IT repo. No writes are performed.
-
-### Dashboard UI readability/layout
-
-- Remove the large bordered `ภาพรวมระบบ` hero/header card.
-- Use a compact plain header directly above the metric cards.
-- Title/subtitle stay on the left; live status/update time and actions stay on the right.
-- Move `จัดการร้านค้า`, `Monitoring`, and `รีเฟรช` into the top header action row; remove the duplicate bottom quick-action strip.
-- Increase primary metric labels/numbers/supporting text, panel headings/descriptions, storage labels, API status text, donut/legend labels, and modal typography.
-- Preserve the compact overall page height; larger type should not become a long full-page report.
-
-### Dashboard main surface
-
-Compact cards/panels show:
-- total/open/closed/online stores;
-- online devices;
-- approximate total rows and table count;
-- CpiPOS-001 used + remaining database capacity;
-- CpiPOS-002 used + remaining database capacity;
-- Control Plane bridge connectivity/response measurements;
-- API errors in the recent 60-minute window;
-- open/critical incidents and pending remote commands.
-
-Details open in modal dialogs:
-- store/online definition and latest device seen;
-- row/table detail;
-- database connection counts and largest tables by size;
-- API error/top-route/degraded-source details.
-
-### Real-data semantics
-
-- Store open/closed = CpiPOS-001 `tenants.is_active`.
-- Store online = at least one CpiPOS-002 `it_devices.last_seen_at` inside the configured 5-minute window.
-- Never convert registry `active` into online/healthy without telemetry.
-- Estimated rows come from PostgreSQL live statistics (`pg_stat_user_tables.n_live_tup`) to avoid expensive `COUNT(*)` across every Production table; UI must label this as approximate.
-- Database used bytes come from `pg_database_size(current_database())`.
-- Current Supabase organization was live-verified as Free plan. Runtime quota display uses the current Free database quota baseline of 500 MiB/project; if the plan changes, update the quota source rather than pretending the quota is dynamically discovered by SQL.
-
-### Live baseline measured during the first Dashboard batch
-
-At approximately 2026-08-29 01:xx ICT:
-- Stores: total 4, open 3, closed 1.
-- CpiPOS-002 devices: 8 total.
-- Stores/devices seen inside 5 minutes at that measurement: 0 / 0; this is telemetry-derived, not a fabricated health state.
-- CpiPOS-001: ~119,229,587 bytes (~114 MiB), ~67,809 estimated rows, 144 user tables.
-- CpiPOS-002: ~16,632,979 bytes (~15.9 MiB), ~324 estimated rows, 82 user tables.
-- Open CpiPOS-002 incidents: 0; critical: 0; pending commands: 0 at measurement time.
-
-These are a handoff snapshot only; Dashboard must query live values rather than hard-code them.
-
-## Database metrics schema support
-
-CpIPOS PR #159: `feat(it-schema): expose read-only database metrics to IT Control Plane`
-
-- exact schema head: `5ca223cac50c38ca5c2f9e6cc2fcd4dde8fca5d3`
-- schema/platform merge commit: `0fd41e1c94191a25569d58968702c9591ecf90c1`
-- base: `agent/fg-ff-platform-normalization`, not POS Production release.
-- files:
-  - `supabase/migrations/20260829011500_it_database_metrics_rpc.sql`
-  - `supabase/trial-data-plane/migrations/20260829011501_it_database_metrics_rpc.sql`
-- function on each plane: `public.get_it_database_metrics()`
-- read-only metrics only; no customer row contents; no POS/order/payment/stock mutation.
-- `anon` execute = false.
-- `authenticated` execute = false.
-- `service_role` execute = true.
-- exact-head CI run `33199179981`: Typecheck/Lint/Test/Primary schema drift/CpiPOS-002 schema drift/Build = SUCCESS.
-- migrations applied successfully to CpiPOS-001 and CpiPOS-002 and privilege read-back passed.
+Store Provisioning P0 is installed and remains the only approved create-store mutation path.
+- opening/smoke-testing the page must never create a Production tenant;
+- final submit creates persistent control-plane records and requires explicit user approval;
+- mutation stays server-side, service-role protected, and audited.
 
 ## Phase 3 — Devices / MDM
 
-Existing PRs to reuse after Dashboard Production acceptance:
+Reuse existing PRs after the read-only navigation/Tenants foundation is accepted:
 - PR #5 — Device Enrollment / MDM support console.
 - PR #6 — telemetry / pairing / command ACK bridge.
 
@@ -175,12 +184,12 @@ Do not create a second MDM implementation. Real telemetry only.
 
 ## Immediate next action
 
-When this file is present on `main`:
-1. Verify exact live CpIPOS-IT main SHA and GitHub Vercel Production status.
-2. Authenticated smoke `/it-admin` and confirm real values populate instead of `—` for both Control Plane bridges.
-3. Confirm current live store totals/open/closed, online telemetry, rows/tables, and CpiPOS-001/CpiPOS-002 storage are queried at runtime rather than copied from the baseline snapshot.
-4. Confirm top Dashboard area is no longer a bordered hero card, typography is readable on Desktop/Tablet, and `จัดการร้านค้า / Monitoring / รีเฟรช` are in the compact top action row.
-5. Open each detail modal; confirm no access token, service key, raw secret, or customer business row content is displayed.
-6. Check CpiPOS-001/CpiPOS-002 Edge Function logs for authorization/query failures if either plane remains degraded.
-7. Do not create a store or synthetic telemetry for smoke testing.
-8. If Dashboard Production smoke is green, proceed to Phase 3 by inspecting/refreshing existing PR #5 and PR #6 on top of current main, batching changes before the next Preview/Production cycle.
+1. Verify exact PR #21 head before moving it; do not overwrite concurrent work.
+2. Validate the combined Tenant-detail + independent-content-scroll batch with Typecheck → Lint → Test → Production Build and exact-head Vercel Preview.
+3. Ensure the checked-in `cpipos-it-module-primary` Tenant implementation matches the deployed CpiPOS-001 Edge Function before Production acceptance.
+4. Authenticated-smoke `/it-admin/tenants`: real data, search, status filter, contract/quota/runtime modal, refresh/error handling, and content-pane vertical scrolling.
+5. Confirm Topbar/Sidebar remain stable while the right content pane scrolls on Desktop/Tablet.
+6. Confirm `/login/store` remains outside the IT app and no Tenant action points to the IT-domain `/login/store` path.
+7. Keep Tenant mutations read-only; do not reset/modify FF0001 or other Production tenants for smoke testing.
+8. PR #21 is still Draft. Do not bypass the Draft gate with force/direct-main changes. When Ready is available, merge only the exact validated head.
+9. After Tenants is accepted, polish the next menu: Branches, reusing the existing CpiPOS-001 branch authority and module bridge.

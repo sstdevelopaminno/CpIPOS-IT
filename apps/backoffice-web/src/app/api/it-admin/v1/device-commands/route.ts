@@ -70,13 +70,27 @@ export async function POST(req: Request) {
     if (deviceError) throw new Error(`it_device_query_failed:${deviceError.message}`);
     if (!device) return fail("device_not_found", "Device was not found for this tenant/branch.", 404);
 
+    // The primary CpIPOS plane is authoritative for command delivery. Confirm that
+    // the mirrored IT device still resolves to the same tenant/branch before queueing.
+    const { data: primaryDevice, error: primaryDeviceError } = await supabase
+      .from("branch_devices")
+      .select("id,tenant_id,branch_id,status")
+      .eq("id", device.id)
+      .eq("tenant_id", tenantId)
+      .eq("branch_id", branchId)
+      .maybeSingle<{ id: string; tenant_id: string; branch_id: string; status: string }>();
+
+    if (primaryDeviceError) throw new Error(`primary_device_query_failed:${primaryDeviceError.message}`);
+    if (!primaryDevice) {
+      return fail("primary_device_not_found", "Device is not linked to the CpIPOS command plane.", 409);
+    }
+
     const now = new Date();
     const isImmediate = isImmediateDeviceCommand(commandType);
 
     if (isImmediate) {
       const nextStatus = commandType === "disable_device" ? "inactive" : "active";
 
-      // CpiPOS-001 remains authoritative for POS admission during migration.
       const { error: primaryUpdateError } = await supabase
         .from("branch_devices")
         .update({ status: nextStatus, updated_at: now.toISOString() })
@@ -92,7 +106,35 @@ export async function POST(req: Request) {
       if (itUpdateError) throw new Error(`it_device_update_failed:${itUpdateError.message}`);
     }
 
-    const { data: commandRow, error: insertError } = await itSupabase
+    // Delivery authority lives on the primary device_commands queue consumed by
+    // CpIPOS heartbeat. it_device_commands below is an operational mirror/audit only.
+    const { data: commandRow, error: primaryInsertError } = await supabase
+      .from("device_commands")
+      .insert({
+        tenant_id: tenantId,
+        branch_id: branchId,
+        pos_device_id: device.id,
+        command_type: commandType,
+        status: isImmediate ? "delivered" : "pending",
+        issued_by_user_id: auth.userId,
+        issued_at: now.toISOString(),
+        expires_at: new Date(now.getTime() + DEVICE_COMMAND_TTL_MS).toISOString(),
+        delivered_at: isImmediate ? now.toISOString() : null,
+        result: isImmediate ? { applied: true, primary_plane_updated: true } : {},
+        metadata: {
+          source: "cpipos_it_admin",
+          authority_plane: "CpiPOS-001",
+          mirror_plane: "CpiPOS-002"
+        }
+      })
+      .select("id,command_type,status,issued_at,expires_at,delivered_at")
+      .single();
+
+    if (primaryInsertError || !commandRow) {
+      throw new Error(primaryInsertError?.message ?? "Failed to issue device command on primary plane.");
+    }
+
+    const { error: mirrorInsertError } = await itSupabase
       .from("it_device_commands")
       .insert({
         tenant_id: tenantId,
@@ -105,13 +147,20 @@ export async function POST(req: Request) {
         expires_at: new Date(now.getTime() + DEVICE_COMMAND_TTL_MS).toISOString(),
         delivered_at: isImmediate ? now.toISOString() : null,
         result: isImmediate ? { applied: true, primary_plane_updated: true } : {},
-        metadata: { source: "cpipos_it_admin", operational_plane: "CpiPOS-002" }
-      })
-      .select("id,command_type,status,issued_at,expires_at,delivered_at")
-      .single();
+        metadata: {
+          source: "cpipos_it_admin",
+          primary_command_id: commandRow.id,
+          delivery_authority: "device_commands"
+        }
+      });
 
-    if (insertError || !commandRow) {
-      throw new Error(insertError?.message ?? "Failed to issue device command.");
+    // A mirror failure must not cancel a command already accepted by the authoritative
+    // delivery queue. Record it in server logs and the primary audit metadata instead.
+    if (mirrorInsertError) {
+      console.error("[it-admin-device-command] operational mirror insert failed", {
+        command_id: commandRow.id,
+        message: mirrorInsertError.message
+      });
     }
 
     const auditMetadata = {
@@ -119,7 +168,9 @@ export async function POST(req: Request) {
       device_code: device.device_code,
       command_type: commandType,
       immediate: isImmediate,
-      operational_plane: "CpiPOS-002"
+      delivery_authority: "CpiPOS-001.device_commands",
+      operational_mirror: "CpiPOS-002.it_device_commands",
+      operational_mirror_ok: !mirrorInsertError
     };
 
     await Promise.all([
@@ -140,7 +191,7 @@ export async function POST(req: Request) {
         branchId,
         actorUserId: auth.userId,
         action: "device_command_issued",
-        targetType: "it_device_commands",
+        targetType: "device_commands",
         targetId: commandRow.id,
         ipAddress: requestMeta.ipAddress,
         userAgent: requestMeta.userAgent,
@@ -150,7 +201,12 @@ export async function POST(req: Request) {
 
     const response = ok({
       command: commandRow,
-      integration: { mode: "split_supabase", operational_plane: "CpiPOS-002" }
+      integration: {
+        mode: "shared_control_plane",
+        delivery_authority: "CpiPOS-001.device_commands",
+        operational_mirror: "CpiPOS-002.it_device_commands",
+        operational_mirror_ok: !mirrorInsertError
+      }
     });
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
     return response;
