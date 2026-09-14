@@ -55,15 +55,15 @@ describe("IT Admin MDM compatibility and pairing contract", () => {
     expect(deviceCommands).toContain("UNSUPPORTED_DEVICE_COMMAND_TYPES");
   });
 
-  it("keeps CpiPOS-001 as command authority and retains the old mirror only for rollback compatibility", () => {
+  it("uses CpiPOS-001 as the only active POS command delivery authority", () => {
+    expect(commandRoute).toContain('from("branch_devices")');
     expect(commandRoute).toContain('from("device_commands")');
-    expect(commandRoute).toContain("primary_command_id: commandRow.id");
-    expect(compat).toContain("primary_command_id");
-    expect(compat).toContain('from("device_commands")');
+    expect(commandRoute).toContain('delivery_authority: "CpiPOS-001.device_commands"');
+    expect(commandRoute).toContain('mode: "single_pos_database"');
+    expect(commandRoute).toContain("reserved_operational_database_is_pos_dependency: false");
+    expect(commandRoute).not.toContain('from("it_device_commands")');
+    expect(commandRoute).not.toContain("appendItAuditLog");
     expect(compat).toContain('from("it_device_commands")');
-    expect(compat).toContain('delivery_authority: "CpiPOS-001.device_commands"');
-    expect(compat).not.toContain('from("device_commands").upsert');
-    expect(compat).not.toContain('nextStatus = "acknowledged"');
   });
 
   it("reads current device health directly from the authoritative CpiPOS-001 tables", () => {
