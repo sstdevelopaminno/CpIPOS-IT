@@ -8,7 +8,8 @@ const sectionLinks = [
   { href: "login-policies", label: "Login Policies" },
   { href: "sessions", label: "Sessions" },
   { href: "shifts", label: "Shifts" },
-  { href: "features", label: "Features" }
+  { href: "features", label: "Features" },
+  { href: "order-kitchen", label: "Order & Kitchen" }
 ] as const;
 
 export function TenantAdminNav({ tenantId }: { tenantId: string }) {
