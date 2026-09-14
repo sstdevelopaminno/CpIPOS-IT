@@ -31,6 +31,7 @@ type DatabaseMetrics = {
 };
 
 type SourceState<T> = {
+  enabled: boolean;
   ready: boolean;
   data: T | null;
   error_code: string | null;
@@ -41,6 +42,13 @@ type DashboardPayload = {
   status: "ready" | "degraded";
   checked_at: string;
   online_window_minutes: number;
+  topology: {
+    mode: "single_pos_database" | "dual_plane";
+    active_database_count: number;
+    reserved_database_count: number;
+    operational_plane_enabled: boolean;
+    authoritative_plane: "CpiPOS-001";
+  };
   quota: {
     plan: "free";
     database_quota_bytes: number;
@@ -67,7 +75,10 @@ type DashboardPayload = {
   };
   api: {
     business_plane_ready: boolean;
+    operational_plane_enabled: boolean;
     operational_plane_ready: boolean;
+    active_planes_total: number;
+    active_planes_ready: number;
     business_latency_ms: number | null;
     operational_latency_ms: number | null;
     recent_errors_60m: {
@@ -90,9 +101,9 @@ type ModalKind = "stores" | "data" | "databases" | "api" | null;
 const copy = {
   th: {
     title: "ภาพรวมระบบ",
-    subtitle: "ข้อมูลสดจาก CpiPOS-001 และ CpiPOS-002 ผ่าน IT Control Plane",
-    ready: "เชื่อมต่อข้อมูลจริง",
-    degraded: "บางส่วนต้องตรวจสอบ",
+    subtitle: "ข้อมูลสดจากฐาน POS หลัก CpiPOS-001 ผ่าน IT Control Plane",
+    ready: "ระบบ POS เชื่อมต่อปกติ",
+    degraded: "ระบบ POS ต้องตรวจสอบ",
     refresh: "รีเฟรช",
     refreshing: "กำลังอัปเดต",
     updated: "อัปเดต",
@@ -105,27 +116,27 @@ const copy = {
     rowsHint: "ประมาณจำนวนแถวจาก PostgreSQL statistics",
     tables: "ตาราง",
     businessDb: "CpiPOS-001",
-    businessRole: "Identity / Business Authority",
-    operationalDb: "CpiPOS-002",
-    operationalRole: "IT / MDM Operations",
+    businessRole: "POS / Business / Device / MDM Authority",
+    operationalDb: "ฐานระบบอื่นในอนาคต",
+    operationalRole: "Reserved · ไม่ใช่ dependency ของ POS",
     used: "ใช้แล้ว",
     remaining: "คงเหลือ",
-    api: "API / Control Plane",
+    api: "POS Control Plane",
     connected: "เชื่อมต่อ",
-    partial: "บางส่วนไม่พร้อม",
+    partial: "ต้องตรวจสอบ",
     view: "ดูรายละเอียด",
     storeStatus: "สถานะร้านค้า",
     storeStatusDesc: "ร้านออนไลน์ = มีอุปกรณ์ส่ง last_seen ภายในช่วงเวลาที่กำหนด",
-    databaseUsage: "การใช้พื้นที่ฐานข้อมูล",
-    databaseUsageDesc: "เทียบกับโควตา Supabase Free 500 MB ต่อโปรเจกต์",
+    databaseUsage: "การใช้พื้นที่ฐานข้อมูล POS",
+    databaseUsageDesc: "CpiPOS-001 เป็นฐานข้อมูลที่ระบบ POS ใช้งานจริงในปัจจุบัน",
     apiHealth: "การเชื่อมต่อและการวัดค่า",
-    apiHealthDesc: "Response time จาก IT Server ไปยัง Control Plane bridge และข้อผิดพลาด API ล่าสุด",
+    apiHealthDesc: "Response time จาก IT Server ไปยัง POS Control Plane และสถานะล่าสุดจากฐานหลัก",
     businessPlane: "CpiPOS-001 API",
-    operationalPlane: "CpiPOS-002 API",
+    operationalPlane: "Future operational API",
     response: "ตอบกลับ",
     errors60: "API errors · 60 นาที",
     serverErrors: "5xx",
-    incidents: "Incident เปิดอยู่",
+    incidents: "Device health alerts",
     commands: "Remote command รอดำเนินการ",
     detailsStores: "รายละเอียดร้านค้า",
     detailsData: "รายละเอียดข้อมูล",
@@ -148,13 +159,17 @@ const copy = {
     loadError: "โหลด Dashboard ไม่สำเร็จ",
     retry: "ลองใหม่",
     manageStores: "จัดการร้านค้า",
-    monitoring: "Monitoring"
+    monitoring: "Monitoring",
+    topology: "โครงสร้างฐานข้อมูล POS",
+    activeDatabase: "ฐานที่ใช้งานจริง",
+    reservedDatabase: "ฐานสำรองสำหรับระบบอื่น",
+    reservedNote: "ฐานข้อมูลที่เตรียมไว้สำหรับระบบอื่นในอนาคตจะไม่ถูกเรียกและไม่ถูกนับเป็น Incident, API failure หรือ POS health จนกว่าจะเปิดใช้งานอย่างชัดเจน"
   },
   en: {
     title: "System overview",
-    subtitle: "Live data from CpiPOS-001 and CpiPOS-002 through the IT Control Plane",
-    ready: "Live data connected",
-    degraded: "Some sources need attention",
+    subtitle: "Live data from the authoritative CpiPOS-001 POS database through the IT Control Plane",
+    ready: "POS control plane healthy",
+    degraded: "POS control plane needs attention",
     refresh: "Refresh",
     refreshing: "Refreshing",
     updated: "Updated",
@@ -167,27 +182,27 @@ const copy = {
     rowsHint: "Estimated rows from PostgreSQL statistics",
     tables: "tables",
     businessDb: "CpiPOS-001",
-    businessRole: "Identity / Business Authority",
-    operationalDb: "CpiPOS-002",
-    operationalRole: "IT / MDM Operations",
+    businessRole: "POS / Business / Device / MDM Authority",
+    operationalDb: "Future system database",
+    operationalRole: "Reserved · not a POS dependency",
     used: "Used",
     remaining: "Remaining",
-    api: "API / Control Plane",
+    api: "POS Control Plane",
     connected: "Connected",
-    partial: "Partially unavailable",
+    partial: "Needs attention",
     view: "View details",
     storeStatus: "Store status",
     storeStatusDesc: "Online means at least one device reported last_seen within the configured window",
-    databaseUsage: "Database usage",
-    databaseUsageDesc: "Compared with the Supabase Free 500 MB database quota per project",
+    databaseUsage: "POS database usage",
+    databaseUsageDesc: "CpiPOS-001 is the database currently used by the POS platform",
     apiHealth: "Connectivity and measurements",
-    apiHealthDesc: "IT Server to Control Plane bridge response time and recent API errors",
+    apiHealthDesc: "IT Server to POS Control Plane response time and health from the authoritative database",
     businessPlane: "CpiPOS-001 API",
-    operationalPlane: "CpiPOS-002 API",
+    operationalPlane: "Future operational API",
     response: "Response",
     errors60: "API errors · 60 min",
     serverErrors: "5xx",
-    incidents: "Open incidents",
+    incidents: "Device health alerts",
     commands: "Pending remote commands",
     detailsStores: "Store details",
     detailsData: "Data details",
@@ -210,7 +225,11 @@ const copy = {
     loadError: "Dashboard failed to load",
     retry: "Retry",
     manageStores: "Manage stores",
-    monitoring: "Monitoring"
+    monitoring: "Monitoring",
+    topology: "POS database topology",
+    activeDatabase: "Active database",
+    reservedDatabase: "Reserved for another system",
+    reservedNote: "Databases reserved for future systems are not queried and do not count as incidents, API failures, or POS health dependencies until explicitly enabled."
   }
 } as const;
 
@@ -356,7 +375,7 @@ export function ItAdminDashboard({ language }: { language: Language }) {
 
   const businessDb = data.databases.business.data;
   const operationalDb = data.databases.operational.data;
-  const planesReady = Number(data.api.business_plane_ready) + Number(data.api.operational_plane_ready);
+  const operationalEnabled = data.topology.operational_plane_enabled;
 
   return (
     <div className={styles.dashboard}>
@@ -404,14 +423,14 @@ export function ItAdminDashboard({ language }: { language: Language }) {
           <small>{text.remaining} {formatBytes(businessDb?.remaining_bytes ?? null)}</small>
         </button>
         <button type="button" className={styles.metricCard} onClick={() => setModal("databases")}>
-          <span>{text.operationalDb}</span>
-          <strong>{formatBytes(operationalDb?.database_bytes ?? null)}</strong>
-          <small>{text.remaining} {formatBytes(operationalDb?.remaining_bytes ?? null)}</small>
+          <span>{text.topology}</span>
+          <strong>{data.topology.active_database_count} Active</strong>
+          <small>{text.businessDb} · {data.topology.reserved_database_count} Reserved</small>
         </button>
         <button type="button" className={styles.metricCard} onClick={() => setModal("api")}>
           <span>{text.api}</span>
-          <strong>{planesReady}/2</strong>
-          <small>{data.api.recent_errors_60m.http_5xx ?? "—"} {text.serverErrors} · {data.operations.open_incidents ?? "—"} Incident</small>
+          <strong>{data.api.active_planes_ready}/{data.api.active_planes_total}</strong>
+          <small>{data.api.recent_errors_60m.http_5xx ?? "—"} {text.serverErrors} · {data.operations.open_incidents ?? "—"} alerts</small>
         </button>
       </section>
 
@@ -440,7 +459,9 @@ export function ItAdminDashboard({ language }: { language: Language }) {
           </div>
           <div className={styles.storageList}>
             <StorageRow label={text.businessDb} role={text.businessRole} source={data.databases.business} />
-            <StorageRow label={text.operationalDb} role={text.operationalRole} source={data.databases.operational} />
+            {operationalEnabled ? <StorageRow label={text.operationalDb} role={text.operationalRole} source={data.databases.operational} /> : (
+              <div className={styles.infoBox}><strong>{text.reservedDatabase}</strong><span>{text.reservedNote}</span></div>
+            )}
           </div>
         </article>
       </section>
@@ -456,14 +477,16 @@ export function ItAdminDashboard({ language }: { language: Language }) {
             <div><strong>{text.businessPlane}</strong><small>{text.response} {data.api.business_latency_ms ?? "—"} ms</small></div>
             <MiniStatus ready={data.api.business_plane_ready} yes={text.connected} no={text.partial} />
           </div>
-          <div className={styles.apiRow}>
-            <span className={`${styles.apiDot} ${data.api.operational_plane_ready ? styles.dotReady : styles.dotWarn}`} />
-            <div><strong>{text.operationalPlane}</strong><small>{text.response} {data.api.operational_latency_ms ?? "—"} ms</small></div>
-            <MiniStatus ready={data.api.operational_plane_ready} yes={text.connected} no={text.partial} />
-          </div>
+          {operationalEnabled ? (
+            <div className={styles.apiRow}>
+              <span className={`${styles.apiDot} ${data.api.operational_plane_ready ? styles.dotReady : styles.dotWarn}`} />
+              <div><strong>{text.operationalPlane}</strong><small>{text.response} {data.api.operational_latency_ms ?? "—"} ms</small></div>
+              <MiniStatus ready={data.api.operational_plane_ready} yes={text.connected} no={text.partial} />
+            </div>
+          ) : null}
           <div className={styles.apiStat}><span>{text.errors60}</span><strong>{data.api.recent_errors_60m.total ?? "—"}</strong><small>{data.api.recent_errors_60m.http_5xx ?? "—"} {text.serverErrors}</small></div>
           <div className={styles.apiStat}><span>{text.incidents}</span><strong>{data.operations.open_incidents ?? "—"}</strong><small>{data.operations.critical_incidents ?? "—"} critical</small></div>
-          <div className={styles.apiStat}><span>{text.commands}</span><strong>{data.operations.pending_commands ?? "—"}</strong><small>Queued / Pending / Delivered</small></div>
+          <div className={styles.apiStat}><span>{text.commands}</span><strong>{data.operations.pending_commands ?? "—"}</strong><small>Queued / Picked up / Pending</small></div>
         </div>
       </section>
 
@@ -497,7 +520,7 @@ export function ItAdminDashboard({ language }: { language: Language }) {
                   <div><span>{text.totalRows}</span><strong>{formatNumber(data.data.estimated_rows_total, language)}</strong></div>
                   <div><span>{text.totalTables}</span><strong>{formatNumber(data.data.user_tables_total, language)}</strong></div>
                   <div><span>{text.businessDb}</span><strong>{formatNumber(businessDb?.estimated_rows ?? null, language)}</strong></div>
-                  <div><span>{text.operationalDb}</span><strong>{formatNumber(operationalDb?.estimated_rows ?? null, language)}</strong></div>
+                  <div><span>{text.activeDatabase}</span><strong>{data.topology.active_database_count}</strong></div>
                 </div>
                 <div className={styles.infoBox}><span>{text.dataNote}</span></div>
               </div>
@@ -513,14 +536,17 @@ export function ItAdminDashboard({ language }: { language: Language }) {
                     <h5>{text.topTables}</h5>
                     <DatabaseTable source={data.databases.business} language={language} />
                   </div>
-                  <div className={styles.databaseDetail}>
-                    <h4>{text.operationalDb}</h4>
-                    <StorageRow label={text.operationalDb} role={text.operationalRole} source={data.databases.operational} />
-                    <div className={styles.connectionLine}><span>{text.connections}</span><strong>{operationalDb?.connections_total ?? "—"}</strong><small>{text.activeConnections} {operationalDb?.connections_active ?? "—"}</small></div>
-                    <h5>{text.topTables}</h5>
-                    <DatabaseTable source={data.databases.operational} language={language} />
-                  </div>
+                  {operationalEnabled ? (
+                    <div className={styles.databaseDetail}>
+                      <h4>{text.operationalDb}</h4>
+                      <StorageRow label={text.operationalDb} role={text.operationalRole} source={data.databases.operational} />
+                      <div className={styles.connectionLine}><span>{text.connections}</span><strong>{operationalDb?.connections_total ?? "—"}</strong><small>{text.activeConnections} {operationalDb?.connections_active ?? "—"}</small></div>
+                      <h5>{text.topTables}</h5>
+                      <DatabaseTable source={data.databases.operational} language={language} />
+                    </div>
+                  ) : null}
                 </div>
+                {!operationalEnabled ? <div className={styles.infoBox}><strong>{text.reservedDatabase}</strong><span>{text.reservedNote}</span></div> : null}
                 <div className={styles.infoBox}><span>{text.quotaNote}</span></div>
               </div>
             ) : null}
@@ -529,13 +555,14 @@ export function ItAdminDashboard({ language }: { language: Language }) {
               <div className={styles.modalBody}>
                 <div className={styles.detailCards}>
                   <div><span>{text.businessPlane}</span><strong>{data.api.business_plane_ready ? "OK" : "—"}</strong><small>{data.api.business_latency_ms ?? "—"} ms</small></div>
-                  <div><span>{text.operationalPlane}</span><strong>{data.api.operational_plane_ready ? "OK" : "—"}</strong><small>{data.api.operational_latency_ms ?? "—"} ms</small></div>
+                  <div><span>{text.api}</span><strong>{data.api.active_planes_ready}/{data.api.active_planes_total}</strong><small>{data.topology.mode}</small></div>
                   <div><span>{text.errors60}</span><strong>{data.api.recent_errors_60m.total ?? "—"}</strong><small>4xx {data.api.recent_errors_60m.http_4xx ?? "—"} · 5xx {data.api.recent_errors_60m.http_5xx ?? "—"}</small></div>
                   <div><span>{text.incidents}</span><strong>{data.operations.open_incidents ?? "—"}</strong><small>{data.operations.critical_incidents ?? "—"} critical</small></div>
                 </div>
                 {data.api.recent_errors_60m.top_routes.length ? (
                   <div className={styles.routeList}>{data.api.recent_errors_60m.top_routes.map((route) => <div key={route.route}><code>{route.route}</code><strong>{route.count}</strong></div>)}</div>
                 ) : null}
+                {!operationalEnabled ? <div className={styles.infoBox}><strong>{text.reservedDatabase}</strong><span>{text.reservedNote}</span></div> : null}
                 <div className={styles.infoBox}><strong>{text.degradedSources}</strong><span>{data.degraded_sources.length ? data.degraded_sources.join(" · ") : text.none}</span></div>
               </div>
             ) : null}
