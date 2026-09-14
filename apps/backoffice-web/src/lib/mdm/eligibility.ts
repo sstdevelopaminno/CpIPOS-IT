@@ -26,6 +26,9 @@ export type AppFlavor =
 export type MdmCapability =
   | 'mdm_core'
   | 'remote_lock'
+  | 'remote_unlock'
+  | 'financing_lock'
+  | 'revoke_access'
   | 'location'
   | 'remote_support'
   | 'app_install'
@@ -141,9 +144,14 @@ export const evaluateMdmEligibility = (device: MdmDeviceSnapshot): MdmEligibilit
 
   const allowedCommands: MdmCommandType[] = ['diagnostics_ping'];
   if (hasCapability(device, 'policy_sync')) allowedCommands.push('sync_policy');
-  if (hasCapability(device, 'remote_lock')) {
-    allowedCommands.push('lock_device', 'unlock_device', 'financing_lock', 'revoke_device_access');
-  }
+
+  // Capabilities are command-granular so a validated lock executor cannot accidentally
+  // enable unlock, financing-lock or access-revocation controls in the IT console/API.
+  if (hasCapability(device, 'remote_lock')) allowedCommands.push('lock_device');
+  if (hasCapability(device, 'remote_unlock')) allowedCommands.push('unlock_device');
+  if (hasCapability(device, 'financing_lock')) allowedCommands.push('financing_lock');
+  if (hasCapability(device, 'revoke_access')) allowedCommands.push('revoke_device_access');
+
   if (hasCapability(device, 'location')) allowedCommands.push('request_location');
   if (hasCapability(device, 'remote_support')) allowedCommands.push('start_remote_support', 'stop_remote_support');
   if (hasCapability(device, 'app_install')) allowedCommands.push('install_app');
