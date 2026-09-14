@@ -147,19 +147,25 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
   it("keeps IT device commands aligned with the live POS production command surface", () => {
     for (const command of [
       "request_diagnostics_bundle",
+      "request_diagnostics",
       "reload_ui",
+      "restart_app",
+      "test_network",
+      "test_printer",
       "clear_print_queue",
       "restart_local_bridge",
+      "restart_print_service",
       "refresh_config",
+      "check_update",
       "disable_device",
-      "enable_device",
-      "test_printer"
+      "enable_device"
     ]) {
       expect(deviceCommands).toContain(`"${command}"`);
     }
 
-    for (const removedCommand of ["request_diagnostics", "restart_app", "test_network", "restart_print_service", "check_update"]) {
-      expect(deviceCommands).not.toContain(`"${removedCommand}"`);
+    expect(deviceCommands).toContain('UNSUPPORTED_DEVICE_COMMAND_TYPES');
+    for (const unsupportedCommand of ["clear_print_queue", "restart_local_bridge", "restart_print_service"]) {
+      expect(deviceCommands).toContain(`"${unsupportedCommand}"`);
     }
   });
 
