@@ -14,7 +14,7 @@ const healthConsole = source("../../src/components/it-admin/device-health-consol
 const devicePage = source("../../src/app/(it-admin)/tenants/[tenantId]/devices/page.tsx");
 
 describe("IT Admin MDM compatibility and pairing contract", () => {
-  it("mirrors real legacy health and incidents without synthesizing CPU or RAM", () => {
+  it("keeps the legacy bridge available for rollback without synthesizing CPU or RAM", () => {
     expect(compat).toContain('from("pos_device_health_latest")');
     expect(compat).toContain('from("it_device_health_latest")');
     expect(compat).toContain('from("pos_device_incidents")');
@@ -27,7 +27,7 @@ describe("IT Admin MDM compatibility and pairing contract", () => {
     expect(compat).not.toContain("memory_percent:");
   });
 
-  it("runs legacy health mirroring only for devices without an active enrollment", () => {
+  it("runs legacy mirroring only for devices without an active enrollment", () => {
     expect(compat).toContain('from("device_enrollments")');
     expect(compat).toContain('.eq("enrollment_status", "active")');
     expect(compat).toContain("if (activeEnrollment) return null");
@@ -55,7 +55,7 @@ describe("IT Admin MDM compatibility and pairing contract", () => {
     expect(deviceCommands).toContain("UNSUPPORTED_DEVICE_COMMAND_TYPES");
   });
 
-  it("keeps CpiPOS-001 as command authority and reconciles the CpiPOS-002 mirror by primary_command_id", () => {
+  it("keeps CpiPOS-001 as command authority and retains the old mirror only for rollback compatibility", () => {
     expect(commandRoute).toContain('from("device_commands")');
     expect(commandRoute).toContain("primary_command_id: commandRow.id");
     expect(compat).toContain("primary_command_id");
@@ -66,12 +66,15 @@ describe("IT Admin MDM compatibility and pairing contract", () => {
     expect(compat).not.toContain('nextStatus = "acknowledged"');
   });
 
-  it("keeps health reads fail-soft when the compatibility bridge is unavailable", () => {
-    expect(healthRoute).toContain("syncLegacyDeviceCompatibility");
-    expect(healthRoute).toContain("legacy compatibility sync failed");
-    expect(healthRoute).toContain('from("it_device_health_latest")');
+  it("reads current device health directly from the authoritative CpiPOS-001 tables", () => {
+    expect(healthRoute).toContain('from("branch_devices")');
+    expect(healthRoute).toContain('from("pos_device_health_latest")');
+    expect(healthRoute).toContain('from("pos_device_incidents")');
+    expect(healthRoute).toContain('from("device_commands")');
     expect(healthRoute).toContain("latest_heartbeat");
     expect(healthRoute).toContain("isNativeAgentHealth");
+    expect(healthRoute).toContain('mode: "single_pos_database"');
+    expect(healthRoute).not.toContain("syncLegacyDeviceCompatibility");
   });
 
   it("keeps legacy devices unpaired while allowing short-lived POS pairing tokens", () => {
