@@ -225,7 +225,7 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
           <div style={{ marginTop: 8, overflowWrap: "anywhere", fontFamily: "monospace", fontSize: 14 }}>{token.activation_token}</div>
           <div style={{ marginTop: 6, fontSize: 13, color: "#92400e" }}>Expires: {formatDateTime(token.expires_at)}</div>
           <div style={{ marginTop: 6, fontSize: 13, color: "#92400e" }}>
-            Waiting for the POS/Android agent to consume this token and create a pending enrollment. Token creation alone is not successful pairing.
+            Waiting for the POS/Android agent to consume this token and create a pending enrollment. Do not treat token creation itself as successful pairing.
           </div>
         </div>
       ) : null}
