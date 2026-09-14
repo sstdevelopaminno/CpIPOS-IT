@@ -45,6 +45,15 @@ type TokenResult = {
   expires_at: string;
 };
 
+type OwnershipType = "company_owned" | "company_financed" | "customer_owned" | "byod";
+
+const OWNERSHIP_OPTIONS: Array<{ value: OwnershipType; label: string }> = [
+  { value: "company_owned", label: "Company owned · เครื่องบริษัท" },
+  { value: "company_financed", label: "Company financed · เครื่องผ่อน/ให้เช่า" },
+  { value: "customer_owned", label: "Customer owned · เครื่องลูกค้า" },
+  { value: "byod", label: "BYOD · อุปกรณ์ส่วนตัว" }
+];
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "-";
   const date = new Date(value);
@@ -53,9 +62,7 @@ function formatDateTime(value: string | null | undefined) {
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as ApiEnvelope<T>;
-  if (!response.ok || payload.error) {
-    throw new Error(payload.error?.message ?? "Request failed.");
-  }
+  if (!response.ok || payload.error) throw new Error(payload.error?.message ?? "Request failed.");
   return payload.data;
 }
 
@@ -68,6 +75,7 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
   const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
   const [branchId, setBranchId] = useState("");
   const [token, setToken] = useState<TokenResult | null>(null);
+  const [ownershipByEnrollment, setOwnershipByEnrollment] = useState<Record<string, OwnershipType | "">>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,13 +155,30 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
   }
 
   async function changeEnrollment(id: string, action: "approve" | "revoke") {
+    const ownershipType = ownershipByEnrollment[id] ?? "";
+    if (action === "approve" && !ownershipType) {
+      setError("Select device ownership before approving this enrollment.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
     setSuccess(null);
     try {
-      const response = await fetch(`/api/it-admin/v1/device-enrollments/${id}/${action}`, { method: "POST" });
+      const response = await fetch(`/api/it-admin/v1/device-enrollments/${id}/${action}`, {
+        method: "POST",
+        ...(action === "approve" ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ownership_type: ownershipType })
+        } : {})
+      });
       await parseResponse(response);
-      setSuccess(action === "approve" ? "Device enrollment approved." : "Device enrollment revoked.");
+      setSuccess(
+        action === "approve"
+          ? `Device enrollment approved as ${ownershipType}. Full MDM still requires Device Owner + matching native capabilities.`
+          : "Device enrollment revoked."
+      );
+      setOwnershipByEnrollment((current) => ({ ...current, [id]: "" }));
       await load();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : `Failed to ${action} device enrollment.`);
@@ -167,7 +192,7 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
       <div>
         <h2 style={{ margin: 0 }}>Device enrollment & pairing</h2>
         <p style={{ margin: "6px 0 0", color: "#475569" }}>
-          New devices use short-lived activation tokens. Existing production devices without an enrollment record remain explicitly marked as legacy; monitoring compatibility does not make them trusted or paired.
+          New devices use short-lived activation tokens. IT must explicitly classify ownership before approval. Only company-owned/company-financed devices can later qualify for Full MDM; customer-owned/BYOD stay diagnostics-only.
         </p>
       </div>
 
@@ -200,7 +225,7 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
           <div style={{ marginTop: 8, overflowWrap: "anywhere", fontFamily: "monospace", fontSize: 14 }}>{token.activation_token}</div>
           <div style={{ marginTop: 6, fontSize: 13, color: "#92400e" }}>Expires: {formatDateTime(token.expires_at)}</div>
           <div style={{ marginTop: 6, fontSize: 13, color: "#92400e" }}>
-            Waiting for the POS/Android agent to consume this token and create a pending enrollment. Do not treat token creation itself as successful pairing.
+            Waiting for the POS/Android agent to consume this token and create a pending enrollment. Token creation alone is not successful pairing.
           </div>
         </div>
       ) : null}
@@ -252,7 +277,7 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
                 <th style={headerStyle}>Status</th>
                 <th style={headerStyle}>Trust</th>
                 <th style={headerStyle}>Updated</th>
-                <th style={headerStyle}>Action</th>
+                <th style={headerStyle}>Ownership / Action</th>
               </tr>
             </thead>
             <tbody>
@@ -268,7 +293,30 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
                     <td style={cellStyle}>{formatDateTime(enrollment.updated_at)}</td>
                     <td style={cellStyle}>
                       {enrollment.enrollment_status === "pending" ? (
-                        <button type="button" className="pos-monitor-btn" disabled={busy} onClick={() => void changeEnrollment(enrollment.id, "approve")}>Approve</button>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                          <select
+                            aria-label={`Ownership for ${enrollment.device_code}`}
+                            value={ownershipByEnrollment[enrollment.id] ?? ""}
+                            onChange={(event) => setOwnershipByEnrollment((current) => ({
+                              ...current,
+                              [enrollment.id]: event.target.value as OwnershipType | ""
+                            }))}
+                            disabled={busy}
+                          >
+                            <option value="">Select ownership</option>
+                            {OWNERSHIP_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="pos-monitor-btn"
+                            disabled={busy || !(ownershipByEnrollment[enrollment.id] ?? "")}
+                            onClick={() => void changeEnrollment(enrollment.id, "approve")}
+                          >
+                            Approve
+                          </button>
+                        </div>
                       ) : enrollment.enrollment_status === "active" ? (
                         <button type="button" className="pos-monitor-btn" disabled={busy} onClick={() => void changeEnrollment(enrollment.id, "revoke")}>Revoke</button>
                       ) : "-"}
