@@ -35,6 +35,17 @@ describe('Android 1.0.23 Web Production MDM eligibility', () => {
     expect(decision.allowedCommands).toContain('start_remote_support');
   });
 
+  it('keeps remote lock command-granular until separate executors are advertised', () => {
+    const decision = evaluateMdmEligibility({
+      ...eligibleDevice,
+      capabilities: ['mdm_core', 'policy_sync', 'remote_lock'],
+    });
+    expect(decision.allowedCommands).toContain('lock_device');
+    expect(decision.allowedCommands).not.toContain('unlock_device');
+    expect(decision.allowedCommands).not.toContain('financing_lock');
+    expect(decision.allowedCommands).not.toContain('revoke_device_access');
+  });
+
   it('keeps unmanaged Android devices in diagnostics only mode', () => {
     const decision = evaluateMdmEligibility({
       tenantId: 'tenant-001', deviceId: 'FF0001-POS-01', platform: 'android', appVersion: '1.0.21',
