@@ -9,6 +9,10 @@ function stripTrailingEscapedNewlines(value: string): string {
 const SAFE_ENV_DEFAULTS: Record<string, string> = {
   CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co",
   CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_nGX5abZtEmd7Ynzyofop1A_caORaUII",
+  // The current POS topology uses one authoritative Supabase project.
+  // A future operational database may be configured independently, but it is
+  // not a POS health dependency until this flag is explicitly enabled.
+  IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED: "false",
   IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co",
   IT_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_1MbMKrhZkWIEv4PtRd4Hag_xzHOPlKY"
 };
