@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const JSON_HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+const ONLINE_WINDOW_MINUTES = 5;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -94,7 +95,22 @@ Deno.serve(async (req) => {
     if (!profile?.is_active || profile.platform_role !== "it_admin") return json({ error: "forbidden" }, 403);
 
     const perfSince = new Date(Date.now() - 60 * 60_000).toISOString();
-    const [total, open, closed, databaseResult, perfResult] = await Promise.all([
+    const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MINUTES * 60_000).toISOString();
+    const [
+      total,
+      open,
+      closed,
+      databaseResult,
+      perfResult,
+      totalDevices,
+      onlineDevices,
+      onlineDeviceRows,
+      latestDeviceResult,
+      degradedHealth,
+      criticalHealth,
+      genericPending,
+      mdmPending
+    ] = await Promise.all([
       exactCount(admin.from("tenants").select("id", { count: "exact", head: true }), "store_total_failed"),
       exactCount(admin.from("tenants").select("id", { count: "exact", head: true }).eq("is_active", true), "store_open_failed"),
       exactCount(admin.from("tenants").select("id", { count: "exact", head: true }).eq("is_active", false), "store_closed_failed"),
@@ -105,16 +121,45 @@ Deno.serve(async (req) => {
         .eq("action", "pos_route_perf")
         .gte("created_at", perfSince)
         .order("created_at", { ascending: false })
-        .limit(500)
+        .limit(500),
+      exactCount(admin.from("branch_devices").select("id", { count: "exact", head: true }).eq("is_active", true), "device_total_failed"),
+      exactCount(
+        admin.from("branch_devices").select("id", { count: "exact", head: true }).eq("is_active", true).gte("last_seen_at", onlineSince),
+        "device_online_failed"
+      ),
+      admin.from("branch_devices").select("tenant_id,last_seen_at").eq("is_active", true).gte("last_seen_at", onlineSince).limit(5000),
+      admin.from("branch_devices").select("last_seen_at").eq("is_active", true).not("last_seen_at", "is", null).order("last_seen_at", { ascending: false }).limit(1).maybeSingle(),
+      exactCount(admin.from("pos_device_health_latest").select("id", { count: "exact", head: true }).eq("status", "degraded"), "device_degraded_failed"),
+      exactCount(admin.from("pos_device_health_latest").select("id", { count: "exact", head: true }).eq("status", "critical"), "device_critical_failed"),
+      exactCount(admin.from("device_commands").select("id", { count: "exact", head: true }).in("status", ["queued", "pending", "delivered"]), "device_commands_pending_failed"),
+      exactCount(admin.from("mdm_commands").select("id", { count: "exact", head: true }).in("status", ["queued", "picked_up", "running"]), "mdm_commands_pending_failed")
     ]);
 
     if (databaseResult.error) throw new Error(`database_metrics_failed:${databaseResult.error.code ?? "rpc_failed"}`);
     if (perfResult.error) throw new Error(`api_perf_failed:${perfResult.error.code ?? "query_failed"}`);
+    if (onlineDeviceRows.error) throw new Error(`online_device_rows_failed:${onlineDeviceRows.error.code ?? "query_failed"}`);
+    if (latestDeviceResult.error) throw new Error(`latest_device_failed:${latestDeviceResult.error.code ?? "query_failed"}`);
+
+    const storesOnline = new Set((onlineDeviceRows.data ?? []).map((row) => String(row.tenant_id ?? "")).filter(Boolean)).size;
 
     return json({
-      plane: "business",
+      plane: "primary_pos",
       checked_at: new Date().toISOString(),
       stores: { total, open, closed },
+      devices: {
+        total: totalDevices,
+        online: onlineDevices,
+        stores_online: storesOnline,
+        online_window_minutes: ONLINE_WINDOW_MINUTES,
+        latest_seen_at: latestDeviceResult.data?.last_seen_at ?? null
+      },
+      operations: {
+        open_incidents: degradedHealth + criticalHealth,
+        critical_incidents: criticalHealth,
+        pending_commands: genericPending + mdmPending,
+        generic_pending_commands: genericPending,
+        mdm_pending_commands: mdmPending
+      },
       database: databaseResult.data,
       api_errors_60m: summarizeApiPerf(perfResult.data ?? [])
     });
