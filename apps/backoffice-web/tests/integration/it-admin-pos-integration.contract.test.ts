@@ -10,6 +10,7 @@ const monitorRoute = source("../../src/app/api/it-admin/v1/monitor/route.ts");
 const healthRoute = source("../../src/app/api/it-admin/v1/health/route.ts");
 const dashboardRoute = source("../../src/app/api/it-admin/v1/dashboard/route.ts");
 const dashboardService = source("../../src/lib/services/it-admin/dashboard-overview-service.ts");
+const dashboardUi = source("../../src/components/it-admin/it-admin-dashboard.tsx");
 const deviceHealthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
 const itAdminLayout = source("../../src/app/(it-admin)/layout.tsx");
 const loginPage = source("../../src/app/it-admin/login/page.tsx");
@@ -24,7 +25,7 @@ const supabaseServer = source("../../src/lib/supabase-server.ts");
 const primaryDashboardBridge = source("../../../../supabase/control-plane-functions/cpipos-it-dashboard-primary/index.ts");
 const operationalDashboardBridge = source("../../../../supabase/control-plane-functions/cpipos-it-dashboard-operational/index.ts");
 
-describe("IT Admin <-> POS split-control-plane contract", () => {
+describe("IT Admin <-> POS single-primary control-plane contract", () => {
   it("keeps business monitoring inside the IT Admin Control Plane", () => {
     expect(monitorPage).toContain('module="monitoring"');
     expect(monitorPage).not.toContain("/api/admin/pos/monitor");
@@ -32,25 +33,32 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(monitorRoute).toContain("requireItAdmin()");
   });
 
-  it("checks both Supabase planes without requiring POS runtime secrets", () => {
-    expect(healthRoute).toContain('"it_device_health_latest"');
-    expect(healthRoute).toContain('"it_device_commands"');
-    expect(healthRoute).toContain('mode: "split_supabase"');
-    expect(healthRoute).toContain('auth_business_plane: "CpiPOS-001"');
-    expect(healthRoute).toContain('it_operational_plane: "CpiPOS-002"');
+  it("checks the authoritative CpiPOS-001 plane without requiring a future database", () => {
+    expect(healthRoute).toContain('"branch_devices"');
+    expect(healthRoute).toContain('"pos_device_health_latest"');
+    expect(healthRoute).toContain('"device_commands"');
+    expect(healthRoute).toContain('"mdm_devices"');
+    expect(healthRoute).toContain('mode: "single_pos_database"');
+    expect(healthRoute).toContain('authoritative_plane: "CpiPOS-001"');
+    expect(healthRoute).toContain("reserved_operational_database_is_pos_dependency: false");
+    expect(healthRoute).not.toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
     expect(healthRoute).not.toContain('"POS_SESSION_HANDOFF_SECRET"');
     expect(healthRoute).not.toContain('"TABLE_QR_SIGNING_SECRET"');
   });
 
-  it("keeps Dashboard metrics on authenticated read-only Control Plane bridges", () => {
+  it("keeps Dashboard metrics on authenticated Control Plane bridges while defaulting to one POS database", () => {
     expect(dashboardRoute).toContain("requireItAdmin()");
     expect(dashboardRoute).toContain("supabase.auth.getSession()");
     expect(dashboardRoute).toContain("loadDashboardOverview(session.access_token)");
     expect(dashboardService).toContain('PRIMARY_BRIDGE_SLUG = "cpipos-it-dashboard-primary"');
     expect(dashboardService).toContain('OPERATIONAL_BRIDGE_SLUG = "cpipos-it-dashboard-operational"');
-    expect(dashboardService).toContain('"IT_SUPABASE_PUBLISHABLE_KEY"');
+    expect(dashboardService).toContain('readEnv("IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED")');
+    expect(dashboardService).toContain('mode: operationalPlaneEnabled ? "dual_plane" : "single_pos_database"');
+    expect(dashboardService).toContain('authoritative_plane: "CpiPOS-001"');
     expect(dashboardService).not.toContain("context.supabase");
     expect(dashboardService).not.toContain("context.itSupabase");
+    expect(dashboardUi).toContain("reservedNote");
+    expect(dashboardUi).toContain("active_planes_ready");
 
     for (const bridge of [primaryDashboardBridge, operationalDashboardBridge]) {
       expect(bridge).toContain("bearerToken(req)");
@@ -62,6 +70,9 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
 
     expect(primaryDashboardBridge).toContain("userClient.auth.getUser(token)");
     expect(primaryDashboardBridge).toContain('profile.platform_role !== "it_admin"');
+    expect(primaryDashboardBridge).toContain('from("branch_devices")');
+    expect(primaryDashboardBridge).toContain('from("pos_device_health_latest")');
+    expect(primaryDashboardBridge).toContain('from("mdm_commands")');
     expect(operationalDashboardBridge).toContain("primary.auth.getUser(token)");
     expect(operationalDashboardBridge).toContain('profile.platform_role === "it_admin"');
   });
@@ -73,13 +84,16 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(healthRoute).toContain("required_env: requiredEnv");
   });
 
-  it("fails closed if any device-health source query fails", () => {
+  it("reads device health, incidents and commands directly from CpiPOS-001", () => {
     expect(deviceHealthRoute).toContain("device_health_query_failed");
     expect(deviceHealthRoute).toContain("device_incidents_query_failed");
     expect(deviceHealthRoute).toContain("device_commands_query_failed");
-    expect(deviceHealthRoute).toContain('from("it_device_health_latest")');
-    expect(deviceHealthRoute).toContain('from("it_device_incidents")');
-    expect(deviceHealthRoute).toContain('from("it_device_commands")');
+    expect(deviceHealthRoute).toContain('from("branch_devices")');
+    expect(deviceHealthRoute).toContain('from("pos_device_health_latest")');
+    expect(deviceHealthRoute).toContain('from("pos_device_incidents")');
+    expect(deviceHealthRoute).toContain('from("device_commands")');
+    expect(deviceHealthRoute).toContain('mode: "single_pos_database"');
+    expect(deviceHealthRoute).not.toContain('from("it_device_health_latest")');
   });
 
   it("guards every IT Admin page at the shared server layout", () => {
@@ -122,26 +136,21 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
     expect(authContext).not.toContain("async function loadPlatformRole");
   });
 
-  it("keeps non-secret routing defaults in source and validates privileged credentials at runtime", () => {
+  it("keeps non-secret routing defaults in source and validates only active POS credentials in health", () => {
     expect(envModule).toContain('CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co"');
     expect(envModule).toContain('CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
-    expect(envModule).toContain('IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co"');
-    expect(envModule).toContain('IT_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
+    expect(envModule).toContain('IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED: "false"');
 
     expect(nextConfig).not.toContain('process.env.VERCEL === "1"');
     expect(nextConfig).not.toContain('"SUPABASE_SERVICE_ROLE_KEY"');
     expect(nextConfig).not.toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
     expect(nextConfig).not.toContain("Missing required CpIPOS IT Admin Vercel environment variables");
 
-    for (const envName of [
-      "CPIPOS_SUPABASE_URL",
-      "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
-      "SUPABASE_SERVICE_ROLE_KEY",
-      "IT_SUPABASE_URL",
-      "IT_SUPABASE_SERVICE_ROLE_KEY"
-    ]) {
+    for (const envName of ["CPIPOS_SUPABASE_URL", "CPIPOS_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) {
       expect(healthRoute).toContain(`"${envName}"`);
     }
+    expect(healthRoute).not.toContain('"IT_SUPABASE_URL"');
+    expect(healthRoute).not.toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
   });
 
   it("keeps IT device commands aligned with the live POS production command surface", () => {
@@ -163,7 +172,7 @@ describe("IT Admin <-> POS split-control-plane contract", () => {
       expect(deviceCommands).toContain(`"${command}"`);
     }
 
-    expect(deviceCommands).toContain('UNSUPPORTED_DEVICE_COMMAND_TYPES');
+    expect(deviceCommands).toContain("UNSUPPORTED_DEVICE_COMMAND_TYPES");
     for (const unsupportedCommand of ["clear_print_queue", "restart_local_bridge", "restart_print_service"]) {
       expect(deviceCommands).toContain(`"${unsupportedCommand}"`);
     }
