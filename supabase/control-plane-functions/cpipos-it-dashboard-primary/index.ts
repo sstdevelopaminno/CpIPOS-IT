@@ -143,7 +143,10 @@ Deno.serve(async (req) => {
     const storesOnline = new Set((onlineDeviceRows.data ?? []).map((row) => String(row.tenant_id ?? "")).filter(Boolean)).size;
 
     return json({
-      plane: "primary_pos",
+      // Keep the legacy plane discriminator so the current Production dashboard
+      // continues to accept this response while new clients consume the added
+      // device/MDM metrics below.
+      plane: "business",
       checked_at: new Date().toISOString(),
       stores: { total, open, closed },
       devices: {
