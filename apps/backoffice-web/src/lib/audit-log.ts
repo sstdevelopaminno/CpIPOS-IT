@@ -18,8 +18,8 @@ export type AppendAuditLogInput = {
   module?: string;
   entityType?: string;
   entityId?: string;
-  beforeData?: JsonObject;
-  afterData?: JsonObject;
+  beforeData?: Record<string, unknown>;
+  afterData?: Record<string, unknown>;
   overrideByUserId?: string;
   ipAddress?: string;
   userAgent?: string;
@@ -89,8 +89,8 @@ function inferModule(targetTable: string, action: string): string {
 
 function mapInputToRow(input: AppendAuditLogInput): AuditLogRow {
   const metadata = normalizeJsonObject(input.metadata);
-  const beforeData = input.beforeData ?? normalizeJsonObject(metadata.before_data);
-  const afterData = input.afterData ?? normalizeJsonObject(metadata.after_data);
+  const beforeData = normalizeJsonObject(input.beforeData ?? metadata.before_data);
+  const afterData = normalizeJsonObject(input.afterData ?? metadata.after_data);
 
   return {
     tenant_id: input.tenantId ?? null,
