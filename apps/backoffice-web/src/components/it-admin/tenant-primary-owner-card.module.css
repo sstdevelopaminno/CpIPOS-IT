@@ -91,6 +91,17 @@ button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-
 .ownerMeta span{font-size:12px;font-weight:800;color:#8191a5}
 .ownerMeta strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#23466f}
 .goodText{color:#177344!important}.warnText{color:#996400!important}
+.menuRail{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;position:sticky;top:0;z-index:2;padding:4px 0 2px;background:#f7f9fc}
+.menuButton{min-width:0;min-height:72px;display:flex;align-items:center;gap:11px;border:1px solid #d5e1f0;border-radius:14px;background:#fff;color:#244766;padding:11px 13px;text-align:left;font:inherit;cursor:pointer;box-shadow:0 8px 22px rgba(16,45,82,.04);transition:transform .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease}
+.menuButton:hover{transform:translateY(-1px);border-color:#aecaee;background:#f8fbff;box-shadow:0 12px 28px rgba(23,61,110,.08)}
+.menuButton:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-offset:2px}
+.menuButtonActive{border-color:#3b73e6;background:linear-gradient(135deg,#edf4ff,#ffffff);box-shadow:0 14px 32px rgba(47,110,244,.13)}
+.menuButtonIcon{width:38px;height:38px;flex:0 0 auto;border-radius:12px;display:grid;place-items:center;background:#eef5ff;color:#285faa;font-size:12px;font-weight:900;letter-spacing:0;border:1px solid #cfdef4}
+.menuButtonActive .menuButtonIcon{background:#2f6ef4;color:#fff;border-color:#2f6ef4}
+.menuButtonText{min-width:0;display:grid;gap:3px}
+.menuButtonText strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#16365f;font-size:14px;line-height:1.25}
+.menuButtonText small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#71839a;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.menuPanel{display:grid;gap:14px;animation:menuPanelEnter .15s ease-out}
 .editorSection{overflow:hidden;border:1px solid #dfe7f1;border-radius:16px;background:#fff}
 .sectionTitle{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 17px;border-bottom:1px solid #e8eef5;background:#fbfcfe}
 .sectionTitle span,.securityHeader>div:first-child>span{font-size:12px;font-weight:900;letter-spacing:.1em;color:#6e83a0}
@@ -158,6 +169,7 @@ button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-
 
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes modalEnter{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes menuPanelEnter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
 @media(max-height:760px){
   .modalBackdrop{padding:8px}
@@ -181,6 +193,10 @@ button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-
 
 @media(max-width:900px){.ownerMeta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){
+  .menuRail{grid-template-columns:1fr;position:static}
+  .menuButton{min-height:62px}
+  .menuButtonText strong{white-space:normal}
+
   .compactCard{min-height:148px}
   .modalBackdrop{padding:0}
   .modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;border-left:0;border-right:0}

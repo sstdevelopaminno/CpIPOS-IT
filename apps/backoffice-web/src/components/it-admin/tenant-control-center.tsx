@@ -282,8 +282,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     return () => window.removeEventListener("keydown", onKey);
   }, [busy, isConfirming, onClose, tab]);
 
-  const mutate = useCallback(async (payload: Record<string, unknown>, message: string, destructive = false) => {
-    if (destructive) {
+  const mutate = useCallback(async (payload: Record<string, unknown>, message: string, confirmBeforeSave = true) => {
+    if (confirmBeforeSave) {
       const storeLabel = data?.tenant.display_name || data?.tenant.name || fallbackName;
       const confirmed = await confirmAction(String(payload.action ?? ""), storeLabel);
       if (!confirmed) return null;

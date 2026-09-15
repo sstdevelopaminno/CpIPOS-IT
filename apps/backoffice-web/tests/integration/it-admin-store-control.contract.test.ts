@@ -7,6 +7,9 @@ function source(relativePath: string) {
 
 const directory = source("../../src/components/it-admin/tenant-directory-console.tsx");
 const controlCenter = source("../../src/components/it-admin/tenant-control-center.tsx");
+const actionConfirm = source("../../src/components/it-admin/tenant-action-confirm.tsx");
+const actionConfirmStyles = source("../../src/components/it-admin/tenant-action-confirm.module.css");
+const ownerCard = source("../../src/components/it-admin/tenant-primary-owner-card.tsx");
 const route = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/control/route.ts");
 const service = source("../../src/lib/services/it-admin/tenant-control-service.ts");
 
@@ -35,6 +38,19 @@ describe("IT Admin Store Control Center contract", () => {
     expect(service).not.toContain("CpiPOS-002");
   });
 
+  it("shows confirmation popups above nested Store Control modals before saves", () => {
+    expect(actionConfirm).toContain('createPortal(');
+    expect(actionConfirm).toContain('document.body');
+    expect(actionConfirm).toContain('data-tenant-action-confirm');
+    expect(actionConfirmStyles).toContain('z-index:1800');
+    expect(actionConfirmStyles).toContain('isolation:isolate');
+    expect(controlCenter).toContain('confirmBeforeSave = true');
+    expect(actionConfirm).toContain('update_profile');
+    expect(actionConfirm).toContain('create_branch');
+    expect(actionConfirm).toContain('update_branch');
+    expect(ownerCard).toContain('confirmAction("update_owner_profile"');
+    expect(ownerCard).toContain('confirmAction("update_owner_pin"');
+  });
   it("supports profile, branch, package, suspend, resume, cancellation and store lifecycle controls", () => {
     for (const action of [
       "update_profile",

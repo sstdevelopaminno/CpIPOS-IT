@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Language } from "@/lib/i18n";
 import styles from "./store-provisioning-console.module.css";
 
@@ -217,6 +217,12 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
     form.billingInterval === "yearly" ? selectedPackage?.yearly_price ?? 0 : selectedPackage?.monthly_price ?? 0;
   const packageBlocked = !selectedPackage || !intervals.includes(form.billingInterval) || billingPrice <= 0;
 
+  useEffect(() => {
+    if (!result) return;
+    const timeoutId = window.setTimeout(() => setResult(null), 4200);
+    return () => window.clearTimeout(timeoutId);
+  }, [result]);
+
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
@@ -270,7 +276,8 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
       }
       setReviewOpen(false);
       setResult(payload.data);
-      setForm((current) => ({ ...current, pin: "" }));
+      setRequestId(newRequestId());
+      setForm(initialForm(packages));
     } catch {
       setReviewOpen(false);
       setError({
@@ -305,37 +312,8 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
     );
   }
 
-  if (result) {
-    return (
-      <section className={styles.successState} aria-live="polite">
-        <div className={styles.successHero}>
-          <span className={styles.successMark}>✓</span>
-          <div>
-            <span>{text.successTitle}</span>
-            <strong>{result.store_code}</strong>
-            <small>{text.storeCode}</small>
-          </div>
-        </div>
-
-        <div className={styles.successGrid}>
-          <div><span>{text.confirmStore}</span><strong>{result.tenant.name}</strong></div>
-          <div><span>{text.confirmBranch}</span><strong>{result.branch.code} · {result.branch.name}</strong></div>
-          <div><span>{text.package}</span><strong>{result.package.name}</strong><small>{money(result.package.amount_per_cycle, language, result.package.currency)} · {result.package.billing_interval}</small></div>
-          <div><span>{text.confirmOwner}</span><strong>{result.owner.employee_code}</strong><small>{result.owner.email}</small></div>
-        </div>
-
-        <div className={styles.nextStep}>
-          <span>{text.nextStep}</span>
-          <strong>{text.deviceEnrollment}</strong>
-          <small>Device module will bind the approved terminal to this tenant/branch without rebuilding the POS app.</small>
-        </div>
-
-        <div className={styles.successActions}>
-          <button type="button" onClick={reset}>{text.openNext}</button>
-          <Link href="/it-admin/tenants">{text.viewStores}</Link>
-        </div>
-      </section>
-    );
+  function dismissSuccess() {
+    setResult(null);
   }
 
   return (
@@ -473,6 +451,45 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
         </div>
       </form>
 
+
+      {result ? (
+        <div className={styles.successBackdrop} role="presentation" onMouseDown={dismissSuccess}>
+          <section
+            className={styles.successDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="store-provisioning-success-title"
+            onMouseDown={(event) => event.stopPropagation()}
+            data-store-provisioning-success
+          >
+            <div className={styles.successDialogHeader}>
+              <span className={styles.successMark}>✓</span>
+              <div>
+                <span>{text.successTitle}</span>
+                <h2 id="store-provisioning-success-title">บันทึกและเปิดร้านใหม่สำเร็จ</h2>
+                <p>ระบบเคลียร์ฟอร์มแล้ว พร้อมเปิดร้านใหม่ต่อได้ทันที</p>
+              </div>
+            </div>
+
+            <div className={styles.successStoreCode}>
+              <span>{text.storeCode}</span>
+              <strong>{result.store_code}</strong>
+            </div>
+
+            <div className={styles.successMiniGrid}>
+              <div><span>{text.confirmStore}</span><strong>{result.tenant.name}</strong></div>
+              <div><span>{text.confirmBranch}</span><strong>{result.branch.code} · {result.branch.name}</strong></div>
+              <div><span>{text.package}</span><strong>{result.package.name}</strong></div>
+              <div><span>{text.confirmOwner}</span><strong>{result.owner.employee_code}</strong></div>
+            </div>
+
+            <div className={styles.successDialogFooter}>
+              <button type="button" className={styles.secondaryButton} onClick={reset}>{text.openNext}</button>
+              <Link href="/it-admin/tenants">{text.viewStores}</Link>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {reviewOpen && selectedPackage ? (
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => !submitting && setReviewOpen(false)}>
           <section

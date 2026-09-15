@@ -10,6 +10,7 @@ const deviceCommands = source("../../src/lib/device-commands.ts");
 const healthRoute = source("../../src/app/api/it-admin/v1/devices/[deviceId]/health/route.ts");
 const commandRoute = source("../../src/app/api/it-admin/v1/device-commands/route.ts");
 const pairingConsole = source("../../src/components/it-admin/device-pairing-console.tsx");
+const tenantSectionConsole = source("../../src/components/it-admin/tenant-section-console.tsx");
 const healthConsole = source("../../src/components/it-admin/device-health-console.tsx");
 const devicePage = source("../../src/app/(it-admin)/tenants/[tenantId]/devices/page.tsx");
 
@@ -86,6 +87,12 @@ describe("IT Admin MDM compatibility and pairing contract", () => {
     expect(devicePage).toContain("DevicePairingConsole");
   });
 
+
+  it("handles empty API responses without crashing the devices page", () => {
+    expect(pairingConsole).toContain("response.json().catch(() => null)");
+    expect(pairingConsole).toContain("Request failed (${response.status})");
+    expect(tenantSectionConsole).toContain("response.json().catch(() => null)");
+  });
   it("shows missing CPU/RAM honestly and exposes Android/printer diagnostics when reported", () => {
     expect(healthConsole).toContain('"CPU"');
     expect(healthConsole).toContain('"RAM"');

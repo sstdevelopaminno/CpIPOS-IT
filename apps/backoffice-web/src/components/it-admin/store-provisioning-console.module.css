@@ -590,3 +590,269 @@
     transition: none;
   }
 }
+
+/* Store provisioning readability refresh */
+.console {
+  font-size: 15px;
+}
+
+.flowHeader {
+  min-height: 94px;
+  padding: 24px 26px;
+}
+
+.flowHeader p {
+  font-size: 13px;
+}
+
+.flowHeader code {
+  max-width: 440px;
+  font-size: 12px;
+}
+
+.flowBadge,
+.trialBadge {
+  min-height: 30px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+
+.formSection {
+  gap: 18px;
+  padding: 26px;
+}
+
+.sectionHeading h2 {
+  font-size: 18px;
+}
+
+.formGrid {
+  gap: 16px;
+}
+
+.formGrid label {
+  gap: 8px;
+  font-size: 13px;
+}
+
+.formGrid input,
+.formGrid select,
+.formGrid textarea {
+  min-height: 54px;
+  border-radius: 12px;
+  padding: 13px 15px;
+  font-size: 15px;
+}
+
+.formGrid textarea {
+  min-height: 104px;
+}
+
+.packageSummary > div {
+  min-height: 78px;
+  padding: 14px 16px;
+}
+
+.packageSummary span,
+.successMiniGrid span,
+.successStoreCode span {
+  font-size: 12px;
+}
+
+.packageSummary strong,
+.successMiniGrid strong {
+  font-size: 16px;
+}
+
+.policyNotice,
+.securityNote,
+.errorState,
+.inlineError,
+.formFooter > span {
+  font-size: 12px;
+}
+
+.policyNotice strong,
+.errorState small {
+  font-size: 12px;
+}
+
+.formFooter {
+  padding: 20px 26px;
+}
+
+.formFooter button,
+.successDialogFooter button,
+.successDialogFooter a,
+.primaryButton,
+.secondaryButton {
+  min-height: 48px;
+  padding: 11px 18px;
+  font-size: 14px;
+}
+
+.modalBackdrop,
+.successBackdrop {
+  z-index: 1900;
+}
+
+.confirmDialog {
+  width: min(660px, 100%);
+}
+
+.confirmHeader,
+.reviewList,
+.confirmFooter {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.confirmHeader h2 {
+  font-size: 20px;
+}
+
+.confirmHeader p,
+.reviewList dt,
+.reviewList dd {
+  font-size: 13px;
+}
+
+.successBackdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 25, 41, 0.58);
+  backdrop-filter: blur(4px);
+}
+
+.successDialog {
+  width: min(620px, 100%);
+  overflow: hidden;
+  border: 1px solid #cdd9e8;
+  border-top: 5px solid #22a06b;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgba(12, 22, 36, 0.32);
+}
+
+.successDialogHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 26px 28px 18px;
+}
+
+.successDialogHeader > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.successDialogHeader span:not(.successMark) {
+  color: #2d7b58;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.successDialogHeader h2 {
+  margin: 0;
+  color: #173c2c;
+  font-size: 25px;
+  line-height: 1.25;
+}
+
+.successDialogHeader p {
+  margin: 0;
+  color: #607086;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.successStoreCode {
+  display: grid;
+  gap: 8px;
+  margin: 0 28px 18px;
+  padding: 18px;
+  border: 1px solid #cfe6d8;
+  border-radius: 14px;
+  background: #f2fbf6;
+}
+
+.successStoreCode strong {
+  color: #0f5136;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.successMiniGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 28px 24px;
+  overflow: hidden;
+  border: 1px solid #e0e8f1;
+  border-radius: 14px;
+  background: #e0e8f1;
+}
+
+.successMiniGrid > div {
+  min-height: 76px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 14px 16px;
+  background: #ffffff;
+}
+
+.successDialogFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 18px 28px 24px;
+  border-top: 1px solid #e8edf3;
+  background: #fafbfd;
+}
+
+.successDialogFooter a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #2f6df6;
+  border-radius: 10px;
+  color: #ffffff;
+  background: #2f6df6;
+  font-weight: 800;
+}
+
+@media (max-width: 620px) {
+  .successMiniGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .successDialogHeader,
+  .successDialogFooter {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .successStoreCode,
+  .successMiniGrid {
+    margin-left: 20px;
+    margin-right: 20px;
+  }
+
+  .successDialogFooter {
+    flex-direction: column;
+  }
+
+  .successDialogFooter button,
+  .successDialogFooter a {
+    width: 100%;
+  }
+}

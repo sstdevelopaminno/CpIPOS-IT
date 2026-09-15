@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTenantActionConfirm } from "./tenant-action-confirm";
 import styles from "./tenant-primary-owner-card.module.css";
 
 type ApiEnvelope<T> = { data: T | null; error: { code?: string; message?: string } | null };
@@ -22,6 +23,7 @@ type PrimaryOwner = {
 };
 
 type OwnerResponse = { primary_owner: PrimaryOwner | null };
+type OwnerEditorMenu = "employee" | "profile" | "pin";
 
 async function parse<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
@@ -47,6 +49,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   const [confirmPin, setConfirmPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [activeMenu, setActiveMenu] = useState<OwnerEditorMenu>("employee");
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,6 +57,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { confirmAction, confirmationDialog, isConfirming } = useTenantActionConfirm();
 
   const clearPinDraft = useCallback(() => {
     setOwnerPin("");
@@ -98,6 +102,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
     document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (isConfirming) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (pinModalOpen) {
@@ -115,7 +120,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
       window.removeEventListener("keydown", onKeyDown, true);
       document.body.style.overflow = previousOverflow;
     };
-  }, [clearPinDraft, editorOpen, pinModalOpen, pinSaving, saving]);
+  }, [clearPinDraft, editorOpen, isConfirming, pinModalOpen, pinSaving, saving]);
 
   const closeEditor = () => {
     if (saving || pinSaving) return;
@@ -139,6 +144,8 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
 
   const saveProfile = async () => {
     if (!profileCanSave) return;
+    const confirmed = await confirmAction("update_owner_profile", owner?.full_name || draft.full_name || "USER เจ้าของร้าน");
+    if (!confirmed) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -161,6 +168,8 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
 
   const savePin = async () => {
     if (!owner || !pinCanSave) return;
+    const confirmed = await confirmAction("update_owner_pin", owner.full_name || "USER เจ้าของร้าน");
+    if (!confirmed) return;
     setPinSaving(true);
     setPinError(null);
     try {
@@ -230,6 +239,22 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
             <div><span>สถานะ Login</span><strong className={owner.login_ready ? styles.goodText : styles.warnText}>{owner.login_ready ? "POS พร้อมใช้งาน" : "ต้องตรวจสอบ"}</strong></div>
           </div>
 
+          <div className={styles.menuRail} role="tablist" aria-label="Owner access menus">
+            <button type="button" role="tab" aria-selected={activeMenu === "employee"} className={`${styles.menuButton} ${activeMenu === "employee" ? styles.menuButtonActive : ""}`} onClick={() => setActiveMenu("employee")}>
+              <span className={styles.menuButtonIcon}>ID</span>
+              <span className={styles.menuButtonText}><strong>รหัสพนักงานสำหรับเข้าหน้าร้าน</strong><small>POS Login identity</small></span>
+            </button>
+            <button type="button" role="tab" aria-selected={activeMenu === "profile"} className={`${styles.menuButton} ${activeMenu === "profile" ? styles.menuButtonActive : ""}`} onClick={() => setActiveMenu("profile")}>
+              <span className={styles.menuButtonIcon}>U</span>
+              <span className={styles.menuButtonText}><strong>ข้อมูลเจ้าของร้านและ Login</strong><small>Owner profile</small></span>
+            </button>
+            <button type="button" role="tab" aria-selected={activeMenu === "pin"} className={`${styles.menuButton} ${activeMenu === "pin" ? styles.menuButtonActive : ""}`} onClick={() => setActiveMenu("pin")}>
+              <span className={styles.menuButtonIcon}>PIN</span>
+              <span className={styles.menuButtonText}><strong>รหัสเจ้าของร้าน</strong><small>Owner PIN security</small></span>
+            </button>
+          </div>
+          <div key={activeMenu} className={styles.menuPanel} role="tabpanel">
+            {activeMenu === "employee" ? (
           <section className={styles.editorSection}>
             <div className={styles.sectionTitle}>
               <div><span>POS LOGIN IDENTITY</span><h4>รหัสพนักงานสำหรับเข้าหน้าร้าน</h4></div>
@@ -252,7 +277,9 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
               {!employeeCodeIsValid ? <div className={styles.pinValidation}>รหัสพนักงานต้องมี 3–32 ตัว และใช้ตัวอักษร ตัวเลข จุด ขีดล่าง หรือขีดกลาง</div> : null}
             </div>
           </section>
+            ) : null}
 
+            {activeMenu === "profile" ? (
           <section className={styles.editorSection}>
             <div className={styles.sectionTitle}><div><span>OWNER PROFILE</span><h4>ข้อมูลเจ้าของร้านและ Login</h4></div></div>
             <div className={styles.formGrid}>
@@ -261,7 +288,9 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
               <label className={styles.fullWidth}><span>โทรศัพท์เจ้าของร้าน</span><input value={draft.phone} onChange={(event) => setDraft((value) => ({ ...value, phone: event.target.value }))} /></label>
             </div>
           </section>
+            ) : null}
 
+            {activeMenu === "pin" ? (
           <section className={`${styles.editorSection} ${styles.securitySection}`}>
             <div className={styles.securityHeader}>
               <div>
@@ -275,6 +304,8 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
               </div>
             </div>
           </section>
+            ) : null}
+          </div>
 
           <div className={styles.securityNote}>POS Login ใช้ข้อมูลจาก CpiPOS-001 ชุดเดียวกับ IT Control Center: รหัสพนักงานระบุ USER และ PIN ยืนยันสิทธิ์ ระบบไม่ส่ง PIN/hash กลับ browser และไม่บันทึกค่า PIN ลง Audit Log</div>
         </div>
@@ -332,7 +363,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   return (
     <>
       {owner ? (
-        <button type="button" className={styles.compactCard} data-primary-owner-card onClick={() => { setError(null); setSuccess(null); clearPinDraft(); setEditorOpen(true); }}>
+        <button type="button" className={styles.compactCard} data-primary-owner-card onClick={() => { setError(null); setSuccess(null); clearPinDraft(); setActiveMenu("employee"); setEditorOpen(true); }}>
           <div className={styles.cardTop}>
             <div className={styles.ownerAvatar}>{initials(owner.full_name || "Owner")}</div>
             <div className={styles.summaryBadges}>
@@ -357,6 +388,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
       {error && !editorOpen ? <div className={styles.inlineError}>{error}</div> : null}
       {editorDialog}
       {pinDialog}
+      {confirmationDialog}
     </>
   );
 }

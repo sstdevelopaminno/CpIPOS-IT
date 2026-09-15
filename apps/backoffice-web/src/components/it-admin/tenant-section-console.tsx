@@ -165,9 +165,9 @@ export function TenantSectionConsole({ tenantId, section }: { tenantId: string; 
   }
 
   async function parseResponse<T>(response: Response): Promise<T> {
-    const payload = (await response.json()) as ApiEnvelope<T>;
-    if (!response.ok || payload.error) {
-      throw new Error(payload.error?.message ?? "Request failed.");
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
+    if (!response.ok || !payload || payload.error) {
+      throw new Error(payload?.error?.message ?? `Request failed (${response.status}).`);
     }
     return payload.data;
   }

@@ -8,6 +8,7 @@ function source(relativePath: string) {
 const tenantsPage = source("../../src/app/(it-admin)/it-admin/tenants/page.tsx");
 const tenantsUi = source("../../src/components/it-admin/tenant-directory-console.tsx");
 const controlCenter = source("../../src/components/it-admin/tenant-control-center.tsx");
+const primaryOwnerUi = source("../../src/components/it-admin/tenant-primary-owner-card.tsx");
 const primaryBridge = source("../../../../supabase/control-plane-functions/cpipos-it-module-primary/index.ts");
 
 describe("IT Admin tenant directory", () => {
@@ -28,6 +29,14 @@ describe("IT Admin tenant directory", () => {
     expect(controlCenter).toContain("/devices`}");
   });
 
+  it("renders owner identity menus as selectable buttons", () => {
+    expect(primaryOwnerUi).toContain("OwnerEditorMenu");
+    expect(primaryOwnerUi).toContain("styles.menuRail");
+    expect(primaryOwnerUi).toContain('role="tablist"');
+    expect(primaryOwnerUi).toContain('setActiveMenu("employee")');
+    expect(primaryOwnerUi).toContain('setActiveMenu("profile")');
+    expect(primaryOwnerUi).toContain('setActiveMenu("pin")');
+  });
   it("keeps authority metrics visible while moving editable store operations into the Store Control Center", () => {
     expect(primaryBridge).toContain('module === "tenants"');
     expect(primaryBridge).toContain('.from("it_admin_tenant_summary_v")');

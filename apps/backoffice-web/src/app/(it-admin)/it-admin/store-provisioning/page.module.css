@@ -1,6 +1,6 @@
 .page {
   display: grid;
-  gap: 18px;
+  gap: 24px;
 }
 
 .header {
@@ -10,7 +10,7 @@
 
 .header > span {
   color: #6d86ac;
-  font-size: 9px;
+  font-size: 15px;
   font-weight: 850;
   letter-spacing: 0.12em;
 }
@@ -18,7 +18,7 @@
 .header h2 {
   margin: 0;
   color: #172235;
-  font-size: 25px;
+  font-size: 34px;
   line-height: 1.2;
 }
 
@@ -26,13 +26,13 @@
   max-width: 820px;
   margin: 2px 0 0;
   color: #6e7b8f;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.55;
 }
 
 .boundary {
   margin: 0;
   color: #8b97a7;
-  font-size: 9px;
+  font-size: 15px;
   line-height: 1.5;
 }

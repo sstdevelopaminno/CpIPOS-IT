@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import styles from "./tenant-action-confirm.module.css";
 
 type Tone = "info" | "warning" | "danger";
@@ -19,6 +20,41 @@ type Copy = {
 };
 
 const actionCopy: Record<string, Copy> = {
+  update_profile: {
+    eyebrow: "STORE PROFILE",
+    title: "ยืนยันการบันทึกข้อมูลร้าน",
+    description: "ชื่อร้าน เบอร์ติดต่อ ที่อยู่ หรือโลโก้ร้านจะถูกอัปเดตและบันทึก Audit Log",
+    confirmLabel: "ยืนยันบันทึกข้อมูลร้าน",
+    tone: "info"
+  },
+  create_branch: {
+    eyebrow: "BRANCH CREATE",
+    title: "ยืนยันการเปิดสาขาใหม่",
+    description: "ระบบจะสร้างสาขาใหม่ให้ร้านนี้ และบันทึกผู้ดำเนินการไว้ใน Audit Log",
+    confirmLabel: "ยืนยันเปิดสาขา",
+    tone: "info"
+  },
+  update_branch: {
+    eyebrow: "BRANCH UPDATE",
+    title: "ยืนยันการบันทึกข้อมูลสาขา",
+    description: "ชื่อสาขา ที่อยู่ หรือสถานะสาขาจะถูกอัปเดตทันทีหลังยืนยัน",
+    confirmLabel: "ยืนยันบันทึกสาขา",
+    tone: "info"
+  },
+  update_owner_profile: {
+    eyebrow: "OWNER LOGIN",
+    title: "ยืนยันการบันทึก Owner / POS Login",
+    description: "ข้อมูลเจ้าของร้าน อีเมล Login และรหัสพนักงาน POS จะถูกอัปเดตพร้อม Audit Log",
+    confirmLabel: "ยืนยันบันทึก Owner",
+    tone: "info"
+  },
+  update_owner_pin: {
+    eyebrow: "OWNER PIN",
+    title: "ยืนยันการบันทึกรหัสเจ้าของร้าน",
+    description: "PIN ใหม่จะถูกเข้ารหัสและใช้ยืนยันสิทธิ์ Owner/Manager หลังจากบันทึก",
+    confirmLabel: "ยืนยันบันทึกรหัส",
+    tone: "warning"
+  },
   update_contract: {
     eyebrow: "CONTRACT UPDATE",
     title: "ยืนยันการแก้ไขสัญญา",
@@ -114,8 +150,8 @@ export function useTenantActionConfirm() {
 
   const copy = useMemo(() => pending ? (actionCopy[pending.action] ?? defaultCopy) : defaultCopy, [pending]);
 
-  const confirmationDialog = pending ? (
-    <div className={styles.backdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) finish(false); }}>
+  const confirmationDialog = pending && typeof document !== "undefined" ? createPortal(
+    <div className={styles.backdrop} data-tenant-action-confirm role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) finish(false); }}>
       <section className={styles.dialog} role="alertdialog" aria-modal="true" aria-labelledby="tenant-confirm-title" aria-describedby="tenant-confirm-description">
         <div className={`${styles.icon} ${styles[copy.tone]}`}>{copy.tone === "danger" ? "!" : copy.tone === "warning" ? "!" : "✓"}</div>
         <div className={styles.content}>
@@ -134,7 +170,7 @@ export function useTenantActionConfirm() {
         </div>
       </section>
     </div>
-  ) : null;
+  , document.body) : null;
 
   return {
     confirmAction,

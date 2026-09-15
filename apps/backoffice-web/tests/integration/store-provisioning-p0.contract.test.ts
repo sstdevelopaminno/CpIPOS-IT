@@ -70,6 +70,25 @@ describe("IT Store Provisioning P0", () => {
     expect(consoleUi).toContain('status: "trial"');
   });
 
+
+  it("shows a front-layer success popup, clears the form, and readies the next store", () => {
+    expect(consoleUi).toContain("data-store-provisioning-success");
+    expect(consoleUi).toContain("window.setTimeout(() => setResult(null), 4200)");
+    expect(consoleUi).toContain("setRequestId(newRequestId())");
+    expect(consoleUi).toContain("setForm(initialForm(packages))");
+    expect(consoleUi).toContain("บันทึกและเปิดร้านใหม่สำเร็จ");
+  });
+
+  it("keeps the provisioning form readable with larger operational controls", () => {
+    const consoleCss = source("../../src/components/it-admin/store-provisioning-console.module.css");
+    const pageCss = source("../../src/app/(it-admin)/it-admin/store-provisioning/page.module.css");
+    expect(consoleCss).toContain("Store provisioning readability refresh");
+    expect(consoleCss).toContain(".successBackdrop");
+    expect(consoleCss).toContain("z-index: 1900");
+    expect(consoleCss).toContain("min-height: 54px");
+    expect(pageCss).toContain("font-size: 34px");
+    expect(pageCss).toContain("font-size: 15px");
+  });
   it("keeps retry identity stable and ends onboarding at Device Enrollment", () => {
     expect(consoleUi).toContain("request_id: requestId");
     expect(consoleUi).toContain("Request ID เดิม");
