@@ -19,8 +19,7 @@ export function PwaBootstrap() {
             const keys = await window.caches.keys();
             await Promise.all(keys.map((key) => window.caches.delete(key)));
           }
-          if (navigator.serviceWorker.controller && !window.sessionStorage.getItem("cpipos_dev_sw_cleared_v1")) {
-            window.sessionStorage.setItem("cpipos_dev_sw_cleared_v1", "1");
+          if (navigator.serviceWorker.controller) {
             window.location.reload();
           }
         } catch {

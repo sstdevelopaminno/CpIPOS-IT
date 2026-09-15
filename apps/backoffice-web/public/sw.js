@@ -1,9 +1,7 @@
-const CACHE_NAME = "cpipos-shell-v5";
+const CACHE_NAME = "cpipos-shell-v6";
 const OFFLINE_POS_URL = "/offline-pos.html";
 const ASSETS_TO_CACHE = [
-  "/",
   OFFLINE_POS_URL,
-  "/manifest.webmanifest",
   "/brand/cpipos-logo.png",
   "/icons/cpipos-icon-192.png",
   "/icons/cpipos-icon-512.png",
@@ -16,11 +14,25 @@ self.addEventListener("message", (event) => {
   }
 });
 
-function shouldBypassRuntimeCache(url) {
+function shouldBypassRuntimeCache(request, url) {
   return (
     url.pathname.startsWith("/api/") ||
-    url.pathname.startsWith("/_next/webpack-hmr") ||
-    url.pathname.startsWith("/_next/static/chunks/webpack")
+    url.pathname.startsWith("/_next/") ||
+    url.searchParams.has("_rsc") ||
+    request.headers.get("rsc") === "1" ||
+    request.headers.has("next-router-state-tree")
+  );
+}
+
+function shouldCacheRuntimeRequest(request, url) {
+  if (request.mode === "navigate") return false;
+  if (shouldBypassRuntimeCache(request, url)) return false;
+  return (
+    request.destination === "image" ||
+    request.destination === "font" ||
+    url.pathname.startsWith("/icons/") ||
+    url.pathname.startsWith("/brand/") ||
+    url.pathname === OFFLINE_POS_URL
   );
 }
 
@@ -53,7 +65,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (shouldBypassRuntimeCache(url)) return;
+  if (!shouldCacheRuntimeRequest(request, url)) return;
 
   event.respondWith(
     caches.match(request).then((cached) => {
