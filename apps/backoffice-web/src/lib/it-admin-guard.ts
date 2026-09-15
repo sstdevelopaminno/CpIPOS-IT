@@ -2,6 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { getAuthContext, type AuthContext } from "@/lib/auth-context";
+import { RequiredEnvironmentVariableError } from "@/lib/env";
 import { FeatureGateError } from "@/lib/feature-gate";
 import { fail } from "@/lib/http";
 import { getItControlPlaneClient } from "@/lib/it-control-plane";
@@ -91,6 +92,9 @@ export function guardItAdminError(error: unknown): Response {
   }
   if (error instanceof FeatureGateError) {
     return fail(error.code, error.message, error.status);
+  }
+  if (error instanceof RequiredEnvironmentVariableError) {
+    return fail("server_configuration_missing", `Missing server configuration: ${error.variableName}.`, 503);
   }
 
   console.error("[it-admin-api] internal error", error);

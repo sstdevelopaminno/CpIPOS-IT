@@ -1,4 +1,5 @@
 import { DeviceHealthConsole } from "@/components/it-admin/device-health-console";
+import { FullMdmControlConsole } from "@/components/it-admin/full-mdm-control-console";
 import { getAuthContext } from "@/lib/auth-context";
 
 export default async function DeviceHealthPage({
@@ -17,5 +18,10 @@ export default async function DeviceHealthPage({
     );
   }
 
-  return <DeviceHealthConsole tenantId={tenantId} deviceId={deviceId} />;
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <DeviceHealthConsole tenantId={tenantId} deviceId={deviceId} />
+      <FullMdmControlConsole tenantId={tenantId} deviceId={deviceId} />
+    </div>
+  );
 }

@@ -7,6 +7,7 @@ function source(relativePath: string) {
 
 const tenantsPage = source("../../src/app/(it-admin)/it-admin/tenants/page.tsx");
 const tenantsUi = source("../../src/components/it-admin/tenant-directory-console.tsx");
+const controlCenter = source("../../src/components/it-admin/tenant-control-center.tsx");
 const primaryBridge = source("../../../../supabase/control-plane-functions/cpipos-it-module-primary/index.ts");
 
 describe("IT Admin tenant directory", () => {
@@ -16,16 +17,18 @@ describe("IT Admin tenant directory", () => {
     expect(tenantsUi).toContain('fetch("/api/it-admin/v1/modules/tenants"');
     expect(tenantsUi).toContain("statusFilter");
     expect(tenantsUi).toContain("setSelected(row)");
+    expect(tenantsUi).toContain("TenantControlCenter");
   });
 
   it("keeps POS store login out of the IT Control Plane route surface", () => {
     expect(tenantsUi).not.toContain("/login/store");
+    expect(controlCenter).not.toContain("/login/store");
     expect(tenantsUi).toContain('href="/it-admin/store-provisioning"');
-    expect(tenantsUi).toContain('href="/it-admin/branches"');
-    expect(tenantsUi).toContain('href="/it-admin/devices"');
+    expect(controlCenter).toContain("/branches`}");
+    expect(controlCenter).toContain("/devices`}");
   });
 
-  it("enriches tenant detail from the existing IT authority view without exposing credentials", () => {
+  it("keeps authority metrics visible while moving editable store operations into the Store Control Center", () => {
     expect(primaryBridge).toContain('module === "tenants"');
     expect(primaryBridge).toContain('.from("it_admin_tenant_summary_v")');
     expect(primaryBridge).toContain('.from("tenant_access_codes")');
@@ -35,8 +38,13 @@ describe("IT Admin tenant directory", () => {
     expect(primaryBridge).toContain("active_session_count");
     expect(primaryBridge).toContain("open_shift_count");
     expect(primaryBridge).not.toContain('select("pin_hash');
-    expect(tenantsUi).toContain("การใช้งานเทียบโควตา");
-    expect(tenantsUi).toContain("Active POS sessions");
-    expect(tenantsUi).toContain("Open shifts");
+
+    expect(tenantsUi).toContain("active_sessions");
+    expect(tenantsUi).toContain("open_shifts");
+    expect(tenantsUi).toContain("แพ็กเกจ / สัญญา");
+    expect(controlCenter).toContain("แพ็กเกจและสิทธิ์");
+    expect(controlCenter).toContain("POS POPUP PREVIEW");
+    expect(controlCenter).toContain("อุปกรณ์ Active");
+    expect(controlCenter).toContain("ผู้ใช้ที่ผูกสาขา");
   });
 });

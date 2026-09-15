@@ -1,8 +1,7 @@
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
-import { syncLegacyDeviceCompatibility } from "@/lib/legacy-mdm-compat";
 
-type ItDeviceRow = {
+type PosDeviceRow = {
   id: string;
   tenant_id: string;
   branch_id: string;
@@ -30,7 +29,6 @@ type HealthLatestRow = {
   runtime_version: string | null;
   last_seen_at: string;
   captured_at: string;
-  synced_at: string | null;
 };
 
 type IncidentRow = {
@@ -49,7 +47,7 @@ type CommandRow = {
   status: string;
   issued_at: string;
   delivered_at: string | null;
-  expires_at: string;
+  expires_at: string | null;
   result: unknown;
 };
 
@@ -63,41 +61,24 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
   const startedAt = Date.now();
 
   try {
-    const { supabase, itSupabase } = await requireItAdmin();
+    const { supabase } = await requireItAdmin();
     const { deviceId } = await context.params;
     const id = String(deviceId ?? "").trim();
     if (!id) return fail("invalid_device_id", "Device id is required.", 422);
 
-    const { data: device, error: deviceError } = await itSupabase
-      .from("it_devices")
+    const { data: device, error: deviceError } = await supabase
+      .from("branch_devices")
       .select("id,tenant_id,branch_id,device_code,device_name,status,last_seen_at")
       .eq("id", id)
-      .maybeSingle<ItDeviceRow>();
-    if (deviceError) throw new Error(`it_device_query_failed:${deviceError.message}`);
+      .maybeSingle<PosDeviceRow>();
+    if (deviceError) throw new Error(`pos_device_query_failed:${deviceError.message}`);
     if (!device) return fail("device_not_found", "Device was not found.", 404);
 
-    let compatibility: Record<string, unknown> = { mode: "native_it_plane", attempted: false };
-    try {
-      const sync = await syncLegacyDeviceCompatibility({ supabase, itSupabase }, device);
-      compatibility = {
-        mode: sync.health.source === "CpiPOS-001" ? "legacy_bridge" : "native_it_plane",
-        attempted: true,
-        ...sync
-      };
-    } catch (compatError) {
-      console.error("[it-admin-mdm] legacy compatibility sync failed", compatError);
-      compatibility = {
-        mode: "native_it_plane",
-        attempted: true,
-        warning: compatError instanceof Error ? compatError.message : "legacy_compatibility_sync_failed"
-      };
-    }
-
     const [healthResult, incidentResult, commandResult] = await Promise.all([
-      itSupabase
-        .from("it_device_health_latest")
+      supabase
+        .from("pos_device_health_latest")
         .select(
-          "id,status,summary,identity,connectivity,system_health,runtime_health,peripheral_health,offline_sale_health,security_signals,metadata,last_error,machine_id,app_version,runtime_version,last_seen_at,captured_at,synced_at"
+          "id,status,summary,identity,connectivity,system_health,runtime_health,peripheral_health,offline_sale_health,security_signals,metadata,last_error,machine_id,app_version,runtime_version,last_seen_at,captured_at"
         )
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
@@ -105,8 +86,8 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
         .order("last_seen_at", { ascending: false })
         .limit(20)
         .returns<HealthLatestRow[]>(),
-      itSupabase
-        .from("it_device_incidents")
+      supabase
+        .from("pos_device_incidents")
         .select("id,code,severity,title,message,detected_at,resolved_at")
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
@@ -114,8 +95,8 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
         .order("detected_at", { ascending: false })
         .limit(20)
         .returns<IncidentRow[]>(),
-      itSupabase
-        .from("it_device_commands")
+      supabase
+        .from("device_commands")
         .select("id,command_type,status,issued_at,delivered_at,expires_at,result")
         .eq("tenant_id", device.tenant_id)
         .eq("branch_id", device.branch_id)
@@ -147,10 +128,10 @@ export async function GET(_req: Request, context: { params: Promise<{ deviceId: 
       incidents: incidentResult.data ?? [],
       commands: commandResult.data ?? [],
       integration: {
-        mode: "split_supabase",
-        operational_plane: "CpiPOS-002",
+        mode: "single_pos_database",
+        authoritative_plane: "CpiPOS-001",
         heartbeat_writer: "cpipos_pos_runtime",
-        compatibility
+        reserved_operational_database_is_pos_dependency: false
       }
     });
     response.headers.set("cache-control", "no-store");

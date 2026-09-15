@@ -76,12 +76,13 @@ Rules:
 
 Vercel production must include these CpiPOS-001 server/runtime variables:
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `CPIPOS_SUPABASE_URL`
+- `CPIPOS_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `POS_SESSION_HANDOFF_SECRET`
 - `TABLE_QR_SIGNING_SECRET`
 
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are legacy browser-facing aliases only; configure `CPIPOS_SUPABASE_URL` and `CPIPOS_SUPABASE_PUBLISHABLE_KEY` as the primary deployment names for CpIPOS-IT.
 `POS_SESSION_HANDOFF_SECRET` is required for valid store-code login because the server signs the pre-entry login-flow cookie after tenant and branch lookup.
 `TABLE_QR_SIGNING_SECRET` must be separate from `SUPABASE_SERVICE_ROLE_KEY`; table QR tokens must not be signed with service-role credentials.
 

@@ -1,9 +1,12 @@
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { appendItAuditLog } from "@/lib/it-control-plane";
+import { validateMdmCommandRequest } from "@/lib/mdm/commandPolicy";
+import { type MdmCommandType, type MdmDeviceSnapshot } from "@/lib/mdm/eligibility";
+import { getMdmConsoleBanner, getMdmConsoleControls } from "@/lib/mdm/webConsoleControls";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
-const MDM_COMMAND_TYPES = [
+const MDM_COMMAND_TYPES: readonly MdmCommandType[] = [
   "lock_device",
   "unlock_device",
   "request_location",
@@ -15,16 +18,16 @@ const MDM_COMMAND_TYPES = [
   "revoke_device_access",
   "financing_lock",
   "diagnostics_ping"
-] as const;
+];
 
-type MdmCommandType = (typeof MDM_COMMAND_TYPES)[number];
+const MAX_MDM_COMMAND_REQUEST_BYTES = 16_384;
 
 type MdmCommandRequestBody = {
   tenant_id?: string;
   device_id?: string;
   command_type?: string;
   reason?: string;
-  payload?: Record<string, unknown>;
+  payload?: unknown;
   ttl_minutes?: number;
 };
 
@@ -40,38 +43,9 @@ type MdmDeviceRow = {
   is_device_owner: boolean;
   is_full_mdm_eligible: boolean;
   capabilities: unknown;
+  last_heartbeat_at: string | null;
+  display_name?: string | null;
 };
-
-const COMMAND_CAPABILITY: Partial<Record<MdmCommandType, string>> = {
-  lock_device: "remote_lock",
-  unlock_device: "remote_lock",
-  financing_lock: "remote_lock",
-  revoke_device_access: "remote_lock",
-  request_location: "location",
-  start_remote_support: "remote_support",
-  stop_remote_support: "remote_support",
-  install_app: "app_install",
-  uninstall_app: "app_uninstall",
-  sync_policy: "policy_sync"
-};
-
-const SENSITIVE_COMMANDS = new Set<MdmCommandType>([
-  "lock_device",
-  "unlock_device",
-  "request_location",
-  "start_remote_support",
-  "install_app",
-  "uninstall_app",
-  "revoke_device_access",
-  "financing_lock"
-]);
-
-const CORE_AGENT_PACKAGES = new Set([
-  "com.cpipos",
-  "com.cpipos.pos",
-  "com.cpipos.mdm",
-  "com.cuttingpoint.cpipos"
-]);
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -81,49 +55,95 @@ function isMdmCommandType(value: string): value is MdmCommandType {
   return (MDM_COMMAND_TYPES as readonly string[]).includes(value);
 }
 
-function capabilities(value: unknown): string[] {
+function capabilityList(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => text(item).toLowerCase()).filter(Boolean) : [];
 }
 
-function rejectionReason(
-  commandType: MdmCommandType,
-  reason: string,
-  payload: Record<string, unknown>,
-  device: MdmDeviceRow
-): string | null {
-  if (commandType !== "diagnostics_ping" && !device.is_full_mdm_eligible) {
-    return "device_not_eligible_for_full_mdm";
-  }
+function toSnapshot(device: MdmDeviceRow): MdmDeviceSnapshot {
+  return {
+    tenantId: device.tenant_id,
+    deviceId: device.device_id,
+    platform: device.platform,
+    appVersion: device.app_version,
+    appFlavor: device.app_flavor,
+    nativeGeneration: device.native_generation,
+    ownershipType: device.ownership_type,
+    enrollmentMode: device.enrollment_mode,
+    isDeviceOwner: device.is_device_owner,
+    capabilities: capabilityList(device.capabilities)
+  };
+}
 
-  const requiredCapability = COMMAND_CAPABILITY[commandType];
-  if (requiredCapability && !capabilities(device.capabilities).includes(requiredCapability)) {
-    return `device_capability_required:${requiredCapability}`;
-  }
+async function loadMdmDevice(
+  supabase: Awaited<ReturnType<typeof requireItAdmin>>["supabase"],
+  tenantId: string,
+  deviceId: string
+): Promise<MdmDeviceRow | null> {
+  const { data: device, error } = await supabase
+    .from("mdm_devices")
+    .select("tenant_id,device_id,display_name,platform,app_version,app_flavor,native_generation,ownership_type,enrollment_mode,is_device_owner,is_full_mdm_eligible,capabilities,last_heartbeat_at")
+    .eq("tenant_id", tenantId)
+    .eq("device_id", deviceId)
+    .maybeSingle<MdmDeviceRow>();
 
-  if (SENSITIVE_COMMANDS.has(commandType) && reason.length < 8) {
-    return "reason_required_for_sensitive_mdm_command";
-  }
+  if (error) throw new Error(`mdm_device_query_failed:${error.message}`);
+  return device ?? null;
+}
 
-  if (commandType === "install_app" || commandType === "uninstall_app") {
-    const packageName = text(payload.packageName);
-    if (!packageName) return "android_package_name_required";
-    if (commandType === "uninstall_app" && CORE_AGENT_PACKAGES.has(packageName.toLowerCase())) {
-      return "core_agent_uninstall_blocked_use_revoke_access_policy";
-    }
-  }
+export async function GET(req: Request) {
+  const startedAt = Date.now();
 
-  if (commandType === "start_remote_support") {
-    const sessionMode = text(payload.sessionMode).toLowerCase();
-    const sessionTtl = Number(payload.ttlMinutes ?? 0);
-    if (!new Set(["attended", "company_kiosk"]).has(sessionMode)) {
-      return "remote_support_requires_attended_or_company_kiosk_mode";
-    }
-    if (!Number.isFinite(sessionTtl) || sessionTtl <= 0 || sessionTtl > 60) {
-      return "remote_support_ttl_must_be_1_to_60_minutes";
-    }
-  }
+  try {
+    const { supabase } = await requireItAdmin();
+    const url = new URL(req.url);
+    const tenantId = text(url.searchParams.get("tenant_id"));
+    const deviceId = text(url.searchParams.get("device_id"));
+    if (!tenantId || !deviceId) return fail("missing_scope", "tenant_id and device_id are required.", 422);
 
-  return null;
+    const device = await loadMdmDevice(supabase, tenantId, deviceId);
+    if (!device) return fail("mdm_device_not_found", "Device has not been enrolled in the Full MDM registry.", 404);
+
+    const snapshot = toSnapshot(device);
+    const controls = getMdmConsoleControls(snapshot);
+    const banner = getMdmConsoleBanner(snapshot);
+
+    const { data: commands, error: commandError } = await supabase
+      .from("mdm_commands")
+      .select("id,command_type,status,reason,queued_at,picked_up_at,completed_at,failed_at,expires_at,command_result")
+      .eq("tenant_id", tenantId)
+      .eq("device_id", deviceId)
+      .order("queued_at", { ascending: false })
+      .limit(25);
+    if (commandError) throw new Error(`mdm_command_history_failed:${commandError.message}`);
+
+    const response = ok({
+      device: {
+        tenant_id: device.tenant_id,
+        device_id: device.device_id,
+        display_name: device.display_name ?? null,
+        platform: device.platform,
+        app_version: device.app_version,
+        app_flavor: device.app_flavor,
+        native_generation: device.native_generation,
+        ownership_type: device.ownership_type,
+        enrollment_mode: device.enrollment_mode,
+        is_device_owner: device.is_device_owner,
+        is_full_mdm_eligible: device.is_full_mdm_eligible,
+        capabilities: capabilityList(device.capabilities),
+        last_heartbeat_at: device.last_heartbeat_at
+      },
+      banner,
+      controls,
+      commands: commands ?? [],
+      control_plane: { authority: "CpiPOS-001.mdm_commands" }
+    });
+    response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
+    return response;
+  } catch (error) {
+    const response = guardItAdminError(error);
+    response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
+    return response;
+  }
 }
 
 export async function POST(req: Request) {
@@ -139,29 +159,38 @@ export async function POST(req: Request) {
     });
     if (!rateLimit.ok) return fail("rate_limited", "Too many MDM commands. Please wait and try again.", 429);
 
+    const contentLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_MDM_COMMAND_REQUEST_BYTES) {
+      return fail("mdm_command_payload_too_large", "MDM command request body is too large.", 413);
+    }
+
     const body = (await req.json().catch(() => ({}))) as MdmCommandRequestBody;
     const tenantId = text(body.tenant_id);
     const deviceId = text(body.device_id);
     const commandTypeRaw = text(body.command_type);
     const reason = text(body.reason);
-    const payload = body.payload && typeof body.payload === "object" && !Array.isArray(body.payload) ? body.payload : {};
+    const rawPayload = body.payload;
     const ttlMinutes = Math.min(Math.max(Number(body.ttl_minutes ?? 30), 1), 60);
 
     if (!tenantId || !deviceId) return fail("missing_scope", "tenant_id and device_id are required.", 422);
     if (!isMdmCommandType(commandTypeRaw)) return fail("invalid_mdm_command_type", "Unknown MDM command type.", 422);
     const commandType: MdmCommandType = commandTypeRaw;
 
-    const { data: device, error: deviceError } = await supabase
-      .from("mdm_devices")
-      .select("tenant_id,device_id,platform,app_version,app_flavor,native_generation,ownership_type,enrollment_mode,is_device_owner,is_full_mdm_eligible,capabilities")
-      .eq("tenant_id", tenantId)
-      .eq("device_id", deviceId)
-      .maybeSingle<MdmDeviceRow>();
-
-    if (deviceError) throw new Error(`mdm_device_query_failed:${deviceError.message}`);
+    const device = await loadMdmDevice(supabase, tenantId, deviceId);
     if (!device) return fail("mdm_device_not_found", "Device has not been enrolled in the Full MDM registry.", 404);
 
-    const rejected = rejectionReason(commandType, reason, payload, device);
+    const snapshot = toSnapshot(device);
+    const validation = validateMdmCommandRequest({
+      tenantId,
+      deviceId,
+      commandType,
+      requestedBy: auth.userId,
+      requestedByRole: "it_admin",
+      reason,
+      payload: rawPayload
+    }, snapshot);
+    const payload = validation.auditEvent.payload;
+
     const eligibilitySnapshot = {
       platform: device.platform,
       app_version: device.app_version,
@@ -170,18 +199,21 @@ export async function POST(req: Request) {
       ownership_type: device.ownership_type,
       enrollment_mode: device.enrollment_mode,
       is_device_owner: device.is_device_owner,
-      is_full_mdm_eligible: device.is_full_mdm_eligible,
-      capabilities: capabilities(device.capabilities)
+      is_full_mdm_eligible: validation.eligibility.isEligible,
+      capabilities: capabilityList(device.capabilities),
+      allowed_commands: validation.eligibility.allowedCommands,
+      denied_commands: validation.eligibility.deniedCommands
     };
 
-    if (rejected) {
+    if (!validation.accepted) {
+      const rejection = validation.reasons.join(",");
       await supabase.from("mdm_command_audit").insert({
         tenant_id: tenantId,
         device_id: deviceId,
         command_type: commandType,
         event_type: "queue_request",
         decision: "rejected",
-        reason: rejected,
+        reason: rejection,
         actor_id: auth.userId,
         actor_role: "it_admin",
         metadata: { reason_text: reason, payload, eligibility: eligibilitySnapshot }
@@ -194,9 +226,9 @@ export async function POST(req: Request) {
         targetId: deviceId,
         ipAddress: requestMeta.ipAddress,
         userAgent: requestMeta.userAgent,
-        metadata: { command_type: commandType, rejection: rejected }
+        metadata: { command_type: commandType, rejection_reasons: validation.reasons }
       });
-      return fail("mdm_command_rejected", rejected, 409);
+      return fail("mdm_command_rejected", rejection || "MDM command is not allowed for this device.", 409);
     }
 
     const now = new Date();
@@ -219,6 +251,29 @@ export async function POST(req: Request) {
       .single();
 
     if (commandError || !command) throw new Error(commandError?.message ?? "mdm_command_insert_failed");
+
+    if (commandType === "start_remote_support") {
+      const sessionMode = text(payload.sessionMode).toLowerCase();
+      const requestedTtl = Math.min(Math.max(Number(payload.ttlMinutes ?? ttlMinutes), 1), 60);
+      const { error: supportError } = await supabase.from("mdm_remote_support_sessions").insert({
+        tenant_id: tenantId,
+        device_id: deviceId,
+        status: "requested",
+        session_mode: sessionMode,
+        started_by: auth.userId,
+        command_id: command.id,
+        expires_at: new Date(now.getTime() + requestedTtl * 60_000).toISOString(),
+        audit_metadata: { source: "cpipos_it_admin", reason }
+      });
+      if (supportError) {
+        await supabase.from("mdm_commands").update({
+          status: "failed",
+          failed_at: new Date().toISOString(),
+          command_result: { code: "remote_support_session_create_failed" }
+        }).eq("id", command.id);
+        throw new Error(`mdm_remote_support_session_failed:${supportError.message}`);
+      }
+    }
 
     await Promise.all([
       supabase.from("mdm_command_audit").insert({
@@ -247,10 +302,11 @@ export async function POST(req: Request) {
 
     const response = ok({
       command,
+      controls: getMdmConsoleControls(snapshot),
       control_plane: {
         authority: "CpiPOS-001.mdm_commands",
         executor_required: true,
-        device_eligible: device.is_full_mdm_eligible
+        device_eligible: validation.eligibility.isEligible
       }
     });
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));

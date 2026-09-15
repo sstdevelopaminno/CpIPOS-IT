@@ -1,9 +1,11 @@
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
+import { readThroughRuntimeCache } from "@/lib/route-runtime-cache";
 import { loadItAdminModule, parseItAdminModule } from "@/lib/services/it-admin/control-plane-module-service";
-import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getVerifiedSupabaseAccessToken } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
+const MODULE_CACHE_TTL_MS = 30_000;
 
 export async function GET(_request: Request, { params }: { params: Promise<{ module: string }> }) {
   const startedAt = Date.now();
@@ -13,17 +15,20 @@ export async function GET(_request: Request, { params }: { params: Promise<{ mod
     if (!moduleName) return fail("unknown_it_admin_module", "Unknown IT Admin module.", 404);
 
     const context = await requireItAdmin();
-    const supabase = await getSupabaseServerClient();
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    const session = sessionData.session;
-    if (sessionError || !session?.access_token || session.user.id !== context.auth.userId) {
+    const accessToken = await getVerifiedSupabaseAccessToken(context.auth.userId);
+    if (!accessToken) {
       throw new ItAdminGuardError("unauthorized", "Authentication is required.", 401);
     }
 
-    const payload = await loadItAdminModule(moduleName, session.access_token);
+    const { value: payload, source } = await readThroughRuntimeCache({
+      key: `it-admin-module:${context.auth.userId}:${moduleName}`,
+      ttlMs: MODULE_CACHE_TTL_MS,
+      loader: () => loadItAdminModule(moduleName, accessToken)
+    });
     const response = ok(payload);
     response.headers.set("cache-control", "no-store");
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
+    response.headers.set("x-it-admin-module-cache", source);
     response.headers.set("x-it-admin-plane", payload.plane);
     return response;
   } catch (error) {

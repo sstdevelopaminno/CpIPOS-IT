@@ -9,6 +9,10 @@ function stripTrailingEscapedNewlines(value: string): string {
 const SAFE_ENV_DEFAULTS: Record<string, string> = {
   CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co",
   CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_nGX5abZtEmd7Ynzyofop1A_caORaUII",
+  // The current POS topology uses one authoritative Supabase project.
+  // A future operational database may be configured independently, but it is
+  // not a POS health dependency until this flag is explicitly enabled.
+  IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED: "false",
   IT_SUPABASE_URL: "https://kawenyvpentwgugtzqec.supabase.co",
   IT_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_1MbMKrhZkWIEv4PtRd4Hag_xzHOPlKY"
 };
@@ -22,6 +26,16 @@ function normalize(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const normalized = stripTrailingEscapedNewlines(raw.trim());
   return normalized.length > 0 ? normalized : undefined;
+}
+
+export class RequiredEnvironmentVariableError extends Error {
+  variableName: string;
+
+  constructor(variableName: string, message?: string) {
+    super(message ?? `Missing required environment variable: ${variableName}`);
+    this.name = "RequiredEnvironmentVariableError";
+    this.variableName = variableName;
+  }
 }
 
 export function readEnv(name: string): string | undefined {
@@ -47,7 +61,7 @@ export function readEnv(name: string): string | undefined {
 export function readRequiredEnv(name: string, message?: string): string {
   const value = readEnv(name);
   if (!value) {
-    throw new Error(message ?? `Missing required environment variable: ${name}`);
+    throw new RequiredEnvironmentVariableError(name, message);
   }
 
   return value;

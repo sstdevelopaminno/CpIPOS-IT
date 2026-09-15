@@ -1,6 +1,6 @@
 # CpIPOS IT Admin / IT Control Plane — Current Handoff Context
 
-Last updated: 2026-08-29 (ICT)
+Last updated: 2026-09-15 (ICT)
 
 ## Mandatory workflow
 
@@ -181,6 +181,18 @@ Reuse existing PRs after the read-only navigation/Tenants foundation is accepted
 - PR #6 — telemetry / pairing / command ACK bridge.
 
 Do not create a second MDM implementation. Real telemetry only.
+
+
+## Security audit 2026-09-15
+
+Local audit note: `docs/SECURITY-AUDIT-2026-09-15.md`.
+
+Implemented hardening:
+- `POST /api/it-admin/v1/mdm/commands` now queues/audits only sanitized MDM command payloads.
+- MDM policy rejects secret-like payload keys, blocked prototype keys, unsupported values, excessive depth/key/array counts, overly long strings, and oversized serialized payloads.
+- The MDM route also rejects oversized request bodies by `content-length` before JSON parsing.
+
+Follow-up: extend shared request-size and audit-metadata sanitization to the remaining privileged IT Admin mutation routes.
 
 ## Immediate next action
 
