@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTenantActionConfirm } from "./tenant-action-confirm";
+import { TenantPrimaryOwnerCard } from "./tenant-primary-owner-card";
 import styles from "./tenant-directory-console.module.css";
 
 type ApiEnvelope<T> = { data: T | null; error: { code?: string; message?: string } | null };
@@ -188,6 +190,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { confirmAction, confirmationDialog, isConfirming } = useTenantActionConfirm();
 
   const [profile, setProfile] = useState({ display_name: "", legal_name: "", contact_phone: "", company_address: "", logo_url: "" });
   const [newBranch, setNewBranch] = useState({ branch_code: "", branch_name: "", branch_address: "" });
@@ -265,13 +268,17 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy && !isConfirming) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, onClose]);
+  }, [busy, isConfirming, onClose]);
 
   const mutate = useCallback(async (payload: Record<string, unknown>, message: string, destructive = false) => {
-    if (destructive && !window.confirm("ยืนยันการดำเนินการนี้? ระบบจะบันทึก Audit Log ทุกครั้ง")) return null;
+    if (destructive) {
+      const storeLabel = data?.tenant.display_name || data?.tenant.name || fallbackName;
+      const confirmed = await confirmAction(String(payload.action ?? ""), storeLabel);
+      if (!confirmed) return null;
+    }
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -297,7 +304,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     } finally {
       setBusy(false);
     }
-  }, [applyData, onChanged, onDeleted, tenantId]);
+  }, [applyData, confirmAction, data, fallbackName, onChanged, onDeleted, tenantId]);
 
   const selectedPackage = useMemo(() => data?.packages.find((pkg) => pkg.id === packageId) ?? null, [data?.packages, packageId]);
   const storeName = data?.tenant.display_name || data?.tenant.name || fallbackName;
@@ -338,7 +345,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   };
 
   return (
-    <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.currentTarget === event.target && !busy) onClose(); }}>
+    <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.currentTarget === event.target && !busy && !isConfirming) onClose(); }}>
       <section className={`${styles.modal} ${styles.controlModal}`} role="dialog" aria-modal="true" aria-labelledby="tenant-control-title">
         <header className={styles.controlHeader}>
           <div className={styles.storeIdentity}>
@@ -388,6 +395,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <button className={styles.primaryButton} type="button" disabled={busy} onClick={() => void mutate({ action: "update_profile", ...profile }, "บันทึกข้อมูลร้านเรียบร้อย")}>บันทึกข้อมูลร้าน</button>
                 </div>
               </section>
+
+              <TenantPrimaryOwnerCard tenantId={tenantId} />
 
               <section className={styles.quickStats}>
                 <article><span>สาขา</span><strong>{data.branches.filter((branch) => branch.is_active).length} / {data.branches.length}</strong><small>เปิดใช้งาน / ทั้งหมด</small></article>
@@ -540,6 +549,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
           <div className={styles.footerLinks}><Link href={`/tenants/${tenantId}/branches`}>เมนูสาขา</Link><Link href={`/tenants/${tenantId}/devices`}>Devices / MDM</Link><button type="button" onClick={onClose} disabled={busy}>ปิด</button></div>
         </footer>
       </section>
+      {confirmationDialog}
     </div>
   );
 }
