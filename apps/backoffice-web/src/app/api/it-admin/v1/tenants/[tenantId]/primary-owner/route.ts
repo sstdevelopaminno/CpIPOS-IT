@@ -14,12 +14,14 @@ type OwnerRoleRow = {
   user_id: string;
   branch_id: string;
   created_at: string;
+  is_default: boolean;
 };
 
 type OwnerProfileRow = {
   id: string;
   email: string | null;
   full_name: string | null;
+  platform_role: string | null;
   pin_hash: string | null;
   is_active: boolean;
   created_at: string;
@@ -73,7 +75,7 @@ function readOwnerPin(value: unknown) {
 async function loadPrimaryOwner(admin: Awaited<ReturnType<typeof requireItAdmin>>, tenantId: string) {
   const roles = await admin.supabase
     .from("user_branch_roles")
-    .select("user_id,branch_id,created_at")
+    .select("user_id,branch_id,created_at,is_default")
     .eq("tenant_id", tenantId)
     .eq("role", "owner")
     .order("created_at", { ascending: true })
@@ -81,15 +83,33 @@ async function loadPrimaryOwner(admin: Awaited<ReturnType<typeof requireItAdmin>
     .returns<OwnerRoleRow[]>();
 
   if (roles.error) throw new Error(`primary_owner_roles_query_failed:${roles.error.message}`);
-  const firstRole = roles.data?.[0] ?? null;
-  if (!firstRole) return null;
+  if (!roles.data?.length) return null;
 
-  const [profileResult, tenantResult, posProfileResult] = await Promise.all([
-    admin.supabase
-      .from("users_profiles")
-      .select("id,email,full_name,pin_hash,is_active,created_at,updated_at")
-      .eq("id", firstRole.user_id)
-      .maybeSingle<OwnerProfileRow>(),
+  const ownerUserIds = Array.from(new Set(roles.data.map((row) => row.user_id).filter(Boolean)));
+  const profilesResult = await admin.supabase
+    .from("users_profiles")
+    .select("id,email,full_name,platform_role,pin_hash,is_active,created_at,updated_at")
+    .in("id", ownerUserIds)
+    .returns<OwnerProfileRow[]>();
+  if (profilesResult.error) throw new Error(`primary_owner_profiles_query_failed:${profilesResult.error.message}`);
+
+  const profilesByUser = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile]));
+  const rankedRoles = [...roles.data].sort((left, right) => {
+    if (left.is_default !== right.is_default) return left.is_default ? -1 : 1;
+    const leftProfile = profilesByUser.get(left.user_id);
+    const rightProfile = profilesByUser.get(right.user_id);
+    const leftIsTenantUser = leftProfile?.platform_role !== "it_admin";
+    const rightIsTenantUser = rightProfile?.platform_role !== "it_admin";
+    if (leftIsTenantUser !== rightIsTenantUser) return leftIsTenantUser ? -1 : 1;
+    return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+  });
+
+  const firstRole = rankedRoles.find((row) => profilesByUser.has(row.user_id)) ?? null;
+  if (!firstRole) throw new ItAdminGuardError("primary_owner_profile_missing", "Primary owner profile was not found.", 409);
+  const profile = profilesByUser.get(firstRole.user_id);
+  if (!profile) throw new ItAdminGuardError("primary_owner_profile_missing", "Primary owner profile was not found.", 409);
+
+  const [tenantResult, posProfileResult] = await Promise.all([
     admin.supabase
       .from("tenants")
       .select("owner_name,owner_phone")
@@ -103,31 +123,29 @@ async function loadPrimaryOwner(admin: Awaited<ReturnType<typeof requireItAdmin>
       .maybeSingle<OwnerPosProfileRow>()
   ]);
 
-  if (profileResult.error) throw new Error(`primary_owner_profile_query_failed:${profileResult.error.message}`);
   if (tenantResult.error) throw new Error(`primary_owner_tenant_query_failed:${tenantResult.error.message}`);
   if (posProfileResult.error) throw new Error(`primary_owner_pos_profile_query_failed:${posProfileResult.error.message}`);
-  if (!profileResult.data) throw new ItAdminGuardError("primary_owner_profile_missing", "Primary owner profile was not found.", 409);
 
   const branchIds = new Set(
-    (roles.data ?? [])
+    roles.data
       .filter((row) => row.user_id === firstRole.user_id)
       .map((row) => row.branch_id)
       .filter(Boolean)
   );
   const employeeCode = normalizeEmployeeCode(posProfileResult.data?.employee_code ?? "");
-  const pinConfigured = Boolean(profileResult.data.pin_hash);
+  const pinConfigured = Boolean(profile.pin_hash);
 
   return {
-    user_id: profileResult.data.id,
-    full_name: profileResult.data.full_name ?? tenantResult.data?.owner_name ?? "",
-    email: profileResult.data.email ?? "",
+    user_id: profile.id,
+    full_name: profile.full_name ?? tenantResult.data?.owner_name ?? "",
+    email: profile.email ?? "",
     phone: tenantResult.data?.owner_phone ?? "",
     employee_code: employeeCode,
     pos_profile_configured: Boolean(posProfileResult.data && employeeCode),
-    is_active: profileResult.data.is_active,
+    is_active: profile.is_active,
     pin_configured: pinConfigured,
-    login_ready: Boolean(profileResult.data.is_active && employeeCode && pinConfigured),
-    created_at: profileResult.data.created_at,
+    login_ready: Boolean(profile.is_active && employeeCode && pinConfigured),
+    created_at: profile.created_at,
     role_created_at: firstRole.created_at,
     owner_branch_count: branchIds.size
   };
