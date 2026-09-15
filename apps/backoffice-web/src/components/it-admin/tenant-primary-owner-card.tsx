@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./tenant-primary-owner-card.module.css";
 
 type ApiEnvelope<T> = { data: T | null; error: { code?: string; message?: string } | null };
@@ -11,6 +11,7 @@ type PrimaryOwner = {
   email: string;
   phone: string;
   is_active: boolean;
+  pin_configured: boolean;
   created_at: string;
   role_created_at: string;
   owner_branch_count: number;
@@ -30,9 +31,20 @@ function formatDate(value: string) {
   return date.toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" });
 }
 
+function initials(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return "O";
+  return trimmed.slice(0, 2).toUpperCase();
+}
+
 export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   const [owner, setOwner] = useState<PrimaryOwner | null>(null);
   const [draft, setDraft] = useState({ full_name: "", email: "", phone: "" });
+  const [ownerPin, setOwnerPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
+  const [pinEditorOpen, setPinEditorOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +57,8 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
       email: next?.email ?? "",
       phone: next?.phone ?? ""
     });
+    setOwnerPin("");
+    setConfirmPin("");
   }, []);
 
   const load = useCallback(async () => {
@@ -66,20 +80,47 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  const openEditor = (focusPin = false) => {
+    setError(null);
+    setSuccess(null);
+    setOwnerPin("");
+    setConfirmPin("");
+    setPinEditorOpen(focusPin || !owner?.pin_configured);
+    setEditorOpen(true);
+  };
+
+  const closeEditor = () => {
+    if (saving) return;
+    setEditorOpen(false);
+    setPinEditorOpen(false);
+    setOwnerPin("");
+    setConfirmPin("");
+    setShowPin(false);
+  };
+
+  const pinIsValid = ownerPin === "" || /^\d{4,6}$/.test(ownerPin);
+  const pinMatches = ownerPin === confirmPin;
+  const pinCanSave = !pinEditorOpen || (ownerPin.length >= 4 && pinIsValid && pinMatches);
+  const profileCanSave = draft.full_name.trim().length >= 2 && draft.email.includes("@");
+
   const save = async () => {
+    if (!profileCanSave || !pinCanSave) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
+      const payloadBody: Record<string, string> = { ...draft };
+      if (pinEditorOpen && ownerPin) payloadBody.owner_pin = ownerPin;
       const response = await fetch(`/api/it-admin/v1/tenants/${tenantId}/primary-owner`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(draft)
+        body: JSON.stringify(payloadBody)
       });
       const payload = await parse<OwnerResponse>(response);
       applyOwner(payload.primary_owner);
-      setSuccess("บันทึก USER เจ้าของร้านคนแรกเรียบร้อยแล้ว");
+      setSuccess(pinEditorOpen && ownerPin ? "บันทึกข้อมูลและรหัส Owner เรียบร้อยแล้ว" : "บันทึก USER เจ้าของร้านเรียบร้อยแล้ว");
+      setPinEditorOpen(false);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "บันทึกข้อมูลเจ้าของร้านไม่สำเร็จ");
     } finally {
@@ -87,58 +128,103 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
     }
   };
 
+  const ownerSince = useMemo(() => owner ? formatDate(owner.role_created_at || owner.created_at) : "—", [owner]);
+
+  if (loading) {
+    return <section className={styles.compactCard} data-primary-owner-card><div className={styles.loadingDot} /><div><strong>USER เจ้าของร้าน</strong><span>กำลังโหลดข้อมูล Owner…</span></div></section>;
+  }
+
   return (
-    <section className={styles.card}>
-      <div className={styles.header}>
-        <div>
-          <span>PRIMARY OWNER USER</span>
-          <h4>USER เจ้าของร้านคนแรก</h4>
-          <p>บัญชี Owner แรกที่ผูกกับร้าน ใช้เป็นข้อมูลอ้างอิงหลักของ Store Control Center</p>
+    <>
+      <section className={styles.compactCard} data-primary-owner-card>
+        <div className={styles.ownerAvatar}>{initials(owner?.full_name ?? "Owner")}</div>
+        <div className={styles.summary}>
+          <span className={styles.eyebrow}>PRIMARY OWNER USER</span>
+          <strong>{owner?.full_name || "ยังไม่พบ USER เจ้าของร้าน"}</strong>
+          <small>{owner?.email || "ยังไม่ได้ผูก Owner USER กับร้าน"}</small>
         </div>
-        {owner ? <span className={`${styles.status} ${owner.is_active ? styles.active : styles.inactive}`}>{owner.is_active ? "ใช้งาน" : "ปิดใช้งาน"}</span> : null}
-      </div>
+        {owner ? (
+          <div className={styles.summaryBadges}>
+            <span className={owner.is_active ? styles.goodBadge : styles.mutedBadge}>{owner.is_active ? "ใช้งาน" : "ปิดใช้งาน"}</span>
+            <span className={owner.pin_configured ? styles.pinReadyBadge : styles.pinMissingBadge}>{owner.pin_configured ? "PIN พร้อม" : "ยังไม่มี PIN"}</span>
+          </div>
+        ) : null}
+        <div className={styles.compactActions}>
+          {owner ? <button type="button" className={styles.secondaryButton} onClick={() => openEditor(false)}>จัดการ Owner</button> : null}
+          {owner ? <button type="button" className={owner.pin_configured ? styles.pinButton : styles.primaryButton} onClick={() => openEditor(true)}>{owner.pin_configured ? "เปลี่ยนรหัส Owner" : "ตั้งรหัส Owner ครั้งแรก"}</button> : null}
+          {!owner ? <button type="button" className={styles.secondaryButton} onClick={() => void load()}>โหลดใหม่</button> : null}
+        </div>
+      </section>
 
-      {loading ? <div className={styles.state}>กำลังโหลดข้อมูล Owner…</div> : null}
-      {error ? <div className={styles.error}>{error}</div> : null}
-      {success ? <div className={styles.success}>{success}</div> : null}
+      {error && !editorOpen ? <div className={styles.inlineError}>{error}</div> : null}
 
-      {!loading && !owner ? (
-        <div className={styles.empty}>
-          <strong>ยังไม่พบ USER ที่มีสิทธิ์ Owner</strong>
-          <span>ระบบจะเลือก USER Owner คนแรกตามวันที่ผูกสิทธิ์กับร้าน ไม่สร้างบัญชีใหม่อัตโนมัติเพื่อป้องกันการผูกผู้ใช้ผิดร้าน</span>
+      {editorOpen && owner ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeEditor(); }}>
+          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="primary-owner-editor-title">
+            <header className={styles.modalHeader}>
+              <div className={styles.modalIdentity}>
+                <div className={styles.modalAvatar}>{initials(owner.full_name || "Owner")}</div>
+                <div>
+                  <span>OWNER ACCESS & IDENTITY</span>
+                  <h3 id="primary-owner-editor-title">จัดการ USER เจ้าของร้าน</h3>
+                  <p>แก้ข้อมูล Login และตั้งรหัส Owner สำหรับการอนุมัติคำสั่งใน POS</p>
+                </div>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={closeEditor} disabled={saving} aria-label="ปิด">×</button>
+            </header>
+
+            <div className={styles.modalBody}>
+              {error ? <div className={styles.errorBanner}><strong>บันทึกไม่สำเร็จ</strong><span>{error}</span></div> : null}
+              {success ? <div className={styles.successBanner}>{success}</div> : null}
+
+              <div className={styles.ownerMeta}>
+                <div><span>User ID</span><strong title={owner.user_id}>{owner.user_id}</strong></div>
+                <div><span>Owner ตั้งแต่</span><strong>{ownerSince}</strong></div>
+                <div><span>สาขาที่เป็น Owner</span><strong>{owner.owner_branch_count}</strong></div>
+                <div><span>สถานะ PIN</span><strong className={owner.pin_configured ? styles.goodText : styles.warnText}>{owner.pin_configured ? "ตั้งรหัสแล้ว" : "ยังไม่ได้ตั้งรหัส"}</strong></div>
+              </div>
+
+              <section className={styles.editorSection}>
+                <div className={styles.sectionTitle}><div><span>OWNER PROFILE</span><h4>ข้อมูลเจ้าของร้านและ Login</h4></div></div>
+                <div className={styles.formGrid}>
+                  <label><span>ชื่อเจ้าของร้าน</span><input value={draft.full_name} onChange={(event) => setDraft((value) => ({ ...value, full_name: event.target.value }))} /></label>
+                  <label><span>อีเมล Login</span><input type="email" value={draft.email} onChange={(event) => setDraft((value) => ({ ...value, email: event.target.value }))} /><small>เปลี่ยนอีเมลแล้วระบบจะอัปเดต Supabase Auth ของ USER นี้ด้วย</small></label>
+                  <label className={styles.fullWidth}><span>โทรศัพท์เจ้าของร้าน</span><input value={draft.phone} onChange={(event) => setDraft((value) => ({ ...value, phone: event.target.value }))} /></label>
+                </div>
+              </section>
+
+              <section className={`${styles.editorSection} ${styles.securitySection}`}>
+                <div className={styles.securityHeader}>
+                  <div><span>OWNER PIN SECURITY</span><h4>{owner.pin_configured ? "รหัสเจ้าของร้าน" : "ตั้งรหัสเจ้าของร้านครั้งแรก"}</h4><p>ใช้สำหรับอนุมัติรายการที่ต้องใช้สิทธิ์ Owner/Manager ใน POS</p></div>
+                  <div className={styles.securityActions}>
+                    <span className={owner.pin_configured ? styles.pinReadyBadge : styles.pinMissingBadge}>{owner.pin_configured ? "ตั้งค่าแล้ว" : "ต้องตั้งค่า"}</span>
+                    {!pinEditorOpen ? <button type="button" onClick={() => setPinEditorOpen(true)}>{owner.pin_configured ? "เปลี่ยนรหัส" : "ตั้งรหัส"}</button> : null}
+                  </div>
+                </div>
+
+                {pinEditorOpen ? (
+                  <div className={styles.pinEditor}>
+                    <div className={styles.pinGuide}><strong>{owner.pin_configured ? "กำหนดรหัสใหม่" : "กำหนดรหัสเริ่มต้น"}</strong><span>ใช้ตัวเลข 4–6 หลัก ระบบเก็บเฉพาะ bcrypt hash และจะไม่แสดงรหัสเดิมกลับมา</span></div>
+                    <div className={styles.pinGrid}>
+                      <label><span>รหัส Owner ใหม่</span><div className={styles.passwordField}><input type={showPin ? "text" : "password"} inputMode="numeric" autoComplete="new-password" maxLength={6} value={ownerPin} onChange={(event) => setOwnerPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="4–6 หลัก" /><button type="button" onClick={() => setShowPin((value) => !value)}>{showPin ? "ซ่อน" : "แสดง"}</button></div></label>
+                      <label><span>ยืนยันรหัส Owner</span><input type={showPin ? "text" : "password"} inputMode="numeric" autoComplete="new-password" maxLength={6} value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="กรอกรหัสซ้ำ" /></label>
+                    </div>
+                    {ownerPin && !pinIsValid ? <div className={styles.pinValidation}>รหัสต้องเป็นตัวเลข 4–6 หลัก</div> : null}
+                    {confirmPin && !pinMatches ? <div className={styles.pinValidation}>รหัสยืนยันไม่ตรงกัน</div> : null}
+                  </div>
+                ) : null}
+              </section>
+
+              <div className={styles.securityNote}>User ID และสิทธิ์ Owner ถูกล็อกในหน้าต่างนี้ การเปลี่ยนรหัสจะไม่บันทึกรหัสจริงหรือ hash ลง Audit Log แต่จะบันทึกว่าใครเป็นผู้เปลี่ยนและเมื่อใด</div>
+            </div>
+
+            <footer className={styles.modalFooter}>
+              <button type="button" className={styles.cancelButton} onClick={closeEditor} disabled={saving}>ยกเลิก</button>
+              <button type="button" className={styles.saveButton} onClick={() => void save()} disabled={saving || !profileCanSave || !pinCanSave}>{saving ? "กำลังบันทึก…" : pinEditorOpen && ownerPin ? "บันทึกข้อมูลและรหัส Owner" : "บันทึกข้อมูล Owner"}</button>
+            </footer>
+          </section>
         </div>
       ) : null}
-
-      {!loading && owner ? (
-        <>
-          <div className={styles.metaGrid}>
-            <div><span>User ID</span><strong>{owner.user_id}</strong></div>
-            <div><span>Owner ตั้งแต่</span><strong>{formatDate(owner.role_created_at || owner.created_at)}</strong></div>
-            <div><span>สาขาที่เป็น Owner</span><strong>{owner.owner_branch_count}</strong></div>
-          </div>
-
-          <div className={styles.formGrid}>
-            <label>
-              <span>ชื่อเจ้าของร้าน</span>
-              <input value={draft.full_name} onChange={(event) => setDraft((value) => ({ ...value, full_name: event.target.value }))} />
-            </label>
-            <label>
-              <span>อีเมล Login</span>
-              <input type="email" value={draft.email} onChange={(event) => setDraft((value) => ({ ...value, email: event.target.value }))} />
-              <small>เมื่อแก้อีเมล ระบบจะอัปเดต Supabase Auth ของ USER นี้ด้วย</small>
-            </label>
-            <label className={styles.fullWidth}>
-              <span>โทรศัพท์เจ้าของร้าน</span>
-              <input value={draft.phone} onChange={(event) => setDraft((value) => ({ ...value, phone: event.target.value }))} />
-            </label>
-          </div>
-
-          <div className={styles.actions}>
-            <div className={styles.note}>สิทธิ์ Owner และ User ID ถูกล็อกไว้ ไม่สามารถเปลี่ยนเจ้าของเป็นคนอื่นจากฟอร์มนี้ได้ ทุกการแก้ไขถูกบันทึก Audit Log</div>
-            <button type="button" onClick={() => void save()} disabled={saving || draft.full_name.trim().length < 2 || !draft.email.includes("@")}>{saving ? "กำลังบันทึก…" : "บันทึก USER เจ้าของร้าน"}</button>
-          </div>
-        </>
-      ) : null}
-    </section>
+    </>
   );
 }
