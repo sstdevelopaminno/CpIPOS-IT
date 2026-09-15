@@ -22,6 +22,7 @@ const authContext = source("../../src/lib/auth-context.ts");
 const itAdminGuard = source("../../src/lib/it-admin-guard.ts");
 const deviceCommands = source("../../src/lib/device-commands.ts");
 const supabaseServer = source("../../src/lib/supabase-server.ts");
+const tenantDataRouter = source("../../src/lib/tenant-data-router.ts");
 const primaryDashboardBridge = source("../../../../supabase/control-plane-functions/cpipos-it-dashboard-primary/index.ts");
 const operationalDashboardBridge = source("../../../../supabase/control-plane-functions/cpipos-it-dashboard-operational/index.ts");
 
@@ -48,8 +49,10 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
 
   it("keeps Dashboard metrics on authenticated Control Plane bridges while defaulting to one POS database", () => {
     expect(dashboardRoute).toContain("requireItAdmin()");
-    expect(dashboardRoute).toContain("supabase.auth.getSession()");
-    expect(dashboardRoute).toContain("loadDashboardOverview(session.access_token)");
+    expect(dashboardRoute).toContain("getVerifiedSupabaseAccessToken(context.auth.userId)");
+    expect(dashboardRoute).toContain("loadDashboardOverview(accessToken)");
+    expect(dashboardRoute).not.toContain("session.user.id");
+    expect(supabaseServer).toContain("supabase.auth.getUser(accessToken)");
     expect(dashboardService).toContain('PRIMARY_BRIDGE_SLUG = "cpipos-it-dashboard-primary"');
     expect(dashboardService).toContain('OPERATIONAL_BRIDGE_SLUG = "cpipos-it-dashboard-operational"');
     expect(dashboardService).toContain('readEnv("IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED")');
@@ -82,6 +85,9 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
     expect(itAdminGuard).toContain("get itSupabase()");
     expect(healthRoute).toContain("server_configuration_missing");
     expect(healthRoute).toContain("required_env: requiredEnv");
+    expect(itAdminGuard).toContain("RequiredEnvironmentVariableError");
+    expect(tenantDataRouter).toContain('readRequiredEnv("CPIPOS_SUPABASE_URL"');
+    expect(tenantDataRouter).not.toContain('readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL", "Missing Supabase service role environment variables.');
   });
 
   it("reads device health, incidents and commands directly from CpiPOS-001", () => {

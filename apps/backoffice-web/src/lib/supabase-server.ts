@@ -55,3 +55,14 @@ export async function getSupabaseServerClient() {
     }
   });
 }
+
+export async function getVerifiedSupabaseAccessToken(expectedUserId: string): Promise<string | null> {
+  const supabase = await getSupabaseServerClient();
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (sessionError || !accessToken) return null;
+
+  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+  if (userError || !userData.user || userData.user.id !== expectedUserId) return null;
+  return accessToken;
+}

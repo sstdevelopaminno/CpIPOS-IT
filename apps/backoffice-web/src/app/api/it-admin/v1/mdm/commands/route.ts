@@ -20,12 +20,14 @@ const MDM_COMMAND_TYPES: readonly MdmCommandType[] = [
   "diagnostics_ping"
 ];
 
+const MAX_MDM_COMMAND_REQUEST_BYTES = 16_384;
+
 type MdmCommandRequestBody = {
   tenant_id?: string;
   device_id?: string;
   command_type?: string;
   reason?: string;
-  payload?: Record<string, unknown>;
+  payload?: unknown;
   ttl_minutes?: number;
 };
 
@@ -157,12 +159,17 @@ export async function POST(req: Request) {
     });
     if (!rateLimit.ok) return fail("rate_limited", "Too many MDM commands. Please wait and try again.", 429);
 
+    const contentLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_MDM_COMMAND_REQUEST_BYTES) {
+      return fail("mdm_command_payload_too_large", "MDM command request body is too large.", 413);
+    }
+
     const body = (await req.json().catch(() => ({}))) as MdmCommandRequestBody;
     const tenantId = text(body.tenant_id);
     const deviceId = text(body.device_id);
     const commandTypeRaw = text(body.command_type);
     const reason = text(body.reason);
-    const payload = body.payload && typeof body.payload === "object" && !Array.isArray(body.payload) ? body.payload : {};
+    const rawPayload = body.payload;
     const ttlMinutes = Math.min(Math.max(Number(body.ttl_minutes ?? 30), 1), 60);
 
     if (!tenantId || !deviceId) return fail("missing_scope", "tenant_id and device_id are required.", 422);
@@ -180,8 +187,9 @@ export async function POST(req: Request) {
       requestedBy: auth.userId,
       requestedByRole: "it_admin",
       reason,
-      payload
+      payload: rawPayload
     }, snapshot);
+    const payload = validation.auditEvent.payload;
 
     const eligibilitySnapshot = {
       platform: device.platform,

@@ -83,8 +83,8 @@ function globalCache() {
 }
 
 function createPrimaryClient(): DynamicClient {
-  const url = readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL", "Missing Supabase service role environment variables.");
-  const key = readRequiredEnv("SUPABASE_SERVICE_ROLE_KEY", "Missing Supabase service role environment variables.");
+  const url = readRequiredEnv("CPIPOS_SUPABASE_URL", "Missing CpiPOS-001 Supabase URL.");
+  const key = readRequiredEnv("SUPABASE_SERVICE_ROLE_KEY", "Missing CpiPOS-001 Supabase service role key.");
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 

@@ -13,7 +13,7 @@ export interface MdmCommandRequest {
   requestedBy?: string;
   requestedByRole?: MdmActorRole | string;
   reason?: string;
-  payload?: Record<string, unknown>;
+  payload?: unknown;
 }
 
 export interface MdmCommandValidationResult {
@@ -33,6 +33,11 @@ export interface MdmCommandValidationResult {
     payload: Record<string, unknown>;
   };
 }
+
+export type MdmPayloadSanitizationResult = {
+  payload: Record<string, unknown>;
+  reasons: string[];
+};
 
 const OWNER_LEVEL_ROLES = new Set(['owner', 'admin', 'it_admin', 'mdm_admin']);
 const SUPPORT_LEVEL_ROLES = new Set(['support']);
@@ -66,6 +71,14 @@ const CORE_AGENT_PACKAGES = new Set([
   'com.cuttingpoint.cpipos',
 ]);
 
+const MAX_PAYLOAD_BYTES = 4096;
+const MAX_PAYLOAD_DEPTH = 4;
+const MAX_PAYLOAD_KEYS = 40;
+const MAX_PAYLOAD_ARRAY_ITEMS = 20;
+const MAX_PAYLOAD_STRING_LENGTH = 512;
+const SENSITIVE_PAYLOAD_KEY = /(authorization|cookie|credential|password|passwd|secret|token|api[_-]?key|private[_-]?key|pin|hash)/i;
+const BLOCKED_PAYLOAD_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
 const normalize = (value?: string | null): string => String(value ?? '').trim().toLowerCase();
 const textValue = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const pushIfMissing = (reasons: string[], condition: boolean, reason: string): void => {
@@ -79,6 +92,86 @@ const roleCanRequestCommand = (role: string, commandType: MdmCommandType): boole
   if (VIEW_ONLY_ROLES.has(normalizedRole)) return VIEWER_ALLOWED_COMMANDS.has(commandType);
   return false;
 };
+const addReason = (reasons: string[], reason: string): void => {
+  if (!reasons.includes(reason)) reasons.push(reason);
+};
+
+const sanitizePayloadValue = (
+  value: unknown,
+  depth: number,
+  state: { keys: number; reasons: string[] },
+): unknown => {
+  if (value === null || typeof value === 'boolean') return value;
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      addReason(state.reasons, 'payload_contains_unsupported_value');
+      return null;
+    }
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    if (value.length > MAX_PAYLOAD_STRING_LENGTH) {
+      addReason(state.reasons, 'payload_string_too_long');
+      return value.slice(0, MAX_PAYLOAD_STRING_LENGTH);
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    if (depth >= MAX_PAYLOAD_DEPTH) {
+      addReason(state.reasons, 'payload_too_deep');
+      return [];
+    }
+    if (value.length > MAX_PAYLOAD_ARRAY_ITEMS) addReason(state.reasons, 'payload_array_too_large');
+    return value.slice(0, MAX_PAYLOAD_ARRAY_ITEMS).map((item) => sanitizePayloadValue(item, depth + 1, state));
+  }
+
+  if (typeof value === 'object') {
+    if (depth >= MAX_PAYLOAD_DEPTH) {
+      addReason(state.reasons, 'payload_too_deep');
+      return {};
+    }
+
+    const output: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (BLOCKED_PAYLOAD_KEYS.has(key)) {
+        addReason(state.reasons, 'payload_contains_blocked_key');
+        continue;
+      }
+      state.keys += 1;
+      if (state.keys > MAX_PAYLOAD_KEYS) {
+        addReason(state.reasons, 'payload_too_many_keys');
+        break;
+      }
+      if (SENSITIVE_PAYLOAD_KEY.test(key)) {
+        addReason(state.reasons, 'payload_contains_sensitive_field');
+        output[key] = '[redacted]';
+        continue;
+      }
+      output[key] = sanitizePayloadValue(child, depth + 1, state);
+    }
+    return output;
+  }
+
+  if (value !== undefined) addReason(state.reasons, 'payload_contains_unsupported_value');
+  return null;
+};
+
+export const sanitizeMdmCommandPayload = (value: unknown): MdmPayloadSanitizationResult => {
+  if (value === undefined || value === null) return { payload: {}, reasons: [] };
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return { payload: {}, reasons: ['payload_must_be_object'] };
+  }
+
+  const state = { keys: 0, reasons: [] as string[] };
+  const payload = sanitizePayloadValue(value, 0, state) as Record<string, unknown>;
+  const bytes = Buffer.byteLength(JSON.stringify(payload), 'utf8');
+  if (bytes > MAX_PAYLOAD_BYTES) addReason(state.reasons, 'payload_too_large');
+
+  return { payload, reasons: state.reasons };
+};
 
 export const validateMdmCommandRequest = (
   request: MdmCommandRequest,
@@ -87,9 +180,11 @@ export const validateMdmCommandRequest = (
   const reasons: string[] = [];
   const eligibility = evaluateMdmEligibility(device);
   const requestedByRole = normalize(request.requestedByRole) || 'unknown';
-  const payload = request.payload ?? {};
+  const payloadResult = sanitizeMdmCommandPayload(request.payload);
+  const payload = payloadResult.payload;
   const reasonText = textValue(request.reason);
 
+  for (const reason of payloadResult.reasons) pushIfMissing(reasons, true, reason);
   pushIfMissing(reasons, !request.tenantId, 'tenant_id_required');
   pushIfMissing(reasons, !request.deviceId, 'device_id_required');
   pushIfMissing(reasons, normalize(request.tenantId) !== normalize(device.tenantId), 'tenant_mismatch');

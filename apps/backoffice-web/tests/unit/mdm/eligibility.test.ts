@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { evaluateMdmEligibility } from '@/lib/mdm/eligibility';
-import { validateMdmCommandRequest } from '@/lib/mdm/commandPolicy';
+import { sanitizeMdmCommandPayload, validateMdmCommandRequest } from '@/lib/mdm/commandPolicy';
 import { getMdmConsoleControls } from '@/lib/mdm/webConsoleControls';
 
 const eligibleDevice = {
@@ -89,6 +89,24 @@ describe('MDM command policy validation', () => {
     expect(rejected.reasons).toContain('reason_required_for_sensitive_mdm_command');
   });
 
+  it('rejects secret-like command payload fields and redacts audit payload copies', () => {
+    const result = validateMdmCommandRequest({
+      tenantId: 'tenant-001', deviceId: 'POS-001', commandType: 'install_app', requestedByRole: 'it_admin',
+      reason: 'Install approved managed package from catalog', payload: { packageName: 'com.example.app', apiKey: 'super-secret' },
+    }, eligibleDevice);
+    expect(result.accepted).toBe(false);
+    expect(result.reasons).toContain('payload_contains_sensitive_field');
+    expect(result.auditEvent.payload).toMatchObject({ packageName: 'com.example.app', apiKey: '[redacted]' });
+  });
+
+  it('rejects oversized or overly complex command payloads before queueing', () => {
+    const oversized = sanitizeMdmCommandPayload({ note: 'x'.repeat(600) });
+    const tooManyKeys = sanitizeMdmCommandPayload(Object.fromEntries(
+      Array.from({ length: 45 }, (_, index) => [`key_${index}`, index]),
+    ));
+    expect(oversized.reasons).toContain('payload_string_too_long');
+    expect(tooManyKeys.reasons).toContain('payload_too_many_keys');
+  });
   it('rejects silent remote screen access', () => {
     const result = validateMdmCommandRequest({
       tenantId: 'tenant-001', deviceId: 'POS-001', commandType: 'start_remote_support', requestedByRole: 'mdm_admin',

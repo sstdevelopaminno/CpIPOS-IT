@@ -28,6 +28,16 @@ function normalize(raw: unknown): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+export class RequiredEnvironmentVariableError extends Error {
+  variableName: string;
+
+  constructor(variableName: string, message?: string) {
+    super(message ?? `Missing required environment variable: ${variableName}`);
+    this.name = "RequiredEnvironmentVariableError";
+    this.variableName = variableName;
+  }
+}
+
 export function readEnv(name: string): string | undefined {
   const direct = normalize(process.env[name]);
   if (direct) return direct;
@@ -51,7 +61,7 @@ export function readEnv(name: string): string | undefined {
 export function readRequiredEnv(name: string, message?: string): string {
   const value = readEnv(name);
   if (!value) {
-    throw new Error(message ?? `Missing required environment variable: ${name}`);
+    throw new RequiredEnvironmentVariableError(name, message);
   }
 
   return value;

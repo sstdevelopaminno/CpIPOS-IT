@@ -111,7 +111,9 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
 
   useEffect(() => {
     void load(false);
-    const timer = window.setInterval(() => void load(true), 30_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 30_000);
     return () => window.clearInterval(timer);
   }, [load]);
 

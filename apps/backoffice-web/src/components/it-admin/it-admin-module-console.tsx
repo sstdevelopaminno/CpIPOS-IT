@@ -193,7 +193,9 @@ export function ItAdminModuleConsole({ module }: { module: ModuleName }) {
 
   useEffect(() => {
     void load(false);
-    const timer = window.setInterval(() => void load(true), 60_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 60_000);
     return () => window.clearInterval(timer);
   }, [load]);
 

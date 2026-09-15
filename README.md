@@ -57,6 +57,13 @@ Pull requests into `main` run the IT Admin web validation contract:
 4. tests
 5. production Next.js build
 
+
+## Security audit notes
+
+- Latest local audit: `docs/SECURITY-AUDIT-2026-09-15.md`.
+- MDM command payloads must be sanitized before queueing or audit persistence.
+- Keep Supabase service-role or secret credentials server-only and out of `NEXT_PUBLIC_*` variables.
+
 ## Commands
 
 ```powershell

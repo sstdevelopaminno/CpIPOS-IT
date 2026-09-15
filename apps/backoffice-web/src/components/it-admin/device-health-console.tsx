@@ -148,7 +148,9 @@ export function DeviceHealthConsole({ tenantId, deviceId }: { tenantId: string; 
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(), 30_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 30_000);
     return () => window.clearInterval(timer);
   }, [load]);
 
