@@ -39,6 +39,8 @@ type ApiEnvelope = {
   error?: { message?: string };
 };
 
+const TENANT_AUTO_REFRESH_MS = 180_000;
+
 function numberValue(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -93,9 +95,26 @@ export function TenantDirectoryConsole() {
 
   useEffect(() => {
     void load(false);
-    const timer = window.setInterval(() => void load(true), 60_000);
-    return () => window.clearInterval(timer);
   }, [load]);
+
+  useEffect(() => {
+    if (selected) return;
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+
+    const timer = window.setInterval(refreshIfVisible, TENANT_AUTO_REFRESH_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [load, selected]);
 
   const filteredRows = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -191,7 +210,7 @@ export function TenantDirectoryConsole() {
         </div>
 
         <footer className={styles.panelFooter}>
-          <span>Source: CpiPOS-001 · Store Control authority · authenticated IT Admin</span>
+          <span>Source: CpiPOS-001 · Auto refresh 3 นาที · หยุดเมื่อเปิด Control Center หรือแท็บอยู่เบื้องหลัง</span>
           <span>อัปเดต: {data?.checked_at ? formatDate(data.checked_at) : "—"}</span>
         </footer>
       </section>
