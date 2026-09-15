@@ -46,12 +46,21 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   const [ownerPin, setOwnerPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [showPin, setShowPin] = useState(false);
-  const [pinEditorOpen, setPinEditorOpen] = useState(false);
+  const [pinModalOpen, setPinModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pinSaving, setPinSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const clearPinDraft = useCallback(() => {
+    setOwnerPin("");
+    setConfirmPin("");
+    setShowPin(false);
+    setPinError(null);
+  }, []);
 
   const applyOwner = useCallback((next: PrimaryOwner | null) => {
     setOwner(next);
@@ -92,67 +101,105 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (pinModalOpen) {
+        if (pinSaving) return;
+        setPinModalOpen(false);
+        clearPinDraft();
+        return;
+      }
       if (saving) return;
       setEditorOpen(false);
-      setPinEditorOpen(false);
-      setOwnerPin("");
-      setConfirmPin("");
-      setShowPin(false);
+      clearPinDraft();
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       document.body.style.overflow = previousOverflow;
     };
-  }, [editorOpen, saving]);
+  }, [clearPinDraft, editorOpen, pinModalOpen, pinSaving, saving]);
 
-  const openEditor = (focusPin = false) => {
+  const openEditor = () => {
     setError(null);
     setSuccess(null);
-    setOwnerPin("");
-    setConfirmPin("");
-    setPinEditorOpen(focusPin || !owner?.pin_configured);
+    clearPinDraft();
     setEditorOpen(true);
   };
 
   const closeEditor = () => {
-    if (saving) return;
+    if (saving || pinSaving) return;
+    setPinModalOpen(false);
     setEditorOpen(false);
-    setPinEditorOpen(false);
-    setOwnerPin("");
-    setConfirmPin("");
-    setShowPin(false);
+    clearPinDraft();
   };
 
-  const pinIsValid = ownerPin === "" || /^\d{4,6}$/.test(ownerPin);
+  const openPinModal = () => {
+    setError(null);
+    setSuccess(null);
+    clearPinDraft();
+    setPinModalOpen(true);
+  };
+
+  const closePinModal = () => {
+    if (pinSaving) return;
+    setPinModalOpen(false);
+    clearPinDraft();
+  };
+
+  const pinIsValid = /^\d{4,6}$/.test(ownerPin);
   const pinMatches = ownerPin === confirmPin;
-  const pinCanSave = !pinEditorOpen || (ownerPin.length >= 4 && pinIsValid && pinMatches);
+  const pinCanSave = ownerPin.length >= 4 && pinIsValid && pinMatches;
   const employeeCode = draft.employee_code.trim().toUpperCase().replace(/\s+/g, "");
   const employeeCodeIsValid = /^[A-Z0-9][A-Z0-9._-]{2,31}$/.test(employeeCode);
   const profileCanSave = draft.full_name.trim().length >= 2 && draft.email.includes("@") && employeeCodeIsValid;
 
-  const save = async () => {
-    if (!profileCanSave || !pinCanSave) return;
+  const saveProfile = async () => {
+    if (!profileCanSave) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
-      const payloadBody: Record<string, string> = { ...draft, employee_code: employeeCode };
-      if (pinEditorOpen && ownerPin) payloadBody.owner_pin = ownerPin;
       const response = await fetch(`/api/it-admin/v1/tenants/${tenantId}/primary-owner`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(payloadBody)
+        body: JSON.stringify({ ...draft, employee_code: employeeCode })
       });
       const payload = await parse<OwnerResponse>(response);
       applyOwner(payload.primary_owner);
-      setSuccess(pinEditorOpen && ownerPin ? "บันทึกข้อมูล POS Login และรหัส Owner เรียบร้อยแล้ว" : "บันทึก USER เจ้าของร้านและ POS Login เรียบร้อยแล้ว");
-      setPinEditorOpen(false);
+      setSuccess("บันทึก USER เจ้าของร้านและ POS Login เรียบร้อยแล้ว");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "บันทึกข้อมูลเจ้าของร้านไม่สำเร็จ");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const savePin = async () => {
+    if (!owner || !pinCanSave) return;
+    setPinSaving(true);
+    setPinError(null);
+    try {
+      const response = await fetch(`/api/it-admin/v1/tenants/${tenantId}/primary-owner`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          full_name: owner.full_name,
+          email: owner.email,
+          phone: owner.phone,
+          employee_code: owner.employee_code,
+          owner_pin: ownerPin
+        })
+      });
+      const payload = await parse<OwnerResponse>(response);
+      setOwner(payload.primary_owner);
+      setPinModalOpen(false);
+      clearPinDraft();
+      setSuccess(owner.pin_configured ? "เปลี่ยนรหัส Owner/PIN เรียบร้อยแล้ว" : "ตั้งรหัส Owner/PIN เรียบร้อยแล้ว");
+    } catch (saveError) {
+      setPinError(saveError instanceof Error ? saveError.message : "บันทึกรหัส Owner ไม่สำเร็จ");
+    } finally {
+      setPinSaving(false);
     }
   };
 
@@ -170,7 +217,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   return (
     <>
       {owner ? (
-        <button type="button" className={styles.compactCard} data-primary-owner-card onClick={() => openEditor(false)}>
+        <button type="button" className={styles.compactCard} data-primary-owner-card onClick={openEditor}>
           <div className={styles.cardTop}>
             <div className={styles.ownerAvatar}>{initials(owner.full_name || "Owner")}</div>
             <div className={styles.summaryBadges}>
@@ -210,7 +257,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
                   <p>ลำดับเข้า POS คือ รหัสพนักงาน POS → รหัส Owner/PIN ทั้งสองค่าเป็นคนละรายการ</p>
                 </div>
               </div>
-              <button type="button" className={styles.closeButton} onClick={closeEditor} disabled={saving} aria-label="ปิด">×</button>
+              <button type="button" className={styles.closeButton} onClick={closeEditor} disabled={saving || pinSaving} aria-label="ปิด">×</button>
             </header>
 
             <div className={styles.modalBody}>
@@ -258,32 +305,64 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
 
               <section className={`${styles.editorSection} ${styles.securitySection}`}>
                 <div className={styles.securityHeader}>
-                  <div><span>OWNER PIN SECURITY</span><h4>{owner.pin_configured ? "รหัสเจ้าของร้าน" : "ตั้งรหัสเจ้าของร้านครั้งแรก"}</h4><p>PIN ใช้หลังจากระบบระบุ USER ด้วยรหัสพนักงาน POS แล้ว และใช้อนุมัติคำสั่งที่ต้องใช้สิทธิ์ Owner/Manager</p></div>
+                  <div>
+                    <span>OWNER PIN SECURITY</span>
+                    <h4>{owner.pin_configured ? "รหัสเจ้าของร้าน" : "ตั้งรหัสเจ้าของร้านครั้งแรก"}</h4>
+                    <p>PIN ใช้หลังจากระบบระบุ USER ด้วยรหัสพนักงาน POS แล้ว และใช้อนุมัติคำสั่งที่ต้องใช้สิทธิ์ Owner/Manager</p>
+                  </div>
                   <div className={styles.securityActions}>
                     <span className={owner.pin_configured ? styles.pinReadyBadge : styles.pinMissingBadge}>{owner.pin_configured ? "ตั้งค่าแล้ว" : "ต้องตั้งค่า"}</span>
-                    {!pinEditorOpen ? <button type="button" onClick={() => setPinEditorOpen(true)}>{owner.pin_configured ? "เปลี่ยนรหัส" : "ตั้งรหัส"}</button> : null}
+                    <button type="button" onClick={openPinModal}>{owner.pin_configured ? "เปลี่ยนรหัส" : "ตั้งรหัส"}</button>
                   </div>
                 </div>
-
-                {pinEditorOpen ? (
-                  <div className={styles.pinEditor}>
-                    <div className={styles.pinGuide}><strong>{owner.pin_configured ? "กำหนดรหัสใหม่" : "กำหนดรหัสเริ่มต้น"}</strong><span>ใช้ตัวเลข 4–6 หลัก ระบบเก็บเฉพาะ bcrypt hash และจะไม่แสดงรหัสเดิมกลับมา</span></div>
-                    <div className={styles.pinGrid}>
-                      <label><span>รหัส Owner ใหม่</span><div className={styles.passwordField}><input type={showPin ? "text" : "password"} inputMode="numeric" autoComplete="new-password" maxLength={6} value={ownerPin} onChange={(event) => setOwnerPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="4–6 หลัก" /><button type="button" onClick={() => setShowPin((value) => !value)}>{showPin ? "ซ่อน" : "แสดง"}</button></div></label>
-                      <label><span>ยืนยันรหัส Owner</span><input type={showPin ? "text" : "password"} inputMode="numeric" autoComplete="new-password" maxLength={6} value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="กรอกรหัสซ้ำ" /></label>
-                    </div>
-                    {ownerPin && !pinIsValid ? <div className={styles.pinValidation}>รหัสต้องเป็นตัวเลข 4–6 หลัก</div> : null}
-                    {confirmPin && !pinMatches ? <div className={styles.pinValidation}>รหัสยืนยันไม่ตรงกัน</div> : null}
-                  </div>
-                ) : null}
               </section>
 
               <div className={styles.securityNote}>การเข้า POS ใช้ 2 ขั้น: รหัสพนักงาน POS เพื่อระบุ USER และ PIN Owner เพื่อยืนยันสิทธิ์ ระบบไม่บันทึกรหัส PIN จริงหรือ hash ลง Audit Log แต่จะบันทึกว่าใครเป็นผู้เปลี่ยนและเมื่อใด</div>
             </div>
 
             <footer className={styles.modalFooter}>
-              <button type="button" className={styles.cancelButton} onClick={closeEditor} disabled={saving}>ยกเลิก</button>
-              <button type="button" className={styles.saveButton} onClick={() => void save()} disabled={saving || !profileCanSave || !pinCanSave}>{saving ? "กำลังบันทึก…" : pinEditorOpen && ownerPin ? "บันทึก POS Login และรหัส Owner" : "บันทึกข้อมูล Owner / POS Login"}</button>
+              <button type="button" className={styles.cancelButton} onClick={closeEditor} disabled={saving || pinSaving}>ยกเลิก</button>
+              <button type="button" className={styles.saveButton} onClick={() => void saveProfile()} disabled={saving || pinSaving || !profileCanSave}>{saving ? "กำลังบันทึก…" : "บันทึกข้อมูล Owner / POS Login"}</button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
+      {editorOpen && owner && pinModalOpen ? (
+        <div className={styles.pinModalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closePinModal(); }}>
+          <section className={styles.pinModal} role="dialog" aria-modal="true" aria-labelledby="owner-pin-dialog-title">
+            <header className={styles.pinModalHeader}>
+              <div>
+                <span>OWNER PIN SECURITY</span>
+                <h3 id="owner-pin-dialog-title">{owner.pin_configured ? "เปลี่ยนรหัส Owner/PIN" : "ตั้งรหัส Owner/PIN"}</h3>
+                <p>รหัสนี้เป็นขั้นตอนยืนยันสิทธิ์หลังจากระบุรหัสพนักงาน POS แล้ว</p>
+              </div>
+              <button type="button" className={styles.closeButton} onClick={closePinModal} disabled={pinSaving} aria-label="ปิด">×</button>
+            </header>
+
+            <div className={styles.pinModalBody}>
+              {pinError ? <div className={styles.errorBanner}><strong>บันทึกรหัสไม่สำเร็จ</strong><span>{pinError}</span></div> : null}
+              <div className={styles.pinGuide}>
+                <strong>{owner.pin_configured ? "กำหนดรหัสใหม่" : "กำหนดรหัสเริ่มต้น"}</strong>
+                <span>ใช้ตัวเลข 4–6 หลัก ระบบเก็บเฉพาะ bcrypt hash และจะไม่แสดงรหัสเดิมกลับมา</span>
+              </div>
+              <div className={styles.pinGrid}>
+                <label>
+                  <span>รหัส Owner ใหม่</span>
+                  <div className={styles.passwordField}>
+                    <input type={showPin ? "text" : "password"} inputMode="numeric" autoComplete="new-password" maxLength={6} value={ownerPin} onChange={(event) => setOwnerPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="4–6 หลัก" autoFocus />
+                    <button type="button" onClick={() => setShowPin((value) => !value)}>{showPin ? "ซ่อน" : "แสดง"}</button>
+                  </div>
+                </label>
+                <label><span>ยืนยันรหัส Owner</span><input type={showPin ? "text" : "password"} inputMode="numeric" autoComplete="new-password" maxLength={6} value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="กรอกรหัสซ้ำ" /></label>
+              </div>
+              {ownerPin && !pinIsValid ? <div className={styles.pinValidation}>รหัสต้องเป็นตัวเลข 4–6 หลัก</div> : null}
+              {confirmPin && !pinMatches ? <div className={styles.pinValidation}>รหัสยืนยันไม่ตรงกัน</div> : null}
+            </div>
+
+            <footer className={styles.pinModalFooter}>
+              <button type="button" className={styles.cancelButton} onClick={closePinModal} disabled={pinSaving}>ยกเลิก</button>
+              <button type="button" className={styles.saveButton} onClick={() => void savePin()} disabled={pinSaving || !pinCanSave}>{pinSaving ? "กำลังบันทึกรหัส…" : "บันทึกรหัส Owner"}</button>
             </footer>
           </section>
         </div>
