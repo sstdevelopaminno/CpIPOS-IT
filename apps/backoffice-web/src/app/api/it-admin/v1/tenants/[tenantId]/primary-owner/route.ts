@@ -1,9 +1,13 @@
+import bcrypt from "bcryptjs";
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, ItAdminGuardError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+const OWNER_PIN_PATTERN = /^\d{4,6}$/;
+const OWNER_PIN_BCRYPT_ROUNDS = 12;
 
 type OwnerRoleRow = {
   user_id: string;
@@ -15,6 +19,7 @@ type OwnerProfileRow = {
   id: string;
   email: string | null;
   full_name: string | null;
+  pin_hash: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -29,6 +34,7 @@ type OwnerUpdateBody = {
   full_name?: unknown;
   email?: unknown;
   phone?: unknown;
+  owner_pin?: unknown;
 };
 
 function text(value: unknown, max: number) {
@@ -37,6 +43,15 @@ function text(value: unknown, max: number) {
 
 function validEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function readOwnerPin(value: unknown) {
+  const pin = typeof value === "string" ? value.trim() : "";
+  if (!pin) return null;
+  if (!OWNER_PIN_PATTERN.test(pin)) {
+    throw new ItAdminGuardError("owner_pin_invalid", "Owner PIN must contain 4 to 6 digits.", 422);
+  }
+  return pin;
 }
 
 async function loadPrimaryOwner(admin: Awaited<ReturnType<typeof requireItAdmin>>, tenantId: string) {
@@ -56,7 +71,7 @@ async function loadPrimaryOwner(admin: Awaited<ReturnType<typeof requireItAdmin>
   const [profileResult, tenantResult] = await Promise.all([
     admin.supabase
       .from("users_profiles")
-      .select("id,email,full_name,is_active,created_at,updated_at")
+      .select("id,email,full_name,pin_hash,is_active,created_at,updated_at")
       .eq("id", firstRole.user_id)
       .maybeSingle<OwnerProfileRow>(),
     admin.supabase
@@ -83,6 +98,7 @@ async function loadPrimaryOwner(admin: Awaited<ReturnType<typeof requireItAdmin>
     email: profileResult.data.email ?? "",
     phone: tenantResult.data?.owner_phone ?? "",
     is_active: profileResult.data.is_active,
+    pin_configured: Boolean(profileResult.data.pin_hash),
     created_at: profileResult.data.created_at,
     role_created_at: firstRole.created_at,
     owner_branch_count: branchIds.size
@@ -129,6 +145,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     const fullName = text(body.full_name, 160);
     const email = text(body.email, 320).toLowerCase();
     const phone = text(body.phone, 40);
+    const ownerPin = readOwnerPin(body.owner_pin);
     if (fullName.length < 2) return fail("owner_name_required", "Owner name is required.", 422);
     if (!validEmail(email)) return fail("owner_email_invalid", "Owner email is invalid.", 422);
 
@@ -137,9 +154,9 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
 
     const beforeProfile = await admin.supabase
       .from("users_profiles")
-      .select("email,full_name,is_active,updated_at")
+      .select("email,full_name,pin_hash,is_active,updated_at")
       .eq("id", before.user_id)
-      .maybeSingle<{ email: string | null; full_name: string | null; is_active: boolean; updated_at: string }>();
+      .maybeSingle<{ email: string | null; full_name: string | null; pin_hash: string | null; is_active: boolean; updated_at: string }>();
     if (beforeProfile.error || !beforeProfile.data) throw new Error(`primary_owner_profile_before_failed:${beforeProfile.error?.message ?? "missing"}`);
 
     const beforeTenant = await admin.supabase
@@ -150,7 +167,10 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     if (beforeTenant.error || !beforeTenant.data) throw new Error(`primary_owner_tenant_before_failed:${beforeTenant.error?.message ?? "missing"}`);
 
     const now = new Date().toISOString();
-    const profilePatch = { full_name: fullName, email, updated_at: now };
+    const profilePatch: Record<string, unknown> = { full_name: fullName, email, updated_at: now };
+    if (ownerPin) {
+      profilePatch.pin_hash = await bcrypt.hash(ownerPin, OWNER_PIN_BCRYPT_ROUNDS);
+    }
     const tenantPatch = { owner_name: fullName, owner_phone: phone || null, updated_at: now };
 
     const profileUpdate = await admin.supabase.from("users_profiles").update(profilePatch).eq("id", before.user_id);
@@ -177,14 +197,14 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       tenantId,
       actorUserId: admin.auth.userId,
       actorRole: admin.auth.platformRole,
-      action: "tenant_primary_owner_updated",
+      action: ownerPin ? "tenant_primary_owner_and_pin_updated" : "tenant_primary_owner_updated",
       targetTable: "users_profiles",
       targetId: before.user_id,
       targetUserId: before.user_id,
       module: "it_admin",
-      beforeData: { full_name: before.full_name, email: before.email, phone: before.phone },
-      afterData: { full_name: fullName, email, phone },
-      metadata: { source: "store_control_center", primary_owner: true },
+      beforeData: { full_name: before.full_name, email: before.email, phone: before.phone, pin_configured: before.pin_configured },
+      afterData: { full_name: fullName, email, phone, pin_configured: ownerPin ? true : before.pin_configured },
+      metadata: { source: "store_control_center", primary_owner: true, pin_changed: Boolean(ownerPin) },
       ipAddress: admin.requestMeta.ipAddress ?? undefined,
       userAgent: admin.requestMeta.userAgent ?? undefined
     });
