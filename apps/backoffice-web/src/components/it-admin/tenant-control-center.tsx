@@ -116,6 +116,14 @@ function money(value: number | string | null | undefined) {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(Number.isFinite(number) ? number : 0);
 }
 
+function packageAllowsYearly(pkg: Package | null | undefined) {
+  if (!pkg) return false;
+  const monthly = Number(pkg.monthly_price ?? 0);
+  const yearly = Number(pkg.yearly_price ?? 0);
+  if (!Number.isFinite(monthly) || !Number.isFinite(yearly)) return false;
+  return monthly <= 0 || yearly > 0;
+}
+
 function contractLabel(status: string | null | undefined) {
   const normalized = String(status ?? "").toLowerCase();
   if (normalized === "active") return "ใช้งาน";
@@ -223,9 +231,10 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     setContractAutoRenew(Boolean(next.contract?.auto_renew));
 
     const changeStart = todayLocal();
-    setBillingCycle(cycle);
+    const changeCycle: BillingCycle = cycle === "yearly" && !packageAllowsYearly(next.current_package) ? "monthly" : cycle;
+    setBillingCycle(changeCycle);
     setChangeStartDate(changeStart);
-    setChangeEndDate(addBillingDate(changeStart, cycle));
+    setChangeEndDate(addBillingDate(changeStart, changeCycle));
     setChangeAutoEnd(true);
     setChangeAutoRenew(Boolean(next.contract?.auto_renew));
 
@@ -298,8 +307,11 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const canCancel = Boolean(data?.contract) && !["cancelled", "expired"].includes(currentStatus);
   const canEditContract = Boolean(data?.contract) && !["cancelled", "expired"].includes(currentStatus);
   const isTrial = currentStatus === "trial";
+  const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
+  const selectedPackageYearlyAvailable = packageAllowsYearly(selectedPackage);
 
   const changeContractCycle = (cycle: BillingCycle) => {
+    if (cycle === "yearly" && !currentPackageYearlyAvailable) return;
     setContractCycle(cycle);
     if (contractAutoEnd && contractStartDate) setContractEndDate(addBillingDate(contractStartDate, cycle));
   };
@@ -308,12 +320,21 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     if (contractAutoEnd) setContractEndDate(addBillingDate(value, contractCycle));
   };
   const changePackageCycle = (cycle: BillingCycle) => {
+    if (cycle === "yearly" && !selectedPackageYearlyAvailable) return;
     setBillingCycle(cycle);
     if (changeAutoEnd && changeStartDate) setChangeEndDate(addBillingDate(changeStartDate, cycle));
   };
   const changePackageStart = (value: string) => {
     setChangeStartDate(value);
     if (changeAutoEnd) setChangeEndDate(addBillingDate(value, billingCycle));
+  };
+  const selectPackage = (nextPackageId: string) => {
+    setPackageId(nextPackageId);
+    const nextPackage = data?.packages.find((pkg) => pkg.id === nextPackageId) ?? null;
+    if (billingCycle === "yearly" && !packageAllowsYearly(nextPackage)) {
+      setBillingCycle("monthly");
+      if (changeAutoEnd) setChangeEndDate(addBillingDate(changeStartDate, "monthly"));
+    }
   };
 
   return (
@@ -372,7 +393,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                 <article><span>สาขา</span><strong>{data.branches.filter((branch) => branch.is_active).length} / {data.branches.length}</strong><small>เปิดใช้งาน / ทั้งหมด</small></article>
                 <article><span>อุปกรณ์ Active</span><strong>{data.usage.active_devices}</strong><small>จาก CpiPOS-001</small></article>
                 <article><span>Online 5 นาที</span><strong>{data.usage.online_devices_5m}</strong><small>Heartbeat ล่าสุด</small></article>
-                <article><span>ผู้ใช้ในร้าน</span><strong>{data.usage.assigned_users}</strong><small>นับ User ไม่ซ้ำ</small></article>
+                <article><span>ผู้ใช้ที่ผูกสาขา</span><strong>{data.usage.assigned_users}</strong><small>นับ User ไม่ซ้ำ</small></article>
               </section>
             </div>
           ) : null}
@@ -434,13 +455,14 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <p className={styles.sectionCopy}>เลือกวันที่เริ่มและรายเดือน/รายปี ระบบจะคำนวณวันหมดอายุให้อัตโนมัติ หรือปิด Auto calculate เพื่อกำหนดวันหมดอายุเอง</p>
                   <div className={styles.formGrid}>
                     <label><span>วันที่เปิดสัญญา</span><input type="date" value={contractStartDate} onChange={(e) => changeContractStart(e.target.value)} disabled={!canEditContract} /></label>
-                    <label><span>รอบสัญญา</span><select value={contractCycle} onChange={(e) => changeContractCycle(e.target.value as BillingCycle)} disabled={!canEditContract}><option value="monthly">รายเดือน</option><option value="yearly">รายปี</option></select></label>
+                    <label><span>รอบสัญญา</span><select value={contractCycle} onChange={(e) => changeContractCycle(e.target.value as BillingCycle)} disabled={!canEditContract}><option value="monthly">รายเดือน</option><option value="yearly" disabled={!currentPackageYearlyAvailable}>รายปี{!currentPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select></label>
                     <label><span>วันหมดอายุ</span><input type="date" value={contractEndDate} onChange={(e) => setContractEndDate(e.target.value)} disabled={!canEditContract || contractAutoEnd} /></label>
                     <label className={styles.switchLabel}><input type="checkbox" checked={contractAutoEnd} disabled={!canEditContract} onChange={(e) => { const checked = e.target.checked; setContractAutoEnd(checked); if (checked) setContractEndDate(addBillingDate(contractStartDate, contractCycle)); }} /><span>คำนวณวันหมดอายุอัตโนมัติ</span></label>
                     <label className={styles.switchLabel}><input type="checkbox" checked={contractAutoRenew} disabled={!canEditContract} onChange={(e) => setContractAutoRenew(e.target.checked)} /><span>ต่ออายุอัตโนมัติ</span></label>
                   </div>
+                  {!currentPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจนี้ยังไม่ได้กำหนดราคารายปีใน Package / Subscription จึงไม่เปิดให้เปลี่ยนเป็นรายปี เพื่อป้องกันสัญญาราคา 0 บาทโดยไม่ตั้งใจ</div> : null}
                   <div className={styles.packagePreview}><strong>{contractCycle === "yearly" ? "สัญญารายปี" : "สัญญารายเดือน"}</strong><span>{contractStartDate || "—"} → {contractEndDate || "—"}</span></div>
-                  <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate} onClick={() => void mutate({ action: "update_contract", billing_cycle: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew }, "อัปเดตวันที่สัญญาและรอบบิลแล้ว", true)}>บันทึกวันที่สัญญา</button></div>
+                  <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate || (contractCycle === "yearly" && !currentPackageYearlyAvailable)} onClick={() => void mutate({ action: "update_contract", billing_cycle: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew }, "อัปเดตวันที่สัญญาและรอบบิลแล้ว", true)}>บันทึกวันที่สัญญา</button></div>
                 </section>
               ) : null}
 
@@ -450,16 +472,17 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <small>{isTrial ? "เปิดแพ็กเกจจริงได้ทันที ไม่ต้องรอ Trial หมด" : "สร้างสัญญาใหม่และเก็บประวัติสัญญาเดิม"}</small>
                 </div>
                 <div className={styles.formGrid}>
-                  <label><span>แพ็กเกจ</span><select value={packageId} onChange={(e) => setPackageId(e.target.value)}>{data.packages.map((pkg) => <option value={pkg.id} key={pkg.id}>{pkg.name} · {pkg.code}</option>)}</select></label>
-                  <label><span>รอบบิล</span><select value={billingCycle} onChange={(e) => changePackageCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly">รายปี</option></select></label>
+                  <label><span>แพ็กเกจ</span><select value={packageId} onChange={(e) => selectPackage(e.target.value)}>{data.packages.map((pkg) => <option value={pkg.id} key={pkg.id}>{pkg.name} · {pkg.code}</option>)}</select></label>
+                  <label><span>รอบบิล</span><select value={billingCycle} onChange={(e) => changePackageCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly" disabled={!selectedPackageYearlyAvailable}>รายปี{!selectedPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select></label>
                   <label><span>วันที่เริ่มแพ็กเกจจริง</span><input type="date" max={todayLocal()} value={changeStartDate} onChange={(e) => changePackageStart(e.target.value)} /></label>
                   <label><span>วันหมดอายุ</span><input type="date" value={changeEndDate} onChange={(e) => setChangeEndDate(e.target.value)} disabled={changeAutoEnd} /></label>
                   <label className={styles.switchLabel}><input type="checkbox" checked={changeAutoEnd} onChange={(e) => { const checked = e.target.checked; setChangeAutoEnd(checked); if (checked) setChangeEndDate(addBillingDate(changeStartDate, billingCycle)); }} /><span>คำนวณวันหมดอายุอัตโนมัติ</span></label>
                   <label className={styles.switchLabel}><input type="checkbox" checked={changeAutoRenew} onChange={(e) => setChangeAutoRenew(e.target.checked)} /><span>ต่ออายุอัตโนมัติ</span></label>
                   <label className={styles.span2}><span>เหตุผลภายใน (Audit)</span><input placeholder={isTrial ? "เช่น ลูกค้ายืนยันเปิดแพ็กเกจจริงก่อน Trial หมด" : "เช่น ลูกค้าขออัปเกรดแพ็กเกจ"} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} /></label>
                 </div>
+                {!selectedPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจที่เลือกยังไม่มีราคารายปี ระบบจะใช้รายเดือนเท่านั้นจนกว่าจะตั้งราคารายปีในเมนู Package / Subscription</div> : null}
                 {selectedPackage ? <div className={styles.packagePreview}><strong>{selectedPackage.name}</strong><span>{billingCycle === "yearly" ? money(selectedPackage.yearly_price) : money(selectedPackage.monthly_price)} · {changeStartDate || "—"} → {changeEndDate || "—"} · สูงสุด {selectedPackage.max_branches ?? "—"} สาขา / {selectedPackage.max_devices ?? "—"} อุปกรณ์</span></div> : null}
-                <div className={styles.sectionActions}><button className={styles.primaryButton} type="button" disabled={busy || !packageId || !changeStartDate || !changeEndDate} onClick={() => void mutate({ action: "change_package", package_id: packageId, billing_cycle: billingCycle, start_date: changeStartDate, end_date: changeAutoEnd ? undefined : changeEndDate, auto_calculate_end: changeAutoEnd, auto_renew: changeAutoRenew, admin_reason: changeReason }, isTrial ? "เปิดแพ็กเกจจริงเรียบร้อย" : "เปลี่ยนแพ็กเกจเรียบร้อย", true)}>{isTrial ? "เปิดแพ็กเกจจริงตอนนี้" : "ยืนยันเปลี่ยนแพ็กเกจ"}</button></div>
+                <div className={styles.sectionActions}><button className={styles.primaryButton} type="button" disabled={busy || !packageId || !changeStartDate || !changeEndDate || (billingCycle === "yearly" && !selectedPackageYearlyAvailable)} onClick={() => void mutate({ action: "change_package", package_id: packageId, billing_cycle: billingCycle, start_date: changeStartDate, end_date: changeAutoEnd ? undefined : changeEndDate, auto_calculate_end: changeAutoEnd, auto_renew: changeAutoRenew, admin_reason: changeReason }, isTrial ? "เปิดแพ็กเกจจริงเรียบร้อย" : "เปลี่ยนแพ็กเกจเรียบร้อย", true)}>{isTrial ? "เปิดแพ็กเกจจริงตอนนี้" : "ยืนยันเปลี่ยนแพ็กเกจ"}</button></div>
               </section>
 
               <section className={styles.controlSection}>
@@ -483,7 +506,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <button type="button" className={styles.successButton} disabled={busy || !canResume} onClick={() => void mutate({ action: "resume_package" }, "เปิดแพ็กเกจกลับมาใช้งานแล้ว", true)}>เปิดใช้งานต่อ</button>
                   <button type="button" className={styles.dangerOutlineButton} disabled={busy || !canCancel || notice.admin_reason.trim().length < 4} onClick={() => void mutate({ action: "cancel_subscription", ...notice }, "ยกเลิกแพ็กเกจแล้ว", true)}>ยกเลิกแพ็กเกจ</button>
                 </div>
-                <div className={styles.securityNote}>POS ใช้สถานะสัญญาและ ended_at เป็น Feature Gate อยู่แล้ว ส่วนข้อความลูกค้าและเหตุผลภายใน IT แยกคนละฟิลด์เพื่อไม่ให้ข้อมูลภายในหลุดไปหน้าขาย</div>
+                <div className={styles.securityNote}>POS ใช้สถานะสัญญาและ ended_at เป็น Feature Gate อยู่แล้ว ส่วนข้อความลูกค้าและเหตุผลภายใน IT แยกคนละฟิลด์เพื่อป้องกันข้อมูลภายใน IT หลุดไปยังหน้าขาย POS</div>
               </section>
             </div>
           ) : null}
