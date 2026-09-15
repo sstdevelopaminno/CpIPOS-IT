@@ -1,0 +1,83 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+function source(relativePath: string) {
+  return readFileSync(new URL(relativePath, import.meta.url), "utf8");
+}
+
+const directory = source("../../src/components/it-admin/tenant-directory-console.tsx");
+const controlCenter = source("../../src/components/it-admin/tenant-control-center.tsx");
+const route = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/control/route.ts");
+const service = source("../../src/lib/services/it-admin/tenant-control-service.ts");
+
+describe("IT Admin Store Control Center contract", () => {
+  it("opens an editable Store Control Center instead of the old read-only tenant detail", () => {
+    expect(directory).toContain("TenantControlCenter");
+    expect(directory).toContain("จัดการ");
+    expect(directory).not.toContain("TENANT DETAIL · READ ONLY");
+    expect(controlCenter).toContain("STORE CONTROL CENTER · CPIPOS-001");
+    expect(controlCenter).toContain("ข้อมูลร้าน");
+    expect(controlCenter).toContain("สาขา");
+    expect(controlCenter).toContain("แพ็กเกจและสิทธิ์");
+    expect(controlCenter).toContain("พื้นที่อันตราย");
+  });
+
+  it("keeps tenant mutations behind the authenticated IT Admin server boundary", () => {
+    expect(route).toContain("requireItAdmin()");
+    expect(route).toContain("parseTenantParam");
+    expect(route).toContain('namespace: "it_admin_tenant_control"');
+    expect(route).toContain("applyTenantControlAction");
+    expect(service).toContain('context.supabase.from("tenants")');
+    expect(service).toContain('from("branches")');
+    expect(service).toContain('from("subscription_packages")');
+    expect(service).toContain('from("tenant_subscription_contracts")');
+    expect(service).not.toContain("itSupabase");
+    expect(service).not.toContain("CpiPOS-002");
+  });
+
+  it("supports profile, branch, package, suspend, resume, cancellation and store lifecycle controls", () => {
+    for (const action of [
+      "update_profile",
+      "create_branch",
+      "update_branch",
+      "change_package",
+      "suspend_package",
+      "resume_package",
+      "cancel_subscription",
+      "deactivate_store",
+      "reactivate_store",
+      "delete_store"
+    ]) {
+      expect(service).toContain(`"${action}"`);
+    }
+    expect(controlCenter).toContain("ชื่อร้านที่แสดง");
+    expect(controlCenter).toContain("ที่อยู่ร้าน");
+    expect(controlCenter).toContain("โลโก้ร้าน (URL)");
+    expect(controlCenter).toContain("เปิดสาขาใหม่");
+    expect(controlCenter).toContain("ยืนยันเปลี่ยนแพ็กเกจ");
+    expect(controlCenter).toContain("หยุดแพ็กเกจชั่วคราว");
+    expect(controlCenter).toContain("เปิดใช้งานต่อ");
+    expect(controlCenter).toContain("ยกเลิกแพ็กเกจ");
+  });
+
+  it("strictly separates customer-visible POS copy from internal IT reasons", () => {
+    expect(service).toContain("customer_title");
+    expect(service).toContain("customer_message");
+    expect(service).toContain("admin_reason");
+    expect(controlCenter).toContain("ข้อความที่ลูกค้าเห็นบน POS");
+    expect(controlCenter).toContain("เหตุผลภายใน IT (ลูกค้าไม่เห็น)");
+    expect(controlCenter).toContain("POS POPUP PREVIEW");
+    expect(controlCenter).toContain("ข้อมูลภายใน IT หลุดไปยังหน้าขาย POS");
+  });
+
+  it("guards permanent tenant deletion because tenant foreign keys cascade business data", () => {
+    expect(service).toContain("tenant_delete_confirmation_failed");
+    expect(service).toContain("tenant_must_be_inactive");
+    expect(service).toContain("subscription_must_be_closed");
+    expect(service).toContain("tenant_devices_still_online");
+    expect(service).toContain('from("tenants").delete()');
+    expect(controlCenter).toContain("ลบร้านค้าและข้อมูลทั้งหมด");
+    expect(controlCenter).toContain("Store Code เพื่อยืนยัน");
+    expect(controlCenter).toContain("คืนกลับไม่ได้");
+  });
+});
