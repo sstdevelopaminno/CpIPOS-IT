@@ -1,15 +1,15 @@
 .compactCard{
   min-width:0;
-  min-height:150px;
+  min-height:132px;
   box-sizing:border-box;
   width:100%;
   border:1px solid #dce6f1;
-  border-radius:17px;
+  border-radius:15px;
   background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);
-  padding:16px;
+  padding:13px 14px;
   display:grid;
   grid-template-rows:auto 1fr auto;
-  gap:12px;
+  gap:9px;
   color:inherit;
   text-align:left;
   font:inherit;
@@ -25,121 +25,138 @@ button.compactCard:hover{
   box-shadow:0 12px 28px rgba(27,63,108,.09);
 }
 button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-offset:2px}
-.cardTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.cardTop{display:flex;align-items:flex-start;justify-content:space-between;gap:9px}
 .ownerAvatar,.modalAvatar{display:grid;place-items:center;background:linear-gradient(145deg,#edf4ff,#dceaff);border:1px solid #cbdcf2;color:#285faa;font-weight:900}
-.ownerAvatar{width:46px;height:46px;border-radius:14px;font-size:14px;flex:0 0 auto}
-.summary{min-width:0;display:grid;align-content:start;gap:4px}
-.eyebrow{font-size:9px;font-weight:900;letter-spacing:.11em;color:#607fa9}
-.summary strong{font-size:16px;color:#16365f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.summary small{font-size:10px;line-height:1.5;color:#7b8da3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.summaryBadges{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.goodBadge,.mutedBadge,.pinReadyBadge,.pinMissingBadge{display:inline-flex;align-items:center;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:800;white-space:nowrap}
+.ownerAvatar{width:40px;height:40px;border-radius:12px;font-size:12px;flex:0 0 auto}
+.summary{min-width:0;display:grid;align-content:start;gap:3px}
+.eyebrow{font-size:8px;font-weight:900;letter-spacing:.11em;color:#607fa9}
+.summary strong{font-size:15px;color:#16365f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summary small{font-size:9px;line-height:1.45;color:#7b8da3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summaryBadges{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.goodBadge,.mutedBadge,.pinReadyBadge,.pinMissingBadge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 7px;font-size:8px;font-weight:800;white-space:nowrap}
 .goodBadge,.pinReadyBadge{background:#e7f7ee;color:#177344}
 .mutedBadge{background:#edf1f5;color:#66778d}
 .pinMissingBadge{background:#fff2d8;color:#996400}
-.cardBottom{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #edf1f6;padding-top:10px}
-.cardBottom span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:#60758f}
-.cardBottom strong{color:#2d64b1;font-size:11px;white-space:nowrap}
-.reloadButton{justify-self:start;border:1px solid #ccd9e9;border-radius:10px;background:#fff;color:#285b9e;padding:8px 10px;font:inherit;font-size:10px;font-weight:800;cursor:pointer}
+.cardBottom{display:flex;align-items:center;justify-content:space-between;gap:9px;border-top:1px solid #edf1f6;padding-top:8px}
+.cardBottom span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:#60758f}
+.cardBottom strong{color:#2d64b1;font-size:10px;white-space:nowrap}
+.reloadButton{justify-self:start;border:1px solid #ccd9e9;border-radius:9px;background:#fff;color:#285b9e;padding:7px 9px;font:inherit;font-size:9px;font-weight:800;cursor:pointer}
 .loadingDot{width:12px;height:12px;border:2px solid #d6e4f6;border-top-color:#2f6ef4;border-radius:999px;animation:spin .8s linear infinite}
 .inlineError{margin-top:8px;border:1px solid #efc5c5;border-radius:10px;background:#fff7f7;color:#963737;padding:9px 11px;font-size:11px}
 
 .modalBackdrop{
   position:fixed;
   inset:0;
-  z-index:310;
+  z-index:520;
   display:flex;
   align-items:center;
   justify-content:center;
-  padding:20px;
-  background:rgba(6,20,40,.64);
-  backdrop-filter:blur(7px);
+  padding:16px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  isolation:isolate;
+  background:rgba(6,20,40,.66);
+  backdrop-filter:blur(8px);
 }
 .modal{
-  width:min(860px,100%);
-  height:min(760px,calc(100dvh - 40px));
+  width:min(820px,calc(100vw - 32px));
+  height:auto;
   min-height:0;
-  max-height:calc(100dvh - 40px);
+  max-height:calc(100dvh - 32px);
   display:flex;
   flex-direction:column;
   overflow:hidden;
   border:1px solid rgba(221,231,242,.98);
-  border-radius:24px;
+  border-radius:21px;
   background:#f7f9fc;
-  box-shadow:0 38px 110px rgba(5,24,50,.38);
+  box-shadow:0 38px 110px rgba(5,24,50,.4);
   animation:modalEnter .18s ease-out;
 }
-.modalHeader{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px 20px;background:linear-gradient(135deg,#fff,#f4f8ff);border-bottom:1px solid #e0e8f2}
-.modalIdentity{display:flex;align-items:center;gap:13px;min-width:0}
-.modalAvatar{width:50px;height:50px;border-radius:15px;font-size:14px;flex:0 0 auto}
+.modalHeader{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;background:linear-gradient(135deg,#fff,#f4f8ff);border-bottom:1px solid #e0e8f2}
+.modalIdentity{display:flex;align-items:center;gap:10px;min-width:0}
+.modalAvatar{width:42px;height:42px;border-radius:12px;font-size:12px;flex:0 0 auto}
 .modalIdentity>div:last-child{min-width:0}
-.modalIdentity span{font-size:9px;font-weight:900;letter-spacing:.12em;color:#567aad}
-.modalIdentity h3{margin:2px 0 3px;color:#112f55;font-size:21px;line-height:1.2}
-.modalIdentity p{margin:0;color:#71839a;font-size:11px;line-height:1.5}
-.closeButton{width:38px;height:38px;border:1px solid #cfdae8;border-radius:11px;background:#fff;color:#62748a;font-size:22px;cursor:pointer;flex:0 0 auto}
+.modalIdentity span{font-size:8px;font-weight:900;letter-spacing:.12em;color:#567aad}
+.modalIdentity h3{margin:2px 0;color:#112f55;font-size:18px;line-height:1.2}
+.modalIdentity p{margin:0;color:#71839a;font-size:10px;line-height:1.45}
+.closeButton{width:34px;height:34px;border:1px solid #cfdae8;border-radius:10px;background:#fff;color:#62748a;font-size:19px;cursor:pointer;flex:0 0 auto}
 .modalBody{
   flex:1 1 auto;
   min-height:0;
   overflow-y:auto;
-  overscroll-behavior:contain;
+  overflow-x:hidden;
+  overscroll-behavior-y:contain;
   scrollbar-gutter:stable;
   -webkit-overflow-scrolling:touch;
   touch-action:pan-y;
-  padding:16px;
+  padding:12px;
   display:grid;
   align-content:start;
-  gap:13px;
+  gap:10px;
 }
-.errorBanner,.successBanner{border-radius:11px;padding:10px 12px;font-size:11px}
+.errorBanner,.successBanner{border-radius:10px;padding:9px 11px;font-size:10px}
 .errorBanner{border:1px solid #efc5c5;background:#fff6f6;color:#963737;display:grid;gap:2px}
 .successBanner{border:1px solid #bde6ce;background:#effaf4;color:#177344}
-.ownerMeta{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(110px,.75fr));gap:8px}
-.ownerMeta>div{min-width:0;border:1px solid #dfe8f3;border-radius:12px;background:#fff;padding:10px 11px;display:grid;gap:3px}
-.ownerMeta span{font-size:9px;font-weight:800;color:#8191a5}
-.ownerMeta strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#23466f}
+.ownerMeta{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(105px,.75fr));gap:6px}
+.ownerMeta>div{min-width:0;border:1px solid #dfe8f3;border-radius:10px;background:#fff;padding:8px 9px;display:grid;gap:3px}
+.ownerMeta span{font-size:8px;font-weight:800;color:#8191a5}
+.ownerMeta strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:#23466f}
 .goodText{color:#177344!important}.warnText{color:#996400!important}
-.editorSection{overflow:hidden;border:1px solid #dfe7f1;border-radius:15px;background:#fff}
-.sectionTitle{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e8eef5;background:#fbfcfe}
-.sectionTitle span,.securityHeader>div:first-child>span{font-size:9px;font-weight:900;letter-spacing:.1em;color:#6e83a0}
-.sectionTitle h4,.securityHeader h4{margin:2px 0 0;color:#17365f;font-size:14px}
-.formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;padding:14px}
+.editorSection{overflow:hidden;border:1px solid #dfe7f1;border-radius:13px;background:#fff}
+.sectionTitle{display:flex;align-items:center;justify-content:space-between;padding:9px 11px;border-bottom:1px solid #e8eef5;background:#fbfcfe}
+.sectionTitle span,.securityHeader>div:first-child>span{font-size:8px;font-weight:900;letter-spacing:.1em;color:#6e83a0}
+.sectionTitle h4,.securityHeader h4{margin:2px 0 0;color:#17365f;font-size:13px}
+.formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:11px}
 .formGrid label,.pinGrid label{display:grid;gap:5px}
-.formGrid label>span,.pinGrid label>span{font-size:10px;font-weight:800;color:#61738a}
-.formGrid input,.pinGrid input{width:100%;box-sizing:border-box;border:1px solid #cfdbea;border-radius:10px;background:#fff;padding:10px 11px;font:inherit;font-size:12px;color:#19314f;outline:none}
+.formGrid label>span,.pinGrid label>span{font-size:9px;font-weight:800;color:#61738a}
+.formGrid input,.pinGrid input{width:100%;min-height:36px;box-sizing:border-box;border:1px solid #cfdbea;border-radius:9px;background:#fff;padding:8px 10px;font:inherit;font-size:11px;color:#19314f;outline:none}
 .formGrid input:focus,.pinGrid input:focus{border-color:#5688f5;box-shadow:0 0 0 3px rgba(47,110,244,.09)}
-.formGrid small{font-size:9px;line-height:1.45;color:#8795a8}
+.formGrid small{font-size:8px;line-height:1.45;color:#8795a8}
 .fullWidth{grid-column:1/-1}
 .securitySection{border-color:#d9e4f2}
-.securityHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 14px;background:linear-gradient(135deg,#fbfdff,#f0f6ff);border-bottom:1px solid #e3ebf5}
-.securityHeader p{margin:3px 0 0;color:#74869b;font-size:10px}
-.securityActions{display:flex;align-items:center;gap:7px}
-.securityActions button{border:1px solid #c9d8ea;border-radius:10px;background:#fff;color:#285b9e;padding:7px 10px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}
-.pinEditor{padding:14px;display:grid;gap:11px}
-.pinGuide{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border:1px solid #dbe7f5;border-radius:11px;background:#f6f9fd;padding:9px 11px}
-.pinGuide strong{font-size:11px;color:#204c7e}.pinGuide span{max-width:500px;color:#71839a;font-size:9px;line-height:1.5;text-align:right}
-.pinGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.passwordField{display:grid;grid-template-columns:minmax(0,1fr) auto}.passwordField input{border-radius:10px 0 0 10px}
-.passwordField button{border:1px solid #cfdbea;border-left:0;border-radius:0 10px 10px 0;background:#f6f9fd;color:#496b91;padding:0 10px;font:inherit;font-size:10px;font-weight:800;cursor:pointer}
-.pinValidation{color:#b13c3c;font-size:10px}
-.securityNote{border:1px solid #dde6f1;border-radius:11px;background:#f3f6fa;color:#6c7f94;padding:10px 12px;font-size:9px;line-height:1.55}
-.modalFooter{flex:0 0 auto;display:flex;justify-content:flex-end;gap:9px;padding:13px 16px;background:#fff;border-top:1px solid #e0e8f2}
-.modalFooter button{min-width:120px;border-radius:10px;padding:10px 14px;font:inherit;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}
+.securityHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 11px;background:linear-gradient(135deg,#fbfdff,#f0f6ff);border-bottom:1px solid #e3ebf5}
+.securityHeader p{margin:3px 0 0;color:#74869b;font-size:9px}
+.securityActions{display:flex;align-items:center;gap:5px}
+.securityActions button{min-height:30px;border:1px solid #c9d8ea;border-radius:8px;background:#fff;color:#285b9e;padding:5px 8px;font:inherit;font-size:9px;font-weight:800;cursor:pointer;white-space:nowrap}
+.pinEditor{padding:11px;display:grid;gap:9px}
+.pinGuide{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border:1px solid #dbe7f5;border-radius:10px;background:#f6f9fd;padding:8px 9px}
+.pinGuide strong{font-size:10px;color:#204c7e}.pinGuide span{max-width:500px;color:#71839a;font-size:8px;line-height:1.5;text-align:right}
+.pinGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.passwordField{display:grid;grid-template-columns:minmax(0,1fr) auto}.passwordField input{border-radius:9px 0 0 9px}
+.passwordField button{min-width:44px;border:1px solid #cfdbea;border-left:0;border-radius:0 9px 9px 0;background:#f6f9fd;color:#496b91;padding:0 7px;font:inherit;font-size:9px;font-weight:800;cursor:pointer}
+.pinValidation{color:#b13c3c;font-size:9px}
+.securityNote{border:1px solid #dde6f1;border-radius:10px;background:#f3f6fa;color:#6c7f94;padding:8px 10px;font-size:8px;line-height:1.55}
+.modalFooter{flex:0 0 auto;display:flex;justify-content:flex-end;gap:7px;padding:9px 12px;background:#fff;border-top:1px solid #e0e8f2}
+.modalFooter button{min-width:92px;min-height:34px;border-radius:9px;padding:7px 11px;font:inherit;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap}
 .cancelButton{border:1px solid #ccd8e7;background:#fff;color:#536b86}
-.saveButton{border:1px solid #2f6ef4;background:#2f6ef4;color:#fff}
+.saveButton{min-width:140px!important;border:1px solid #2f6ef4;background:#2f6ef4;color:#fff}
 .modalFooter button:disabled,.closeButton:disabled{opacity:.5;cursor:not-allowed}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes modalEnter{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+@media(max-height:720px){
+  .modalBackdrop{padding:8px}
+  .modal{max-height:calc(100dvh - 16px)}
+  .modalHeader{padding:9px 12px}
+  .modalIdentity p{display:none}
+  .modalBody{padding:9px;gap:8px}
+  .ownerMeta>div{padding:6px 8px}
+  .modalFooter{padding:7px 10px}
+}
+
 @media(max-width:900px){.ownerMeta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){
-  .compactCard{min-height:132px}
+  .compactCard{min-height:124px}
   .modalBackdrop{padding:0}
   .modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;border-left:0;border-right:0}
-  .modalHeader{padding:14px}
+  .modalHeader{padding:12px 14px}
   .modalIdentity p{display:none}
   .ownerMeta,.formGrid,.pinGrid{grid-template-columns:1fr}
   .fullWidth{grid-column:auto}
   .pinGuide{display:grid}.pinGuide span{text-align:left}
   .securityHeader{align-items:flex-start;flex-direction:column}
-  .modalFooter{display:grid;grid-template-columns:1fr 1fr;padding:10px 12px}
+  .modalFooter{display:grid;grid-template-columns:1fr 1fr;padding:9px 10px}
   .modalFooter button{width:100%;min-width:0}
+  .saveButton{min-width:0!important}
 }
