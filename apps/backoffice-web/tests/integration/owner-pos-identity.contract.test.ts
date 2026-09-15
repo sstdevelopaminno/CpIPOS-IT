@@ -22,11 +22,13 @@ describe("Owner POS login identity contract", () => {
     expect(ownerRoute).toContain("bcrypt.hash(ownerPin");
   });
 
-  it("shows the POS employee code in IT Admin instead of implying PIN is the employee code", () => {
+  it("shows POS employee identity separately from Owner PIN and opens PIN as a dedicated dialog", () => {
     expect(ownerCard).toContain("POS LOGIN IDENTITY");
     expect(ownerCard).toContain("รหัสพนักงาน POS");
-    expect(ownerCard).toContain("รหัสนี้ไม่ใช่รหัส Owner/PIN");
-    expect(ownerCard).toContain("รหัสพนักงาน POS → รหัส Owner/PIN");
+    expect(ownerCard).toContain("PIN เป็นคนละค่ากับรหัสพนักงาน");
+    expect(ownerCard).toContain("ใช้ระบุ USER ในหน้า POS ก่อน");
+    expect(ownerCard).toContain("createPortal");
+    expect(ownerCard).toContain("pinModalBackdrop");
     expect(ownerCard).toContain("login_ready");
   });
 
