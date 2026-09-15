@@ -2,8 +2,8 @@ import type { BranchRole, PlatformRole } from "@pos/shared-types";
 import { getSupabaseServiceClient } from "@/lib/supabase-admin";
 
 type JsonPrimitive = string | number | boolean | null;
-type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue };
 
 export type AppendAuditLogInput = {
   tenantId?: string;
@@ -192,4 +192,3 @@ export async function appendAuditLog(input: AppendAuditLogInput, deps: AppendAud
     };
   }
 }
-
