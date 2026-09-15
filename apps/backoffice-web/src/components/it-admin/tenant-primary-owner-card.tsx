@@ -80,6 +80,28 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    if (!editorOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (saving) return;
+      setEditorOpen(false);
+      setPinEditorOpen(false);
+      setOwnerPin("");
+      setConfirmPin("");
+      setShowPin(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [editorOpen, saving]);
+
   const openEditor = (focusPin = false) => {
     setError(null);
     setSuccess(null);
@@ -131,36 +153,48 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   const ownerSince = useMemo(() => owner ? formatDate(owner.role_created_at || owner.created_at) : "—", [owner]);
 
   if (loading) {
-    return <section className={styles.compactCard} data-primary-owner-card><div className={styles.loadingDot} /><div><strong>USER เจ้าของร้าน</strong><span>กำลังโหลดข้อมูล Owner…</span></div></section>;
+    return (
+      <section className={styles.compactCard} data-primary-owner-card>
+        <div className={styles.loadingDot} />
+        <div className={styles.summary}><span className={styles.eyebrow}>PRIMARY OWNER USER</span><strong>กำลังโหลด Owner…</strong><small>ตรวจสอบสิทธิ์และสถานะ PIN</small></div>
+      </section>
+    );
   }
 
   return (
     <>
-      <section className={styles.compactCard} data-primary-owner-card>
-        <div className={styles.ownerAvatar}>{initials(owner?.full_name ?? "Owner")}</div>
-        <div className={styles.summary}>
-          <span className={styles.eyebrow}>PRIMARY OWNER USER</span>
-          <strong>{owner?.full_name || "ยังไม่พบ USER เจ้าของร้าน"}</strong>
-          <small>{owner?.email || "ยังไม่ได้ผูก Owner USER กับร้าน"}</small>
-        </div>
-        {owner ? (
-          <div className={styles.summaryBadges}>
-            <span className={owner.is_active ? styles.goodBadge : styles.mutedBadge}>{owner.is_active ? "ใช้งาน" : "ปิดใช้งาน"}</span>
-            <span className={owner.pin_configured ? styles.pinReadyBadge : styles.pinMissingBadge}>{owner.pin_configured ? "PIN พร้อม" : "ยังไม่มี PIN"}</span>
+      {owner ? (
+        <button type="button" className={styles.compactCard} data-primary-owner-card onClick={() => openEditor(false)}>
+          <div className={styles.cardTop}>
+            <div className={styles.ownerAvatar}>{initials(owner.full_name || "Owner")}</div>
+            <div className={styles.summaryBadges}>
+              <span className={owner.is_active ? styles.goodBadge : styles.mutedBadge}>{owner.is_active ? "ใช้งาน" : "ปิดใช้งาน"}</span>
+              <span className={owner.pin_configured ? styles.pinReadyBadge : styles.pinMissingBadge}>{owner.pin_configured ? "PIN พร้อม" : "ยังไม่มี PIN"}</span>
+            </div>
           </div>
-        ) : null}
-        <div className={styles.compactActions}>
-          {owner ? <button type="button" className={styles.secondaryButton} onClick={() => openEditor(false)}>จัดการ Owner</button> : null}
-          {owner ? <button type="button" className={owner.pin_configured ? styles.pinButton : styles.primaryButton} onClick={() => openEditor(true)}>{owner.pin_configured ? "เปลี่ยนรหัส Owner" : "ตั้งรหัส Owner ครั้งแรก"}</button> : null}
-          {!owner ? <button type="button" className={styles.secondaryButton} onClick={() => void load()}>โหลดใหม่</button> : null}
-        </div>
-      </section>
+          <div className={styles.summary}>
+            <span className={styles.eyebrow}>PRIMARY OWNER USER</span>
+            <strong>{owner.full_name || "USER เจ้าของร้าน"}</strong>
+            <small>{owner.email || "ยังไม่ได้ผูกอีเมล Login"}</small>
+          </div>
+          <div className={styles.cardBottom}>
+            <span>Owner ตั้งแต่ {ownerSince}</span>
+            <strong>จัดการ Owner →</strong>
+          </div>
+        </button>
+      ) : (
+        <section className={styles.compactCard} data-primary-owner-card>
+          <div className={styles.ownerAvatar}>O</div>
+          <div className={styles.summary}><span className={styles.eyebrow}>PRIMARY OWNER USER</span><strong>ยังไม่พบ USER เจ้าของร้าน</strong><small>ยังไม่ได้ผูก Owner USER กับร้าน</small></div>
+          <button type="button" className={styles.reloadButton} onClick={() => void load()}>โหลดใหม่</button>
+        </section>
+      )}
 
       {error && !editorOpen ? <div className={styles.inlineError}>{error}</div> : null}
 
       {editorOpen && owner ? (
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeEditor(); }}>
-          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="primary-owner-editor-title">
+          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="primary-owner-editor-title" onWheelCapture={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalIdentity}>
                 <div className={styles.modalAvatar}>{initials(owner.full_name || "Owner")}</div>
