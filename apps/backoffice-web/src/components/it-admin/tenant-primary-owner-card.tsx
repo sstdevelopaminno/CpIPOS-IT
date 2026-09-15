@@ -10,8 +10,11 @@ type PrimaryOwner = {
   full_name: string;
   email: string;
   phone: string;
+  employee_code: string;
+  pos_profile_configured: boolean;
   is_active: boolean;
   pin_configured: boolean;
+  login_ready: boolean;
   created_at: string;
   role_created_at: string;
   owner_branch_count: number;
@@ -39,7 +42,7 @@ function initials(name: string) {
 
 export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   const [owner, setOwner] = useState<PrimaryOwner | null>(null);
-  const [draft, setDraft] = useState({ full_name: "", email: "", phone: "" });
+  const [draft, setDraft] = useState({ full_name: "", email: "", phone: "", employee_code: "" });
   const [ownerPin, setOwnerPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [showPin, setShowPin] = useState(false);
@@ -55,7 +58,8 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
     setDraft({
       full_name: next?.full_name ?? "",
       email: next?.email ?? "",
-      phone: next?.phone ?? ""
+      phone: next?.phone ?? "",
+      employee_code: next?.employee_code ?? ""
     });
     setOwnerPin("");
     setConfirmPin("");
@@ -123,7 +127,9 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
   const pinIsValid = ownerPin === "" || /^\d{4,6}$/.test(ownerPin);
   const pinMatches = ownerPin === confirmPin;
   const pinCanSave = !pinEditorOpen || (ownerPin.length >= 4 && pinIsValid && pinMatches);
-  const profileCanSave = draft.full_name.trim().length >= 2 && draft.email.includes("@");
+  const employeeCode = draft.employee_code.trim().toUpperCase().replace(/\s+/g, "");
+  const employeeCodeIsValid = /^[A-Z0-9][A-Z0-9._-]{2,31}$/.test(employeeCode);
+  const profileCanSave = draft.full_name.trim().length >= 2 && draft.email.includes("@") && employeeCodeIsValid;
 
   const save = async () => {
     if (!profileCanSave || !pinCanSave) return;
@@ -131,7 +137,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
     setError(null);
     setSuccess(null);
     try {
-      const payloadBody: Record<string, string> = { ...draft };
+      const payloadBody: Record<string, string> = { ...draft, employee_code: employeeCode };
       if (pinEditorOpen && ownerPin) payloadBody.owner_pin = ownerPin;
       const response = await fetch(`/api/it-admin/v1/tenants/${tenantId}/primary-owner`, {
         method: "POST",
@@ -141,7 +147,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
       });
       const payload = await parse<OwnerResponse>(response);
       applyOwner(payload.primary_owner);
-      setSuccess(pinEditorOpen && ownerPin ? "บันทึกข้อมูลและรหัส Owner เรียบร้อยแล้ว" : "บันทึก USER เจ้าของร้านเรียบร้อยแล้ว");
+      setSuccess(pinEditorOpen && ownerPin ? "บันทึกข้อมูล POS Login และรหัส Owner เรียบร้อยแล้ว" : "บันทึก USER เจ้าของร้านและ POS Login เรียบร้อยแล้ว");
       setPinEditorOpen(false);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "บันทึกข้อมูลเจ้าของร้านไม่สำเร็จ");
@@ -156,7 +162,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
     return (
       <section className={styles.compactCard} data-primary-owner-card>
         <div className={styles.loadingDot} />
-        <div className={styles.summary}><span className={styles.eyebrow}>PRIMARY OWNER USER</span><strong>กำลังโหลด Owner…</strong><small>ตรวจสอบสิทธิ์และสถานะ PIN</small></div>
+        <div className={styles.summary}><span className={styles.eyebrow}>PRIMARY OWNER USER</span><strong>กำลังโหลด Owner…</strong><small>ตรวจสอบรหัสพนักงาน POS, สิทธิ์ และสถานะ PIN</small></div>
       </section>
     );
   }
@@ -168,14 +174,14 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
           <div className={styles.cardTop}>
             <div className={styles.ownerAvatar}>{initials(owner.full_name || "Owner")}</div>
             <div className={styles.summaryBadges}>
-              <span className={owner.is_active ? styles.goodBadge : styles.mutedBadge}>{owner.is_active ? "ใช้งาน" : "ปิดใช้งาน"}</span>
+              <span className={owner.login_ready ? styles.goodBadge : styles.pinMissingBadge}>{owner.login_ready ? "POS พร้อม" : "POS ยังไม่พร้อม"}</span>
               <span className={owner.pin_configured ? styles.pinReadyBadge : styles.pinMissingBadge}>{owner.pin_configured ? "PIN พร้อม" : "ยังไม่มี PIN"}</span>
             </div>
           </div>
           <div className={styles.summary}>
             <span className={styles.eyebrow}>PRIMARY OWNER USER</span>
             <strong>{owner.full_name || "USER เจ้าของร้าน"}</strong>
-            <small>{owner.email || "ยังไม่ได้ผูกอีเมล Login"}</small>
+            <small>{owner.employee_code ? `รหัสพนักงาน POS: ${owner.employee_code}` : "ยังไม่ได้กำหนดรหัสพนักงาน POS"}</small>
           </div>
           <div className={styles.cardBottom}>
             <span>Owner ตั้งแต่ {ownerSince}</span>
@@ -201,7 +207,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
                 <div>
                   <span>OWNER ACCESS & IDENTITY</span>
                   <h3 id="primary-owner-editor-title">จัดการ USER เจ้าของร้าน</h3>
-                  <p>แก้ข้อมูล Login และตั้งรหัส Owner สำหรับการอนุมัติคำสั่งใน POS</p>
+                  <p>ลำดับเข้า POS คือ รหัสพนักงาน POS → รหัส Owner/PIN ทั้งสองค่าเป็นคนละรายการ</p>
                 </div>
               </div>
               <button type="button" className={styles.closeButton} onClick={closeEditor} disabled={saving} aria-label="ปิด">×</button>
@@ -215,8 +221,31 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
                 <div><span>User ID</span><strong title={owner.user_id}>{owner.user_id}</strong></div>
                 <div><span>Owner ตั้งแต่</span><strong>{ownerSince}</strong></div>
                 <div><span>สาขาที่เป็น Owner</span><strong>{owner.owner_branch_count}</strong></div>
-                <div><span>สถานะ PIN</span><strong className={owner.pin_configured ? styles.goodText : styles.warnText}>{owner.pin_configured ? "ตั้งรหัสแล้ว" : "ยังไม่ได้ตั้งรหัส"}</strong></div>
+                <div><span>สถานะ Login</span><strong className={owner.login_ready ? styles.goodText : styles.warnText}>{owner.login_ready ? "POS พร้อมใช้งาน" : "ต้องตรวจสอบ"}</strong></div>
               </div>
+
+              <section className={styles.editorSection}>
+                <div className={styles.sectionTitle}>
+                  <div><span>POS LOGIN IDENTITY</span><h4>รหัสพนักงานสำหรับเข้าหน้าร้าน</h4></div>
+                  <span className={owner.pos_profile_configured ? styles.pinReadyBadge : styles.pinMissingBadge}>{owner.pos_profile_configured ? "เชื่อมต่อแล้ว" : "ต้องกำหนด"}</span>
+                </div>
+                <div className={styles.formGrid}>
+                  <label className={styles.fullWidth}>
+                    <span>รหัสพนักงาน POS</span>
+                    <input
+                      value={draft.employee_code}
+                      maxLength={32}
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(event) => setDraft((value) => ({ ...value, employee_code: event.target.value.toUpperCase().replace(/\s+/g, "") }))}
+                      placeholder="เช่น 591688"
+                    />
+                    <small>ใช้รหัสนี้ในหน้าที่เขียนว่า “รหัสพนักงาน” ก่อนเข้าสู่ขั้นตอน PIN Owner รหัสนี้ไม่ใช่รหัส Owner/PIN</small>
+                  </label>
+                  {!employeeCodeIsValid ? <div className={styles.pinValidation}>รหัสพนักงานต้องมี 3–32 ตัว และใช้ตัวอักษร ตัวเลข จุด ขีดล่าง หรือขีดกลาง</div> : null}
+                </div>
+              </section>
 
               <section className={styles.editorSection}>
                 <div className={styles.sectionTitle}><div><span>OWNER PROFILE</span><h4>ข้อมูลเจ้าของร้านและ Login</h4></div></div>
@@ -229,7 +258,7 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
 
               <section className={`${styles.editorSection} ${styles.securitySection}`}>
                 <div className={styles.securityHeader}>
-                  <div><span>OWNER PIN SECURITY</span><h4>{owner.pin_configured ? "รหัสเจ้าของร้าน" : "ตั้งรหัสเจ้าของร้านครั้งแรก"}</h4><p>ใช้สำหรับอนุมัติรายการที่ต้องใช้สิทธิ์ Owner/Manager ใน POS</p></div>
+                  <div><span>OWNER PIN SECURITY</span><h4>{owner.pin_configured ? "รหัสเจ้าของร้าน" : "ตั้งรหัสเจ้าของร้านครั้งแรก"}</h4><p>PIN ใช้หลังจากระบบระบุ USER ด้วยรหัสพนักงาน POS แล้ว และใช้อนุมัติคำสั่งที่ต้องใช้สิทธิ์ Owner/Manager</p></div>
                   <div className={styles.securityActions}>
                     <span className={owner.pin_configured ? styles.pinReadyBadge : styles.pinMissingBadge}>{owner.pin_configured ? "ตั้งค่าแล้ว" : "ต้องตั้งค่า"}</span>
                     {!pinEditorOpen ? <button type="button" onClick={() => setPinEditorOpen(true)}>{owner.pin_configured ? "เปลี่ยนรหัส" : "ตั้งรหัส"}</button> : null}
@@ -249,12 +278,12 @@ export function TenantPrimaryOwnerCard({ tenantId }: { tenantId: string }) {
                 ) : null}
               </section>
 
-              <div className={styles.securityNote}>User ID และสิทธิ์ Owner ถูกล็อกในหน้าต่างนี้ การเปลี่ยนรหัสจะไม่บันทึกรหัสจริงหรือ hash ลง Audit Log แต่จะบันทึกว่าใครเป็นผู้เปลี่ยนและเมื่อใด</div>
+              <div className={styles.securityNote}>การเข้า POS ใช้ 2 ขั้น: รหัสพนักงาน POS เพื่อระบุ USER และ PIN Owner เพื่อยืนยันสิทธิ์ ระบบไม่บันทึกรหัส PIN จริงหรือ hash ลง Audit Log แต่จะบันทึกว่าใครเป็นผู้เปลี่ยนและเมื่อใด</div>
             </div>
 
             <footer className={styles.modalFooter}>
               <button type="button" className={styles.cancelButton} onClick={closeEditor} disabled={saving}>ยกเลิก</button>
-              <button type="button" className={styles.saveButton} onClick={() => void save()} disabled={saving || !profileCanSave || !pinCanSave}>{saving ? "กำลังบันทึก…" : pinEditorOpen && ownerPin ? "บันทึกข้อมูลและรหัส Owner" : "บันทึกข้อมูล Owner"}</button>
+              <button type="button" className={styles.saveButton} onClick={() => void save()} disabled={saving || !profileCanSave || !pinCanSave}>{saving ? "กำลังบันทึก…" : pinEditorOpen && ownerPin ? "บันทึก POS Login และรหัส Owner" : "บันทึกข้อมูล Owner / POS Login"}</button>
             </footer>
           </section>
         </div>
