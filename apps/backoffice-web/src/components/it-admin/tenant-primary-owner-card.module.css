@@ -1,15 +1,15 @@
 .compactCard{
   min-width:0;
-  min-height:154px;
-  box-sizing:border-box;
+  min-height:168px;
   width:100%;
+  box-sizing:border-box;
   border:1px solid #dce6f1;
   border-radius:18px;
   background:linear-gradient(145deg,#fff 0%,#f8fbff 100%);
-  padding:17px 18px;
+  padding:18px 20px;
   display:grid;
   grid-template-rows:auto 1fr auto;
-  gap:11px;
+  gap:12px;
   color:inherit;
   text-align:left;
   font:inherit;
@@ -19,42 +19,40 @@ button.compactCard:hover{transform:translateY(-2px);border-color:#bcd0ea;backgro
 button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-offset:2px}
 .cardTop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .ownerAvatar,.modalAvatar{display:grid;place-items:center;background:linear-gradient(145deg,#edf4ff,#dceaff);border:1px solid #cbdcf2;color:#285faa;font-weight:900}
-.ownerAvatar{width:48px;height:48px;border-radius:14px;font-size:14px;flex:0 0 auto}
-.summary{min-width:0;display:grid;align-content:start;gap:5px}
-.eyebrow{font-size:11px;font-weight:900;letter-spacing:.11em;color:#607fa9}
-.summary strong{font-size:18px;color:#16365f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.summary small{font-size:12px;line-height:1.5;color:#7b8da3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ownerAvatar{width:50px;height:50px;border-radius:14px;font-size:15px;flex:0 0 auto}
+.summary{min-width:0;display:grid;align-content:start;gap:6px}
+.eyebrow{font-size:12px;font-weight:900;letter-spacing:.11em;color:#607fa9}
+.summary strong{font-size:19px;color:#16365f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summary small{font-size:13px;line-height:1.55;color:#70849d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .summaryBadges{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
-.goodBadge,.mutedBadge,.pinReadyBadge,.pinMissingBadge{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:800;white-space:nowrap}
+.goodBadge,.mutedBadge,.pinReadyBadge,.pinMissingBadge{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;white-space:nowrap}
 .goodBadge,.pinReadyBadge{background:#e7f7ee;color:#177344}
 .mutedBadge{background:#edf1f5;color:#66778d}
 .pinMissingBadge{background:#fff2d8;color:#996400}
-.cardBottom{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #edf1f6;padding-top:10px}
-.cardBottom span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#60758f}
-.cardBottom strong{color:#2d64b1;font-size:13px;white-space:nowrap}
-.reloadButton{justify-self:start;border:1px solid #ccd9e9;border-radius:11px;background:#fff;color:#285b9e;padding:9px 13px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.cardBottom{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #edf1f6;padding-top:11px}
+.cardBottom span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#60758f}
+.cardBottom strong{color:#2d64b1;font-size:14px;white-space:nowrap}
+.reloadButton{justify-self:start;border:1px solid #ccd9e9;border-radius:11px;background:#fff;color:#285b9e;padding:10px 14px;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
 .loadingDot{width:14px;height:14px;border:2px solid #d6e4f6;border-top-color:#2f6ef4;border-radius:999px;animation:spin .8s linear infinite}
-.inlineError{margin-top:8px;border:1px solid #efc5c5;border-radius:12px;background:#fff7f7;color:#963737;padding:11px 13px;font-size:14px}
+.inlineError{margin-top:8px;border:1px solid #efc5c5;border-radius:12px;background:#fff7f7;color:#963737;padding:12px 14px;font-size:14px}
 
 .modalBackdrop{
   position:fixed;
   inset:0;
-  z-index:520;
+  z-index:1100;
   display:flex;
   align-items:center;
   justify-content:center;
-  padding:12px;
+  padding:16px;
   overflow:hidden;
   overscroll-behavior:contain;
-  isolation:isolate;
   background:rgba(6,20,40,.66);
   backdrop-filter:blur(8px);
 }
 .modal{
-  width:min(1220px,calc(100vw - 24px));
-  height:auto;
+  width:min(1260px,calc(100vw - 32px));
+  height:min(860px,calc(100dvh - 32px));
   min-height:0;
-  max-height:calc(100dvh - 24px);
   display:flex;
   flex-direction:column;
   overflow:hidden;
@@ -62,15 +60,15 @@ button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-
   border-radius:24px;
   background:#f7f9fc;
   box-shadow:0 38px 110px rgba(5,24,50,.4);
-  animation:modalEnter .18s ease-out;
+  animation:modalEnter .16s ease-out;
 }
 .modalHeader{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 24px;background:linear-gradient(135deg,#fff,#f4f8ff);border-bottom:1px solid #e0e8f2}
-.modalIdentity{display:flex;align-items:center;gap:15px;min-width:0}
-.modalAvatar{width:56px;height:56px;border-radius:16px;font-size:15px;flex:0 0 auto}
+.modalIdentity{display:flex;align-items:center;gap:16px;min-width:0}
+.modalAvatar{width:58px;height:58px;border-radius:17px;font-size:16px;flex:0 0 auto}
 .modalIdentity>div:last-child{min-width:0}
-.modalIdentity span{font-size:11px;font-weight:900;letter-spacing:.12em;color:#567aad}
-.modalIdentity h3{margin:4px 0;color:#112f55;font-size:25px;line-height:1.2}
-.modalIdentity p{margin:0;color:#71839a;font-size:13px;line-height:1.55}
+.modalIdentity span{font-size:12px;font-weight:900;letter-spacing:.12em;color:#567aad}
+.modalIdentity h3{margin:4px 0;color:#112f55;font-size:27px;line-height:1.2}
+.modalIdentity p{margin:0;color:#71839a;font-size:14px;line-height:1.55}
 .closeButton{width:44px;height:44px;border:1px solid #cfdae8;border-radius:12px;background:#fff;color:#62748a;font-size:24px;line-height:1;cursor:pointer;flex:0 0 auto}
 .modalBody{
   flex:1 1 auto;
@@ -80,61 +78,60 @@ button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-
   overscroll-behavior-y:contain;
   scrollbar-gutter:stable;
   -webkit-overflow-scrolling:touch;
-  touch-action:pan-y;
-  padding:18px 20px 22px;
+  padding:18px 20px 24px;
   display:grid;
   align-content:start;
-  gap:15px;
+  gap:16px;
 }
-.errorBanner,.successBanner{border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.5}
+.errorBanner,.successBanner{border-radius:12px;padding:13px 15px;font-size:14px;line-height:1.55}
 .errorBanner{border:1px solid #efc5c5;background:#fff6f6;color:#963737;display:grid;gap:3px}
 .successBanner{border:1px solid #bde6ce;background:#effaf4;color:#177344}
-.ownerMeta{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(150px,.8fr));gap:10px}
-.ownerMeta>div{min-width:0;border:1px solid #dfe8f3;border-radius:13px;background:#fff;padding:12px 13px;display:grid;gap:5px}
-.ownerMeta span{font-size:11px;font-weight:800;color:#8191a5}
-.ownerMeta strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:#23466f}
+.ownerMeta{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(160px,.8fr));gap:11px}
+.ownerMeta>div{min-width:0;border:1px solid #dfe8f3;border-radius:13px;background:#fff;padding:13px 14px;display:grid;gap:5px}
+.ownerMeta span{font-size:12px;font-weight:800;color:#8191a5}
+.ownerMeta strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;color:#23466f}
 .goodText{color:#177344!important}.warnText{color:#996400!important}
 .editorSection{overflow:hidden;border:1px solid #dfe7f1;border-radius:16px;background:#fff}
-.sectionTitle{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;border-bottom:1px solid #e8eef5;background:#fbfcfe}
-.sectionTitle span,.securityHeader>div:first-child>span{font-size:11px;font-weight:900;letter-spacing:.1em;color:#6e83a0}
-.sectionTitle h4,.securityHeader h4{margin:4px 0 0;color:#17365f;font-size:18px;line-height:1.35}
-.formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:16px}
+.sectionTitle{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 17px;border-bottom:1px solid #e8eef5;background:#fbfcfe}
+.sectionTitle span,.securityHeader>div:first-child>span{font-size:12px;font-weight:900;letter-spacing:.1em;color:#6e83a0}
+.sectionTitle h4,.securityHeader h4{margin:4px 0 0;color:#17365f;font-size:19px;line-height:1.35}
+.formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:17px}
 .formGrid label,.pinGrid label{display:grid;gap:7px}
-.formGrid label>span,.pinGrid label>span{font-size:13px;font-weight:800;color:#61738a}
-.formGrid input,.pinGrid input{width:100%;min-height:50px;box-sizing:border-box;border:1px solid #cfdbea;border-radius:11px;background:#fff;padding:11px 14px;font:inherit;font-size:15px;color:#19314f;outline:none}
+.formGrid label>span,.pinGrid label>span{font-size:14px;font-weight:800;color:#61738a}
+.formGrid input,.pinGrid input{width:100%;min-height:52px;box-sizing:border-box;border:1px solid #cfdbea;border-radius:11px;background:#fff;padding:12px 14px;font:inherit;font-size:16px;color:#19314f;outline:none}
 .formGrid input:focus,.pinGrid input:focus{border-color:#5688f5;box-shadow:0 0 0 3px rgba(47,110,244,.09)}
-.formGrid small{font-size:11px;line-height:1.55;color:#8795a8}
+.formGrid small{font-size:12px;line-height:1.55;color:#8795a8}
 .fullWidth{grid-column:1/-1}
 .securitySection{border-color:#d9e4f2}
-.securityHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;background:linear-gradient(135deg,#fbfdff,#f0f6ff)}
-.securityHeader p{margin:5px 0 0;color:#74869b;font-size:12px;line-height:1.55}
-.securityActions{display:flex;align-items:center;gap:9px;flex:0 0 auto}
-.securityActions button{min-height:44px;border:1px solid #c9d8ea;border-radius:10px;background:#fff;color:#285b9e;padding:9px 14px;font:inherit;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
+.securityHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px;background:linear-gradient(135deg,#fbfdff,#f0f6ff)}
+.securityHeader p{margin:5px 0 0;color:#74869b;font-size:13px;line-height:1.55}
+.securityActions{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.securityActions button{min-height:42px;border:1px solid #c9d8ea;border-radius:10px;background:#fff;color:#285b9e;padding:9px 14px;font:inherit;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
 .securityActions button:hover{border-color:#8fb0dc;background:#f8fbff}
-.pinValidation{color:#b13c3c;font-size:12px;font-weight:700}
-.securityNote{border:1px solid #dde6f1;border-radius:12px;background:#f3f6fa;color:#6c7f94;padding:12px 14px;font-size:11px;line-height:1.65}
+.pinValidation{color:#b13c3c;font-size:13px;font-weight:700}
+.securityNote{border:1px solid #dde6f1;border-radius:12px;background:#f3f6fa;color:#60768f;padding:12px 14px;font-size:12px;line-height:1.65}
 .modalFooter{flex:0 0 auto;display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;background:#fff;border-top:1px solid #e0e8f2;box-shadow:0 -10px 28px rgba(18,48,83,.07)}
-.modalFooter button,.pinModalFooter button{min-width:120px;min-height:48px;border-radius:11px;padding:10px 16px;font:inherit;font-size:14px;font-weight:800;cursor:pointer;white-space:nowrap}
+.modalFooter button,.pinModalFooter button{min-width:112px;min-height:44px;border-radius:11px;padding:9px 15px;font:inherit;font-size:14px;font-weight:800;cursor:pointer;white-space:nowrap}
 .cancelButton{border:1px solid #ccd8e7;background:#fff;color:#536b86}
-.saveButton{min-width:220px!important;border:1px solid #2f6ef4;background:#2f6ef4;color:#fff}
+.saveButton{min-width:190px!important;border:1px solid #2f6ef4;background:#2f6ef4;color:#fff}
 .modalFooter button:disabled,.pinModalFooter button:disabled,.closeButton:disabled{opacity:.5;cursor:not-allowed}
 
 .pinModalBackdrop{
   position:fixed;
   inset:0;
-  z-index:560;
+  z-index:1250;
   display:flex;
   align-items:center;
   justify-content:center;
-  padding:16px;
+  padding:18px;
   overflow:auto;
-  background:rgba(5,18,37,.62);
-  backdrop-filter:blur(6px);
-  animation:modalEnter .14s ease-out;
+  overscroll-behavior:contain;
+  background:rgba(5,18,37,.7);
+  backdrop-filter:blur(9px);
 }
 .pinModal{
-  width:min(680px,calc(100vw - 32px));
-  max-height:calc(100dvh - 32px);
+  width:min(720px,calc(100vw - 36px));
+  max-height:calc(100dvh - 36px);
   display:flex;
   flex-direction:column;
   overflow:hidden;
@@ -142,46 +139,49 @@ button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-
   border-radius:22px;
   background:#fff;
   box-shadow:0 30px 90px rgba(5,24,50,.42);
+  animation:modalEnter .14s ease-out;
 }
-.pinModalHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:21px 24px;background:linear-gradient(135deg,#fbfdff,#eef5ff);border-bottom:1px solid #e2eaf4}
+.pinModalHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:22px 24px;background:linear-gradient(135deg,#fbfdff,#eef5ff);border-bottom:1px solid #e2eaf4}
 .pinModalHeader>div{min-width:0}
-.pinModalHeader span{font-size:11px;font-weight:900;letter-spacing:.11em;color:#627fa6}
-.pinModalHeader h3{margin:4px 0 3px;color:#14365f;font-size:23px;line-height:1.25}
-.pinModalHeader p{margin:0;color:#74869b;font-size:13px;line-height:1.55}
-.pinModalBody{overflow-y:auto;min-height:0;padding:20px 24px 22px;display:grid;gap:16px}
-.pinGuide{display:grid;gap:5px;border:1px solid #dbe7f5;border-radius:12px;background:#f6f9fd;padding:13px 14px}
-.pinGuide strong{font-size:14px;color:#204c7e}
-.pinGuide span{color:#71839a;font-size:12px;line-height:1.6}
+.pinModalHeader span{font-size:12px;font-weight:900;letter-spacing:.11em;color:#627fa6}
+.pinModalHeader h3{margin:4px 0 3px;color:#14365f;font-size:25px;line-height:1.25}
+.pinModalHeader p{margin:0;color:#74869b;font-size:14px;line-height:1.55}
+.pinModalBody{overflow-y:auto;min-height:0;padding:22px 24px 24px;display:grid;gap:17px}
+.pinGuide{display:grid;gap:5px;border:1px solid #dbe7f5;border-radius:12px;background:#f6f9fd;padding:14px 15px}
+.pinGuide strong{font-size:15px;color:#204c7e}
+.pinGuide span{color:#71839a;font-size:13px;line-height:1.6}
 .pinGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .passwordField{display:grid;grid-template-columns:minmax(0,1fr) auto}
 .passwordField input{border-radius:11px 0 0 11px}
-.passwordField button{min-width:66px;border:1px solid #cfdbea;border-left:0;border-radius:0 11px 11px 0;background:#f6f9fd;color:#496b91;padding:0 11px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.passwordField button{min-width:64px;border:1px solid #cfdbea;border-left:0;border-radius:0 11px 11px 0;background:#f6f9fd;color:#496b91;padding:0 11px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
 .pinModalFooter{display:flex;justify-content:flex-end;gap:10px;padding:14px 24px 18px;background:#fff;border-top:1px solid #e2eaf4;box-shadow:0 -8px 22px rgba(18,48,83,.05)}
 
 @keyframes spin{to{transform:rotate(360deg)}}
-@keyframes modalEnter{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes modalEnter{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 
 @media(max-height:760px){
   .modalBackdrop{padding:8px}
-  .modal{max-height:calc(100dvh - 16px)}
+  .modal{height:calc(100dvh - 16px);max-height:calc(100dvh - 16px)}
   .modalHeader{padding:13px 17px}
   .modalAvatar{width:46px;height:46px}
-  .modalIdentity h3{font-size:21px}
+  .modalIdentity h3{font-size:22px}
   .modalIdentity p{font-size:12px}
   .modalBody{padding:11px 12px 14px;gap:10px}
   .ownerMeta>div{padding:9px 10px}
   .sectionTitle{padding:10px 12px}
   .formGrid{padding:12px;gap:10px}
-  .formGrid input{min-height:44px}
+  .formGrid input{min-height:44px;font-size:14px}
   .securityHeader{padding:11px 12px}
   .securityNote{padding:9px 11px}
   .modalFooter{padding:9px 12px}
-  .modalFooter button{min-height:42px}
+  .modalFooter button{min-height:40px}
+  .pinModalBackdrop{padding:8px}
+  .pinModal{max-height:calc(100dvh - 16px)}
 }
 
 @media(max-width:900px){.ownerMeta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){
-  .compactCard{min-height:140px}
+  .compactCard{min-height:148px}
   .modalBackdrop{padding:0}
   .modal{width:100%;height:100dvh;max-height:100dvh;border-radius:0;border-left:0;border-right:0}
   .modalHeader{padding:14px 15px}
@@ -194,8 +194,8 @@ button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-
   .modalFooter{display:grid;grid-template-columns:1fr 1fr;padding:10px}
   .modalFooter button{width:100%;min-width:0}
   .saveButton{min-width:0!important}
-  .pinModalBackdrop{padding:10px}
-  .pinModal{width:100%;max-height:calc(100dvh - 20px)}
+  .pinModalBackdrop{padding:8px}
+  .pinModal{width:100%;max-height:calc(100dvh - 16px)}
   .pinModalHeader{padding:17px}
   .pinModalBody{padding:17px}
   .pinModalFooter{display:grid;grid-template-columns:1fr 1fr;padding:12px 17px}
