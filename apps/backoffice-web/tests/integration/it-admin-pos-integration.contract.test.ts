@@ -87,6 +87,7 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
     expect(healthRoute).toContain("required_env: requiredEnv");
     expect(itAdminGuard).toContain("RequiredEnvironmentVariableError");
     expect(tenantDataRouter).toContain('readRequiredEnv("CPIPOS_SUPABASE_URL"');
+    expect(tenantDataRouter).toContain('readRequiredEnv("CPIPOS_SUPABASE_SERVICE_ROLE_KEY"');
     expect(tenantDataRouter).not.toContain('readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL", "Missing Supabase service role environment variables.');
   });
 
@@ -146,13 +147,14 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
     expect(envModule).toContain('CPIPOS_SUPABASE_URL: "https://deejlitaivfnsbwqdugy.supabase.co"');
     expect(envModule).toContain('CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
     expect(envModule).toContain('IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED: "false"');
+    expect(envModule).toContain('SUPABASE_SERVICE_ROLE_KEY: ["CPIPOS_SUPABASE_SERVICE_ROLE_KEY"]');
 
     expect(nextConfig).not.toContain('process.env.VERCEL === "1"');
     expect(nextConfig).not.toContain('"SUPABASE_SERVICE_ROLE_KEY"');
     expect(nextConfig).not.toContain('"IT_SUPABASE_SERVICE_ROLE_KEY"');
     expect(nextConfig).not.toContain("Missing required CpIPOS IT Admin Vercel environment variables");
 
-    for (const envName of ["CPIPOS_SUPABASE_URL", "CPIPOS_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) {
+    for (const envName of ["CPIPOS_SUPABASE_URL", "CPIPOS_SUPABASE_PUBLISHABLE_KEY", "CPIPOS_SUPABASE_SERVICE_ROLE_KEY"]) {
       expect(healthRoute).toContain(`"${envName}"`);
     }
     expect(healthRoute).not.toContain('"IT_SUPABASE_URL"');

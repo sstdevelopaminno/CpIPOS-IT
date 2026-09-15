@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 const REQUIRED_SERVER_ENV = [
   "CPIPOS_SUPABASE_URL",
   "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY"
+  "CPIPOS_SUPABASE_SERVICE_ROLE_KEY"
 ] as const;
 
 const POS_INTEGRATION_TABLES = ["tenants", "branch_devices", "pos_device_health_latest", "device_commands", "mdm_devices", "mdm_commands"] as const;
