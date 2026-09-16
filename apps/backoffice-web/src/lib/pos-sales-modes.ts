@@ -1,4 +1,4 @@
-﻿export const POS_SALES_MODE_KEYS = ["takeaway", "dine_in", "buffet_table", "delivery"] as const;
+export const POS_SALES_MODE_KEYS = ["takeaway", "dine_in", "buffet_table", "delivery", "general_sale"] as const;
 
 export type PosSalesModeKey = (typeof POS_SALES_MODE_KEYS)[number];
 export type PosSalesModeMap = Record<PosSalesModeKey, boolean>;
@@ -15,7 +15,8 @@ export const DEFAULT_POS_SALES_MODES: PosSalesModeMap = {
   takeaway: true,
   dine_in: true,
   buffet_table: true,
-  delivery: true
+  delivery: true,
+  general_sale: true
 };
 
 export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">> = [
@@ -33,15 +34,21 @@ export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">
   },
   {
     key: "buffet_table",
-    label: "โต๊ะบุฟเฟ่",
-    short_label: "บุฟเฟ่",
-    description: "โหมดโต๊ะแบบบุฟเฟ่หรือรอบบริการเฉพาะร้าน"
+    label: "โต๊ะบุฟเฟ่ต์",
+    short_label: "บุฟเฟ่ต์",
+    description: "โหมดโต๊ะแบบบุฟเฟ่ต์หรือรอบบริการเฉพาะร้าน"
   },
   {
     key: "delivery",
     label: "เดลิเวอรี่",
     short_label: "เดลิเวอรี่",
     description: "รับรายการขายจากช่องทางเดลิเวอรี่และบิลรอจัดส่ง"
+  },
+  {
+    key: "general_sale",
+    label: "ขายทั่วไป (SD)",
+    short_label: "ขายทั่วไป",
+    description: "ขายสินค้าแบบ SKU/บาร์โค้ด พร้อมตารางสแกนสำหรับร้านค้าทั่วไป"
   }
 ];
 
@@ -59,7 +66,8 @@ export function normalizePosSalesModes(value: unknown): PosSalesModeMap {
     takeaway: asBoolean(record.takeaway, DEFAULT_POS_SALES_MODES.takeaway),
     dine_in: asBoolean(record.dine_in, DEFAULT_POS_SALES_MODES.dine_in),
     buffet_table: asBoolean(record.buffet_table, DEFAULT_POS_SALES_MODES.buffet_table),
-    delivery: asBoolean(record.delivery, DEFAULT_POS_SALES_MODES.delivery)
+    delivery: asBoolean(record.delivery, DEFAULT_POS_SALES_MODES.delivery),
+    general_sale: asBoolean(record.general_sale, DEFAULT_POS_SALES_MODES.general_sale)
   };
 }
 
