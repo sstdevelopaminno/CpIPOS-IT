@@ -2,6 +2,7 @@ import "server-only";
 
 import { appendAuditLog } from "@/lib/audit-log";
 import { invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
+import { normalizePosSalesModes, toPosSalesModeViews, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 import { ItAdminGuardError, type ItAdminContext } from "@/lib/it-admin-guard";
 
 const ACTIVE_CONTRACT_STATUSES = ["trial", "active", "suspended"] as const;
@@ -106,6 +107,7 @@ export type TenantControlAction =
   | "update_branch"
   | "update_contract"
   | "change_package"
+  | "update_sales_modes"
   | "suspend_package"
   | "resume_package"
   | "cancel_subscription"
@@ -134,6 +136,7 @@ export type TenantControlInput = {
   admin_reason?: string;
   customer_message?: string;
   customer_title?: string;
+  sales_modes?: Partial<PosSalesModeMap>;
   confirmation_code?: string;
 };
 
@@ -164,6 +167,7 @@ function requireAction(raw: unknown): TenantControlAction {
     "update_branch",
     "update_contract",
     "change_package",
+    "update_sales_modes",
     "suspend_package",
     "resume_package",
     "cancel_subscription",
@@ -391,6 +395,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   const storeCode = accessCode?.access_code ?? tenant.code;
   const contractView = normalizeContract(contract);
   const metadata = asRecord(contract?.metadata);
+  const salesModes = toPosSalesModeViews(metadata.sales_modes);
   const uniqueUsers = new Set((userRolesResult.data ?? []).map((row) => row.user_id).filter(Boolean));
 
   return {
@@ -426,6 +431,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
       assigned_users: uniqueUsers.size,
       online_devices_5m: onlineResult.count ?? 0
     },
+    sales_modes: salesModes,
     pos_notice: contract
       ? {
           status: contractView?.effective_status ?? contract.status,
@@ -645,6 +651,33 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     );
   }
 
+  if (action === "update_sales_modes") {
+    const contract = await loadCurrentContract(context, tenantId);
+    if (!contract) throw new ItAdminGuardError("subscription_not_found", "This store has no subscription contract.", 409);
+    if (contract.status === "cancelled" || effectiveContractStatus(contract) === "expired") {
+      throw new ItAdminGuardError("subscription_closed", "Closed contracts cannot update POS sales modes.", 409);
+    }
+    const nextModes = normalizePosSalesModes(input.sales_modes);
+    if (!Object.values(nextModes).some(Boolean)) {
+      throw new ItAdminGuardError("sales_mode_required", "At least one POS sales mode must stay enabled.", 422);
+    }
+    const beforeMeta = asRecord(contract.metadata);
+    const reason = optionalText(input.admin_reason, 600);
+    const changes = {
+      updated_at: now,
+      metadata: {
+        ...beforeMeta,
+        sales_modes: nextModes,
+        sales_modes_updated_at: now,
+        sales_modes_updated_by: context.auth.userId,
+        sales_modes_admin_reason: reason
+      }
+    };
+    const { error } = await context.supabase.from("tenant_subscription_contracts").update(changes).eq("id", contract.id).eq("tenant_id", tenantId);
+    if (error) throw new Error(`sales_modes_update_failed:${error.message}`);
+    invalidateTenantFeatureGateCache(tenantId);
+    await audit(context, tenantId, "tenant_sales_modes_updated", "tenant_subscription_contracts", contract.id, asRecord(contract), asRecord(changes), { sales_modes: nextModes, admin_reason: reason });
+  }
   if (["suspend_package", "resume_package", "cancel_subscription"].includes(action)) {
     const contract = await loadCurrentContract(context, tenantId);
     if (!contract) throw new ItAdminGuardError("subscription_not_found", "This store has no subscription contract.", 409);

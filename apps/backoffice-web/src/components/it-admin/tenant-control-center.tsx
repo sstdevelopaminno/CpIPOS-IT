@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { POS_SALES_MODE_KEYS, type PosSalesModeKey, type PosSalesModeView } from "@/lib/pos-sales-modes";
 import { useTenantActionConfirm } from "./tenant-action-confirm";
 import { TenantPrimaryOwnerCard } from "./tenant-primary-owner-card";
 import dashboardStyles from "./tenant-control-center-dashboard.module.css";
@@ -87,12 +88,18 @@ type ControlData = {
   current_package: Package | null;
   lifecycle?: Lifecycle;
   usage: { active_devices: number; assigned_users: number; online_devices_5m: number };
+  sales_modes: PosSalesModeView[];
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "package" | "danger";
+type Tab = "overview" | "profile" | "branches" | "salesModes" | "package" | "danger";
 type BillingCycle = "monthly" | "yearly";
 
+const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, true])) as Record<PosSalesModeKey, boolean>;
+
+function salesModeDraftFromViews(views: PosSalesModeView[] | undefined): Record<PosSalesModeKey, boolean> {
+  return Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, views?.find((mode) => mode.key === key)?.enabled ?? true])) as Record<PosSalesModeKey, boolean>;
+}
 type Props = {
   tenantId: string;
   fallbackName: string;
@@ -211,6 +218,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const [changeAutoRenew, setChangeAutoRenew] = useState(false);
   const [changeReason, setChangeReason] = useState("");
   const [notice, setNotice] = useState({ customer_title: "ระบบถูกระงับชั่วคราว", customer_message: "", admin_reason: "" });
+  const [salesModeDrafts, setSalesModeDrafts] = useState<Record<PosSalesModeKey, boolean>>(DEFAULT_SALES_MODE_DRAFTS);
+  const [salesModeReason, setSalesModeReason] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteReason, setDeleteReason] = useState("");
 
@@ -247,6 +256,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
       customer_message: next.pos_notice?.message ?? "",
       admin_reason: next.pos_notice?.admin_reason ?? ""
     });
+    setSalesModeDrafts(salesModeDraftFromViews(next.sales_modes));
+    setSalesModeReason("");
     setBranchDrafts(Object.fromEntries(next.branches.map((branch) => [branch.id, {
       branch_name: branch.branch_name,
       branch_address: addressText(branch.address),
@@ -325,6 +336,9 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const isTrial = currentStatus === "trial";
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
   const selectedPackageYearlyAvailable = packageAllowsYearly(selectedPackage);
+  const salesModeEnabledCount = data?.sales_modes.filter((mode) => mode.enabled).length ?? 0;
+  const salesModeTotal = data?.sales_modes.length || POS_SALES_MODE_KEYS.length;
+  const hasSalesModeEnabled = Object.values(salesModeDrafts).some(Boolean);
 
   const changeContractCycle = (cycle: BillingCycle) => {
     if (cycle === "yearly" && !currentPackageYearlyAvailable) return;
@@ -357,10 +371,12 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     ? { eyebrow: "STORE PROFILE", title: "ข้อมูลร้าน", description: "แก้ไขชื่อร้าน ข้อมูลติดต่อ ที่อยู่ และโลโก้" }
     : tab === "branches"
       ? { eyebrow: "BRANCH MANAGEMENT", title: "สาขา", description: "จัดการสาขาปัจจุบันและเปิดสาขาใหม่" }
-      : tab === "package"
-        ? { eyebrow: "PACKAGE & CONTRACT", title: "แพ็กเกจและสิทธิ์", description: "จัดการสัญญา รอบบิล แพ็กเกจ และสิทธิ์การใช้งาน" }
-        : tab === "danger"
-          ? { eyebrow: "STORE SECURITY", title: "พื้นที่อันตราย", description: "ปิดร้านชั่วคราวหรือดำเนินการลบร้านแบบถาวร" }
+      : tab === "salesModes"
+        ? { eyebrow: "POS SALES MODES", title: "โหมดขาย", description: "เปิดหรือปิดโหมดหน้าขาย POS ของร้านนี้" }
+        : tab === "package"
+          ? { eyebrow: "PACKAGE & CONTRACT", title: "แพ็กเกจและสิทธิ์", description: "จัดการสัญญา รอบบิล แพ็กเกจ และสิทธิ์การใช้งาน" }
+          : tab === "danger"
+            ? { eyebrow: "STORE SECURITY", title: "พื้นที่อันตราย", description: "ปิดร้านชั่วคราวหรือดำเนินการลบร้านแบบถาวร" }
           : null;
 
   return (
@@ -419,6 +435,12 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>แพ็ก</div><span className={dashboardStyles.cardBadge}>{contractLabel(currentStatus)}</span></div>
                   <div className={dashboardStyles.cardText}><span>PACKAGE & CONTRACT</span><strong>แพ็กเกจและสิทธิ์</strong><small>สัญญา รอบบิล การระงับ และสิทธิ์การใช้งาน</small></div>
                   <div className={dashboardStyles.cardBottom}><span>{data.current_package?.name ?? "ยังไม่กำหนดแพ็กเกจ"}</span><strong>เปิดแพ็กเกจ →</strong></div>
+                </button>
+
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("salesModes")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>ขาย</div><span className={dashboardStyles.cardBadge}>{salesModeEnabledCount}/{salesModeTotal} เปิด</span></div>
+                  <div className={dashboardStyles.cardText}><span>POS SALES MODES</span><strong>โหมดขาย</strong><small>เปิดหรือปิดโหมดหน้าขายสำหรับร้านนี้</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>{data.sales_modes.filter((mode) => mode.enabled).map((mode) => mode.short_label).join(" · ") || "ยังไม่เปิดโหมด"}</span><strong>ตั้งค่าโหมด →</strong></div>
                 </button>
 
                 <Link className={dashboardStyles.settingsCard} href={`/tenants/${tenantId}/devices`}>
@@ -520,6 +542,40 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                 </div>
               ) : null}
 
+              {tab === "salesModes" ? (
+                <div className={styles.controlStack}>
+                  <section className={styles.controlSection}>
+                    <div className={styles.controlSectionHeader}>
+                      <div><span>POS SALES MODES</span><h4>โหมดขายหน้าร้าน</h4><small>เปิด/ปิดได้เฉพาะร้านนี้ โดย Feature Gate ของแพ็กเกจยังทำงานร่วมกัน</small></div>
+                      <span className={`${styles.controlPill} ${hasSalesModeEnabled ? styles.controlGood : styles.controlWarn}`}>{salesModeEnabledCount}/{salesModeTotal} เปิดใช้งาน</span>
+                    </div>
+                    <div className={dashboardStyles.salesModeGrid}>
+                      {data.sales_modes.map((mode) => {
+                        const enabled = salesModeDrafts[mode.key];
+                        return (
+                          <label className={`${dashboardStyles.salesModeCard} ${enabled ? dashboardStyles.salesModeCardOn : dashboardStyles.salesModeCardOff}`} key={mode.key}>
+                            <input type="checkbox" checked={enabled} onChange={(event) => setSalesModeDrafts((current) => ({ ...current, [mode.key]: event.target.checked }))} />
+                            <span className={dashboardStyles.salesModeToggle} aria-hidden="true" />
+                            <span className={dashboardStyles.salesModeCopy}>
+                              <strong>{mode.label}</strong>
+                              <small>{mode.description}</small>
+                            </span>
+                            <em>{enabled ? "เปิด" : "ปิด"}</em>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {!hasSalesModeEnabled ? <div className={styles.dangerWarning}><strong>ต้องเปิดอย่างน้อย 1 โหมด</strong><p>ระบบไม่อนุญาตให้ปิดทุกโหมดพร้อมกัน เพื่อป้องกันหน้าขายไม่มีทางรับออเดอร์</p></div> : null}
+                    <div className={styles.formGrid}>
+                      <label className={styles.span2}><span>เหตุผลภายใน (Audit)</span><textarea rows={3} value={salesModeReason} onChange={(event) => setSalesModeReason(event.target.value)} placeholder="เช่น ร้านนี้ยังไม่รับเดลิเวอรี่ หรือปิดโต๊ะบุฟเฟ่ชั่วคราว" /></label>
+                    </div>
+                    <div className={styles.sectionActions}>
+                      <button className={styles.primaryButton} type="button" disabled={busy || !hasSalesModeEnabled} onClick={async () => { const result = await mutate({ action: "update_sales_modes", sales_modes: salesModeDrafts, admin_reason: salesModeReason }, "บันทึกโหมดขายเรียบร้อย", true); if (result) setSalesModeReason(""); }}>บันทึกโหมดขาย</button>
+                    </div>
+                    <div className={styles.securityNote}>เมื่อปิดโหมด ระบบจะล็อกปุ่มเลือกโหมดบนหน้าขาย POS ของร้านนี้ และยังคงเคารพสิทธิ์จากแพ็กเกจ/ฟีเจอร์เดิมอีกชั้นหนึ่ง</div>
+                  </section>
+                </div>
+              ) : null}
               {tab === "package" ? (
                 <div className={styles.controlStack}>
                   <section className={styles.packageHero}>

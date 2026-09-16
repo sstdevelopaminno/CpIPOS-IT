@@ -20,7 +20,7 @@ export type AuthContext = {
 export const POS_ACTIVE_BRANCH_COOKIE = "pos_active_branch_id";
 
 const branchRoles: BranchRole[] = ["owner", "manager", "staff", "accountant"];
-const platformRoles: PlatformRole[] = ["it_admin", "tenant_user"];
+const platformRoles: PlatformRole[] = ["it_admin", "it_support", "tenant_user"];
 
 type BranchMembershipRow = {
   tenant_id: string;

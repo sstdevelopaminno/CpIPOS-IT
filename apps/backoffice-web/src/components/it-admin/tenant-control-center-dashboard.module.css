@@ -230,3 +230,121 @@
   .sectionBody{padding:10px 12px}
   .sectionFooter{padding:9px 12px}
 }
+
+.salesModeGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  padding:16px;
+}
+
+.salesModeCard{
+  position:relative;
+  min-height:94px;
+  border:1px solid #d6e2f0;
+  border-radius:14px;
+  background:#fff;
+  padding:14px 14px 14px 62px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  cursor:pointer;
+  transition:border-color .15s ease,box-shadow .15s ease,background .15s ease,transform .15s ease;
+}
+
+.salesModeCard:hover{
+  transform:translateY(-1px);
+  box-shadow:0 12px 24px rgba(23,54,95,.08);
+}
+
+.salesModeCard input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+.salesModeCardOn{
+  border-color:#bfe5cf;
+  background:linear-gradient(135deg,#fff,#f2fbf6);
+}
+
+.salesModeCardOff{
+  border-color:#dbe3ed;
+  background:#f8fafc;
+}
+
+.salesModeToggle{
+  position:absolute;
+  left:16px;
+  top:50%;
+  width:34px;
+  height:20px;
+  transform:translateY(-50%);
+  border-radius:999px;
+  border:1px solid #cbd7e5;
+  background:#dfe7f1;
+}
+
+.salesModeToggle::after{
+  content:"";
+  position:absolute;
+  top:2px;
+  left:2px;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 1px 4px rgba(21,45,79,.18);
+  transition:transform .16s ease;
+}
+
+.salesModeCardOn .salesModeToggle{
+  border-color:#71c792;
+  background:#2fb466;
+}
+
+.salesModeCardOn .salesModeToggle::after{
+  transform:translateX(14px);
+}
+
+.salesModeCopy{
+  min-width:0;
+  display:grid;
+  gap:4px;
+}
+
+.salesModeCopy strong{
+  color:#14345d;
+  font-size:15px;
+}
+
+.salesModeCopy small{
+  color:#6f8197;
+  font-size:11px;
+  line-height:1.55;
+}
+
+.salesModeCard em{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:42px;
+  border-radius:999px;
+  padding:5px 8px;
+  background:#eef3fa;
+  color:#68798d;
+  font-style:normal;
+  font-size:10px;
+  font-weight:900;
+}
+
+.salesModeCardOn em{
+  background:#e2f8eb;
+  color:#167341;
+}
+
+@media(max-width:760px){
+  .salesModeGrid{grid-template-columns:1fr;padding:12px}
+  .salesModeCard{min-height:88px}
+}

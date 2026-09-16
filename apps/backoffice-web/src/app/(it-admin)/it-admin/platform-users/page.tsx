@@ -1,5 +1,5 @@
-import { ItAdminModuleConsole } from "@/components/it-admin/it-admin-module-console";
+import { PlatformUsersConsole } from "@/components/it-admin/platform-users-console";
 
 export default function PlatformUsersPage() {
-  return <ItAdminModuleConsole module="users" />;
+  return <PlatformUsersConsole />;
 }

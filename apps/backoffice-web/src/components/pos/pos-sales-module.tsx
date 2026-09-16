@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Image from "next/image";
@@ -31,6 +31,7 @@ import { TableZoneTabs } from "@/components/tables/table-zone-tabs";
 import type { DiningTableItem, FloorPlanObjectItem, TableZoneItem } from "@/components/tables/types";
 import { calculateDeliveryPricingBreakdown } from "@/lib/delivery-pricing";
 import { POS_MODE_FEATURES } from "@/lib/pos-feature-map";
+import { normalizePosSalesModes, type PosSalesModeKey, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 import { beginPosActionTrace, clearPosTraceEvents, endPosActionTrace, readPosTraceEvents, usePosRenderProfiler } from "@/lib/pos-ui-profiler";
 import { naturalCompareTableCode } from "@/lib/table-management";
 import { cachePosSalesOfflineCatalogSnapshot } from "@/lib/pos-offline-catalog-snapshot";
@@ -658,6 +659,8 @@ const uiText = {
     delivery: "เดลิเวอรี่",
     deliveryMaintenanceTitle: "เดลิเวอรี่",
     deliveryMaintenanceMessage: "อยู่ระหว่างพัฒนาระบบร่วมกับฝ่ายเดลิเวอรี่",
+    salesModeDisabledTitle: "โหมดขายถูกปิด",
+    salesModeDisabledMessage: "ร้านนี้ปิดโหมดขายดังกล่าวไว้จาก Store Control Center กรุณาเลือกโหมดอื่นหรือติดต่อผู้ดูแลระบบ",
     switchMode: "เลือกโหมด",
     selectMode: "เลือกโหมดการขาย",
     selectModeHint: "เลือกวิธีรับออเดอร์ที่ต้องการใช้งาน",
@@ -1011,6 +1014,8 @@ const uiText = {
     delivery: "Delivery",
     deliveryMaintenanceTitle: "Delivery",
     deliveryMaintenanceMessage: "The delivery workflow is being developed with the delivery team.",
+    salesModeDisabledTitle: "Sales mode disabled",
+    salesModeDisabledMessage: "This store disabled that sales mode in Store Control Center. Choose another mode or contact IT support.",
     switchMode: "Select Mode",
     selectMode: "Select Sales Mode",
     selectModeHint: "Choose how this order will be served",
@@ -2036,7 +2041,9 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
   const [modeSelectorOpen, setModeSelectorOpen] = useState(false);
   const [salesTopbarCollapsed, setSalesTopbarCollapsed] = useState(false);
   const [enabledFeatures, setEnabledFeatures] = useState<Record<string, boolean> | null>(null);
+  const [salesModes, setSalesModes] = useState<PosSalesModeMap | null>(null);
   const [packageLockOpen, setPackageLockOpen] = useState(false);
+  const [salesModeLockOpen, setSalesModeLockOpen] = useState(false);
   const [deliveryMaintenanceOpen, setDeliveryMaintenanceOpen] = useState(false);
   const [orderType, setOrderType] = useState<OrderType>("takeaway");
   const [submitting, setSubmitting] = useState(false);
@@ -2252,12 +2259,16 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
     async function loadFeatures() {
       try {
         const response = await fetch("/api/pos/features", { cache: "no-store" });
-        const body = (await response.json().catch(() => null)) as { data?: { features?: Record<string, boolean> } | null } | null;
+        const body = (await response.json().catch(() => null)) as { data?: { features?: Record<string, boolean>; sales_modes?: unknown } | null } | null;
         if (!cancelled && response.ok) {
           setEnabledFeatures(body?.data?.features ?? {});
+          setSalesModes(normalizePosSalesModes(body?.data?.sales_modes));
         }
       } catch {
-        if (!cancelled) setEnabledFeatures({});
+        if (!cancelled) {
+          setEnabledFeatures({});
+          setSalesModes(normalizePosSalesModes(null));
+        }
       }
     }
     void loadFeatures();
@@ -5824,7 +5835,19 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
     pushSubmitMessage(text.delivery);
   }
 
-  function isQuickModeLocked(mode: QuickMode) {
+  function salesModeKeyForQuickMode(mode: QuickMode): PosSalesModeKey {
+    if (mode === "dine_in") return "dine_in";
+    if (mode === "buffet_table") return "buffet_table";
+    if (mode === "delivery") return "delivery";
+    return "takeaway";
+  }
+
+  function isQuickModeDisabledByStore(mode: QuickMode) {
+    const key = salesModeKeyForQuickMode(mode);
+    return Boolean(salesModes && salesModes[key] === false);
+  }
+
+  function isQuickModeDisabledByPackage(mode: QuickMode) {
     const feature =
       mode === "dine_in"
         ? POS_MODE_FEATURES.dine_in
@@ -5836,7 +5859,26 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
     return Boolean(enabledFeatures !== null && feature && enabledFeatures[feature] === false);
   }
 
+  function isQuickModeLocked(mode: QuickMode) {
+    return isQuickModeDisabledByStore(mode) || isQuickModeDisabledByPackage(mode);
+  }
+
+  function quickModeLockTitle(mode: QuickMode) {
+    if (isQuickModeDisabledByStore(mode)) return lang === "th" ? "ร้านนี้ปิดโหมดขายนี้" : "This sales mode is disabled for this store";
+    return lang === "th" ? "แพ็กเกจปัจจุบันยังไม่เปิดใช้งานฟีเจอร์นี้" : "This feature is not enabled in your package";
+  }
+
   function selectQuickMode(mode: QuickMode) {
+    if (isQuickModeDisabledByStore(mode)) {
+      setModeSelectorOpen(false);
+      setSalesModeLockOpen(true);
+      return;
+    }
+    if (isQuickModeDisabledByPackage(mode)) {
+      setModeSelectorOpen(false);
+      setPackageLockOpen(true);
+      return;
+    }
     if (mode === "delivery") {
       setModeSelectorOpen(false);
       setDeliveryMaintenanceOpen(true);
@@ -5844,11 +5886,6 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
     }
     if (mode === quickMode) {
       setModeSelectorOpen(false);
-      return;
-    }
-    if (isQuickModeLocked(mode)) {
-      setModeSelectorOpen(false);
-      setPackageLockOpen(true);
       return;
     }
     applyQuickMode(mode);
@@ -8773,8 +8810,10 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
             <div className="posui-mode-selector__grid">
               <button
                 type="button"
-                className={`posui-mode-option ${quickMode === "home" ? "is-active" : ""}`}
+                className={`posui-mode-option ${quickMode === "home" ? "is-active" : ""} ${isQuickModeLocked("home") ? "is-locked" : ""}`}
                 onClick={() => selectQuickMode("home")}
+                aria-disabled={isQuickModeLocked("home")}
+                title={isQuickModeLocked("home") ? quickModeLockTitle("home") : undefined}
               >
                 <span className="posui-mode-option__icon" aria-hidden="true">
                   <QuickModeIcon mode="home" />
@@ -8790,7 +8829,7 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
                 className={`posui-mode-option ${quickMode === "dine_in" ? "is-active" : ""} ${isQuickModeLocked("dine_in") ? "is-locked" : ""}`}
                 onClick={() => selectQuickMode("dine_in")}
                 aria-disabled={isQuickModeLocked("dine_in")}
-                title={isQuickModeLocked("dine_in") ? (lang === "th" ? "แพ็กเกจปัจจุบันยังไม่เปิดใช้งานฟีเจอร์นี้" : "This feature is not enabled in your package") : undefined}
+                title={isQuickModeLocked("dine_in") ? quickModeLockTitle("dine_in") : undefined}
               >
                 <span className="posui-mode-option__icon" aria-hidden="true">
                   <QuickModeIcon mode="dine_in" />
@@ -8806,7 +8845,7 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
                 hint={lang === "th" ? "เปิดโต๊ะแล้วเลือกชุดราคาบุฟเฟ่" : "Open table and select buffet price"}
                 active={quickMode === "buffet_table"}
                 locked={isQuickModeLocked("buffet_table")}
-                lockTitle={isQuickModeLocked("buffet_table") ? (lang === "th" ? "แพ็กเกจปัจจุบันยังไม่เปิดใช้งานฟีเจอร์นี้" : "This feature is not enabled in your package") : undefined}
+                lockTitle={isQuickModeLocked("buffet_table") ? quickModeLockTitle("buffet_table") : undefined}
                 icon={<QuickModeIcon mode="dine_in" />}
                 onClick={() => selectQuickMode("buffet_table")}
               />
@@ -8815,7 +8854,7 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
                 className={`posui-mode-option ${quickMode === "delivery" ? "is-active" : ""} ${isQuickModeLocked("delivery") ? "is-locked" : ""}`}
                 onClick={() => selectQuickMode("delivery")}
                 aria-disabled={isQuickModeLocked("delivery")}
-                title={isQuickModeLocked("delivery") ? (lang === "th" ? "แพ็กเกจปัจจุบันยังไม่เปิดใช้งานฟีเจอร์นี้" : "This feature is not enabled in your package") : undefined}
+                title={isQuickModeLocked("delivery") ? quickModeLockTitle("delivery") : undefined}
               >
                 <span className="posui-mode-option__icon" aria-hidden="true">
                   <QuickModeIcon mode="delivery" />
@@ -9671,6 +9710,13 @@ export function PosSalesModule({ lang = "th" }: { lang?: Lang }) {
         </div>
       ) : null}
       <PackageLockDialog lang={lang} open={packageLockOpen} onClose={() => setPackageLockOpen(false)} />
+      <PosMemberMaintenanceModal
+        open={salesModeLockOpen}
+        lang={lang}
+        title={text.salesModeDisabledTitle}
+        message={text.salesModeDisabledMessage}
+        onClose={() => setSalesModeLockOpen(false)}
+      />
       <PosMemberMaintenanceModal
         open={deliveryMaintenanceOpen}
         lang={lang}
