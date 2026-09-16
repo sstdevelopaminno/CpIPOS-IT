@@ -217,3 +217,65 @@ button.compactCard:focus-visible{outline:3px solid rgba(47,110,244,.18);outline-
   .pinModalFooter{display:grid;grid-template-columns:1fr 1fr;padding:12px 17px}
   .pinModalFooter button{width:100%;min-width:0}
 }
+
+/* Owner editor readability + clipped-content fix */
+.modal{width:min(1340px,calc(100vw - 24px));height:min(920px,calc(100dvh - 24px));max-height:calc(100dvh - 24px)}
+.modalHeader{padding:22px 26px}
+.modalIdentity span,.sectionTitle span,.securityHeader>div:first-child>span{font-size:13px}
+.modalIdentity h3{font-size:29px}
+.modalIdentity p{font-size:15px}
+.ownerMeta span{font-size:13px}
+.ownerMeta strong{font-size:16px}
+.menuButton{min-height:78px;padding:13px 15px}
+.menuButtonText strong{font-size:15px}
+.menuButtonText small{font-size:12px}
+.sectionTitle{padding:17px 19px}
+.sectionTitle h4,.securityHeader h4{font-size:21px}
+.formGrid{padding:19px;gap:16px}
+.formGrid label>span,.pinGrid label>span{font-size:15px}
+.formGrid input,.pinGrid input{min-height:56px;font-size:17px;padding:13px 15px}
+.formGrid small,.securityHeader p,.pinValidation{font-size:13px}
+.securityHeader{padding:19px}
+.securityActions button{min-height:46px;font-size:14px;padding:10px 16px}
+.securityNote{font-size:13px;padding:13px 15px}
+.modalBody{padding:20px 22px 34px;gap:18px;scroll-padding-bottom:34px}
+.modalFooter{position:relative;z-index:5;padding:15px 22px 16px}
+.modalFooter button,.pinModalFooter button{min-height:48px;font-size:15px}
+.pinModal{width:min(780px,calc(100vw - 28px));max-height:calc(100dvh - 28px)}
+.pinModalHeader{padding:24px 26px}
+.pinModalHeader h3{font-size:27px}
+.pinModalHeader p{font-size:15px}
+.pinModalBody{padding:24px 26px 28px;gap:19px}
+.pinGuide strong{font-size:16px}
+.pinGuide span{font-size:14px}
+.pinModalFooter{padding:15px 26px 20px}
+
+@media(max-height:760px){
+  .modal{height:calc(100dvh - 12px);max-height:calc(100dvh - 12px)}
+  .modalHeader{padding:14px 18px}
+  .modalAvatar{width:50px;height:50px}
+  .modalIdentity h3{font-size:24px}
+  .modalIdentity p{font-size:13px}
+  .modalBody{padding:12px 14px 26px;gap:12px}
+  .ownerMeta>div{padding:10px 11px}
+  .ownerMeta span{font-size:12px}
+  .ownerMeta strong{font-size:15px}
+  .sectionTitle{padding:11px 13px}
+  .sectionTitle h4,.securityHeader h4{font-size:18px}
+  .formGrid{padding:13px;gap:11px}
+  .formGrid label>span,.pinGrid label>span{font-size:14px}
+  .formGrid input,.pinGrid input{min-height:48px;font-size:15px}
+  .securityHeader{padding:12px 13px}
+  .securityActions button{min-height:44px;font-size:13px}
+  .securityNote{font-size:12px;padding:10px 12px}
+  .modalFooter{padding:10px 14px}
+  .modalFooter button{min-height:44px;font-size:14px}
+  .pinModal{max-height:calc(100dvh - 12px)}
+}
+
+@media(max-width:680px){
+  .modal{width:100%;height:100dvh;max-height:100dvh}
+  .modalBody{padding:14px 14px 28px}
+  .modalIdentity h3{font-size:23px}
+  .formGrid input,.pinGrid input{min-height:52px;font-size:16px}
+}
