@@ -148,6 +148,8 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
     expect(envModule).toContain('CPIPOS_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_');
     expect(envModule).toContain('IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED: "false"');
     expect(envModule).toContain('SUPABASE_SERVICE_ROLE_KEY: ["CPIPOS_SUPABASE_SERVICE_ROLE_KEY"]');
+    expect(envModule).toContain("process.env.CPIPOS_SUPABASE_SERVICE_ROLE_KEY");
+    expect(envModule).toContain("process.env.SUPABASE_SERVICE_ROLE_KEY");
 
     expect(nextConfig).not.toContain('process.env.VERCEL === "1"');
     expect(nextConfig).not.toContain('"SUPABASE_SERVICE_ROLE_KEY"');

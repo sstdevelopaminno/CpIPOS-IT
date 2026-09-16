@@ -17,6 +17,23 @@ const SAFE_ENV_DEFAULTS: Record<string, string> = {
   IT_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_1MbMKrhZkWIEv4PtRd4Hag_xzHOPlKY"
 };
 
+
+const DIRECT_ENV_READERS: Record<string, () => string | undefined> = {
+  CPIPOS_SUPABASE_URL: () => process.env.CPIPOS_SUPABASE_URL,
+  CPIPOS_SUPABASE_PUBLISHABLE_KEY: () => process.env.CPIPOS_SUPABASE_PUBLISHABLE_KEY,
+  CPIPOS_SUPABASE_SERVICE_ROLE_KEY: () => process.env.CPIPOS_SUPABASE_SERVICE_ROLE_KEY,
+  SUPABASE_SERVICE_ROLE_KEY: () => process.env.SUPABASE_SERVICE_ROLE_KEY,
+  NEXT_PUBLIC_SUPABASE_URL: () => process.env.NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED: () => process.env.IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED,
+  IT_SUPABASE_URL: () => process.env.IT_SUPABASE_URL,
+  IT_SUPABASE_PUBLISHABLE_KEY: () => process.env.IT_SUPABASE_PUBLISHABLE_KEY,
+  IT_SUPABASE_SERVICE_ROLE_KEY: () => process.env.IT_SUPABASE_SERVICE_ROLE_KEY,
+  TRIAL_SUPABASE_URL: () => process.env.TRIAL_SUPABASE_URL,
+  TRIAL_SUPABASE_SERVICE_ROLE_KEY: () => process.env.TRIAL_SUPABASE_SERVICE_ROLE_KEY,
+  TRIAL_DATA_ROUTING_ENABLED: () => process.env.TRIAL_DATA_ROUTING_ENABLED,
+  CPIPOS_PRODUCTION_URL: () => process.env.CPIPOS_PRODUCTION_URL
+};
 const SERVER_ENV_ALIASES: Record<string, readonly string[]> = {
   SUPABASE_SERVICE_ROLE_KEY: ["CPIPOS_SUPABASE_SERVICE_ROLE_KEY"],
   CPIPOS_SUPABASE_SERVICE_ROLE_KEY: ["SUPABASE_SERVICE_ROLE_KEY"],
@@ -41,11 +58,11 @@ export class RequiredEnvironmentVariableError extends Error {
 }
 
 export function readEnv(name: string): string | undefined {
-  const direct = normalize(process.env[name]);
+  const direct = normalize(DIRECT_ENV_READERS[name]?.() ?? process.env[name]);
   if (direct) return direct;
 
   for (const alias of SERVER_ENV_ALIASES[name] ?? []) {
-    const aliased = normalize(process.env[alias]);
+    const aliased = normalize(DIRECT_ENV_READERS[alias]?.() ?? process.env[alias]);
     if (aliased) return aliased;
   }
 
