@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import { readRequiredEnv } from "@/lib/env";
+import { readEnv, readRequiredEnv, RequiredEnvironmentVariableError } from "@/lib/env";
 
 // This module is intentionally a dynamic adapter. Supabase's generated fluent
 // builder types cannot express a runtime-selected project, so `any` is contained
@@ -82,9 +82,32 @@ function globalCache() {
   };
 }
 
+function normalizeServerSecret(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/(?:\r\n|\n|\r)+$/g, "");
+  return normalized || undefined;
+}
+
+function readPrimaryServiceRoleKey(): string {
+  const key =
+    normalizeServerSecret(process.env.CPIPOS_SUPABASE_SERVICE_ROLE_KEY) ??
+    normalizeServerSecret(process.env.SUPABASE_SERVICE_ROLE_KEY) ??
+    readEnv("CPIPOS_SUPABASE_SERVICE_ROLE_KEY") ??
+    readEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!key) {
+    throw new RequiredEnvironmentVariableError(
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "Missing CpiPOS-001 Supabase service role key."
+    );
+  }
+
+  return key;
+}
+
 function createPrimaryClient(): DynamicClient {
   const url = readRequiredEnv("CPIPOS_SUPABASE_URL", "Missing CpiPOS-001 Supabase URL.");
-  const key = readRequiredEnv("CPIPOS_SUPABASE_SERVICE_ROLE_KEY", "Missing CpiPOS-001 Supabase service role key.");
+  const key = readPrimaryServiceRoleKey();
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 

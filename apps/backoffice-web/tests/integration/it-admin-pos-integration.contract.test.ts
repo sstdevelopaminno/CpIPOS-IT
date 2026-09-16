@@ -87,7 +87,9 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
     expect(healthRoute).toContain("required_env: requiredEnv");
     expect(itAdminGuard).toContain("RequiredEnvironmentVariableError");
     expect(tenantDataRouter).toContain('readRequiredEnv("CPIPOS_SUPABASE_URL"');
-    expect(tenantDataRouter).toContain('readRequiredEnv("CPIPOS_SUPABASE_SERVICE_ROLE_KEY"');
+    expect(tenantDataRouter).toContain("readPrimaryServiceRoleKey");
+    expect(tenantDataRouter).toContain("process.env.CPIPOS_SUPABASE_SERVICE_ROLE_KEY");
+    expect(tenantDataRouter).toContain("process.env.SUPABASE_SERVICE_ROLE_KEY");
     expect(tenantDataRouter).not.toContain('readRequiredEnv("NEXT_PUBLIC_SUPABASE_URL", "Missing Supabase service role environment variables.');
   });
 
