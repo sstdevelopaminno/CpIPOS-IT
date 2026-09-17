@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BODY_BYTES = 1024 * 1024;
+const NEXT_CHECK_SECONDS = 300;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     if (Array.isArray(input.sales) && input.sales.length > 100) input.sales = input.sales.slice(0, 100);
 
     const result = await ingestDesktopHeartbeat(input);
-    return json({ lock: false, ...result });
+    return json({ lock: false, ...result, next_check_seconds: NEXT_CHECK_SECONDS });
   } catch (error) {
     const result = publicLicenseError(error);
     return json(result, result.lock ? 403 : 503);
