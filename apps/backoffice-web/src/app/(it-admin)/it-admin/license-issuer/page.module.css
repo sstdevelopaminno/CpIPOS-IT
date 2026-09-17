@@ -3,8 +3,3 @@
   gap: 18px;
   padding-bottom: 36px;
 }
-.header { display: grid; gap: 7px; }
-.header > span { color: #2563eb; font-size: 12px; font-weight: 800; letter-spacing: .08em; }
-.header h2 { margin: 0; color: #0f172a; font-size: clamp(26px, 3vw, 34px); }
-.header p { max-width: 920px; margin: 0; color: #64748b; line-height: 1.7; }
-.note { border-left: 4px solid #2563eb; border-radius: 10px; background: #eff6ff; color: #1e3a8a; padding: 12px 14px; font-size: 13px; line-height: 1.65; }
