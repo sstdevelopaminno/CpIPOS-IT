@@ -1,6 +1,8 @@
 import {
   completeDesktopCloudBackup,
+  getDesktopCloudReceiptArchive,
   getDesktopCloudState,
+  queryDesktopCloudSalesArchive,
   requestDesktopCloudPlan,
   uploadDesktopCloudBackupChunk,
   type DesktopCloudBackupChunkInput
@@ -12,7 +14,7 @@ export const dynamic = "force-dynamic";
 const MAX_BODY_BYTES = 900_000;
 
 type CloudRequest = {
-  action?: "status" | "request" | "chunk" | "complete";
+  action?: "status" | "request" | "chunk" | "complete" | "sales" | "receipt";
   token?: string;
   deviceCode?: string;
   planCode?: string;
@@ -24,6 +26,13 @@ type CloudRequest = {
   databaseBytes?: number | null;
   rowCounts?: Record<string, number> | null;
   checksumSha256?: string | null;
+  limit?: number;
+  from?: string | null;
+  to?: string | null;
+  status?: string | null;
+  paymentMethod?: string | null;
+  receipt?: string | null;
+  saleId?: string | null;
 };
 
 function json(body: unknown, status = 200) {
@@ -36,7 +45,7 @@ function json(body: unknown, status = 200) {
 function statusFor(code: string) {
   if (code.startsWith("LICENSE_")) return 403;
   if (code === "CLOUD_ENTITLEMENT_REQUIRED") return 402;
-  if (code === "CLOUD_REQUEST_PENDING") return 409;
+  if (code === "CLOUD_REQUEST_PENDING" || code === "CLOUD_ALREADY_ACTIVE" || code === "CLOUD_RENEWAL_REVIEW_REQUIRED") return 409;
   if (code.includes("NOT_FOUND") || code === "CLOUD_PLAN_NOT_AVAILABLE") return 404;
   if (code.includes("INVALID") || code.includes("TOO_LARGE") || code.includes("REQUIRED")) return 400;
   return 500;
@@ -61,6 +70,21 @@ export async function POST(request: Request) {
     if (action === "request") {
       const data = await requestDesktopCloudPlan(token, deviceCode, String(body.planCode ?? ""));
       return json({ data, error: null }, 201);
+    }
+    if (action === "sales") {
+      return json({ data: await queryDesktopCloudSalesArchive({
+        token,
+        deviceCode,
+        limit: body.limit,
+        from: body.from,
+        to: body.to,
+        status: body.status,
+        paymentMethod: body.paymentMethod,
+        receipt: body.receipt
+      }), error: null });
+    }
+    if (action === "receipt") {
+      return json({ data: await getDesktopCloudReceiptArchive(token, deviceCode, String(body.saleId ?? "")), error: null });
     }
     if (action === "chunk") {
       const input: DesktopCloudBackupChunkInput = {
