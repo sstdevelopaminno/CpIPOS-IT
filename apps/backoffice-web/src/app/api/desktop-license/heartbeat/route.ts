@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     if (Array.isArray(input.sales) && input.sales.length > 100) input.sales = input.sales.slice(0, 100);
 
     const result = await ingestDesktopHeartbeat(input);
-    return json({ valid: true, lock: false, ...result });
+    return json({ lock: false, ...result });
   } catch (error) {
     const result = publicLicenseError(error);
     return json(result, result.lock ? 403 : 503);
