@@ -1,3 +1,4 @@
+import { DesktopCloudBackupConsole } from "@/components/it-admin/desktop-cloud-backup-console";
 import { DesktopLicenseManagementConsole } from "@/components/it-admin/desktop-license-management-console";
 import { getCurrentLanguage, type Language } from "@/lib/i18n";
 import styles from "./page.module.css";
@@ -10,6 +11,7 @@ export default async function OfflineDesktopLicensePage() {
   return (
     <div className={styles.page}>
       <DesktopLicenseManagementConsole language={language} />
+      <DesktopCloudBackupConsole language={language} />
     </div>
   );
 }
