@@ -1,4 +1,5 @@
 import { getAuthContext } from "@/lib/auth-context";
+import { saveIssuedDesktopLicense } from "@/lib/desktop-license-registry";
 import { fail, ok } from "@/lib/http";
 import {
   getOfflineLicenseSignerStatus,
@@ -11,9 +12,7 @@ export const dynamic = "force-dynamic";
 
 async function requireItAdmin() {
   const auth = await getAuthContext({ requireBranchScope: false });
-  if (auth.platformRole !== "it_admin") {
-    throw new Error("FORBIDDEN");
-  }
+  if (auth.platformRole !== "it_admin") throw new Error("FORBIDDEN");
   return auth;
 }
 
@@ -40,7 +39,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireItAdmin();
+    const auth = await requireItAdmin();
     const body = (await request.json()) as IssueOfflineLicenseInput;
     const issued = issueOfflineLicense({
       customer: String(body.customer ?? ""),
@@ -51,10 +50,12 @@ export async function POST(request: Request) {
       validDays: body.validDays == null ? null : Number(body.validDays),
       features: Array.isArray(body.features) ? body.features.map(String) : []
     });
+    const registry = await saveIssuedDesktopLicense(issued, auth.userId);
 
     return ok({
       generated_at: new Date().toISOString(),
       desktop_version: "0.3.0",
+      registry_id: registry.id,
       ...issued
     });
   } catch (error) {
@@ -74,9 +75,7 @@ export async function POST(request: Request) {
         503
       );
     }
-    if (message.startsWith("LICENSE_")) {
-      return fail("license_request_invalid", message, 400);
-    }
+    if (message.startsWith("LICENSE_")) return fail("license_request_invalid", message, 400);
     return fail("license_issue_failed", message, 500);
   }
 }
