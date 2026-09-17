@@ -1,3 +1,4 @@
+import { enforceDesktopMachineBinding } from "@/lib/desktop-license-machine-guard";
 import { ingestDesktopHeartbeat, publicLicenseError, type DesktopHeartbeatInput } from "@/lib/desktop-license-registry";
 
 export const runtime = "nodejs";
@@ -30,9 +31,14 @@ export async function POST(request: Request) {
     }
     if (Array.isArray(input.sales) && input.sales.length > 100) input.sales = input.sales.slice(0, 100);
 
+    await enforceDesktopMachineBinding(input);
     const result = await ingestDesktopHeartbeat(input);
     return json({ lock: false, ...result, next_check_seconds: NEXT_CHECK_SECONDS });
   } catch (error) {
+    const code = error instanceof Error ? error.message : "LICENSE_CHECK_FAILED";
+    if (code === "LICENSE_MACHINE_MISMATCH") {
+      return json({ valid: false, lock: true, code }, 403);
+    }
     const result = publicLicenseError(error);
     return json(result, result.lock ? 403 : 503);
   }
