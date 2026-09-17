@@ -1,0 +1,108 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Language } from "@/lib/i18n";
+import styles from "./desktop-cloud-backup-console.module.css";
+
+type ApiEnvelope<T> = { data: T | null; error: { code?: string; message?: string } | null };
+type Plan = { code: string; days: number; label_th: string; label_en: string; price_thb: number | null; active: boolean };
+type Purchase = {
+  id: string;
+  plan_code: string;
+  plan_days: number;
+  price_thb: number | null;
+  status: string;
+  requested_at: string;
+  decided_at?: string | null;
+  decision_note?: string | null;
+  contract?: { license_id?: string; customer_name?: string } | null;
+  device?: { device_code?: string; device_name?: string; last_seen_at?: string | null } | null;
+};
+type Entitlement = {
+  id: string;
+  purchase_request_id: string;
+  plan_code: string;
+  cloud_code: string;
+  status: string;
+  starts_at: string;
+  expires_at: string;
+  last_backup_at?: string | null;
+};
+type AdminState = { plans: Plan[]; requests: Purchase[]; entitlements: Entitlement[]; checked_at: string };
+
+function money(value: number | null) {
+  if (value == null) return "ยังไม่กำหนดราคา";
+  return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 2 }).format(value);
+}
+function when(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("th-TH");
+}
+
+export function DesktopCloudBackupConsole({ language }: { language: Language }) {
+  const th = language === "th";
+  const [state, setState] = useState<AdminState | null>(null);
+  const [prices, setPrices] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setMessage("");
+    try {
+      const response = await fetch("/api/it-admin/cloud-backup", { cache: "no-store" });
+      const body = await response.json() as ApiEnvelope<AdminState>;
+      if (!response.ok || !body.data) throw new Error(body.error?.message || "CLOUD_LOAD_FAILED");
+      setState(body.data);
+      setPrices(current => {
+        const next = { ...current };
+        for (const plan of body.data?.plans ?? []) if (next[plan.code] == null) next[plan.code] = plan.price_thb == null ? "" : String(plan.price_thb);
+        return next;
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "CLOUD_LOAD_FAILED");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load(false);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(true); }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  const act = async (payload: Record<string, unknown>, key: string) => {
+    setBusy(key); setMessage("");
+    try {
+      const response = await fetch("/api/it-admin/cloud-backup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const body = await response.json() as ApiEnvelope<unknown>;
+      if (!response.ok || !body.data) throw new Error(body.error?.message || "CLOUD_ACTION_FAILED");
+      setMessage(th ? "บันทึกเรียบร้อย" : "Saved");
+      await load(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "CLOUD_ACTION_FAILED");
+    } finally { setBusy(""); }
+  };
+
+  const pending = useMemo(() => (state?.requests ?? []).filter(row => row.status === "pending"), [state]);
+  const active = useMemo(() => (state?.entitlements ?? []).filter(row => row.status === "active"), [state]);
+
+  return <section className={styles.panel}>
+    <header className={styles.head}>
+      <div><span className={styles.kicker}>CLOUD BACKUP / ONLINE SERVER</span><h2>{th ? "Cloud สำรองข้อมูล CpIPOS Desktop" : "CpIPOS Desktop Cloud Backup"}</h2><p>{th ? "ลูกค้ากดซื้อจาก Desktop → รอ IT ยืนยัน → ระบบสร้าง Cloud Code และเชื่อมต่ออัตโนมัติเมื่อออนไลน์" : "Desktop purchase → IT approval → automatic cloud code and connection."}</p></div>
+      <button className={styles.refresh} onClick={() => void load(false)} disabled={Boolean(busy)}>{th ? "รีเฟรช" : "Refresh"}</button>
+    </header>
+
+    <div className={styles.planGrid}>{(state?.plans ?? []).map(plan => <article className={styles.planCard} key={plan.code}>
+      <span>{plan.code}</span><strong>{th ? plan.label_th : plan.label_en}</strong><small>{plan.days} {th ? "วัน" : "days"}</small>
+      <label>{th ? "ราคาขาย (บาท)" : "Price (THB)"}<input inputMode="decimal" value={prices[plan.code] ?? ""} onChange={e => setPrices(v => ({ ...v, [plan.code]: e.target.value.replace(/[^0-9.]/g, "") }))} placeholder={th ? "กำหนดโดยบริษัท" : "Set by company"} /></label>
+      <div className={styles.row}><button onClick={() => void act({ action: "update_plan", planCode: plan.code, priceThb: prices[plan.code] === "" ? null : Number(prices[plan.code]), active: plan.active }, `plan:${plan.code}`)} disabled={Boolean(busy)}>{busy === `plan:${plan.code}` ? "..." : (th ? "บันทึกราคา" : "Save price")}</button><em>{money(plan.price_thb)}</em></div>
+    </article>)}</div>
+
+    <div className={styles.sectionTitle}><strong>{th ? `คำขอซื้อที่รอยืนยัน (${pending.length})` : `Pending purchases (${pending.length})`}</strong></div>
+    {pending.length ? <div className={styles.tableWrap}><table><thead><tr><th>{th ? "ลูกค้า / License" : "Customer / License"}</th><th>Device</th><th>{th ? "แพ็กเกจ" : "Plan"}</th><th>{th ? "ราคา" : "Price"}</th><th>{th ? "ขอซื้อเมื่อ" : "Requested"}</th><th /></tr></thead><tbody>{pending.map(row => <tr key={row.id}><td><strong>{row.contract?.customer_name || "—"}</strong><small>{row.contract?.license_id || "—"}</small></td><td><strong>{row.device?.device_name || "POS"}</strong><small>{row.device?.device_code || "—"}</small></td><td>{row.plan_days} {th ? "วัน" : "days"}<small>{row.plan_code}</small></td><td>{money(row.price_thb)}</td><td>{when(row.requested_at)}</td><td><div className={styles.actions}><button className={styles.approve} disabled={Boolean(busy)} onClick={() => void act({ action: "approve", requestId: row.id }, `approve:${row.id}`)}>{th ? "ยืนยัน Cloud" : "Approve"}</button><button className={styles.reject} disabled={Boolean(busy)} onClick={() => void act({ action: "reject", requestId: row.id, note: "Rejected by IT" }, `reject:${row.id}`)}>{th ? "ไม่อนุมัติ" : "Reject"}</button></div></td></tr>)}</tbody></table></div> : <div className={styles.empty}>{th ? "ยังไม่มีคำขอซื้อ Cloud ที่รอยืนยัน" : "No pending cloud purchases."}</div>}
+
+    <div className={styles.sectionTitle}><strong>{th ? `Cloud ที่เปิดใช้งาน (${active.length})` : `Active cloud connections (${active.length})`}</strong></div>
+    {active.length ? <div className={styles.activeGrid}>{active.map(row => <article key={row.id}><span className={styles.online}>● ONLINE CLOUD</span><strong>{row.cloud_code}</strong><small>{row.plan_code} · {th ? "หมดอายุ" : "expires"} {when(row.expires_at)}</small><small>{th ? "สำรองล่าสุด" : "last backup"}: {when(row.last_backup_at)}</small></article>)}</div> : <div className={styles.empty}>{th ? "ยังไม่มี Cloud ที่เปิดใช้งาน" : "No active cloud connection."}</div>}
+    {message ? <div className={styles.message}>{message}</div> : null}
+  </section>;
+}
