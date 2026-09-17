@@ -3,6 +3,8 @@ import { createHash, createPrivateKey, createPublicKey, randomBytes, sign, verif
 export const CPIPOS_LICENSE_PRODUCT = "CPIPOS-DESKTOP";
 export const CPIPOS_LICENSE_ISSUER = "CUTTING-POINT-TECH-IT";
 export const CPIPOS_DEVICE_CODE_PATTERN = /^CP-[A-F0-9]{5}-[A-F0-9]{5}-[A-F0-9]{5}-[A-F0-9]{5}$/;
+export const CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEs9PUGIOQlWxNNFA23/Rfcqk1yRCZN2Jq09f3qL8633xktajPKMpOY580I1MwxW5ocb826zeuthot/7FcXJASVQ==";
+export const CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT = "6FE9:A194:5785:B79A:13FB:C27B:316A:A7F2:F963:443B:BD2B:4482:CF31:86CA:EAF3:8018";
 
 export type OfflineLicensePayload = {
   v: 1;
@@ -35,6 +37,13 @@ export type IssuedOfflineLicense = {
   publicKeyFingerprint: string;
 };
 
+export type OfflineLicenseSignerStatus = {
+  configured: boolean;
+  keyMatchesDesktop: boolean;
+  publicKeyFingerprint: string | null;
+  expectedPublicKeyFingerprint: string;
+};
+
 function normalizePrivateKeyPem(value: string) {
   return value.includes("\\n") ? value.replace(/\\n/g, "\n") : value;
 }
@@ -49,11 +58,60 @@ function readPrivateKeyPem() {
   throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_NOT_CONFIGURED");
 }
 
-export function isOfflineLicenseSignerConfigured() {
-  return Boolean(
+function derivePublicKeyDer(privateKeyPem: string) {
+  return createPublicKey(createPrivateKey(privateKeyPem)).export({ type: "spki", format: "der" }) as Buffer;
+}
+
+function fingerprintPublicDer(publicDer: Buffer) {
+  return createHash("sha256").update(publicDer).digest("hex").toUpperCase().match(/.{1,4}/g)?.join(":") ?? "";
+}
+
+function publicKeyFingerprint(privateKeyPem: string) {
+  return fingerprintPublicDer(derivePublicKeyDer(privateKeyPem));
+}
+
+function privateKeyMatchesDesktop(privateKeyPem: string) {
+  const publicDer = derivePublicKeyDer(privateKeyPem);
+  return publicDer.toString("base64") === CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64;
+}
+
+export function getOfflineLicenseSignerStatus(): OfflineLicenseSignerStatus {
+  const hasConfiguredSecret = Boolean(
     process.env.CPIPOS_LICENSE_PRIVATE_KEY_PEM?.trim() ||
       process.env.CPIPOS_LICENSE_PRIVATE_KEY_BASE64?.trim()
   );
+
+  if (!hasConfiguredSecret) {
+    return {
+      configured: false,
+      keyMatchesDesktop: false,
+      publicKeyFingerprint: null,
+      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT
+    };
+  }
+
+  try {
+    const privateKeyPem = readPrivateKeyPem();
+    const fingerprint = publicKeyFingerprint(privateKeyPem);
+    const keyMatchesDesktop = privateKeyMatchesDesktop(privateKeyPem);
+    return {
+      configured: keyMatchesDesktop,
+      keyMatchesDesktop,
+      publicKeyFingerprint: fingerprint,
+      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT
+    };
+  } catch {
+    return {
+      configured: false,
+      keyMatchesDesktop: false,
+      publicKeyFingerprint: null,
+      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT
+    };
+  }
+}
+
+export function isOfflineLicenseSignerConfigured() {
+  return getOfflineLicenseSignerStatus().configured;
 }
 
 function normalizeDeviceCodes(values: string[]) {
@@ -90,11 +148,6 @@ function createLicenseId(now: Date) {
   return `CP-${date}-${randomBytes(4).toString("hex").toUpperCase()}`;
 }
 
-function publicKeyFingerprint(privateKeyPem: string) {
-  const publicDer = createPublicKey(createPrivateKey(privateKeyPem)).export({ type: "spki", format: "der" });
-  return createHash("sha256").update(publicDer).digest("hex").toUpperCase().match(/.{1,4}/g)?.join(":") ?? "";
-}
-
 export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOfflineLicense {
   const customer = input.customer.trim();
   const plan = input.plan.trim();
@@ -104,6 +157,9 @@ export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOffl
   const devices = normalizeDeviceCodes(input.devices);
   const features = normalizeFeatures(input.features);
   const privateKeyPem = readPrivateKeyPem();
+  if (!privateKeyMatchesDesktop(privateKeyPem)) {
+    throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_MISMATCH");
+  }
   const privateKey = createPrivateKey(privateKeyPem);
   const publicKey = createPublicKey(privateKey);
   const now = new Date();
