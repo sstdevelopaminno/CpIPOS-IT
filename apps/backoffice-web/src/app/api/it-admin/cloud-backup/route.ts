@@ -1,8 +1,10 @@
 import { getAuthContext } from "@/lib/auth-context";
 import {
   approveDesktopCloudPurchase,
+  cancelDesktopCloudEntitlement,
   listDesktopCloudAdmin,
   rejectDesktopCloudPurchase,
+  renewDesktopCloudEntitlement,
   updateDesktopCloudPlan
 } from "@/lib/desktop-cloud-backup";
 import { fail, ok } from "@/lib/http";
@@ -31,8 +33,9 @@ export async function POST(request: Request) {
   try {
     const auth = await requireItAdmin();
     const body = (await request.json()) as {
-      action?: "approve" | "reject" | "update_plan";
+      action?: "approve" | "reject" | "update_plan" | "renew" | "cancel";
       requestId?: string;
+      entitlementId?: string;
       planCode?: string;
       priceThb?: number | null;
       active?: boolean;
@@ -43,6 +46,12 @@ export async function POST(request: Request) {
     }
     if (body.action === "reject") {
       return ok(await rejectDesktopCloudPurchase(String(body.requestId ?? ""), auth.userId, body.note ?? null));
+    }
+    if (body.action === "renew") {
+      return ok(await renewDesktopCloudEntitlement(String(body.entitlementId ?? ""), auth.userId, body.note ?? "Renewed by IT"));
+    }
+    if (body.action === "cancel") {
+      return ok(await cancelDesktopCloudEntitlement(String(body.entitlementId ?? ""), auth.userId, body.note ?? "Cancelled by IT"));
     }
     if (body.action === "update_plan") {
       return ok(await updateDesktopCloudPlan(String(body.planCode ?? ""), body.priceThb, body.active));
