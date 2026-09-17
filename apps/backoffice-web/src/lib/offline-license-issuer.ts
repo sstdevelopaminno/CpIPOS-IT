@@ -3,6 +3,7 @@ import { createHash, createPrivateKey, createPublicKey, randomBytes, sign, verif
 export const CPIPOS_LICENSE_PRODUCT = "CPIPOS-DESKTOP";
 export const CPIPOS_LICENSE_ISSUER = "CUTTING-POINT-TECH-IT";
 export const CPIPOS_DEVICE_CODE_PATTERN = /^CP-[A-F0-9]{5}-[A-F0-9]{5}-[A-F0-9]{5}-[A-F0-9]{5}$/;
+export const CPIPOS_LICENSE_ID_PATTERN = /^CP-\d{8}-[A-F0-9]{8}$/;
 export const CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEs9PUGIOQlWxNNFA23/Rfcqk1yRCZN2Jq09f3qL8633xktajPKMpOY580I1MwxW5ocb826zeuthot/7FcXJASVQ==";
 export const CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT = "6FE9:A194:5785:B79A:13FB:C27B:316A:A7F2:F963:443B:BD2B:4482:CF31:86CA:EAF3:8018";
 
@@ -29,6 +30,7 @@ export type IssueOfflineLicenseInput = {
   expiresAt?: string | null;
   validDays?: number | null;
   features?: string[];
+  licenseId?: string | null;
 };
 
 export type IssuedOfflineLicense = {
@@ -60,6 +62,14 @@ function readPrivateKeyPem() {
 
 function derivePublicKeyDer(privateKeyPem: string) {
   return createPublicKey(createPrivateKey(privateKeyPem)).export({ type: "spki", format: "der" }) as Buffer;
+}
+
+function desktopPublicKey() {
+  return createPublicKey({
+    key: Buffer.from(CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64, "base64"),
+    type: "spki",
+    format: "der"
+  });
 }
 
 function fingerprintPublicDer(publicDer: Buffer) {
@@ -116,15 +126,9 @@ export function isOfflineLicenseSignerConfigured() {
 
 function normalizeDeviceCodes(values: string[]) {
   const devices = values.map((value) => value.trim().toUpperCase()).filter(Boolean);
-  if (devices.length < 1 || devices.length > 2) {
-    throw new Error("LICENSE_DEVICE_COUNT_INVALID");
-  }
-  if (new Set(devices).size !== devices.length) {
-    throw new Error("LICENSE_DEVICE_DUPLICATE");
-  }
-  if (devices.some((value) => !CPIPOS_DEVICE_CODE_PATTERN.test(value))) {
-    throw new Error("LICENSE_DEVICE_CODE_INVALID");
-  }
+  if (devices.length < 1 || devices.length > 2) throw new Error("LICENSE_DEVICE_COUNT_INVALID");
+  if (new Set(devices).size !== devices.length) throw new Error("LICENSE_DEVICE_DUPLICATE");
+  if (devices.some((value) => !CPIPOS_DEVICE_CODE_PATTERN.test(value))) throw new Error("LICENSE_DEVICE_CODE_INVALID");
   return devices;
 }
 
@@ -148,6 +152,44 @@ function createLicenseId(now: Date) {
   return `CP-${date}-${randomBytes(4).toString("hex").toUpperCase()}`;
 }
 
+function validatePayloadShape(payload: OfflineLicensePayload) {
+  if (payload.v !== 1 || payload.product !== CPIPOS_LICENSE_PRODUCT || payload.issuer !== CPIPOS_LICENSE_ISSUER) {
+    throw new Error("LICENSE_PRODUCT_INVALID");
+  }
+  if (!CPIPOS_LICENSE_ID_PATTERN.test(String(payload.licenseId ?? ""))) throw new Error("LICENSE_ID_INVALID");
+  if (!payload.customer || !payload.plan) throw new Error("LICENSE_PAYLOAD_INVALID");
+  const devices = normalizeDeviceCodes(Array.isArray(payload.devices) ? payload.devices : []);
+  if (payload.maxDevices !== devices.length || ![1, 2].includes(payload.maxDevices)) throw new Error("LICENSE_DEVICE_COUNT_INVALID");
+  normalizeFeatures(payload.features);
+  const notBefore = Date.parse(payload.notBefore || payload.issuedAt);
+  if (!Number.isFinite(notBefore)) throw new Error("LICENSE_NOT_BEFORE_INVALID");
+  if (payload.expiresAt) {
+    const expires = Date.parse(payload.expiresAt);
+    if (!Number.isFinite(expires) || expires <= notBefore) throw new Error("LICENSE_EXPIRES_AT_INVALID");
+  }
+}
+
+export function verifyOfflineLicenseToken(token: string): OfflineLicensePayload {
+  const parts = token.trim().split(".");
+  if (parts.length !== 3 || parts[0] !== "CP1") throw new Error("LICENSE_FORMAT_INVALID");
+  let payload: OfflineLicensePayload;
+  try {
+    payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as OfflineLicensePayload;
+  } catch {
+    throw new Error("LICENSE_PAYLOAD_INVALID");
+  }
+  const signature = Buffer.from(parts[2], "base64url");
+  const valid = verify(
+    "sha256",
+    Buffer.from(parts[1], "utf8"),
+    { key: desktopPublicKey(), dsaEncoding: "ieee-p1363" },
+    signature
+  );
+  if (!valid) throw new Error("LICENSE_SIGNATURE_INVALID");
+  validatePayloadShape(payload);
+  return payload;
+}
+
 export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOfflineLicense {
   const customer = input.customer.trim();
   const plan = input.plan.trim();
@@ -157,9 +199,7 @@ export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOffl
   const devices = normalizeDeviceCodes(input.devices);
   const features = normalizeFeatures(input.features);
   const privateKeyPem = readPrivateKeyPem();
-  if (!privateKeyMatchesDesktop(privateKeyPem)) {
-    throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_MISMATCH");
-  }
+  if (!privateKeyMatchesDesktop(privateKeyPem)) throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_MISMATCH");
   const privateKey = createPrivateKey(privateKeyPem);
   const publicKey = createPublicKey(privateKey);
   const now = new Date();
@@ -171,20 +211,19 @@ export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOffl
     expiresAt = parseIso(input.expiresAt, "LICENSE_EXPIRES_AT");
   } else if (input.validDays != null) {
     const validDays = Number(input.validDays);
-    if (!Number.isInteger(validDays) || validDays < 1 || validDays > 3650) {
-      throw new Error("LICENSE_VALID_DAYS_INVALID");
-    }
+    if (!Number.isInteger(validDays) || validDays < 1 || validDays > 3650) throw new Error("LICENSE_VALID_DAYS_INVALID");
     expiresAt = new Date(Date.parse(notBefore) + validDays * 24 * 60 * 60 * 1000).toISOString();
   }
-  if (expiresAt && Date.parse(expiresAt) <= Date.parse(notBefore)) {
-    throw new Error("LICENSE_EXPIRY_BEFORE_START");
-  }
+  if (expiresAt && Date.parse(expiresAt) <= Date.parse(notBefore)) throw new Error("LICENSE_EXPIRY_BEFORE_START");
+
+  const requestedId = String(input.licenseId ?? "").trim().toUpperCase();
+  if (requestedId && !CPIPOS_LICENSE_ID_PATTERN.test(requestedId)) throw new Error("LICENSE_ID_INVALID");
 
   const payload: OfflineLicensePayload = {
     v: 1,
     product: CPIPOS_LICENSE_PRODUCT,
     issuer: CPIPOS_LICENSE_ISSUER,
-    licenseId: createLicenseId(now),
+    licenseId: requestedId || createLicenseId(now),
     customer,
     plan,
     issuedAt,
