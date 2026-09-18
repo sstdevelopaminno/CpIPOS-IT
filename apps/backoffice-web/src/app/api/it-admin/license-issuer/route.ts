@@ -10,7 +10,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const DESKTOP_VERSION = "0.3.1";
+const DESKTOP_VERSION = "0.3.2";
 
 async function requireItAdmin() {
   const auth = await getAuthContext({ requireBranchScope: false });
@@ -43,6 +43,14 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const auth = await requireItAdmin();
+    const signer = await getOfflineLicenseSignerStatusServer();
+    if (!signer.configured || !signer.keyMatchesDesktop) {
+      return fail(
+        "license_private_key_not_ready",
+        "Private Key is not ready or does not match the public key embedded in CpIPOS Desktop.",
+        503
+      );
+    }
     const body = (await request.json()) as IssueOfflineLicenseInput;
     const issued = await issueOfflineLicenseServer({
       customer: String(body.customer ?? ""),
