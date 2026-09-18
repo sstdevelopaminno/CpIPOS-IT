@@ -1,5 +1,6 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { getAuthContext } from "@/lib/auth-context";
+import { appendDesktopLicenseAudit } from "@/lib/desktop-license-audit";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import { fail, ok } from "@/lib/http";
 import {
@@ -83,6 +84,16 @@ export async function POST(request: Request) {
       const privateKeyPem = pair.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
       const publicKeySpkiBase64 = pair.publicKey.export({ type: "spki", format: "der" }).toString("base64");
       const fingerprint = fingerprintPublicDer(Buffer.from(publicKeySpkiBase64, "base64"));
+      await appendDesktopLicenseAudit({
+        auth,
+        action: "desktop_license_key_pair_generated",
+        request,
+        metadata: {
+          key_matches_desktop: publicKeySpkiBase64 === CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64,
+          public_key_fingerprint: fingerprint,
+          desktop_version: "0.3.1"
+        }
+      });
       return ok({
         generated: true,
         private_key_pem: privateKeyPem,
@@ -100,11 +111,13 @@ export async function POST(request: Request) {
     const inspection = inspectPrivateKey(privateKeyPem);
 
     if (action === "validate") {
+      await appendDesktopLicenseAudit({ auth, action: "desktop_license_key_validated", request, metadata: { key_matches_desktop: inspection.matchesDesktop, public_key_fingerprint: inspection.fingerprint } });
       return ok(publicStatusFromInspection(inspection));
     }
 
     if (action === "save_vault") {
       if (!inspection.matchesDesktop) {
+        await appendDesktopLicenseAudit({ auth, action: "desktop_license_key_save_rejected_mismatch", request, metadata: { public_key_fingerprint: inspection.fingerprint, expected_public_key_fingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT } });
         return fail("private_key_mismatch", "This private key does not match the public key embedded in CpIPOS Desktop v0.3.1.", 400);
       }
       const supabase = getPrimarySupabaseServiceClient();
@@ -113,6 +126,7 @@ export async function POST(request: Request) {
         changed_by: auth.userId
       });
       if (error) throw error;
+      await appendDesktopLicenseAudit({ auth, action: "desktop_license_key_saved_to_vault", request, metadata: { public_key_fingerprint: inspection.fingerprint, desktop_version: "0.3.1" } });
       return ok({ saved: true, ...publicStatusFromInspection(inspection), saved_at: new Date().toISOString() });
     }
 
