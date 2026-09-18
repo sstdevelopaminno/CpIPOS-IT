@@ -7,7 +7,7 @@ This IT Admin module issues offline licenses for `cp-ipos-desktop` v0.3.x.
 - The desktop application contains only the ECDSA P-256 public key.
 - The matching private key belongs to CUTTING POINT TECH IT only.
 - Never commit the private key, upload it as a public file, ship it with the installer, or expose it with a `NEXT_PUBLIC_` environment variable.
-- Configure the private key only in the server environment as `CPIPOS_LICENSE_PRIVATE_KEY_PEM` or `CPIPOS_LICENSE_PRIVATE_KEY_BASE64`.
+- Production can use the protected Supabase Vault slot `cpipos_license_signing_seed_v030`; server environment variables `CPIPOS_LICENSE_PRIVATE_KEY_PEM` / `CPIPOS_LICENSE_PRIVATE_KEY_BASE64` remain supported as an override.
 - The browser sends license metadata to the authenticated IT-only API. Signing happens on the server.
 
 ## Backoffice flow
