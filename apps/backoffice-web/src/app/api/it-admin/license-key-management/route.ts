@@ -85,12 +85,13 @@ export async function POST(request: Request) {
       const fingerprint = fingerprintPublicDer(Buffer.from(publicKeySpkiBase64, "base64"));
       return ok({
         generated: true,
+        private_key_pem: privateKeyPem,
         public_key_spki_base64: publicKeySpkiBase64,
         public_key_fingerprint: fingerprint,
         key_matches_desktop: publicKeySpkiBase64 === CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64,
         expected_public_key_fingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
-        private_key_redacted: true,
-        warning: "Generated keys are hidden from the browser. Do not use generated keys for production v0.3.1 unless CpIPOS Desktop is rebuilt with the matching public key. Paste the original production private key that matches the embedded public key, then Save to Vault."
+        private_key_redacted_after_this_response: true,
+        production_note: "This private key is shown once so IT can back it up. It will only issue licenses for the current CpIPOS Desktop build if its public_key_spki_base64 matches expected_public_key_spki_base64. Otherwise rebuild CpIPOS Desktop with this public key before using it in production."
       });
     }
 
