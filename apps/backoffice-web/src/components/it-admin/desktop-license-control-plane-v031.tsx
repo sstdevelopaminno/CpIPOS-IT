@@ -7,14 +7,52 @@ import styles from "./desktop-license-control-plane-v031.module.css";
 type ApiEnvelope<T> = { data: T | null; error: { code?: string; message?: string } | null };
 type Feature = "offline-pos" | "inventory" | "reports" | "receipt-printing" | "employee-pin" | "sales-grocery" | "sales-takeaway" | "sales-dine-in";
 type ExpiryMode = "perpetual" | "30" | "365" | "custom";
-type DeviceRow = { id: string; device_code: string; device_name?: string | null; machine_id?: string | null; status: string; is_authorized: boolean; app_version?: string | null; last_seen_at?: string | null; last_license_check_at?: string | null; printer_status?: string | null; cpu_percent?: number | null; memory_percent?: number | null; disk_free_bytes?: number | null; database_bytes?: number | null; online?: boolean };
-type RegistryRow = { id: string; license_id: string; customer_name: string; plan: string; max_devices: 1 | 2; starts_at: string; expires_at: string | null; status: string; features: string[]; revision: number; created_at: string; updated_at: string; devices: DeviceRow[]; today?: { bill_count: number; gross_sales: number; cancelled_count: number; cancelled_value: number }; month?: { bill_count: number; gross_sales: number; cancelled_count: number; cancelled_value: number }; recent_receipts?: Array<{ id: string; receipt_no: string; sold_at: string; total_amount: number; payment_method: string; status: string; cashier_name?: string | null }> };
+type DeviceRow = {
+  id: string;
+  device_code: string;
+  device_name?: string | null;
+  machine_id?: string | null;
+  status: string;
+  is_authorized: boolean;
+  remote_management_enabled?: boolean | null;
+  app_version?: string | null;
+  last_seen_at?: string | null;
+  last_license_check_at?: string | null;
+  last_sales_sync_at?: string | null;
+  printer_status?: string | null;
+  cpu_percent?: number | null;
+  memory_percent?: number | null;
+  disk_free_bytes?: number | null;
+  database_bytes?: number | null;
+  integrity_status?: string | null;
+  tamper_detected?: boolean | null;
+  online?: boolean;
+};
+type RegistryRow = {
+  id: string;
+  license_id: string;
+  customer_name: string;
+  plan: string;
+  max_devices: 1 | 2;
+  starts_at: string;
+  expires_at: string | null;
+  status: string;
+  features: string[];
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  devices: DeviceRow[];
+  today?: { bill_count: number; gross_sales: number; cancelled_count: number; cancelled_value: number };
+  month?: { bill_count: number; gross_sales: number; cancelled_count: number; cancelled_value: number };
+  recent_receipts?: Array<{ id: string; receipt_no: string; sold_at: string; total_amount: number; payment_method: string; status: string; cashier_name?: string | null }>;
+};
 type SignerStatus = { configured: boolean; key_matches_desktop?: boolean; public_key_fingerprint?: string | null; expected_public_key_fingerprint?: string | null; expected_public_key_spki_base64?: string | null; signer_source?: string; desktop_version?: string };
 type IssueResult = { generated_at?: string; token: string; payload: { licenseId: string; customer: string; plan: string; devices: string[]; maxDevices: 1 | 2; features: string[]; notBefore: string; expiresAt: string | null }; publicKeyFingerprint?: string };
 type LicenseTokenResult = { contract_id: string; license_id: string; customer_name: string; plan: string; revision: number; token: string; token_sha256?: string | null; created_at?: string; updated_at?: string };
 type LicenseForm = { customer: string; plan: string; deviceCount: 1 | 2; device1: string; device2: string; notBefore: string; expiryMode: ExpiryMode; customExpiry: string; features: Feature[] };
 type ModalName = "issuer" | "key" | "trial" | null;
 type DetailPanel = "summary" | "devices" | "audit";
+type MdmCommandType = "force_sync" | "refresh_license" | "recheck_printer" | "check_update" | "collect_health";
 
 const DEVICE_PATTERN = /^CP-[A-F0-9]{5}-[A-F0-9]{5}-[A-F0-9]{5}-[A-F0-9]{5}$/;
 const FEATURE_OPTIONS: Array<{ id: Feature; th: string; en: string; group: "system" | "sales" }> = [
@@ -26,6 +64,13 @@ const FEATURE_OPTIONS: Array<{ id: Feature; th: string; en: string; group: "syst
   { id: "sales-grocery", th: "โหมดร้านชำ", en: "Grocery mode", group: "sales" },
   { id: "sales-takeaway", th: "โหมดกลับบ้าน", en: "Takeaway mode", group: "sales" },
   { id: "sales-dine-in", th: "โหมดนั่งโต๊ะ", en: "Dine-in / table mode", group: "sales" }
+];
+const MDM_COMMANDS: Array<{ type: MdmCommandType; th: string; en: string }> = [
+  { type: "collect_health", th: "ตรวจสุขภาพเครื่อง", en: "Collect health" },
+  { type: "force_sync", th: "ซิงก์ข้อมูลทันที", en: "Force sync" },
+  { type: "refresh_license", th: "รีเฟรช License", en: "Refresh license" },
+  { type: "recheck_printer", th: "ตรวจเครื่องพิมพ์", en: "Check printer" },
+  { type: "check_update", th: "ตรวจอัปเดต", en: "Check update" }
 ];
 
 function todayInput() {
@@ -76,12 +121,21 @@ function money(value: unknown) {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 2 }).format(Number(value ?? 0));
 }
 
+function number(value: unknown) {
+  return new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 }).format(Number(value ?? 0));
+}
+
 function bytes(value?: number | null) {
   const n = Number(value ?? 0);
   if (!n) return "—";
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function pct(value?: number | null) {
+  const n = Number(value ?? 0);
+  return Math.min(100, Math.max(0, Number.isFinite(n) ? n : 0));
 }
 
 function salesModeText(features: string[], th: boolean) {
@@ -119,6 +173,17 @@ function formFromRow(row: RegistryRow): LicenseForm {
   };
 }
 
+function deviceStatus(device: DeviceRow, th: boolean) {
+  if (!device.is_authorized) return th ? "ปิดใช้งาน / บล็อก" : "Blocked";
+  if (device.online) return th ? "ออนไลน์" : "Online";
+  if (device.status === "never_seen") return th ? "ยังไม่เคยเชื่อมต่อ" : "Never seen";
+  return th ? "ออฟไลน์" : "Offline";
+}
+
+function mdmEnabled(device: DeviceRow) {
+  return device.is_authorized && device.remote_management_enabled !== false;
+}
+
 export function DesktopLicenseControlPlaneV031({ language }: { language: Language }) {
   const th = language === "th";
   const [rows, setRows] = useState<RegistryRow[]>([]);
@@ -134,17 +199,31 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailPanel, setDetailPanel] = useState<DetailPanel>("summary");
   const [privateKeyInput, setPrivateKeyInput] = useState("");
-  const [keyResult, setKeyResult] = useState<any>(null);
+  const [keyResult, setKeyResult] = useState<unknown>(null);
 
   const selected = useMemo(() => rows.find((row) => row.id === selectedId) || null, [rows, selectedId]);
   const devices = useMemo(() => [normalizeDevice(form.device1), ...(form.deviceCount === 2 ? [normalizeDevice(form.device2)] : [])], [form]);
-  const activeCount = rows.filter((row) => row.status === "active").length;
-  const onlineCount = rows.flatMap((row) => row.devices || []).filter((device) => device.online).length;
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((row) => [row.license_id, row.customer_name, row.plan, ...(row.devices || []).map((d) => d.device_code)].join(" ").toLowerCase().includes(q));
   }, [rows, search]);
+  const totals = useMemo(() => {
+    const allDevices = rows.flatMap((row) => row.devices || []);
+    const todayGross = rows.reduce((sum, row) => sum + Number(row.today?.gross_sales || 0), 0);
+    const todayBills = rows.reduce((sum, row) => sum + Number(row.today?.bill_count || 0), 0);
+    return {
+      licenses: rows.length,
+      active: rows.filter((row) => row.status === "active").length,
+      online: allDevices.filter((device) => device.online).length,
+      blocked: allDevices.filter((device) => !device.is_authorized).length,
+      mdm: allDevices.filter((device) => mdmEnabled(device)).length,
+      totalDevices: allDevices.length,
+      todayGross,
+      todayBills,
+      maxTodayGross: Math.max(1, ...rows.map((row) => Number(row.today?.gross_sales || 0)))
+    };
+  }, [rows]);
 
   const validation = useMemo(() => {
     if (!form.customer.trim()) return th ? "กรอกชื่อลูกค้า / ร้านค้า" : "Customer name is required";
@@ -221,24 +300,35 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
   };
 
   const copyLicenseKey = async (row: RegistryRow) => {
-    setBusy(true); setMessage("");
+    setBusy(true);
+    setMessage("");
     try {
       const token = await fetchToken(row);
       await copy(token.token, th ? "คัดลอก License Key จริงแล้ว นำไปใส่ใน CpIPOS Desktop ได้" : "Signed License Key copied");
-    } catch (error) { setMessage(errorMessage(error)); } finally { setBusy(false); }
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const downloadLicenseKey = async (row: RegistryRow) => {
-    setBusy(true); setMessage("");
+    setBusy(true);
+    setMessage("");
     try {
       const token = await fetchToken(row);
       downloadText(`${row.license_id}-LICENSE-KEY.txt`, `${token.token}\n`);
       setMessage(th ? "ดาวน์โหลด License Key แล้ว" : "License Key downloaded");
-    } catch (error) { setMessage(errorMessage(error)); } finally { setBusy(false); }
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const printLicenseKey = async (row: RegistryRow) => {
-    setBusy(true); setMessage("");
+    setBusy(true);
+    setMessage("");
     try {
       const token = await fetchToken(row);
       const win = window.open("", "_blank", "width=720,height=720");
@@ -246,13 +336,25 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
       win.document.write(`<html><head><title>${row.license_id}</title><style>body{font-family:Arial,sans-serif;padding:24px}textarea{width:100%;height:260px;font-family:monospace}code{font-weight:700}</style></head><body><h1>CpIPOS Desktop License Key</h1><p><b>License ID:</b> <code>${row.license_id}</code></p><p><b>Customer:</b> ${row.customer_name}</p><p>Copy the full License Key below into CpIPOS Desktop. Do not use License ID.</p><textarea readonly>${token.token}</textarea><script>window.print()</script></body></html>`);
       win.document.close();
       setMessage(th ? "เปิดหน้าพิมพ์ License Key แล้ว" : "License Key print window opened");
-    } catch (error) { setMessage(errorMessage(error)); } finally { setBusy(false); }
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const issue = async () => {
-    if (validation) { setMessage(validation); return; }
-    if (!signer?.configured) { setMessage(th ? "ยังไม่ได้ตั้งค่า Private Key ที่ตรงกับ CpIPOS Desktop 0.3.1" : "Signing key is not ready."); return; }
-    setBusy(true); setMessage(""); setIssued(null);
+    if (validation) {
+      setMessage(validation);
+      return;
+    }
+    if (!signer?.configured) {
+      setMessage(th ? "ยังไม่ได้ตั้งค่า Private Key ที่ตรงกับ CpIPOS Desktop 0.3.1" : "Signing key is not ready.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    setIssued(null);
     try {
       const response = await fetch("/api/it-admin/license-issuer", {
         method: "POST",
@@ -269,7 +371,9 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
       });
       const body = await response.json() as ApiEnvelope<IssueResult>;
       if (!response.ok || !body.data) throw new Error(body.error?.message || "LICENSE_ISSUE_FAILED");
-      setIssued(body.data); setPreviewOpen(false); await load(true);
+      setIssued(body.data);
+      setPreviewOpen(false);
+      await load(true);
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -281,7 +385,8 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
     const inputForm = formFromRow(row);
     const rowDevices = [normalizeDevice(inputForm.device1), ...(inputForm.deviceCount === 2 ? [normalizeDevice(inputForm.device2)] : [])];
     if (!window.confirm(th ? `ออก License Key ใหม่สำหรับ ${row.license_id}?` : `Reissue ${row.license_id}?`)) return;
-    setBusy(true); setMessage("");
+    setBusy(true);
+    setMessage("");
     try {
       const response = await fetch("/api/it-admin/license-registry", {
         method: "PUT",
@@ -304,21 +409,27 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
       setIssued(body.data);
       await copy(body.data.token, th ? "ออกและคัดลอก License Key ใหม่แล้ว" : "Reissued License Key copied");
       await load(true);
-    } catch (error) { setMessage(errorMessage(error)); } finally { setBusy(false); }
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const keyAction = async (action: "generate" | "validate" | "save_vault") => {
-    setBusy(true); setMessage(""); setKeyResult(null);
+    setBusy(true);
+    setMessage("");
+    setKeyResult(null);
     try {
       const response = await fetch("/api/it-admin/license-key-management", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, privateKeyPem: privateKeyInput })
       });
-      const body = await response.json() as ApiEnvelope<any>;
+      const body = await response.json() as ApiEnvelope<Record<string, unknown>>;
       if (!response.ok || !body.data) throw new Error(body.error?.message || "LICENSE_KEY_ACTION_FAILED");
       setKeyResult(body.data);
-      if (body.data.private_key_pem) setPrivateKeyInput(body.data.private_key_pem);
+      if (typeof body.data.private_key_pem === "string") setPrivateKeyInput(body.data.private_key_pem);
       await load(true);
     } catch (error) {
       setMessage(errorMessage(error));
@@ -328,15 +439,38 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
   };
 
   const deviceAction = async (action: string, deviceId?: string, contractId?: string) => {
-    setBusy(true); setMessage("");
+    setBusy(true);
+    setMessage("");
     try {
       const response = await fetch("/api/it-admin/license-devices", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, deviceId, contractId, reason: action })
       });
-      const body = await response.json() as ApiEnvelope<any>;
+      const body = await response.json() as ApiEnvelope<Record<string, unknown>>;
       if (!response.ok || !body.data) throw new Error(body.error?.message || "DEVICE_ACTION_FAILED");
+      setMessage(th ? "อัปเดตสถานะเครื่องแล้ว" : "Device status updated");
+      await load(true);
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendMdmCommand = async (device: DeviceRow, commandType: MdmCommandType) => {
+    if (!selected) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/it-admin/license-mdm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contractId: selected.id, deviceId: device.id, commandType, payload: { source: "license_detail_panel" } })
+      });
+      const body = await response.json() as ApiEnvelope<{ command: { id: string; command_type: string; status: string } }>;
+      if (!response.ok || !body.data) throw new Error(body.error?.message || "MDM_COMMAND_FAILED");
+      setMessage(th ? `ส่งคำสั่ง MDM แล้ว: ${commandType}` : `MDM command queued: ${commandType}`);
       await load(true);
     } catch (error) {
       setMessage(errorMessage(error));
@@ -347,14 +481,23 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
 
   const deleteLicense = async (row: RegistryRow) => {
     if (!window.confirm(th ? `ยกเลิก License ${row.license_id}?` : `Revoke ${row.license_id}?`)) return;
-    setBusy(true); setMessage("");
+    setBusy(true);
+    setMessage("");
     try {
-      const response = await fetch("/api/it-admin/license-registry", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ contractId: row.id, reason: "Revoked from Control Plane v0.3.1" }) });
-      const body = await response.json() as ApiEnvelope<any>;
+      const response = await fetch("/api/it-admin/license-registry", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contractId: row.id, reason: "Revoked from Control Plane v0.3.1" })
+      });
+      const body = await response.json() as ApiEnvelope<Record<string, unknown>>;
       if (!response.ok || !body.data) throw new Error(body.error?.message || "LICENSE_DELETE_FAILED");
       setSelectedId(null);
       await load(true);
-    } catch (error) { setMessage(errorMessage(error)); } finally { setBusy(false); }
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return <div className={styles.page}>
@@ -362,11 +505,11 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
       <div>
         <span>DESKTOP LICENSE CONTROL PLANE</span>
         <h1>{th ? "จัดการ License โปรแกรม POS Desktop" : "POS Desktop License"}</h1>
-        <p>{th ? "Key Management, Preview, License History, Device, Trial และ Audit/MDM ครบในหน้านี้" : "Key Management, Preview, History, Devices, Trial and Audit/MDM in one control plane."}</p>
+        <p>{th ? "ออกลายเส้นจริง จัดการเครื่อง ตรวจสุขภาพ และควบคุม MDM จากหน้าเดียว" : "Issue signed keys, manage devices, inspect health, and control MDM in one page."}</p>
       </div>
       <div className={styles.actions}>
         <button onClick={() => void load(false)} disabled={busy}>{th ? "รีเฟรช" : "Refresh"}</button>
-        <button onClick={() => setModal("key")}>{th ? "Key Management" : "Key Management"}</button>
+        <button onClick={() => setModal("key")}>Key Management</button>
         <button onClick={() => setModal("trial")}>Trial</button>
         <button className={styles.primary} onClick={openIssuer}>+ {th ? "ออก License ใหม่" : "New License"}</button>
       </div>
@@ -374,31 +517,46 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
 
     {message ? <div className={styles.alert}>{message}</div> : null}
 
+    <section className={styles.kpiGrid}>
+      <article className={styles.kpi}><span>{th ? "License ทั้งหมด" : "Total licenses"}</span><b>{number(totals.licenses)}</b><small>{totals.active} active</small></article>
+      <article className={styles.kpi}><span>{th ? "เครื่องออนไลน์" : "Online devices"}</span><b>{number(totals.online)}/{number(totals.totalDevices)}</b><small>{totals.blocked} blocked</small></article>
+      <article className={styles.kpi}><span>{th ? "MDM เชื่อมต่อ" : "MDM connected"}</span><b>{number(totals.mdm)}</b><small>{th ? "กดเปิด/ปิดได้ในแท็บ MDM" : "Toggle inside MDM tab"}</small></article>
+      <article className={styles.kpi}><span>{th ? "ยอดขายวันนี้" : "Today sales"}</span><b>{money(totals.todayGross)}</b><small>{number(totals.todayBills)} bills</small></article>
+    </section>
+
     <section className={styles.card}>
       <div className={styles.historyHeader}>
         <div>
-          <h2>License History</h2>
+          <h2>{th ? "License History / ตัวเลขและกราฟ" : "License History / Metrics & Chart"}</h2>
           <p>{th ? "License ID ใช้ดูประวัติเท่านั้น ต้องคัดลอก License Key แบบเต็มไปใส่ในโปรแกรม" : "License ID is history only. Copy the full signed License Key into Desktop."}</p>
         </div>
         <div className={styles.historyMeta}>
           <span>{rows.length} {th ? "รายการ" : "licenses"}</span>
-          <span>{activeCount} active</span>
-          <span>{onlineCount} online</span>
+          <span>{totals.online} online</span>
+          <span>{totals.mdm} MDM</span>
         </div>
       </div>
+      <div className={styles.chartPanel}>
+        <div className={styles.chartTitle}><b>{th ? "กราฟยอดขายวันนี้ตาม License" : "Today sales by license"}</b><span>{money(totals.todayGross)}</span></div>
+        <div className={styles.barChart}>{filteredRows.slice(0, 12).map((row) => {
+          const value = Number(row.today?.gross_sales || 0);
+          const height = Math.max(8, Math.round((value / totals.maxTodayGross) * 100));
+          return <button key={row.id} type="button" className={styles.chartBar} title={`${row.license_id} ${money(value)}`} onClick={() => { setSelectedId(row.id); setDetailPanel("summary"); }}><i style={{ height: `${height}%` }} /><span>{row.customer_name.slice(0, 10) || row.license_id.slice(-6)}</span></button>;
+        })}</div>
+      </div>
       <div className={styles.formGrid}>
-        <label>{th ? "ค้นหา License / ลูกค้า / Device" : "Search license / customer / device"}<input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="CP-... / CpIPOS Store / Device Code" /></label>
+        <label>{th ? "ค้นหา License / ลูกค้า / Device" : "Search license / customer / device"}<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="CP-... / CpIPOS Store / Device Code" /></label>
       </div>
       <div className={styles.tableWrap}>
         <table>
-          <thead><tr><th>License ID</th><th>{th ? "ลูกค้า" : "Customer"}</th><th>{th ? "โหมด" : "Modes"}</th><th>{th ? "สถานะ" : "Status"}</th><th>{th ? "ยอดวันนี้" : "Today"}</th><th>{th ? "เครื่อง" : "Devices"}<br />License Key</th></tr></thead>
+          <thead><tr><th>License ID</th><th>{th ? "ลูกค้า" : "Customer"}</th><th>{th ? "โหมด" : "Modes"}</th><th>{th ? "สถานะ" : "Status"}</th><th>{th ? "ยอดวันนี้" : "Today"}</th><th>{th ? "เครื่อง / Key" : "Devices / Key"}</th></tr></thead>
           <tbody>{filteredRows.length ? filteredRows.map((row) => <tr key={row.id} onClick={() => { setSelectedId(row.id); setDetailPanel("summary"); }} className={selected?.id === row.id ? styles.selected : ""}>
             <td><b>{row.license_id}</b><small>rev {row.revision} · {formatWhen(row.created_at, language)}</small></td>
             <td>{row.customer_name}<small>{row.plan}</small></td>
             <td>{salesModeText(row.features || [], th)}</td>
             <td><span className={row.status === "active" ? styles.badgeOk : styles.badge}>{row.status}</span></td>
             <td>{money(row.today?.gross_sales || 0)}<small>{row.today?.bill_count || 0} bills</small></td>
-            <td>{row.devices?.length || 0}/{row.max_devices}<small>{row.devices?.filter((device) => device.online).length || 0} online</small><button type="button" onClick={(e) => { e.stopPropagation(); void copyLicenseKey(row); }}>{th ? "คัดลอก Key จริง" : "Copy key"}</button></td>
+            <td>{row.devices?.length || 0}/{row.max_devices}<small>{row.devices?.filter((device) => device.online).length || 0} online · {row.devices?.filter((device) => mdmEnabled(device)).length || 0} MDM</small><button type="button" onClick={(event) => { event.stopPropagation(); void copyLicenseKey(row); }}>{th ? "คัดลอก Key จริง" : "Copy key"}</button></td>
           </tr>) : <tr><td colSpan={6} className={styles.empty}>{loading ? (th ? "กำลังโหลด..." : "Loading...") : (th ? "ยังไม่มี License History" : "No license history")}</td></tr>}</tbody>
         </table>
       </div>
@@ -406,7 +564,7 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
 
     {modal === "key" ? <div className={styles.modalBackdrop}><div className={styles.modalWide}>
       <button className={styles.close} onClick={() => setModal(null)}>×</button>
-      <div className={styles.modalTitle}><span>1. KEY MANAGEMENT</span><h2>{th ? "Private Key / Public Key" : "Private Key / Public Key"}</h2><p>{th ? "Private Key ต้องตรงกับ Public Key ที่ฝังอยู่ใน CpIPOS Desktop 0.3.1" : "Private key must match the public key embedded in Desktop 0.3.1."}</p></div>
+      <div className={styles.modalTitle}><span>1. KEY MANAGEMENT</span><h2>Private Key / Public Key</h2><p>{th ? "Private Key ต้องตรงกับ Public Key ที่ฝังอยู่ใน CpIPOS Desktop 0.3.1" : "Private key must match the public key embedded in Desktop 0.3.1."}</p></div>
       <article className={styles.subCard}>
         <div className={styles.keyState}><b className={signer?.configured ? styles.ok : styles.bad}>{signer?.configured ? (th ? "พร้อมออก License" : "Ready") : (th ? "ยังไม่พร้อม" : "Not ready")}</b><small>{signer?.public_key_fingerprint || signer?.expected_public_key_fingerprint || "—"}</small></div>
         <textarea className={styles.textarea} value={privateKeyInput} onChange={(event) => setPrivateKeyInput(event.target.value)} placeholder="-----BEGIN PRIVATE KEY-----" />
@@ -421,8 +579,8 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
       <div className={styles.grid2}>
         <article className={styles.subCard}>
           <h3>{th ? "ข้อมูล License" : "License details"}</h3>
-          <div className={styles.formGrid}><label>{th ? "ชื่อลูกค้า / ร้านค้า" : "Customer"}<input value={form.customer} onChange={(e) => setForm({ ...form, customer: e.target.value })} /></label><label>{th ? "แพ็กเกจ" : "Plan"}<input value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} /></label><label>{th ? "จำนวนเครื่อง" : "Devices"}<select value={form.deviceCount} onChange={(e) => setForm({ ...form, deviceCount: Number(e.target.value) as 1 | 2 })}><option value={1}>1</option><option value={2}>2</option></select></label><label>{th ? "เริ่มใช้งาน" : "Start"}<input type="date" value={form.notBefore} onChange={(e) => setForm({ ...form, notBefore: e.target.value })} /></label><label>Device Code #1<input value={form.device1} onChange={(e) => setForm({ ...form, device1: e.target.value.toUpperCase() })} /></label>{form.deviceCount === 2 ? <label>Device Code #2<input value={form.device2} onChange={(e) => setForm({ ...form, device2: e.target.value.toUpperCase() })} /></label> : null}<label>{th ? "อายุ License" : "Term"}<select value={form.expiryMode} onChange={(e) => setForm({ ...form, expiryMode: e.target.value as ExpiryMode })}><option value="perpetual">{th ? "ไม่หมดอายุ" : "Perpetual"}</option><option value="30">30 วัน</option><option value="365">365 วัน</option><option value="custom">{th ? "กำหนดเอง" : "Custom"}</option></select></label>{form.expiryMode === "custom" ? <label>{th ? "หมดอายุ" : "Expires"}<input type="date" value={form.customExpiry} onChange={(e) => setForm({ ...form, customExpiry: e.target.value })} /></label> : null}</div>
-          <fieldset className={styles.checks}><legend>{th ? "สิทธิ์และโหมดขาย" : "Features and sales modes"}</legend>{FEATURE_OPTIONS.map((item) => <label key={item.id}><input type="checkbox" checked={form.features.includes(item.id)} disabled={item.id === "offline-pos"} onChange={(e) => setFeature(item.id, e.target.checked)} />{th ? item.th : item.en}</label>)}</fieldset>
+          <div className={styles.formGrid}><label>{th ? "ชื่อลูกค้า / ร้านค้า" : "Customer"}<input value={form.customer} onChange={(event) => setForm({ ...form, customer: event.target.value })} /></label><label>{th ? "แพ็กเกจ" : "Plan"}<input value={form.plan} onChange={(event) => setForm({ ...form, plan: event.target.value })} /></label><label>{th ? "จำนวนเครื่อง" : "Devices"}<select value={form.deviceCount} onChange={(event) => setForm({ ...form, deviceCount: Number(event.target.value) as 1 | 2 })}><option value={1}>1</option><option value={2}>2</option></select></label><label>{th ? "เริ่มใช้งาน" : "Start"}<input type="date" value={form.notBefore} onChange={(event) => setForm({ ...form, notBefore: event.target.value })} /></label><label>Device Code #1<input value={form.device1} onChange={(event) => setForm({ ...form, device1: event.target.value.toUpperCase() })} /></label>{form.deviceCount === 2 ? <label>Device Code #2<input value={form.device2} onChange={(event) => setForm({ ...form, device2: event.target.value.toUpperCase() })} /></label> : null}<label>{th ? "อายุ License" : "Term"}<select value={form.expiryMode} onChange={(event) => setForm({ ...form, expiryMode: event.target.value as ExpiryMode })}><option value="perpetual">{th ? "ไม่หมดอายุ" : "Perpetual"}</option><option value="30">30 วัน</option><option value="365">365 วัน</option><option value="custom">{th ? "กำหนดเอง" : "Custom"}</option></select></label>{form.expiryMode === "custom" ? <label>{th ? "หมดอายุ" : "Expires"}<input type="date" value={form.customExpiry} onChange={(event) => setForm({ ...form, customExpiry: event.target.value })} /></label> : null}</div>
+          <fieldset className={styles.checks}><legend>{th ? "สิทธิ์และโหมดขาย" : "Features and sales modes"}</legend>{FEATURE_OPTIONS.map((item) => <label key={item.id}><input type="checkbox" checked={form.features.includes(item.id)} disabled={item.id === "offline-pos"} onChange={(event) => setFeature(item.id, event.target.checked)} />{th ? item.th : item.en}</label>)}</fieldset>
           <button className={styles.primary} onClick={() => validation ? setMessage(validation) : setPreviewOpen(true)} disabled={busy}>{th ? "ตรวจสอบ Preview ก่อนสร้าง" : "Preview before issue"}</button>
         </article>
         <article className={styles.subCard}>
@@ -444,9 +602,9 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
       <button className={styles.close} onClick={() => setSelectedId(null)}>×</button>
       <div className={styles.modalTitle}><span>3/4/6. LICENSE DETAIL</span><h2>{selected.license_id}</h2><p>{selected.customer_name} · {selected.plan}</p></div>
       <div className={styles.detailActions}><button className={detailPanel === "summary" ? styles.primary : ""} onClick={() => setDetailPanel("summary")}>{th ? "สรุป License" : "Summary"}</button><button className={detailPanel === "devices" ? styles.primary : ""} onClick={() => setDetailPanel("devices")}>Device Management</button><button className={detailPanel === "audit" ? styles.primary : ""} onClick={() => setDetailPanel("audit")}>Audit Log / MDM</button><button onClick={() => void copyLicenseKey(selected)}>{th ? "คัดลอก License Key จริง" : "Copy signed key"}</button><button onClick={() => void downloadLicenseKey(selected)}>{th ? "ดาวน์โหลด Key" : "Download key"}</button><button onClick={() => void printLicenseKey(selected)}>{th ? "พิมพ์ Key" : "Print key"}</button><button onClick={() => { setForm(formFromRow(selected)); setModal("issuer"); setSelectedId(null); }}>{th ? "แก้ไขเป็นฟอร์มใหม่" : "Edit as new form"}</button><button onClick={() => void reissue(selected)}>{th ? "ออก Key ใหม่" : "Reissue"}</button><button onClick={() => void deleteLicense(selected)}>{th ? "ยกเลิก License" : "Revoke"}</button></div>
-      {detailPanel === "summary" ? <div className={styles.summaryGrid}><div><b>{th ? "ลูกค้า" : "Customer"}</b><strong>{selected.customer_name}</strong></div><div><b>{th ? "โหมดขาย" : "Sales modes"}</b><strong>{salesModeText(selected.features || [], th)}</strong></div><div><b>{th ? "สถานะ" : "Status"}</b><strong>{selected.status}</strong></div><div><b>{th ? "ยอดวันนี้" : "Today"}</b><strong>{money(selected.today?.gross_sales || 0)}</strong></div><div><b>{th ? "ยอดเดือนนี้" : "Month"}</b><strong>{money(selected.month?.gross_sales || 0)}</strong></div><div><b>{th ? "หมดอายุ" : "Expires"}</b><strong>{selected.expires_at ? formatWhen(selected.expires_at, language) : (th ? "ไม่หมดอายุ" : "Perpetual")}</strong></div></div> : null}
-      {detailPanel === "devices" ? <div>{selected.devices.length ? selected.devices.map((device) => <div className={styles.device} key={device.id}><div><b>{device.device_code}</b><span>{device.device_name || "—"} · {device.online ? "ONLINE" : "OFFLINE"}</span><small>CPU {device.cpu_percent ?? "—"}% · RAM {device.memory_percent ?? "—"}% · DB {bytes(device.database_bytes)} · Printer {device.printer_status || "—"}</small><small>{th ? "เห็นล่าสุด" : "Last seen"}: {formatWhen(device.last_seen_at, language)}</small></div><div><button onClick={() => void deviceAction("reset_device", device.id)}>{th ? "Reset เครื่อง" : "Reset"}</button><button onClick={() => void deviceAction(device.is_authorized ? "block_device" : "unblock_device", device.id)}>{device.is_authorized ? (th ? "บล็อก" : "Block") : (th ? "ปลดบล็อก" : "Unblock")}</button></div></div>) : <p>{th ? "ยังไม่มีเครื่องที่ Activate" : "No activated devices."}</p>}<button onClick={() => void deviceAction("reset_contract_devices", undefined, selected.id)}>{th ? "Reset ทุกเครื่องใน License นี้" : "Reset all devices"}</button></div> : null}
-      {detailPanel === "audit" ? <div><p>{th ? "MDM รับ heartbeat/telemetry จาก Desktop และแสดงสถานะเครื่องใน Device Management ส่วน Audit Logs แยกตาม API ฝั่ง IT" : "MDM heartbeat and telemetry appear under Device Management; API actions are logged in Audit Logs."}</p><div className={styles.actions}><a className={styles.linkButton} href="/audit-logs">{th ? "เปิด Audit Logs" : "Open Audit Logs"}</a><a className={styles.linkButton} href="/it-admin/monitoring">Monitoring</a></div>{selected.recent_receipts?.length ? <div className={styles.tableWrap}><table><thead><tr><th>{th ? "บิลล่าสุด" : "Recent receipts"}</th><th>{th ? "ยอด" : "Total"}</th><th>{th ? "เวลา" : "Time"}</th></tr></thead><tbody>{selected.recent_receipts.slice(0, 8).map((receipt) => <tr key={receipt.id}><td>{receipt.receipt_no}<small>{receipt.status} · {receipt.payment_method}</small></td><td>{money(receipt.total_amount)}</td><td>{formatWhen(receipt.sold_at, language)}</td></tr>)}</tbody></table></div> : <p>{th ? "ยังไม่มี Telemetry ยอดขายล่าสุด" : "No recent sales telemetry yet."}</p>}</div> : null}
+      {detailPanel === "summary" ? <div className={styles.summaryGrid}><div><b>{th ? "ลูกค้า" : "Customer"}</b><strong>{selected.customer_name}</strong></div><div><b>{th ? "โหมดขาย" : "Sales modes"}</b><strong>{salesModeText(selected.features || [], th)}</strong></div><div><b>{th ? "สถานะ" : "Status"}</b><strong>{selected.status}</strong></div><div><b>{th ? "ยอดวันนี้" : "Today"}</b><strong>{money(selected.today?.gross_sales || 0)}</strong><span>{number(selected.today?.bill_count || 0)} bills</span></div><div><b>{th ? "ยอดเดือนนี้" : "Month"}</b><strong>{money(selected.month?.gross_sales || 0)}</strong><span>{number(selected.month?.bill_count || 0)} bills</span></div><div><b>{th ? "หมดอายุ" : "Expires"}</b><strong>{selected.expires_at ? formatWhen(selected.expires_at, language) : (th ? "ไม่หมดอายุ" : "Perpetual")}</strong></div></div> : null}
+      {detailPanel === "devices" ? <div className={styles.deviceGrid}>{selected.devices.length ? selected.devices.map((device) => <article className={styles.deviceCard} key={device.id}><div className={styles.deviceHead}><div><b>{device.device_code}</b><span>{device.device_name || device.machine_id || "—"}</span></div><span className={device.online ? styles.badgeOk : !device.is_authorized ? styles.badgeDanger : styles.badge}>{deviceStatus(device, th)}</span></div><div className={styles.healthBars}><label>CPU <b>{device.cpu_percent ?? "—"}%</b><i><em style={{ width: `${pct(device.cpu_percent)}%` }} /></i></label><label>RAM <b>{device.memory_percent ?? "—"}%</b><i><em style={{ width: `${pct(device.memory_percent)}%` }} /></i></label></div><p>{th ? "เห็นล่าสุด" : "Last seen"}: {formatWhen(device.last_seen_at, language)} · DB {bytes(device.database_bytes)} · Printer {device.printer_status || "—"}</p><div className={styles.statusBox}><strong>{th ? "สถานะเครื่อง" : "Device status"}</strong><span>{th ? "ดูสถานะได้ และกดเปิด/ปิดสิทธิ์เครื่องได้จากตรงนี้" : "Inspect status and enable/disable the device here."}</span></div><div className={styles.actions}><button onClick={() => void deviceAction("reset_device", device.id)} disabled={busy}>{th ? "Reset เครื่อง" : "Reset"}</button><button className={!device.is_authorized ? styles.primary : ""} onClick={() => void deviceAction(device.is_authorized ? "block_device" : "unblock_device", device.id)} disabled={busy}>{device.is_authorized ? (th ? "ปิด/บล็อกเครื่อง" : "Disable / block") : (th ? "เปิดใช้งานเครื่อง" : "Enable device")}</button></div></article>) : <p>{th ? "ยังไม่มีเครื่องที่ Activate" : "No activated devices."}</p>}<button onClick={() => void deviceAction("reset_contract_devices", undefined, selected.id)} disabled={busy}>{th ? "Reset ทุกเครื่องใน License นี้" : "Reset all devices"}</button></div> : null}
+      {detailPanel === "audit" ? <div className={styles.mdmPanel}><p>{th ? "MDM ใช้ส่งคำสั่งให้ Desktop จากหลังบ้าน เช่น ตรวจสุขภาพ ซิงก์ข้อมูล รีเฟรช License และตรวจเครื่องพิมพ์ สามารถกดเชื่อมต่อหรือปิดการเชื่อมต่อได้ต่อเครื่อง" : "MDM queues remote commands for Desktop. You can connect or disconnect MDM per device."}</p>{selected.devices.length ? selected.devices.map((device) => <article className={styles.mdmCard} key={device.id}><div className={styles.deviceHead}><div><b>{device.device_code}</b><span>{device.device_name || "—"} · {formatWhen(device.last_seen_at, language)}</span></div><span className={mdmEnabled(device) ? styles.badgeOk : styles.badgeDanger}>{mdmEnabled(device) ? (th ? "MDM เชื่อมต่อ" : "MDM connected") : (th ? "MDM ปิดอยู่" : "MDM disconnected")}</span></div><div className={styles.actions}><button className={mdmEnabled(device) ? "" : styles.primary} onClick={() => void deviceAction("enable_mdm", device.id)} disabled={busy || !device.is_authorized || mdmEnabled(device)}>{th ? "เชื่อมต่อ MDM" : "Connect MDM"}</button><button onClick={() => void deviceAction("disable_mdm", device.id)} disabled={busy || !mdmEnabled(device)}>{th ? "ปิดการเชื่อมต่อ" : "Disconnect"}</button></div><div className={styles.commandGrid}>{MDM_COMMANDS.map((command) => <button key={command.type} onClick={() => void sendMdmCommand(device, command.type)} disabled={busy || !mdmEnabled(device)}>{th ? command.th : command.en}</button>)}</div></article>) : <p>{th ? "ยังไม่มีเครื่องสำหรับเชื่อมต่อ MDM" : "No devices for MDM."}</p>}<div className={styles.actions}><a className={styles.linkButton} href="/audit-logs">{th ? "เปิด Audit Logs" : "Open Audit Logs"}</a><a className={styles.linkButton} href="/it-admin/monitoring">Monitoring</a></div>{selected.recent_receipts?.length ? <div className={styles.tableWrap}><table><thead><tr><th>{th ? "บิลล่าสุด" : "Recent receipts"}</th><th>{th ? "ยอด" : "Total"}</th><th>{th ? "เวลา" : "Time"}</th></tr></thead><tbody>{selected.recent_receipts.slice(0, 8).map((receipt) => <tr key={receipt.id}><td>{receipt.receipt_no}<small>{receipt.status} · {receipt.payment_method}</small></td><td>{money(receipt.total_amount)}</td><td>{formatWhen(receipt.sold_at, language)}</td></tr>)}</tbody></table></div> : <p>{th ? "ยังไม่มี Telemetry ยอดขายล่าสุด" : "No recent sales telemetry yet."}</p>}</div> : null}
     </div></div> : null}
 
     {previewOpen ? <div className={styles.modalBackdrop}><div className={styles.modal}>
