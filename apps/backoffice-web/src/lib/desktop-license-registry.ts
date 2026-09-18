@@ -147,7 +147,7 @@ export async function listDesktopLicenseRegistry() {
   const contractIds = contractRows.map((row) => row.id);
   const { data: devices, error: deviceError } = await supabase
     .from("desktop_license_devices")
-    .select("id,license_contract_id,device_code,device_name,machine_id,status,is_authorized,app_version,runtime_version,last_seen_at,last_license_check_at,last_sales_sync_at,printer_status,printer_name,cpu_percent,memory_percent,disk_free_bytes,database_bytes,integrity_status,tamper_detected,security_signals,metadata")
+    .select("id,license_contract_id,device_code,device_name,machine_id,status,is_authorized,remote_management_enabled,app_version,runtime_version,last_seen_at,last_license_check_at,last_sales_sync_at,printer_status,printer_name,cpu_percent,memory_percent,disk_free_bytes,database_bytes,integrity_status,tamper_detected,security_signals,metadata")
     .in("license_contract_id", contractIds)
     .order("created_at", { ascending: true });
   if (deviceError) throw deviceError;
