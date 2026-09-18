@@ -38,6 +38,17 @@ function inspectPrivateKey(value: string) {
   return { publicKeySpkiBase64, fingerprint, matchesDesktop };
 }
 
+function publicStatusFromInspection(inspection: { publicKeySpkiBase64: string; fingerprint: string; matchesDesktop: boolean }) {
+  return {
+    valid_private_key: true,
+    key_matches_desktop: inspection.matchesDesktop,
+    public_key_fingerprint: inspection.fingerprint,
+    expected_public_key_fingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
+    expected_public_key_spki_base64: CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64,
+    private_key_redacted: true
+  };
+}
+
 export async function GET() {
   try {
     await requireItAdmin();
@@ -51,7 +62,8 @@ export async function GET() {
       signer_source: signer.source,
       desktop_version: "0.3.1",
       env_names: ["CPIPOS_LICENSE_PRIVATE_KEY_PEM", "CPIPOS_LICENSE_PRIVATE_KEY_BASE64"],
-      vault_rpc: "get_cpipos_license_signing_key / set_cpipos_license_signing_key"
+      vault_rpc: "get_cpipos_license_signing_key / set_cpipos_license_signing_key",
+      private_key_redacted: true
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -73,12 +85,12 @@ export async function POST(request: Request) {
       const fingerprint = fingerprintPublicDer(Buffer.from(publicKeySpkiBase64, "base64"));
       return ok({
         generated: true,
-        private_key_pem: privateKeyPem,
-        private_key_base64: Buffer.from(privateKeyPem, "utf8").toString("base64"),
         public_key_spki_base64: publicKeySpkiBase64,
         public_key_fingerprint: fingerprint,
         key_matches_desktop: publicKeySpkiBase64 === CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64,
-        warning: "A newly generated key will not match the existing CpIPOS Desktop public key until the desktop app is rebuilt with this public key. For production v0.3.1, paste the original private key that matches the embedded public key."
+        expected_public_key_fingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
+        private_key_redacted: true,
+        warning: "Generated keys are hidden from the browser. Do not use generated keys for production v0.3.1 unless CpIPOS Desktop is rebuilt with the matching public key. Paste the original production private key that matches the embedded public key, then Save to Vault."
       });
     }
 
@@ -87,13 +99,7 @@ export async function POST(request: Request) {
     const inspection = inspectPrivateKey(privateKeyPem);
 
     if (action === "validate") {
-      return ok({
-        valid_private_key: true,
-        ...inspection,
-        expected_public_key_fingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
-        expected_public_key_spki_base64: CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64,
-        private_key_base64: Buffer.from(normalizePrivateKeyPem(privateKeyPem), "utf8").toString("base64")
-      });
+      return ok(publicStatusFromInspection(inspection));
     }
 
     if (action === "save_vault") {
@@ -106,7 +112,7 @@ export async function POST(request: Request) {
         changed_by: auth.userId
       });
       if (error) throw error;
-      return ok({ saved: true, ...inspection, saved_at: new Date().toISOString() });
+      return ok({ saved: true, ...publicStatusFromInspection(inspection), saved_at: new Date().toISOString() });
     }
 
     return fail("unknown_action", "Use action generate, validate or save_vault.", 400);
