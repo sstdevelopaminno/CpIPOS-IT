@@ -27,8 +27,8 @@ function badgeClass(section: Section) {
 }
 
 function statusText(loading: boolean, allReady: boolean, th: boolean) {
-  if (loading) return th ? "กำลังตรวจ..." : "Checking...";
-  return allReady ? (th ? "พร้อมใช้งานครบ" : "Ready") : (th ? "ต้องตรวจบางส่วน" : "Needs attention");
+  if (loading) return th ? "กำลังตรวจ" : "Checking";
+  return allReady ? (th ? "พร้อม" : "Ready") : (th ? "ต้องตรวจ" : "Check");
 }
 
 export function DesktopLicenseReadinessPanel({ language }: { language: Language }) {
@@ -44,6 +44,7 @@ export function DesktopLicenseReadinessPanel({ language }: { language: Language 
 
   const load = async () => {
     setError("");
+    setLoading(true);
     try {
       const response = await fetch("/api/it-admin/license-control-summary", { cache: "no-store" });
       const body = await response.json() as ApiEnvelope<Summary>;
@@ -56,18 +57,18 @@ export function DesktopLicenseReadinessPanel({ language }: { language: Language 
     }
   };
 
-  useEffect(() => {
-    void load();
-    const timer = window.setInterval(() => void load(), 30000);
-    return () => window.clearInterval(timer);
-  }, []);
-
+  useEffect(() => { void load(); }, []);
   useEffect(() => {
     if (!open) return;
     const handler = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
+
+  const openModal = () => {
+    setOpen(true);
+    void load();
+  };
 
   const body = <>
     {error ? <small className={styles.errorBadge}>{error}</small> : null}
@@ -80,23 +81,18 @@ export function DesktopLicenseReadinessPanel({ language }: { language: Language 
       {!summary && !error ? Array.from({ length: 6 }).map((_, index) => <article className={styles.item} key={index}><span className={styles.badge}>...</span><strong>{th ? "กำลังโหลด" : "Loading"}</strong><small>—</small></article>) : null}
     </div>
     <div className={styles.footer}>
-      <span>{th ? "ตรวจล่าสุด" : "Last checked"}: {formatWhen(summary?.checked_at, language)} · Desktop {summary?.desktop_version || "0.3.2"}</span>
+      <span>{th ? "ตรวจล่าสุด" : "Last checked"}: {formatWhen(summary?.checked_at, language)} · Desktop {summary?.desktop_version || "0.3.1"}</span>
       <button type="button" onClick={() => void load()}>{th ? "ตรวจสอบอีกครั้ง" : "Refresh check"}</button>
     </div>
   </>;
 
   return <section className={styles.panel}>
-    <div className={styles.compactHeader}>
-      <div>
-        <span className={allReady ? `${styles.badge} ${styles.ready}` : `${styles.badge} ${styles.warn}`}>{statusText(loading, allReady, th)}</span>
-        <h2>{th ? "ตรวจระบบออก License POS Desktop" : "Desktop License Control Check"}</h2>
-        <p>{th ? "ซ่อนรายละเอียด 6 ส่วนไว้ใน POP UP: Key, Preview, History, Device, Trial และ Audit/MDM" : "Six readiness sections are hidden in a popup."}</p>
-      </div>
-      <button className={styles.openButton} type="button" onClick={() => setOpen(true)}>
-        <span>{readyCount}/{totalCount}</span>
-        {th ? "เปิด POP UP สถานะ" : "Open status popup"}
-      </button>
-    </div>
+    <button className={styles.compactButton} type="button" onClick={openModal}>
+      <span className={allReady ? `${styles.badge} ${styles.ready}` : `${styles.badge} ${styles.warn}`}>{statusText(loading, allReady, th)}</span>
+      <strong>{th ? "ระบบออก License POS Desktop" : "Desktop License Control"}</strong>
+      <small>{readyCount}/{totalCount} · Key / Preview / History / Device / Trial / Audit-MDM</small>
+      <b>{th ? "เปิด POP UP" : "Open"}</b>
+    </button>
 
     {open ? <div className={styles.modalBackdrop} onMouseDown={() => setOpen(false)}>
       <section className={styles.modal} onMouseDown={(event) => event.stopPropagation()}>
