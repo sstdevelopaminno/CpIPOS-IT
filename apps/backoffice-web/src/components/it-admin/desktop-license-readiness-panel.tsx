@@ -26,13 +26,21 @@ function badgeClass(section: Section) {
   return styles.badge;
 }
 
+function statusText(loading: boolean, allReady: boolean, th: boolean) {
+  if (loading) return th ? "กำลังตรวจ..." : "Checking...";
+  return allReady ? (th ? "พร้อมใช้งานครบ" : "Ready") : (th ? "ต้องตรวจบางส่วน" : "Needs attention");
+}
+
 export function DesktopLicenseReadinessPanel({ language }: { language: Language }) {
   const th = language === "th";
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
 
   const allReady = useMemo(() => Boolean(summary?.sections?.every((section) => section.ready)), [summary]);
+  const readyCount = summary?.sections?.filter((section) => section.ready).length || 0;
+  const totalCount = summary?.sections?.length || 6;
 
   const load = async () => {
     setError("");
@@ -54,17 +62,15 @@ export function DesktopLicenseReadinessPanel({ language }: { language: Language 
     return () => window.clearInterval(timer);
   }, []);
 
-  return <section className={styles.panel}>
-    <div className={styles.header}>
-      <div>
-        <h2>{th ? "สถานะระบบออก License POS Desktop" : "Desktop License Control Readiness"}</h2>
-        <p>{th ? "ตรวจครบ 6 ส่วนก่อนออกลายเส้นจริง: Key, Preview, History, Device, Trial และ Audit/MDM" : "Six-part readiness check: Key, Preview, History, Device, Trial and Audit/MDM."}</p>
-      </div>
-      <span className={styles.status}>{loading ? (th ? "กำลังตรวจ..." : "Checking...") : allReady ? (th ? "พร้อมใช้งานครบ" : "Ready") : (th ? "ต้องตรวจบางส่วน" : "Needs attention")}</span>
-    </div>
+  useEffect(() => {
+    if (!open) return;
+    const handler = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open]);
 
-    {error ? <small className={styles.badge}>{error}</small> : null}
-
+  const body = <>
+    {error ? <small className={styles.errorBadge}>{error}</small> : null}
     <div className={styles.grid}>
       {(summary?.sections || []).map((section) => <article className={styles.item} key={section.id}>
         <span className={badgeClass(section)}>{section.ready ? "READY" : section.status.toUpperCase()}</span>
@@ -73,10 +79,37 @@ export function DesktopLicenseReadinessPanel({ language }: { language: Language 
       </article>)}
       {!summary && !error ? Array.from({ length: 6 }).map((_, index) => <article className={styles.item} key={index}><span className={styles.badge}>...</span><strong>{th ? "กำลังโหลด" : "Loading"}</strong><small>—</small></article>) : null}
     </div>
-
     <div className={styles.footer}>
       <span>{th ? "ตรวจล่าสุด" : "Last checked"}: {formatWhen(summary?.checked_at, language)} · Desktop {summary?.desktop_version || "0.3.1"}</span>
       <button type="button" onClick={() => void load()}>{th ? "ตรวจสอบอีกครั้ง" : "Refresh check"}</button>
     </div>
+  </>;
+
+  return <section className={styles.panel}>
+    <div className={styles.compactHeader}>
+      <div>
+        <span className={allReady ? `${styles.badge} ${styles.ready}` : `${styles.badge} ${styles.warn}`}>{statusText(loading, allReady, th)}</span>
+        <h2>{th ? "สถานะระบบออก License POS Desktop" : "Desktop License Control Readiness"}</h2>
+        <p>{th ? "ซ่อนรายละเอียดไว้ใน POP UP เพื่อลดพื้นที่หน้าออก License" : "Details are available in a compact popup."}</p>
+      </div>
+      <button className={styles.openButton} type="button" onClick={() => setOpen(true)}>
+        <span>{readyCount}/{totalCount}</span>
+        {th ? "ดูสถานะระบบ" : "Open readiness"}
+      </button>
+    </div>
+
+    {open ? <div className={styles.modalBackdrop} onMouseDown={() => setOpen(false)}>
+      <section className={styles.modal} onMouseDown={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <div>
+            <span className={styles.kicker}>DESKTOP LICENSE READINESS</span>
+            <h2>{th ? "สถานะระบบออก License POS Desktop" : "Desktop License Control Readiness"}</h2>
+            <p>{th ? "ตรวจครบ 6 ส่วนก่อนออกลายเส้นจริง: Key, Preview, History, Device, Trial และ Audit/MDM" : "Six-part readiness check: Key, Preview, History, Device, Trial and Audit/MDM."}</p>
+          </div>
+          <button type="button" aria-label={th ? "ปิด" : "Close"} onClick={() => setOpen(false)}>×</button>
+        </header>
+        {body}
+      </section>
+    </div> : null}
   </section>;
 }
