@@ -61,6 +61,28 @@ export async function POST(request: Request) {
       return ok({ updated: true, device_id: deviceId, is_authorized: authorized });
     }
 
+    if (action === "enable_mdm" || action === "disable_mdm") {
+      if (!deviceId) return fail("device_id_required", "deviceId is required", 400);
+      const enabled = action === "enable_mdm";
+      const { error } = await supabase
+        .from("desktop_license_devices")
+        .update({
+          remote_management_enabled: enabled,
+          security_signals: { action, reason, updated_at: now },
+          updated_at: now
+        })
+        .eq("id", deviceId);
+      if (error) throw error;
+      await appendDesktopLicenseAudit({
+        auth,
+        action: `desktop_license_mdm_${enabled ? "enabled" : "disabled"}`,
+        targetId: deviceId,
+        request,
+        metadata: { device_id: deviceId, reason, remote_management_enabled: enabled }
+      });
+      return ok({ updated: true, device_id: deviceId, remote_management_enabled: enabled });
+    }
+
     if (action === "reset_contract_devices") {
       if (!contractId) return fail("contract_id_required", "contractId is required", 400);
       const { error } = await supabase
@@ -72,6 +94,7 @@ export async function POST(request: Request) {
           is_authorized: true,
           last_seen_at: null,
           last_license_check_at: null,
+          last_sales_sync_at: null,
           security_signals: { reset_reason: reason, reset_at: now },
           updated_at: now
         })
@@ -81,7 +104,7 @@ export async function POST(request: Request) {
       return ok({ reset: true, contract_id: contractId });
     }
 
-    return fail("unknown_action", "Use reset_device, block_device, unblock_device or reset_contract_devices.", 400);
+    return fail("unknown_action", "Use reset_device, block_device, unblock_device, enable_mdm, disable_mdm or reset_contract_devices.", 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message === "FORBIDDEN") return fail("forbidden", "Only IT admin can manage desktop license devices.", 403);
