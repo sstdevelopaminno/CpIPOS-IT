@@ -15,16 +15,17 @@ This document is the operational checklist for CUTTING POINT TECH IT when issuin
 
 Expected desktop public-key fingerprint:
 
-`6FE9:A194:5785:B79A:13FB:C27B:316A:A7F2:F963:443B:BD2B:4482:CF31:86CA:EAF3:8018`
+`4DF3:AB73:4E41:1F54:4E17:A082:851A:597F:BA08:331D:A7AF:7EAD:1D51:7970:635D:5295`
 
 ## Configure the IT signing key
 
-Configure exactly one server-side environment variable for `apps/backoffice-web`:
+The production issuer first checks server environment secrets and then falls back to the protected Supabase Vault signer slot `cpipos_license_signing_seed_v030`.
 
+Optional environment overrides:
 - `CPIPOS_LICENSE_PRIVATE_KEY_PEM`
 - `CPIPOS_LICENSE_PRIVATE_KEY_BASE64`
 
-The variable must not use a `NEXT_PUBLIC_` prefix.
+Environment overrides must not use a `NEXT_PUBLIC_` prefix.
 
 After configuring the key, open the IT Admin backoffice and navigate to:
 
