@@ -1,12 +1,12 @@
-import { createHash, createPrivateKey, createPublicKey, randomBytes, sign, verify } from "node:crypto";
+import { createECDH, createHash, createPrivateKey, createPublicKey, randomBytes, sign, verify } from "node:crypto";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 
 export const CPIPOS_LICENSE_PRODUCT = "CPIPOS-DESKTOP";
 export const CPIPOS_LICENSE_ISSUER = "CUTTING-POINT-TECH-IT";
 export const CPIPOS_DEVICE_CODE_PATTERN = /^CP-[A-F0-9]{5}-[A-F0-9]{5}-[A-F0-9]{5}-[A-F0-9]{5}$/;
 export const CPIPOS_LICENSE_ID_PATTERN = /^CP-\d{8}-[A-F0-9]{8}$/;
-export const CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEs9PUGIOQlWxNNFA23/Rfcqk1yRCZN2Jq09f3qL8633xktajPKMpOY580I1MwxW5ocb826zeuthot/7FcXJASVQ==";
-export const CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT = "6FE9:A194:5785:B79A:13FB:C27B:316A:A7F2:F963:443B:BD2B:4482:CF31:86CA:EAF3:8018";
+export const CPIPOS_DESKTOP_PUBLIC_KEY_SPKI_BASE64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEIagxxGZeSGgXhE0/CBZcjTOGoROhwdIrtu+PjG24XkAZ98WpxF2quymaZbzGrzyO7+bvBnN5n3Lpg2AUK3EjQA==";
+export const CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT = "4DF3:AB73:4E41:1F54:4E17:A082:851A:597F:BA08:331D:A7AF:7EAD:1D51:7970:635D:5295";
 
 export type OfflineLicensePayload = {
   v: 1;
@@ -52,6 +52,28 @@ function normalizePrivateKeyPem(value: string) {
   return value.includes("\\n") ? value.replace(/\\n/g, "\n") : value;
 }
 
+function privateKeyPemFromVaultValue(value: string) {
+  const normalized = normalizePrivateKeyPem(value.trim());
+  if (normalized.startsWith("-----BEGIN")) return normalized;
+
+  const seed = Buffer.from(normalized, "base64");
+  if (seed.length !== 32) throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_INVALID");
+
+  const ecdh = createECDH("prime256v1");
+  ecdh.setPrivateKey(seed);
+  const publicKey = ecdh.getPublicKey(undefined, "uncompressed");
+  if (publicKey.length !== 65) throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_INVALID");
+
+  const jwk = {
+    kty: "EC",
+    crv: "P-256",
+    x: publicKey.subarray(1, 33).toString("base64url"),
+    y: publicKey.subarray(33, 65).toString("base64url"),
+    d: seed.toString("base64url")
+  };
+  return createPrivateKey({ key: jwk, format: "jwk" }).export({ type: "pkcs8", format: "pem" }).toString();
+}
+
 function readPrivateKeyPem() {
   const direct = process.env.CPIPOS_LICENSE_PRIVATE_KEY_PEM?.trim();
   if (direct) return normalizePrivateKeyPem(direct);
@@ -73,8 +95,8 @@ async function readPrivateKeyPemServer() {
     const supabase = getPrimarySupabaseServiceClient();
     const { data, error } = await supabase.rpc("get_cpipos_license_signing_key");
     if (error) throw error;
-    const pem = typeof data === "string" ? data.trim() : "";
-    if (pem) return { pem: normalizePrivateKeyPem(pem), source: "supabase_vault" as const };
+    const value = typeof data === "string" ? data.trim() : "";
+    if (value) return { pem: privateKeyPemFromVaultValue(value), source: "supabase_vault" as const };
   } catch {
     // Fail closed below. Never fall back to a browser-provided key.
   }
