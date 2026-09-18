@@ -1,5 +1,6 @@
 import { DesktopCloudApprovalPanel } from "@/components/it-admin/desktop-cloud-approval-panel";
 import { DesktopLicenseControlPlaneV031 } from "@/components/it-admin/desktop-license-control-plane-v031";
+import { DesktopLicenseReadinessPanel } from "@/components/it-admin/desktop-license-readiness-panel";
 import { getCurrentLanguage, type Language } from "@/lib/i18n";
 import styles from "./page.module.css";
 
@@ -10,6 +11,7 @@ export default async function OfflineDesktopLicensePage() {
 
   return (
     <div className={styles.page}>
+      <DesktopLicenseReadinessPanel language={language} />
       <DesktopLicenseControlPlaneV031 language={language} />
       <DesktopCloudApprovalPanel language={language} />
     </div>
