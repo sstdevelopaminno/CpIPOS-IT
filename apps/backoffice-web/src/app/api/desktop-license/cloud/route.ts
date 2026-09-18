@@ -2,6 +2,7 @@ import {
   completeDesktopCloudBackup,
   getDesktopCloudReceiptArchive,
   getDesktopCloudState,
+  listDesktopCloudPlans,
   queryDesktopCloudSalesArchive,
   requestDesktopCloudPlan,
   uploadDesktopCloudBackupChunk,
@@ -49,6 +50,15 @@ function statusFor(code: string) {
   if (code.includes("NOT_FOUND") || code === "CLOUD_PLAN_NOT_AVAILABLE") return 404;
   if (code.includes("INVALID") || code.includes("TOO_LARGE") || code.includes("REQUIRED")) return 400;
   return 500;
+}
+
+export async function GET() {
+  try {
+    return json({ data: { plans: await listDesktopCloudPlans(false) }, error: null });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "CLOUD_PLANS_FAILED";
+    return json({ data: null, error: { code, message: code } }, statusFor(code));
+  }
 }
 
 export async function POST(request: Request) {
