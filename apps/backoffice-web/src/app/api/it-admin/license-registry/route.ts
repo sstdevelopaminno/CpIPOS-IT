@@ -5,6 +5,7 @@ import {
   reissueDesktopLicenseContract,
   type DesktopLicenseRegistryInput
 } from "@/lib/desktop-license-registry";
+import { appendDesktopLicenseAudit } from "@/lib/desktop-license-audit";
 import { fail, ok } from "@/lib/http";
 
 export const runtime = "nodejs";
@@ -29,11 +30,26 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    await requireItAdmin();
+    const auth = await requireItAdmin();
     const body = (await request.json()) as { contractId?: string; input?: DesktopLicenseRegistryInput };
     const contractId = String(body.contractId ?? "").trim();
     if (!contractId || !body.input) return fail("license_request_invalid", "contractId and input are required", 400);
     const issued = await reissueDesktopLicenseContract(contractId, body.input);
+    await appendDesktopLicenseAudit({
+      auth,
+      action: "desktop_license_reissued",
+      targetId: contractId,
+      request,
+      metadata: {
+        license_id: issued.payload.licenseId,
+        customer: issued.payload.customer,
+        plan: issued.payload.plan,
+        devices: issued.payload.devices,
+        features: issued.payload.features,
+        expires_at: issued.payload.expiresAt
+      },
+      afterData: { license_id: issued.payload.licenseId, features: issued.payload.features }
+    });
     return ok({ generated_at: new Date().toISOString(), ...issued });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -48,11 +64,20 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    await requireItAdmin();
+    const auth = await requireItAdmin();
     const body = (await request.json().catch(() => ({}))) as { contractId?: string; reason?: string };
     const contractId = String(body.contractId ?? "").trim();
+    const reason = String(body.reason ?? "Deleted by IT admin");
     if (!contractId) return fail("license_request_invalid", "contractId is required", 400);
-    await deleteDesktopLicenseContract(contractId, String(body.reason ?? "Deleted by IT admin"));
+    await deleteDesktopLicenseContract(contractId, reason);
+    await appendDesktopLicenseAudit({
+      auth,
+      action: "desktop_license_revoked",
+      targetId: contractId,
+      request,
+      metadata: { reason },
+      afterData: { status: "deleted", reason }
+    });
     return ok({ deleted: true, contract_id: contractId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
