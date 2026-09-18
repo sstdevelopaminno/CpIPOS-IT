@@ -1,5 +1,4 @@
 import { createECDH, createHash, createPrivateKey, createPublicKey, randomBytes, sign, verify } from "node:crypto";
-import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 
 export const CPIPOS_LICENSE_PRODUCT = "CPIPOS-DESKTOP";
 export const CPIPOS_LICENSE_ISSUER = "CUTTING-POINT-TECH-IT";
@@ -92,6 +91,7 @@ async function readPrivateKeyPemServer() {
   }
 
   try {
+    const { getPrimarySupabaseServiceClient } = await import("@/lib/supabase-admin");
     const supabase = getPrimarySupabaseServiceClient();
     const { data, error } = await supabase.rpc("get_cpipos_license_signing_key");
     if (error) throw error;
