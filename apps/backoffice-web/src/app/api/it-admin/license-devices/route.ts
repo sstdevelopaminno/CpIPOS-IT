@@ -1,4 +1,5 @@
 import { getAuthContext } from "@/lib/auth-context";
+import { appendDesktopLicenseAudit } from "@/lib/desktop-license-audit";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import { fail, ok } from "@/lib/http";
 
@@ -13,7 +14,7 @@ async function requireItAdmin() {
 
 export async function POST(request: Request) {
   try {
-    await requireItAdmin();
+    const auth = await requireItAdmin();
     const body = (await request.json().catch(() => ({}))) as { deviceId?: string; contractId?: string; action?: string; reason?: string };
     const deviceId = String(body.deviceId ?? "").trim();
     const contractId = String(body.contractId ?? "").trim();
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
         })
         .eq("id", deviceId);
       if (error) throw error;
+      await appendDesktopLicenseAudit({ auth, action: "desktop_license_device_reset", targetId: deviceId, request, metadata: { device_id: deviceId, reason } });
       return ok({ reset: true, device_id: deviceId });
     }
 
@@ -55,6 +57,7 @@ export async function POST(request: Request) {
         })
         .eq("id", deviceId);
       if (error) throw error;
+      await appendDesktopLicenseAudit({ auth, action: `desktop_license_device_${authorized ? "unblocked" : "blocked"}`, targetId: deviceId, request, metadata: { device_id: deviceId, reason } });
       return ok({ updated: true, device_id: deviceId, is_authorized: authorized });
     }
 
@@ -74,6 +77,7 @@ export async function POST(request: Request) {
         })
         .eq("license_contract_id", contractId);
       if (error) throw error;
+      await appendDesktopLicenseAudit({ auth, action: "desktop_license_contract_devices_reset", targetId: contractId, request, metadata: { contract_id: contractId, reason } });
       return ok({ reset: true, contract_id: contractId });
     }
 
