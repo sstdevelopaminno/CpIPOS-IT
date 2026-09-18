@@ -2,8 +2,8 @@ import { getAuthContext } from "@/lib/auth-context";
 import { saveIssuedDesktopLicense } from "@/lib/desktop-license-registry";
 import { fail, ok } from "@/lib/http";
 import {
-  getOfflineLicenseSignerStatus,
-  issueOfflineLicense,
+  getOfflineLicenseSignerStatusServer,
+  issueOfflineLicenseServer,
   type IssueOfflineLicenseInput
 } from "@/lib/offline-license-issuer";
 
@@ -19,7 +19,7 @@ async function requireItAdmin() {
 export async function GET() {
   try {
     await requireItAdmin();
-    const signer = getOfflineLicenseSignerStatus();
+    const signer = await getOfflineLicenseSignerStatusServer();
     return ok({
       configured: signer.configured,
       key_matches_desktop: signer.keyMatchesDesktop,
@@ -28,7 +28,8 @@ export async function GET() {
       product: "CPIPOS-DESKTOP",
       desktop_version: "0.3.0",
       issuer: "CUTTING-POINT-TECH-IT",
-      max_devices: 2
+      max_devices: 2,
+      signer_source: signer.source
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
   try {
     const auth = await requireItAdmin();
     const body = (await request.json()) as IssueOfflineLicenseInput;
-    const issued = issueOfflineLicense({
+    const issued = await issueOfflineLicenseServer({
       customer: String(body.customer ?? ""),
       plan: String(body.plan ?? ""),
       devices: Array.isArray(body.devices) ? body.devices.map(String) : [],
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
     if (message === "CPIPOS_LICENSE_PRIVATE_KEY_NOT_CONFIGURED") {
       return fail(
         "license_private_key_not_configured",
-        "Configure CPIPOS_LICENSE_PRIVATE_KEY_PEM or CPIPOS_LICENSE_PRIVATE_KEY_BASE64 in the server environment.",
+        "Configure the CpIPOS Desktop signing key in Vercel Environment Secrets or the protected Supabase Vault signer slot.",
         503
       );
     }
