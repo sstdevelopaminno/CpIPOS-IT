@@ -1,4 +1,5 @@
 import { getAuthContext } from "@/lib/auth-context";
+import { appendDesktopLicenseAudit } from "@/lib/desktop-license-audit";
 import { fail, ok } from "@/lib/http";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 
@@ -13,7 +14,7 @@ async function requireItAdmin() {
 
 export async function POST(request: Request) {
   try {
-    await requireItAdmin();
+    const auth = await requireItAdmin();
     const body = (await request.json().catch(() => ({}))) as { contractId?: string; licenseId?: string };
     const contractId = String(body.contractId ?? "").trim();
     const licenseId = String(body.licenseId ?? "").trim();
@@ -30,6 +31,20 @@ export async function POST(request: Request) {
     if (error) throw error;
     if (!data) return fail("license_not_found", "License not found", 404);
     if (!(data as any).signed_token) return fail("license_token_missing", "Signed license token is not available", 404);
+
+    await appendDesktopLicenseAudit({
+      auth,
+      action: "desktop_license_key_retrieved",
+      targetId: (data as any).id,
+      request,
+      metadata: {
+        license_id: (data as any).license_id,
+        customer: (data as any).customer_name,
+        plan: (data as any).plan,
+        revision: (data as any).revision,
+        token_sha256: (data as any).token_sha256
+      }
+    });
 
     return ok({
       contract_id: (data as any).id,
