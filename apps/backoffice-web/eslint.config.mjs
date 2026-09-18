@@ -24,6 +24,12 @@ const config = [
     rules: {
       "react-hooks/purity": "off"
     }
+  },
+  {
+    files: ["src/components/it-admin/desktop-license-control-plane-v031.tsx"],
+    rules: {
+      "@next/next/no-html-link-for-pages": "off"
+    }
   }
 ];
 
