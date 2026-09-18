@@ -1,5 +1,6 @@
 import { getAuthContext } from "@/lib/auth-context";
 import { saveIssuedDesktopLicense } from "@/lib/desktop-license-registry";
+import { appendDesktopLicenseAudit } from "@/lib/desktop-license-audit";
 import { fail, ok } from "@/lib/http";
 import {
   getOfflineLicenseSignerStatusServer,
@@ -45,6 +46,18 @@ export async function POST(request: Request) {
     const auth = await requireItAdmin();
     const signer = await getOfflineLicenseSignerStatusServer();
     if (!signer.configured || !signer.keyMatchesDesktop) {
+      await appendDesktopLicenseAudit({
+        auth,
+        action: "desktop_license_issue_blocked_private_key_not_ready",
+        request,
+        metadata: {
+          desktop_version: DESKTOP_VERSION,
+          configured: signer.configured,
+          key_matches_desktop: signer.keyMatchesDesktop,
+          signer_source: signer.source,
+          public_key_fingerprint: signer.publicKeyFingerprint
+        }
+      });
       return fail(
         "license_private_key_not_ready",
         "Private Key is not ready or does not match the public key embedded in CpIPOS Desktop.",
@@ -52,7 +65,7 @@ export async function POST(request: Request) {
       );
     }
     const body = (await request.json()) as IssueOfflineLicenseInput;
-    const issued = await issueOfflineLicenseServer({
+    const input = {
       customer: String(body.customer ?? ""),
       plan: String(body.plan ?? ""),
       devices: Array.isArray(body.devices) ? body.devices.map(String) : [],
@@ -60,8 +73,27 @@ export async function POST(request: Request) {
       expiresAt: body.expiresAt ? String(body.expiresAt) : null,
       validDays: body.validDays == null ? null : Number(body.validDays),
       features: Array.isArray(body.features) ? body.features.map(String) : []
-    });
+    };
+    const issued = await issueOfflineLicenseServer(input);
     const registry = await saveIssuedDesktopLicense(issued, auth.userId);
+
+    await appendDesktopLicenseAudit({
+      auth,
+      action: "desktop_license_issued",
+      targetId: registry.id,
+      request,
+      metadata: {
+        license_id: issued.payload.licenseId,
+        customer: issued.payload.customer,
+        plan: issued.payload.plan,
+        max_devices: issued.payload.maxDevices,
+        devices: issued.payload.devices,
+        features: issued.payload.features,
+        expires_at: issued.payload.expiresAt,
+        desktop_version: DESKTOP_VERSION
+      },
+      afterData: { registry_id: registry.id, license_id: issued.payload.licenseId, features: issued.payload.features }
+    });
 
     return ok({
       generated_at: new Date().toISOString(),
