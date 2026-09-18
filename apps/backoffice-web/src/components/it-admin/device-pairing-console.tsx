@@ -326,7 +326,7 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
                       <td><span className={connectionBadge(device.status === "active" || device.status === "online" ? "active" : undefined)}>{device.status}</span></td>
                       <td>
                         <span className={connectionBadge(enrollment?.enrollment_status)}>{connectionLabel(enrollment?.enrollment_status)}</span>
-                        <span className={styles.muted}>{enrollment ? `${enrollment.trust_level} · ${enrollment.device_type}` : "Legacy / waiting for enrollment"}</span>
+                        <span className={styles.muted}>{enrollment ? `${enrollment.trust_level} · ${enrollment.device_type}` : "Legacy · not enrolled"}</span>
                       </td>
                       <td>{formatDateTime(device.last_seen_at)}</td>
                       <td>{enrollment ? <EnrollmentActions enrollment={enrollment}/> : <span className={styles.muted}>Generate token / wait for request</span>}</td>
