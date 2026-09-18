@@ -80,7 +80,7 @@ export function DesktopLicenseReadinessPanel({ language }: { language: Language 
       {!summary && !error ? Array.from({ length: 6 }).map((_, index) => <article className={styles.item} key={index}><span className={styles.badge}>...</span><strong>{th ? "กำลังโหลด" : "Loading"}</strong><small>—</small></article>) : null}
     </div>
     <div className={styles.footer}>
-      <span>{th ? "ตรวจล่าสุด" : "Last checked"}: {formatWhen(summary?.checked_at, language)} · Desktop {summary?.desktop_version || "0.3.1"}</span>
+      <span>{th ? "ตรวจล่าสุด" : "Last checked"}: {formatWhen(summary?.checked_at, language)} · Desktop {summary?.desktop_version || "0.3.2"}</span>
       <button type="button" onClick={() => void load()}>{th ? "ตรวจสอบอีกครั้ง" : "Refresh check"}</button>
     </div>
   </>;
@@ -89,12 +89,12 @@ export function DesktopLicenseReadinessPanel({ language }: { language: Language 
     <div className={styles.compactHeader}>
       <div>
         <span className={allReady ? `${styles.badge} ${styles.ready}` : `${styles.badge} ${styles.warn}`}>{statusText(loading, allReady, th)}</span>
-        <h2>{th ? "สถานะระบบออก License POS Desktop" : "Desktop License Control Readiness"}</h2>
-        <p>{th ? "ซ่อนรายละเอียดไว้ใน POP UP เพื่อลดพื้นที่หน้าออก License" : "Details are available in a compact popup."}</p>
+        <h2>{th ? "ตรวจระบบออก License POS Desktop" : "Desktop License Control Check"}</h2>
+        <p>{th ? "ซ่อนรายละเอียด 6 ส่วนไว้ใน POP UP: Key, Preview, History, Device, Trial และ Audit/MDM" : "Six readiness sections are hidden in a popup."}</p>
       </div>
       <button className={styles.openButton} type="button" onClick={() => setOpen(true)}>
         <span>{readyCount}/{totalCount}</span>
-        {th ? "ดูสถานะระบบ" : "Open readiness"}
+        {th ? "เปิด POP UP สถานะ" : "Open status popup"}
       </button>
     </div>
 
