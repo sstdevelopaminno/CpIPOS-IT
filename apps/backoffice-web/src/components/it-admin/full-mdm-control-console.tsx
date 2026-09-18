@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MdmCommandType } from "@/lib/mdm/eligibility";
+import styles from "./full-mdm-control-console.module.css";
 
 type ApiEnvelope<T> = {
   data: T;
@@ -78,9 +79,6 @@ async function parseResponse<T>(response: Response): Promise<T> {
   }
   return payload.data;
 }
-
-const tdStyle = { padding: "8px 10px", borderBottom: "1px solid #f1f5f9", fontSize: 13, verticalAlign: "top" as const };
-const thStyle = { ...tdStyle, color: "#475569", textAlign: "left" as const, borderBottom: "1px solid #e2e8f0" };
 
 export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string; deviceId: string }) {
   const [data, setData] = useState<MdmPayload | null>(null);
@@ -167,38 +165,37 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
   }
 
   if (loading && !data) {
-    return <section className="surface"><p>Loading Full MDM state...</p></section>;
+    return <section className={styles.empty}><h3>Full MDM Control Plane</h3><small>Loading Full MDM state...</small></section>;
   }
 
   if (!data) {
     return (
-      <section className="surface" style={{ display: "grid", gap: 8 }}>
-        <h3 style={{ margin: 0 }}>Full MDM Control Plane</h3>
-        <p style={{ margin: 0, color: "#92400e" }}>
-          {error ?? "This device has not advertised the Full MDM registry contract yet."}
-        </p>
-        <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
-          A trusted enrollment plus Android 1.0.23 heartbeat is required before managed controls can appear.
-        </p>
+      <section className={styles.empty}>
+        <h3>Full MDM Control Plane</h3>
+        <p>{error ?? "This device has not advertised the Full MDM registry contract yet."}</p>
+        <small>A trusted enrollment plus Android 1.0.23 heartbeat is required before managed controls can appear.</small>
       </section>
     );
   }
 
   const { device, controls, commands } = data;
+  const connected = device.is_full_mdm_eligible;
 
   return (
-    <section className="surface" style={{ display: "grid", gap: 14 }}>
-      <div>
-        <h3 style={{ margin: 0 }}>Full MDM Control Plane</h3>
-        <p style={{ margin: "4px 0 0", color: data.banner.tone === "success" ? "#047857" : "#92400e" }}>
-          {data.banner.message}
-        </p>
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
-          Authority: {data.control_plane.authority} · Last heartbeat: {formatDateTime(device.last_heartbeat_at)}
-        </p>
-      </div>
+    <section className={styles.console}>
+      <header className={styles.header}>
+        <div>
+          <h3>Full MDM Control Plane</h3>
+          <p>{data.banner.message}</p>
+          <p>Authority: {data.control_plane.authority} · Last heartbeat: {formatDateTime(device.last_heartbeat_at)}</p>
+        </div>
+        <span className={`${styles.connectionBadge} ${connected ? styles.connected : styles.limited}`}>
+          <span className={styles.dot}/>
+          {connected ? "MDM connected" : "Diagnostics only"}
+        </span>
+      </header>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <div className={styles.deviceGrid}>
         {[
           ["Platform", device.platform],
           ["App", device.app_version],
@@ -209,26 +206,33 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
           ["Full MDM", device.is_full_mdm_eligible ? "Eligible" : "Blocked"],
           ["Capabilities", device.capabilities.length ? device.capabilities.join(", ") : "None"]
         ].map(([label, value]) => (
-          <div key={label} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 9, minWidth: 150, background: "#fff" }}>
-            <div style={{ fontSize: 12, color: "#64748b" }}>{label}</div>
-            <strong style={{ fontSize: 13 }}>{value}</strong>
+          <div key={label} className={styles.deviceCard}>
+            <span>{label}</span>
+            <strong>{value}</strong>
           </div>
         ))}
       </div>
 
-      <label style={{ display: "grid", gap: 4 }}>
-        <span style={{ fontSize: 13, color: "#475569" }}>Reason for sensitive action</span>
-        <input
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="Required for lock, uninstall, location, remote support, etc."
-          disabled={busyCommand !== null}
-        />
-      </label>
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div>
+            <h4>Managed controls</h4>
+            <p>ปุ่มที่ใช้ไม่ได้จะถูกปิดตาม ownership, Device Owner และ capability จริงของเครื่อง</p>
+          </div>
+          <button type="button" className={styles.refreshButton} disabled={busyCommand !== null} onClick={() => void load(false)}>Refresh MDM</button>
+        </div>
 
-      <div>
-        <h4 style={{ margin: "0 0 8px" }}>Managed controls</h4>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <label className={styles.reason}>
+          <span>Reason for sensitive action</span>
+          <input
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Required for lock, uninstall, location, remote support, etc."
+            disabled={busyCommand !== null}
+          />
+        </label>
+
+        <div className={styles.controls}>
           {controls.map((control) => {
             const latest = commandByType.get(control.commandType);
             const title = control.enabled
@@ -238,7 +242,7 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
               <button
                 key={control.commandType}
                 type="button"
-                className="pos-monitor-btn"
+                className={styles.controlButton}
                 disabled={!control.enabled || busyCommand !== null}
                 title={title}
                 onClick={() => void issue(control)}
@@ -247,42 +251,39 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
               </button>
             );
           })}
-          <button type="button" className="pos-monitor-btn" disabled={busyCommand !== null} onClick={() => void load(false)}>
-            Refresh MDM
-          </button>
         </div>
-        <p style={{ margin: "8px 0 0", fontSize: 12, color: "#64748b" }}>
-          Disabled buttons are intentional. The server enables a command only when ownership, Device Owner enrollment and the native agent capability all match.
+        <p className={styles.help}>
+          การเชื่อมต่อ/ยกเลิกการเชื่อมต่อ MDM จัดการจาก Device enrollment & pairing; หน้านี้ใช้ควบคุมเครื่องที่ผ่าน enrollment แล้วเท่านั้น
         </p>
-      </div>
+      </section>
 
-      {success ? <p style={{ margin: 0, color: "#047857" }}>{success}</p> : null}
-      {error ? <p style={{ margin: 0, color: "#b91c1c" }}>{error}</p> : null}
+      {success ? <p className={`${styles.notice} ${styles.success}`}>{success}</p> : null}
+      {error ? <p className={`${styles.notice} ${styles.error}`}>{error}</p> : null}
 
-      <div>
-        <h4 style={{ margin: "0 0 8px" }}>Full MDM queue / ACK</h4>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}><div><h4>Full MDM queue / ACK</h4><p>สถานะคำสั่งตั้งแต่ queue จนเครื่องรับและตอบกลับ</p></div></div>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
             <thead>
-              <tr><th style={thStyle}>Command</th><th style={thStyle}>Status</th><th style={thStyle}>Queued</th><th style={thStyle}>Picked up</th><th style={thStyle}>Finished</th><th style={thStyle}>Result</th></tr>
+              <tr><th>Command</th><th>Status</th><th>Queued</th><th>Picked up</th><th>Finished</th><th>Result</th></tr>
             </thead>
             <tbody>
               {commands.length === 0 ? (
-                <tr><td style={tdStyle} colSpan={6}>No Full MDM commands yet.</td></tr>
+                <tr><td colSpan={6}>No Full MDM commands yet.</td></tr>
               ) : commands.map((command) => (
                 <tr key={command.id}>
-                  <td style={tdStyle}>{command.command_type}</td>
-                  <td style={tdStyle}>{command.status}</td>
-                  <td style={tdStyle}>{formatDateTime(command.queued_at)}</td>
-                  <td style={tdStyle}>{formatDateTime(command.picked_up_at)}</td>
-                  <td style={tdStyle}>{formatDateTime(command.completed_at ?? command.failed_at)}</td>
-                  <td style={tdStyle}>{compactJson(command.command_result)}</td>
+                  <td>{command.command_type}</td>
+                  <td><span className={styles.statusPill}>{command.status}</span></td>
+                  <td>{formatDateTime(command.queued_at)}</td>
+                  <td>{formatDateTime(command.picked_up_at)}</td>
+                  <td>{formatDateTime(command.completed_at ?? command.failed_at)}</td>
+                  <td className={styles.result}>{compactJson(command.command_result)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </section>
   );
 }

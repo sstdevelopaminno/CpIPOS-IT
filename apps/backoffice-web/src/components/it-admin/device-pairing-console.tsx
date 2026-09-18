@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import styles from "./device-pairing-console.module.css";
 
 type ApiEnvelope<T> = {
   data: T;
@@ -57,7 +58,7 @@ const OWNERSHIP_OPTIONS: Array<{ value: OwnershipType; label: string }> = [
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "-";
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -68,8 +69,18 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload.data;
 }
 
-const cellStyle = { padding: "8px 10px", borderBottom: "1px solid #e2e8f0", fontSize: 13 };
-const headerStyle = { ...cellStyle, color: "#475569", textAlign: "left" as const };
+function connectionBadge(status: string | undefined) {
+  if (status === "active") return `${styles.badge} ${styles.badgeConnected}`;
+  if (status === "pending") return `${styles.badge} ${styles.badgePending}`;
+  return `${styles.badge} ${styles.badgeOff}`;
+}
+
+function connectionLabel(status: string | undefined) {
+  if (status === "active") return "MDM connected";
+  if (status === "pending") return "Waiting approval";
+  if (status === "revoked") return "Disconnected";
+  return "Not enrolled";
+}
 
 export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
   const [branches, setBranches] = useState<BranchRow[]>([]);
@@ -124,6 +135,10 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
     return map;
   }, [enrollments]);
 
+  const activeCount = enrollments.filter((item) => item.enrollment_status === "active").length;
+  const pendingCount = enrollments.filter((item) => item.enrollment_status === "pending").length;
+  const onlineCount = devices.filter((item) => item.status.toLowerCase() === "online" || item.status.toLowerCase() === "active").length;
+
   async function generateToken() {
     if (!branchId) {
       setError("Select a branch before generating a pairing token.");
@@ -159,7 +174,7 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
   async function changeEnrollment(id: string, action: "approve" | "revoke") {
     const ownershipType = ownershipByEnrollment[id] ?? "";
     if (action === "approve" && !ownershipType) {
-      setError("Select device ownership before approving this enrollment.");
+      setError("Select device ownership before connecting MDM.");
       return;
     }
 
@@ -177,8 +192,8 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
       await parseResponse(response);
       setSuccess(
         action === "approve"
-          ? `Device enrollment approved as ${ownershipType}. Full MDM still requires Device Owner + matching native capabilities.`
-          : "Device enrollment revoked."
+          ? `MDM enrollment approved as ${ownershipType}. Full MDM becomes available only when Device Owner and required native capabilities are reported.`
+          : "MDM enrollment disconnected."
       );
       setOwnershipByEnrollment((current) => ({ ...current, [id]: "" }));
       await load();
@@ -189,21 +204,74 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
     }
   }
 
+  function EnrollmentActions({ enrollment }: { enrollment: EnrollmentRow }) {
+    if (enrollment.enrollment_status === "pending") {
+      return (
+        <div className={styles.actionRow}>
+          <select
+            aria-label={`Ownership for ${enrollment.device_code}`}
+            value={ownershipByEnrollment[enrollment.id] ?? ""}
+            onChange={(event) => setOwnershipByEnrollment((current) => ({
+              ...current,
+              [enrollment.id]: event.target.value as OwnershipType | ""
+            }))}
+            disabled={busy}
+          >
+            <option value="">Select ownership</option>
+            {OWNERSHIP_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className={`${styles.button} ${styles.buttonPrimary}`}
+            disabled={busy || !(ownershipByEnrollment[enrollment.id] ?? "")}
+            onClick={() => void changeEnrollment(enrollment.id, "approve")}
+          >
+            เชื่อมต่อ MDM
+          </button>
+        </div>
+      );
+    }
+
+    if (enrollment.enrollment_status === "active") {
+      return (
+        <button
+          type="button"
+          className={`${styles.button} ${styles.buttonDanger}`}
+          disabled={busy}
+          onClick={() => void changeEnrollment(enrollment.id, "revoke")}
+        >
+          ปิดการเชื่อมต่อ MDM
+        </button>
+      );
+    }
+
+    return <span className={connectionBadge(enrollment.enrollment_status)}>{connectionLabel(enrollment.enrollment_status)}</span>;
+  }
+
   return (
-    <section className="surface" style={{ display: "grid", gap: 16 }}>
-      <div>
-        <h2 style={{ margin: 0 }}>Device enrollment & pairing</h2>
-        <p style={{ margin: "6px 0 0", color: "#475569" }}>
-          New devices use short-lived activation tokens. IT must explicitly classify ownership before approval. Only company-owned/company-financed devices can later qualify for Full MDM; customer-owned/BYOD stay diagnostics-only.
+    <section className={styles.console}>
+      <header className={styles.hero}>
+        <h2>Device enrollment & pairing</h2>
+        <p>
+          เมนูนี้ใช้เชื่อมต่อและปิดการเชื่อมต่อ MDM ที่ระดับ enrollment โดยตรง การเปิด Full MDM จริงยังตรวจ ownership, Android Device Owner และ native capability ของเครื่องตามเงื่อนไขเดิม
         </p>
+      </header>
+
+      {success ? <p className={`${styles.notice} ${styles.success}`}>{success}</p> : null}
+      {error ? <p className={`${styles.notice} ${styles.error}`}>{error}</p> : null}
+
+      <div className={styles.summaryGrid}>
+        <div className={styles.summaryCard}><span>Registered devices</span><strong>{devices.length}</strong></div>
+        <div className={styles.summaryCard}><span>Online / active</span><strong>{onlineCount}</strong></div>
+        <div className={styles.summaryCard}><span>MDM connected</span><strong>{activeCount}</strong></div>
+        <div className={styles.summaryCard}><span>Waiting approval</span><strong>{pendingCount}</strong></div>
       </div>
 
-      {success ? <p style={{ margin: 0, color: "#047857" }}>{success}</p> : null}
-      {error ? <p style={{ margin: 0, color: "#b91c1c" }}>{error}</p> : null}
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "end" }}>
-        <label style={{ display: "grid", gap: 4, minWidth: 260 }}>
-          <span style={{ fontSize: 13, color: "#475569" }}>Branch</span>
+      <div className={styles.toolbar}>
+        <label className={styles.field}>
+          <span>Branch</span>
           <select value={branchId} onChange={(event) => setBranchId(event.target.value)} disabled={busy || loading}>
             <option value="">Select branch</option>
             {branches.map((branch) => (
@@ -213,52 +281,56 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
             ))}
           </select>
         </label>
-        <button type="button" className="pos-monitor-btn" disabled={busy || loading || !branchId} onClick={() => void generateToken()}>
+        <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} disabled={busy || loading || !branchId} onClick={() => void generateToken()}>
           Generate POS pairing token
         </button>
-        <button type="button" className="pos-monitor-btn" disabled={busy || loading} onClick={() => void load()}>
+        <button type="button" className={styles.button} disabled={busy || loading} onClick={() => void load()}>
           Refresh
         </button>
       </div>
 
       {token ? (
-        <div style={{ border: "1px solid #f59e0b", borderRadius: 8, padding: 12, background: "#fffbeb" }}>
+        <div className={styles.token}>
           <strong>One-time pairing token</strong>
-          <div style={{ marginTop: 8, overflowWrap: "anywhere", fontFamily: "monospace", fontSize: 14 }}>{token.activation_token}</div>
-          <div style={{ marginTop: 6, fontSize: 13, color: "#92400e" }}>Expires: {formatDateTime(token.expires_at)}</div>
-          <div style={{ marginTop: 6, fontSize: 13, color: "#92400e" }}>
-            Waiting for the POS/Android agent to consume this token and create a pending enrollment. Do not treat token creation itself as successful pairing.
-          </div>
+          <div className={styles.tokenCode}>{token.activation_token}</div>
+          <p>Expires: {formatDateTime(token.expires_at)}</p>
+          <p>Waiting for the POS/Android agent to consume this token and create a pending enrollment. Do not treat token creation itself as successful pairing.</p>
         </div>
       ) : null}
 
-      <div>
-        <h3 style={{ margin: "0 0 8px" }}>Registered devices</h3>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div><h3>Registered devices</h3><p>ดูสถานะเครื่องและสถานะการเชื่อมต่อ MDM ล่าสุด</p></div>
+        </div>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
             <thead>
               <tr>
-                <th style={headerStyle}>Device</th>
-                <th style={headerStyle}>Runtime status</th>
-                <th style={headerStyle}>Pairing</th>
-                <th style={headerStyle}>Last seen</th>
-                <th style={headerStyle}>MDM</th>
+                <th>Device</th>
+                <th>Runtime status</th>
+                <th>Pairing / MDM</th>
+                <th>Last seen</th>
+                <th>MDM action</th>
+                <th>Health</th>
               </tr>
             </thead>
             <tbody>
               {devices.length === 0 ? (
-                <tr><td style={cellStyle} colSpan={5}>{loading ? "Loading..." : "No registered devices."}</td></tr>
+                <tr><td colSpan={6} className={styles.empty}>{loading ? "Loading..." : "No registered devices."}</td></tr>
               ) : (
                 devices.map((device) => {
                   const enrollment = enrollmentByDeviceCode.get(device.device_code);
-                  const pairing = enrollment ? `${enrollment.enrollment_status} / ${enrollment.trust_level}` : "Legacy · not enrolled";
                   return (
                     <tr key={device.id}>
-                      <td style={cellStyle}>{device.device_name} ({device.device_code})</td>
-                      <td style={cellStyle}>{device.status}</td>
-                      <td style={cellStyle}>{pairing}</td>
-                      <td style={cellStyle}>{formatDateTime(device.last_seen_at)}</td>
-                      <td style={cellStyle}><a href={`/it-admin/tenants/${tenantId}/devices/${device.id}`}>Open health</a></td>
+                      <td><span className={styles.deviceName}>{device.device_name}</span><span className={styles.muted}>{device.device_code} · {device.device_type}</span></td>
+                      <td><span className={connectionBadge(device.status === "active" || device.status === "online" ? "active" : undefined)}>{device.status}</span></td>
+                      <td>
+                        <span className={connectionBadge(enrollment?.enrollment_status)}>{connectionLabel(enrollment?.enrollment_status)}</span>
+                        <span className={styles.muted}>{enrollment ? `${enrollment.trust_level} · ${enrollment.device_type}` : "Legacy · not enrolled"}</span>
+                      </td>
+                      <td>{formatDateTime(device.last_seen_at)}</td>
+                      <td>{enrollment ? <EnrollmentActions enrollment={enrollment}/> : <span className={styles.muted}>Generate token / wait for request</span>}</td>
+                      <td><a className={styles.healthLink} href={`/it-admin/tenants/${tenantId}/devices/${device.id}`}>Open health</a></td>
                     </tr>
                   );
                 })
@@ -266,70 +338,44 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
             </tbody>
           </table>
         </div>
-      </div>
+        <p className={styles.connectionNote}>“เชื่อมต่อ MDM” ใช้ endpoint approve เดิม และ “ปิดการเชื่อมต่อ MDM” ใช้ endpoint revoke เดิม จึงยังคง audit และ security contract เดิมทั้งหมด</p>
+      </section>
 
-      <div>
-        <h3 style={{ margin: "0 0 8px" }}>Enrollment requests</h3>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div><h3>Enrollment requests</h3><p>คำขอใหม่และประวัติการเชื่อมต่อ/ยกเลิก MDM</p></div>
+        </div>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
             <thead>
               <tr>
-                <th style={headerStyle}>Device code</th>
-                <th style={headerStyle}>Type</th>
-                <th style={headerStyle}>Status</th>
-                <th style={headerStyle}>Trust</th>
-                <th style={headerStyle}>Updated</th>
-                <th style={headerStyle}>Ownership / Action</th>
+                <th>Device code</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Trust</th>
+                <th>Updated</th>
+                <th>Ownership / Action</th>
               </tr>
             </thead>
             <tbody>
               {enrollments.length === 0 ? (
-                <tr><td style={cellStyle} colSpan={6}>No enrollment requests yet.</td></tr>
+                <tr><td colSpan={6} className={styles.empty}>No enrollment requests yet.</td></tr>
               ) : (
                 enrollments.map((enrollment) => (
                   <tr key={enrollment.id}>
-                    <td style={cellStyle}>{enrollment.device_code}</td>
-                    <td style={cellStyle}>{enrollment.device_type}</td>
-                    <td style={cellStyle}>{enrollment.enrollment_status}</td>
-                    <td style={cellStyle}>{enrollment.trust_level}</td>
-                    <td style={cellStyle}>{formatDateTime(enrollment.updated_at)}</td>
-                    <td style={cellStyle}>
-                      {enrollment.enrollment_status === "pending" ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                          <select
-                            aria-label={`Ownership for ${enrollment.device_code}`}
-                            value={ownershipByEnrollment[enrollment.id] ?? ""}
-                            onChange={(event) => setOwnershipByEnrollment((current) => ({
-                              ...current,
-                              [enrollment.id]: event.target.value as OwnershipType | ""
-                            }))}
-                            disabled={busy}
-                          >
-                            <option value="">Select ownership</option>
-                            {OWNERSHIP_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            className="pos-monitor-btn"
-                            disabled={busy || !(ownershipByEnrollment[enrollment.id] ?? "")}
-                            onClick={() => void changeEnrollment(enrollment.id, "approve")}
-                          >
-                            Approve
-                          </button>
-                        </div>
-                      ) : enrollment.enrollment_status === "active" ? (
-                        <button type="button" className="pos-monitor-btn" disabled={busy} onClick={() => void changeEnrollment(enrollment.id, "revoke")}>Revoke</button>
-                      ) : "-"}
-                    </td>
+                    <td className={styles.deviceName}>{enrollment.device_code}</td>
+                    <td>{enrollment.device_type}</td>
+                    <td><span className={connectionBadge(enrollment.enrollment_status)}>{connectionLabel(enrollment.enrollment_status)}</span></td>
+                    <td>{enrollment.trust_level}</td>
+                    <td>{formatDateTime(enrollment.updated_at)}</td>
+                    <td><EnrollmentActions enrollment={enrollment}/></td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </section>
   );
 }
