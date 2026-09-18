@@ -1,4 +1,5 @@
 import { createHash, createPrivateKey, createPublicKey, randomBytes, sign, verify } from "node:crypto";
+import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 
 export const CPIPOS_LICENSE_PRODUCT = "CPIPOS-DESKTOP";
 export const CPIPOS_LICENSE_ISSUER = "CUTTING-POINT-TECH-IT";
@@ -44,6 +45,7 @@ export type OfflineLicenseSignerStatus = {
   keyMatchesDesktop: boolean;
   publicKeyFingerprint: string | null;
   expectedPublicKeyFingerprint: string;
+  source: "environment" | "supabase_vault" | "missing" | "invalid";
 };
 
 function normalizePrivateKeyPem(value: string) {
@@ -56,6 +58,26 @@ function readPrivateKeyPem() {
 
   const base64 = process.env.CPIPOS_LICENSE_PRIVATE_KEY_BASE64?.trim();
   if (base64) return Buffer.from(base64, "base64").toString("utf8");
+
+  throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_NOT_CONFIGURED");
+}
+
+async function readPrivateKeyPemServer() {
+  try {
+    return { pem: readPrivateKeyPem(), source: "environment" as const };
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== "CPIPOS_LICENSE_PRIVATE_KEY_NOT_CONFIGURED") throw error;
+  }
+
+  try {
+    const supabase = getPrimarySupabaseServiceClient();
+    const { data, error } = await supabase.rpc("get_cpipos_license_signing_key");
+    if (error) throw error;
+    const pem = typeof data === "string" ? data.trim() : "";
+    if (pem) return { pem: normalizePrivateKeyPem(pem), source: "supabase_vault" as const };
+  } catch {
+    // Fail closed below. Never fall back to a browser-provided key.
+  }
 
   throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_NOT_CONFIGURED");
 }
@@ -96,7 +118,8 @@ export function getOfflineLicenseSignerStatus(): OfflineLicenseSignerStatus {
       configured: false,
       keyMatchesDesktop: false,
       publicKeyFingerprint: null,
-      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT
+      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
+      source: "missing"
     };
   }
 
@@ -108,14 +131,39 @@ export function getOfflineLicenseSignerStatus(): OfflineLicenseSignerStatus {
       configured: keyMatchesDesktop,
       keyMatchesDesktop,
       publicKeyFingerprint: fingerprint,
-      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT
+      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
+      source: "environment"
     };
   } catch {
     return {
       configured: false,
       keyMatchesDesktop: false,
       publicKeyFingerprint: null,
-      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT
+      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
+      source: "invalid"
+    };
+  }
+}
+
+export async function getOfflineLicenseSignerStatusServer(): Promise<OfflineLicenseSignerStatus> {
+  try {
+    const resolved = await readPrivateKeyPemServer();
+    const fingerprint = publicKeyFingerprint(resolved.pem);
+    const keyMatchesDesktop = privateKeyMatchesDesktop(resolved.pem);
+    return {
+      configured: keyMatchesDesktop,
+      keyMatchesDesktop,
+      publicKeyFingerprint: fingerprint,
+      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
+      source: keyMatchesDesktop ? resolved.source : "invalid"
+    };
+  } catch {
+    return {
+      configured: false,
+      keyMatchesDesktop: false,
+      publicKeyFingerprint: null,
+      expectedPublicKeyFingerprint: CPIPOS_DESKTOP_PUBLIC_KEY_FINGERPRINT,
+      source: "missing"
     };
   }
 }
@@ -190,7 +238,7 @@ export function verifyOfflineLicenseToken(token: string): OfflineLicensePayload 
   return payload;
 }
 
-export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOfflineLicense {
+function issueOfflineLicenseWithPrivateKey(input: IssueOfflineLicenseInput, privateKeyPem: string): IssuedOfflineLicense {
   const customer = input.customer.trim();
   const plan = input.plan.trim();
   if (!customer || customer.length > 120) throw new Error("LICENSE_CUSTOMER_INVALID");
@@ -198,7 +246,6 @@ export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOffl
 
   const devices = normalizeDeviceCodes(input.devices);
   const features = normalizeFeatures(input.features);
-  const privateKeyPem = readPrivateKeyPem();
   if (!privateKeyMatchesDesktop(privateKeyPem)) throw new Error("CPIPOS_LICENSE_PRIVATE_KEY_MISMATCH");
   const privateKey = createPrivateKey(privateKeyPem);
   const publicKey = createPublicKey(privateKey);
@@ -254,4 +301,13 @@ export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOffl
     payload,
     publicKeyFingerprint: publicKeyFingerprint(privateKeyPem)
   };
+}
+
+export function issueOfflineLicense(input: IssueOfflineLicenseInput): IssuedOfflineLicense {
+  return issueOfflineLicenseWithPrivateKey(input, readPrivateKeyPem());
+}
+
+export async function issueOfflineLicenseServer(input: IssueOfflineLicenseInput): Promise<IssuedOfflineLicense> {
+  const resolved = await readPrivateKeyPemServer();
+  return issueOfflineLicenseWithPrivateKey(input, resolved.pem);
 }
