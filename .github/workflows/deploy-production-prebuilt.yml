@@ -1,3 +1,4 @@
+# One-time trigger path for an authorized prebuilt production deployment.
 name: Prebuilt Production Deploy
 
 on:
