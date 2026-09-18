@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import {
-  issueOfflineLicense,
+  issueOfflineLicenseServer,
   verifyOfflineLicenseToken,
   type IssuedOfflineLicense,
   type IssueOfflineLicenseInput
@@ -224,7 +224,7 @@ export async function reissueDesktopLicenseContract(contractId: string, input: D
   if (error) throw error;
   if (!existing) throw new Error("LICENSE_NOT_REGISTERED");
 
-  const issued = issueOfflineLicense({ ...input, licenseId: (existing as any).license_id });
+  const issued = await issueOfflineLicenseServer({ ...input, licenseId: (existing as any).license_id });
   const payload = issued.payload;
   const { error: updateError } = await supabase
     .from("desktop_license_contracts")
