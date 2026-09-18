@@ -10,7 +10,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const DESKTOP_VERSION = "0.3.2";
+const DESKTOP_VERSION = "0.3.1";
 
 async function requireItAdmin() {
   const auth = await getAuthContext({ requireBranchScope: false });
