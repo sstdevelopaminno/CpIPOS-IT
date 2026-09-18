@@ -349,7 +349,7 @@ export function DeviceHealthConsole({ tenantId, deviceId }: { tenantId: string; 
             <div className={styles.metricCard}><span>Status</span><strong>{diagnostics.printerStatus}</strong></div>
             <div className={styles.metricCard}><span>Selected printer</span><strong>{diagnostics.selectedPrinter}</strong></div>
             <div className={styles.metricCard}><span>Queue count</span><strong>{diagnostics.printQueue ?? "Not reported"}</strong></div>
-            <div className={styles.metricCard}><span>Detected hardware</span><strong>{diagnostics.detectedPrinters.length > 0 ? diagnostics.detectedPrinters.join(", ") : "None reported"}</strong></div>
+            <div className={styles.metricCard}><span>Detected printer hardware</span><strong>{diagnostics.detectedPrinters.length > 0 ? diagnostics.detectedPrinters.join(", ") : "None reported"}</strong></div>
             <div className={styles.metricCard}><span>Last print</span><strong>{formatDateTime(diagnostics.lastPrintAt)}</strong></div>
             <div className={styles.metricCard}><span>Last error</span><strong>{health?.last_error ?? textValue(asRecord(health?.runtime_health), "last_error") ?? "None reported"}</strong></div>
           </div>
