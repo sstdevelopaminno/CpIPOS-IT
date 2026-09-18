@@ -1,4 +1,4 @@
-import { DesktopLicenseManagementConsole } from "@/components/it-admin/desktop-license-management-console";
+import { DesktopLicenseControlPlaneV031 } from "@/components/it-admin/desktop-license-control-plane-v031";
 import { getCurrentLanguage, type Language } from "@/lib/i18n";
 import styles from "./page.module.css";
 
@@ -9,7 +9,7 @@ export default async function OfflineDesktopLicensePage() {
 
   return (
     <div className={styles.page}>
-      <DesktopLicenseManagementConsole language={language} />
+      <DesktopLicenseControlPlaneV031 language={language} />
     </div>
   );
 }
