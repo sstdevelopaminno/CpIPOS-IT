@@ -294,7 +294,7 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
           <strong>One-time pairing token</strong>
           <div className={styles.tokenCode}>{token.activation_token}</div>
           <p>Expires: {formatDateTime(token.expires_at)}</p>
-          <p>Waiting for the POS/Android agent to consume this token and create a pending enrollment. Token creation itself is not yet a successful MDM connection.</p>
+          <p>Waiting for the POS/Android agent to consume this token and create a pending enrollment. Do not treat token creation itself as successful pairing.</p>
         </div>
       ) : null}
 
