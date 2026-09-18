@@ -10,6 +10,8 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const DESKTOP_VERSION = "0.3.1";
+
 async function requireItAdmin() {
   const auth = await getAuthContext({ requireBranchScope: false });
   if (auth.platformRole !== "it_admin") throw new Error("FORBIDDEN");
@@ -26,7 +28,7 @@ export async function GET() {
       public_key_fingerprint: signer.publicKeyFingerprint,
       expected_public_key_fingerprint: signer.expectedPublicKeyFingerprint,
       product: "CPIPOS-DESKTOP",
-      desktop_version: "0.3.0",
+      desktop_version: DESKTOP_VERSION,
       issuer: "CUTTING-POINT-TECH-IT",
       max_devices: 2,
       signer_source: signer.source
@@ -55,7 +57,7 @@ export async function POST(request: Request) {
 
     return ok({
       generated_at: new Date().toISOString(),
-      desktop_version: "0.3.0",
+      desktop_version: DESKTOP_VERSION,
       registry_id: registry.id,
       ...issued
     });
@@ -72,7 +74,7 @@ export async function POST(request: Request) {
     if (message === "CPIPOS_LICENSE_PRIVATE_KEY_MISMATCH") {
       return fail(
         "license_private_key_mismatch",
-        "The configured signing key does not match the public key embedded in CpIPOS Desktop v0.3.0.",
+        `The configured signing key does not match the public key embedded in CpIPOS Desktop v${DESKTOP_VERSION}.`,
         503
       );
     }
