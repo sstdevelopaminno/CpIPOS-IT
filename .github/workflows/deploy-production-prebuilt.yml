@@ -1,8 +1,13 @@
-# One-time trigger path for an authorized prebuilt production deployment.
+# Authorized production prebuilt deployment workflow.
 name: Prebuilt Production Deploy
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-production-prebuilt.yml"
   push:
     branches:
       - main
@@ -21,7 +26,10 @@ jobs:
     name: Build and deploy prebuilt production
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[prebuilt-deploy]')
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[prebuilt-deploy]')) ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[prebuilt-deploy]'))
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
