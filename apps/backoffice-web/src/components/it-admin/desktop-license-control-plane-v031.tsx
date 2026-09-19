@@ -208,22 +208,6 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
     if (!q) return rows;
     return rows.filter((row) => [row.license_id, row.customer_name, row.plan, ...(row.devices || []).map((d) => d.device_code)].join(" ").toLowerCase().includes(q));
   }, [rows, search]);
-  const totals = useMemo(() => {
-    const allDevices = rows.flatMap((row) => row.devices || []);
-    const todayGross = rows.reduce((sum, row) => sum + Number(row.today?.gross_sales || 0), 0);
-    const todayBills = rows.reduce((sum, row) => sum + Number(row.today?.bill_count || 0), 0);
-    return {
-      licenses: rows.length,
-      active: rows.filter((row) => row.status === "active").length,
-      online: allDevices.filter((device) => device.online).length,
-      blocked: allDevices.filter((device) => !device.is_authorized).length,
-      mdm: allDevices.filter((device) => mdmEnabled(device)).length,
-      totalDevices: allDevices.length,
-      todayGross,
-      todayBills,
-      maxTodayGross: Math.max(1, ...rows.map((row) => Number(row.today?.gross_sales || 0)))
-    };
-  }, [rows]);
 
   const validation = useMemo(() => {
     if (!form.customer.trim()) return th ? "กรอกชื่อลูกค้า / ร้านค้า" : "Customer name is required";
@@ -517,33 +501,7 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
 
     {message ? <div className={styles.alert}>{message}</div> : null}
 
-    <section className={styles.kpiGrid}>
-      <article className={styles.kpi}><span>{th ? "License ทั้งหมด" : "Total licenses"}</span><b>{number(totals.licenses)}</b><small>{totals.active} active</small></article>
-      <article className={styles.kpi}><span>{th ? "เครื่องออนไลน์" : "Online devices"}</span><b>{number(totals.online)}/{number(totals.totalDevices)}</b><small>{totals.blocked} blocked</small></article>
-      <article className={styles.kpi}><span>{th ? "MDM เชื่อมต่อ" : "MDM connected"}</span><b>{number(totals.mdm)}</b><small>{th ? "กดเปิด/ปิดได้ในแท็บ MDM" : "Toggle inside MDM tab"}</small></article>
-      <article className={styles.kpi}><span>{th ? "ยอดขายวันนี้" : "Today sales"}</span><b>{money(totals.todayGross)}</b><small>{number(totals.todayBills)} bills</small></article>
-    </section>
-
     <section className={styles.card}>
-      <div className={styles.historyHeader}>
-        <div>
-          <h2>{th ? "License History / ตัวเลขและกราฟ" : "License History / Metrics & Chart"}</h2>
-          <p>{th ? "License ID ใช้ดูประวัติเท่านั้น ต้องคัดลอก License Key แบบเต็มไปใส่ในโปรแกรม" : "License ID is history only. Copy the full signed License Key into Desktop."}</p>
-        </div>
-        <div className={styles.historyMeta}>
-          <span>{rows.length} {th ? "รายการ" : "licenses"}</span>
-          <span>{totals.online} online</span>
-          <span>{totals.mdm} MDM</span>
-        </div>
-      </div>
-      <div className={styles.chartPanel}>
-        <div className={styles.chartTitle}><b>{th ? "กราฟยอดขายวันนี้ตาม License" : "Today sales by license"}</b><span>{money(totals.todayGross)}</span></div>
-        <div className={styles.barChart}>{filteredRows.slice(0, 12).map((row) => {
-          const value = Number(row.today?.gross_sales || 0);
-          const height = Math.max(8, Math.round((value / totals.maxTodayGross) * 100));
-          return <button key={row.id} type="button" className={styles.chartBar} title={`${row.license_id} ${money(value)}`} onClick={() => { setSelectedId(row.id); setDetailPanel("summary"); }}><i style={{ height: `${height}%` }} /><span>{row.customer_name.slice(0, 10) || row.license_id.slice(-6)}</span></button>;
-        })}</div>
-      </div>
       <div className={styles.formGrid}>
         <label>{th ? "ค้นหา License / ลูกค้า / Device" : "Search license / customer / device"}<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="CP-... / CpIPOS Store / Device Code" /></label>
       </div>
