@@ -247,9 +247,29 @@ export function DesktopLicenseControlPlaneV031({ language, readiness }: { langua
   };
 
   useEffect(() => {
+    // Three registry/key requests per refresh: avoid polling idle/hidden admin tabs.
+    const refreshMs = 5 * 60_000;
+    let lastRefreshAt = Date.now();
+    let backgroundInFlight = false;
     void load(false);
-    const timer = window.setInterval(() => void load(true), 30000);
-    return () => window.clearInterval(timer);
+
+    const refreshIfStale = () => {
+      if (document.visibilityState !== "visible" || backgroundInFlight) return;
+      const now = Date.now();
+      if (now - lastRefreshAt < refreshMs) return;
+      lastRefreshAt = now;
+      backgroundInFlight = true;
+      void load(true).finally(() => { backgroundInFlight = false; });
+    };
+
+    const timer = window.setInterval(refreshIfStale, refreshMs);
+    document.addEventListener("visibilitychange", refreshIfStale);
+    window.addEventListener("focus", refreshIfStale);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfStale);
+      window.removeEventListener("focus", refreshIfStale);
+    };
   }, []);
 
   const setFeature = (feature: Feature, checked: boolean) => {
