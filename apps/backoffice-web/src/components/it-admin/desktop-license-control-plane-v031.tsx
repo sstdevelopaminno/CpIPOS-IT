@@ -494,13 +494,6 @@ export function DesktopLicenseControlPlaneV031({ language, readiness }: { langua
         <button className={styles.primary} onClick={openIssuer}>+ {th ? "ออก License ใหม่" : "New License"}</button>
       </div>
     </div>
-    <header className={styles.heroCompact}>
-      <div>
-        <span>DESKTOP LICENSE CONTROL PLANE</span>
-        <h1>{th ? "จัดการ License โปรแกรม POS Desktop" : "POS Desktop License"}</h1>
-        <p>{th ? "ออกลายเส้นจริง จัดการเครื่อง ตรวจสุขภาพ และควบคุม MDM จากหน้าเดียว" : "Issue signed keys, manage devices, inspect health, and control MDM in one page."}</p>
-      </div>
-    </header>
 
     {message ? <div className={styles.alert}>{message}</div> : null}
 
