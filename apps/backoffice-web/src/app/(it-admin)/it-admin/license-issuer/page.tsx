@@ -11,8 +11,7 @@ export default async function OfflineDesktopLicensePage() {
 
   return (
     <div className={styles.page}>
-      <DesktopLicenseReadinessPanel language={language} />
-      <DesktopLicenseControlPlaneV031 language={language} />
+      <DesktopLicenseControlPlaneV031 language={language} readiness={<DesktopLicenseReadinessPanel language={language} />} />
       <DesktopCloudApprovalPanel language={language} />
     </div>
   );

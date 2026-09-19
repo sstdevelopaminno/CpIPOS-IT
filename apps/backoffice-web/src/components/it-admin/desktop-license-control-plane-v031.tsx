@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Language } from "@/lib/i18n";
 import styles from "./desktop-license-control-plane-v031.module.css";
 
@@ -184,7 +184,7 @@ function mdmEnabled(device: DeviceRow) {
   return device.is_authorized && device.remote_management_enabled !== false;
 }
 
-export function DesktopLicenseControlPlaneV031({ language }: { language: Language }) {
+export function DesktopLicenseControlPlaneV031({ language, readiness }: { language: Language; readiness: ReactNode }) {
   const th = language === "th";
   const [rows, setRows] = useState<RegistryRow[]>([]);
   const [signer, setSigner] = useState<SignerStatus | null>(null);
@@ -485,17 +485,20 @@ export function DesktopLicenseControlPlaneV031({ language }: { language: Languag
   };
 
   return <div className={styles.page}>
+    <div className={styles.toolbar}>
+      <div className={styles.readinessSlot}>{readiness}</div>
+      <div className={`${styles.actions} ${styles.toolbarActions}`}>
+        <button onClick={() => void load(false)} disabled={busy}>{th ? "รีเฟรช" : "Refresh"}</button>
+        <button onClick={() => setModal("key")}>Key Management</button>
+        <button onClick={() => setModal("trial")}>Trial</button>
+        <button className={styles.primary} onClick={openIssuer}>+ {th ? "ออก License ใหม่" : "New License"}</button>
+      </div>
+    </div>
     <header className={styles.heroCompact}>
       <div>
         <span>DESKTOP LICENSE CONTROL PLANE</span>
         <h1>{th ? "จัดการ License โปรแกรม POS Desktop" : "POS Desktop License"}</h1>
         <p>{th ? "ออกลายเส้นจริง จัดการเครื่อง ตรวจสุขภาพ และควบคุม MDM จากหน้าเดียว" : "Issue signed keys, manage devices, inspect health, and control MDM in one page."}</p>
-      </div>
-      <div className={styles.actions}>
-        <button onClick={() => void load(false)} disabled={busy}>{th ? "รีเฟรช" : "Refresh"}</button>
-        <button onClick={() => setModal("key")}>Key Management</button>
-        <button onClick={() => setModal("trial")}>Trial</button>
-        <button className={styles.primary} onClick={openIssuer}>+ {th ? "ออก License ใหม่" : "New License"}</button>
       </div>
     </header>
 
