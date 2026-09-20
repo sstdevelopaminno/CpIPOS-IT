@@ -16,7 +16,7 @@ env:
   ITADMIN_RUNTIME_RELEASE_TAG: it-admin-runtime-latest
   ITADMIN_RUNTIME_SETUP_ASSET_NAME: CpIPOS-ITAdminRuntime-Setup.exe
   ITADMIN_RUNTIME_ZIP_ASSET_NAME: CpIPOS-ITAdminRuntime-win-x64.zip
-  ITADMIN_RUNTIME_VERSION: 0.1.1
+  ITADMIN_RUNTIME_VERSION: 0.1.2
 
 jobs:
   build-it-admin-runtime:
@@ -142,7 +142,7 @@ jobs:
             Cpipos.ITAdminRuntime.exe --url=http://localhost:3000/it-admin/login --allow-custom-url
 
           Security:
-          - Production runtime URLs are restricted to https://cp-ipos-web.vercel.app unless --allow-custom-url is used for local development.
+          - Production runtime URLs are restricted to https://cp-ipos-it-web.vercel.app/it-admin/... unless --allow-custom-url is used for local development.
           - This app has no local print bridge, cash drawer, or POS-terminal bridge methods; it is a plain browser shell for the IT Admin web console.
 
           Icon behavior:
@@ -151,7 +151,7 @@ jobs:
           - If Windows still shows the old icon after reinstall, clear Windows icon cache.
 
           Notes:
-          - This package wraps CpIPOS's own /it-admin web surface, not a separate codebase.
+          - This package wraps the separate CpIPOS-IT Admin website, never the customer POS host.
           - It can be installed side by side with CpIPOS Windows Runtime (POS terminal app) on the same machine.
           '@ | Set-Content -Encoding UTF8 "$env:ITADMIN_RUNTIME_OUTPUT/README-ITADMIN-RUNTIME.txt"
 
