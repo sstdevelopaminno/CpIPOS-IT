@@ -85,6 +85,8 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
   const [loading, setLoading] = useState(true);
   const [busyCommand, setBusyCommand] = useState<MdmCommandType | null>(null);
   const [reason, setReason] = useState("");
+  const [packageName, setPackageName] = useState("");
+  const [remoteSupportMode, setRemoteSupportMode] = useState<"attended" | "company_kiosk">("attended");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -131,6 +133,16 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
       return;
     }
 
+    if (control.commandType === "install_app" || control.commandType === "uninstall_app") {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(packageName.trim())) {
+        setError("Enter a valid Android package name, e.g. com.example.app.");
+        return;
+      }
+    }
+    if (control.requiresOwnerApproval && !window.confirm(`Confirm ${control.label} for ${deviceId}? This records an IT operator confirmation, not a second-person approval.`)) {
+      return;
+    }
+
     setBusyCommand(control.commandType);
     setError(null);
     setSuccess(null);
@@ -138,6 +150,13 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
       const payload: Record<string, unknown> = {};
       if (control.commandType === "sync_policy") {
         payload.policy_generation = new Date().toISOString();
+      }
+      if (control.commandType === "start_remote_support") {
+        payload.sessionMode = remoteSupportMode;
+        payload.ttlMinutes = 30;
+      }
+      if (control.commandType === "install_app" || control.commandType === "uninstall_app") {
+        payload.packageName = packageName.trim();
       }
 
       const response = await fetch("/api/it-admin/v1/mdm/commands", {
@@ -156,6 +175,7 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
       await parseResponse(response);
       setSuccess(`Queued Full MDM command: ${control.commandType}. Waiting for device pickup / ACK.`);
       setReason("");
+      if (control.commandType === "install_app" || control.commandType === "uninstall_app") setPackageName("");
       await load(true);
     } catch (commandError) {
       setError(commandError instanceof Error ? commandError.message : "Failed to queue Full MDM command.");
@@ -179,7 +199,11 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
   }
 
   const { device, controls, commands } = data;
-  const connected = device.is_full_mdm_eligible;
+  const heartbeatTime = device.last_heartbeat_at ? Date.parse(device.last_heartbeat_at) : Number.NaN;
+  const heartbeatAge = Date.now() - heartbeatTime;
+  const recentlySeen = Number.isFinite(heartbeatAge) && heartbeatAge >= 0 && heartbeatAge <= 120_000;
+  const eligible = device.is_full_mdm_eligible && data.banner.tone === "success";
+  const connected = eligible && recentlySeen;
 
   return (
     <section className={styles.console}>
@@ -191,7 +215,7 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
         </div>
         <span className={`${styles.connectionBadge} ${connected ? styles.connected : styles.limited}`}>
           <span className={styles.dot}/>
-          {connected ? "MDM connected" : "Diagnostics only"}
+          {connected ? "MDM online" : eligible ? "MDM offline / stale" : "Diagnostics only"}
         </span>
       </header>
 
@@ -232,6 +256,25 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
           />
         </label>
 
+        {controls.some((control) => control.enabled && (control.commandType === "install_app" || control.commandType === "uninstall_app")) ? (
+          <label className={styles.reason}>
+            <span>Android package name (for install / uninstall)</span>
+            <input value={packageName} onChange={(event) => setPackageName(event.target.value)}
+              placeholder="com.example.app" autoCapitalize="off" autoComplete="off" spellCheck={false}
+              disabled={busyCommand !== null} />
+          </label>
+        ) : null}
+        {controls.some((control) => control.enabled && control.commandType === "start_remote_support") ? (
+          <label className={styles.reason}>
+            <span>Remote support session mode</span>
+            <select value={remoteSupportMode}
+              onChange={(event) => setRemoteSupportMode(event.target.value as "attended" | "company_kiosk")}
+              disabled={busyCommand !== null}>
+              <option value="attended">Attended (screen-sharing permission required on Android)</option>
+              <option value="company_kiosk">Company-owned kiosk (only if provisioned and supported)</option>
+            </select>
+          </label>
+        ) : null}
         <div className={styles.controls}>
           {controls.map((control) => {
             const latest = commandByType.get(control.commandType);
@@ -253,7 +296,7 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
           })}
         </div>
         <p className={styles.help}>
-          การเชื่อมต่อ/ยกเลิกการเชื่อมต่อ MDM จัดการจาก Device enrollment & pairing; หน้านี้ใช้ควบคุมเครื่องที่ผ่าน enrollment แล้วเท่านั้น
+          การเชื่อมต่อ/ยกเลิกการเชื่อมต่อ MDM จัดการจาก Device enrollment & pairing; หน้านี้ใช้ควบคุมเครื่องที่ผ่าน enrollment แล้วเท่านั้น · Queued ไม่ใช่คำสั่งที่ทำสำเร็จ ต้องดู completed / ACK ของเครื่อง · Remote screen sharing ต้องขอสิทธิ์ตามระบบ Android
         </p>
       </section>
 
