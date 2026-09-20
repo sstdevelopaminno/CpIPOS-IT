@@ -162,7 +162,7 @@ export function StoreRegistrationsConsole() {
               <strong>{selected.store_name}</strong><span>{selected.business_type} · {selected.owner_name}</span>
               <span>{selected.owner_email} · {selected.owner_phone}</span>
               <span>แพ็กเกจ: {data?.packages.find((p) => p.id === selected.package_id)?.name ?? "—"} · 7 วันนับจากอนุมัติ</span>
-              <span>สร้างรหัสร้านโดยระบบ · สาขาแรก “สาขาหลัก” · เครื่องขายต้องจับคู่กับอุปกรณ์จริงภายหลัง</span>
+              <span>สร้างรหัสร้านโดยระบบ · สาขาแรก “สาขาหลัก” · เครื่องขาย 1 (รอจับคู่กับอุปกรณ์จริง)</span>
               <label>รหัสเจ้าของร้าน (6 หลัก)<input inputMode="numeric" maxLength={6} value={ownerCode}
                 onChange={(e) => setOwnerCode(e.target.value.replace(/\D/g,"").slice(0,6))} /></label>
               <label>PIN เจ้าของร้าน (6 หลัก)<input type="password" autoComplete="new-password"
