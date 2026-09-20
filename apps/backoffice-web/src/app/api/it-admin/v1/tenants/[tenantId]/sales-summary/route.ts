@@ -38,7 +38,7 @@ function bangkokDay(iso: string): string {
 }
 function parseDate(value: string | null): string {
   const date = value ?? bangkokDay(new Date().toISOString());
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (!Number.isFinite(new Date(date + "T00:00:00Z").getTime()) || new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date)) {
     throw new ItAdminGuardError("invalid_report_date", "Date must be YYYY-MM-DD.", 422);
   }
   return date;
