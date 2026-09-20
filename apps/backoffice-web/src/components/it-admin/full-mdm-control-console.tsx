@@ -82,6 +82,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string; deviceId: string }) {
   const [data, setData] = useState<MdmPayload | null>(null);
+  const [lastRefreshTime, setLastRefreshTime] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyCommand, setBusyCommand] = useState<MdmCommandType | null>(null);
   const [reason, setReason] = useState("");
@@ -100,6 +101,7 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
         credentials: "include"
       });
       const payload = await parseResponse<MdmPayload>(response);
+      setLastRefreshTime(Date.now());
       setData(payload);
     } catch (loadError) {
       setData(null);
@@ -200,7 +202,7 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
 
   const { device, controls, commands } = data;
   const heartbeatTime = device.last_heartbeat_at ? Date.parse(device.last_heartbeat_at) : Number.NaN;
-  const heartbeatAge = Date.now() - heartbeatTime;
+  const heartbeatAge = lastRefreshTime === null ? Number.NaN : lastRefreshTime - heartbeatTime;
   const recentlySeen = Number.isFinite(heartbeatAge) && heartbeatAge >= 0 && heartbeatAge <= 120_000;
   const eligible = device.is_full_mdm_eligible && data.banner.tone === "success";
   const connected = eligible && recentlySeen;
