@@ -21,7 +21,7 @@ type RecordInput = {
   owner_code?: string;
   owner_pin?: string;
 };
-const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(s);
+const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(s);
 const clean = (s: unknown, max: number) => typeof s === "string" ? s.trim().slice(0, max) : "";
 function validateEdit(input: RecordInput) {
   const row = {
