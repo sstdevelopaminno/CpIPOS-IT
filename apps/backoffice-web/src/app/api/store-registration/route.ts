@@ -8,6 +8,8 @@ const json = (data: unknown, status = 200) => NextResponse.json(data, { status, 
 const uuid = (v: unknown): v is string =>
   typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 const str = (v: unknown, max: number) => typeof v === "string" ? v.trim().slice(0, max) : "";
+const isPackageUuid = (v: unknown): v is string =>
+  typeof v === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v);
 type Application = {
   submission_key?: unknown; store_name?: unknown; business_type?: unknown;
   owner_name?: unknown; owner_email?: unknown; owner_phone?: unknown;
@@ -56,7 +58,8 @@ export async function POST(req: Request) {
     general_sale: rawModes.general_sale === true,
     buffet_table: false, delivery: false
   };
-  if (!uuid(body.submission_key) || !uuid(body.package_id) || storeName.length < 2 || businessType.length < 2 ||
+  // Package IDs include stable seeded UUIDs such as 10000000-0000-0000-0000-000000000001.
+  if (!uuid(body.submission_key) || !isPackageUuid(body.package_id) || storeName.length < 2 || businessType.length < 2 ||
       ownerName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail) ||
       !/^[+0-9 ()-]{8,40}$/.test(ownerPhone) || !keys.some((key) => modes[key])) {
     return json({ error: "กรุณากรอกชื่อร้าน ประเภทร้าน เจ้าของร้าน อีเมล เบอร์โทร แพ็กเกจ และโหมดขายให้ครบ" }, 422);
