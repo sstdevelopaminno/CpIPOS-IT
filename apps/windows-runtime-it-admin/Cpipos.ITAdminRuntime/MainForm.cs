@@ -167,6 +167,14 @@ internal sealed class MainForm : Form
             if (!eventArgs.IsSuccess)
             {
                 ShowOfflinePage(eventArgs.WebErrorStatus.ToString());
+                return;
+            }
+
+            // Next.js can return a successful WebView navigation with an HTTP 404.
+            // Diagnose the missing IT deployment instead of displaying a blank 404.
+            if (eventArgs.HttpStatusCode == 404 || eventArgs.HttpStatusCode >= 500)
+            {
+                ShowOfflinePage($"HTTP {eventArgs.HttpStatusCode} at {new Uri(_options.AppUrl).GetLeftPart(UriPartial.Path)}");
             }
         };
 
