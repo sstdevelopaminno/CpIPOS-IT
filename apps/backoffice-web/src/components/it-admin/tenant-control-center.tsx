@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { POS_SALES_MODE_KEYS, type PosSalesModeKey, type PosSalesModeView } from "@/lib/pos-sales-modes";
 import { useTenantActionConfirm } from "./tenant-action-confirm";
 import { TenantPrimaryOwnerCard } from "./tenant-primary-owner-card";
+import { TenantSalesSummary } from "./tenant-sales-summary";
 import dashboardStyles from "./tenant-control-center-dashboard.module.css";
 import styles from "./tenant-directory-console.module.css";
 
@@ -92,7 +93,7 @@ type ControlData = {
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "salesModes" | "package" | "danger";
+type Tab = "overview" | "profile" | "branches" | "salesModes" | "package" | "salesSummary" | "danger";
 type BillingCycle = "monthly" | "yearly";
 
 const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, true])) as Record<PosSalesModeKey, boolean>;
@@ -367,7 +368,9 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     }
   };
 
-  const detailCopy = tab === "profile"
+  const detailCopy = tab === "salesSummary"
+    ? { eyebrow: "STORE SALES INTELLIGENCE", title: "สรุปยอดขาย", description: "รายวัน · รายเดือน · รายปี · รายบิล · รายสินค้า · ทุกสาขาหรือเฉพาะสาขา" }
+    : tab === "profile"
     ? { eyebrow: "STORE PROFILE", title: "ข้อมูลร้าน", description: "แก้ไขชื่อร้าน ข้อมูลติดต่อ ที่อยู่ และโลโก้" }
     : tab === "branches"
       ? { eyebrow: "BRANCH MANAGEMENT", title: "สาขา", description: "จัดการสาขาปัจจุบันและเปิดสาขาใหม่" }
@@ -443,6 +446,12 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <div className={dashboardStyles.cardBottom}><span>{data.sales_modes.filter((mode) => mode.enabled).map((mode) => mode.short_label).join(" · ") || "ยังไม่เปิดโหมด"}</span><strong>ตั้งค่าโหมด →</strong></div>
                 </button>
 
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("salesSummary")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>฿</div><span className={dashboardStyles.cardBadge}>POS LIVE DATA</span></div>
+                  <div className={dashboardStyles.cardText}><span>SALES REPORT</span><strong>สรุปยอดขาย</strong><small>รายวัน เดือน ปี · บิลขาย · สินค้า · แยกสาขา</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>ข้อมูลจาก CpiPOS-001 · อ่านอย่างเดียว</span><strong>ดูรายงาน →</strong></div>
+                </button>
+
                 <Link className={dashboardStyles.settingsCard} href={`/tenants/${tenantId}/devices`}>
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>MDM</div><span className={dashboardStyles.cardBadge}>{data.usage.online_devices_5m} online</span></div>
                   <div className={dashboardStyles.cardText}><span>DEVICES / MDM</span><strong>อุปกรณ์ POS</strong><small>ดูอุปกรณ์ที่ผูกกับร้าน สถานะ Active และ Heartbeat</small></div>
@@ -487,6 +496,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
             <div className={dashboardStyles.sectionBody}>
               {error ? <div className={styles.controlAlertError}><strong>ดำเนินการไม่สำเร็จ</strong><span>{error}</span></div> : null}
               {success ? <div className={styles.controlAlertSuccess}>{success}</div> : null}
+
+              {tab === "salesSummary" ? <TenantSalesSummary tenantId={tenantId} /> : null}
 
               {tab === "profile" ? (
                 <div className={styles.controlStack}>
