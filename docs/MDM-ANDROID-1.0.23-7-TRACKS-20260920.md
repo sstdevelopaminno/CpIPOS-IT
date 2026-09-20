@@ -4,7 +4,7 @@ Date: 2026-09-20. Scope: company-owned / company-financed **Android 1.0.23 Web P
 
 ## Evidence from source and read-only CpiPOS-001 check
 
-- CpIPOS-IT Windows runtime v0.1.1 pointed to the customer POS host `https://cp-ipos-web.vercel.app/it-admin/login` even though IT Admin has been split to a different app. Runtime 0.1.2 changes its target to `https://cp-ipos-it-web.vercel.app/it-admin/login`. The separate IT deployment/route must be confirmed reachable before publishing an installer.
+- The supplied 404 screenshot title reads **CpIPOS**, which matches the *customer POS Windows WebView runtime* (`CpIPOS/apps/windows-runtime-native/.../MainForm.cs`), whereas this repository's IT runtime window title reads **CpIPOS IT Admin**. Do not claim the screenshot is fixed until the installed EXE/shortcut and its effective URL are identified. The independent IT runtime misrouting below is still a real defect.\n- CpIPOS-IT Windows runtime v0.1.1 pointed to the customer POS host `https://cp-ipos-web.vercel.app/it-admin/login` even though IT Admin has been split to a different app. Runtime 0.1.2 changes its target to `https://cp-ipos-it-web.vercel.app/it-admin/login`. The separate IT deployment/route must be confirmed reachable before publishing an installer.
 - `apps/backoffice-web/src/lib/mdm/eligibility.ts` already gates Full MDM to Android 1.0.23 Web Production, company ownership, Android Device Owner, and advertised capabilities.
 - `apps/pos-android/app/src/main/java/com/cpipos/pos/FullMdmAgent.kt` implements `diagnostics_ping`, `sync_policy` and Device Owner `lock_device` only. Other executors return `full_mdm_command_not_implemented`. Do not equate a command type in the IT UI/database with a working device-side feature.
 - **Read-only production inspection on 2026-09-20:** `mdm_devices`, `mdm_commands`, `mdm_command_audit` and `mdm_remote_support_sessions` each had **0 records** in CpiPOS-001. Legacy `branch_devices` or app-level heartbeats are not proof of Full MDM enrollment.
@@ -14,7 +14,7 @@ Date: 2026-09-20. Scope: company-owned / company-financed **Android 1.0.23 Web P
 
 | # | Track | Required verification before declaring complete |
 |---|---|---|
-| 1 | IT Windows 404 / deployment | Correct IT host and /it-admin/login, Windows release CI passes, confirmed deployed route serves login, login works, rebuilt installer tested on Windows. |
+| 1 | IT Windows 404 / deployment | Identify which EXE produced the screenshot and its effective URL; correct IT host and /it-admin/login independently; Windows CI passes, deployed route serves login, and rebuilt installer is tested on Windows. |
 | 2 | Enrollment and ownership | Device code + install identity paired and IT-approved, Android Device Owner established by legitimate managed provisioning, financing/company ownership recorded with evidence, no BYOD/Native 2.0 Full MDM. |
 | 3 | Heartbeat / health | 1.0.23 runtime reports fresh native health + app version + real capabilities, IT shows online/offline and health age accurately, snapshots and incidents reconcile with legacy heartbeats. |
 | 4 | Lock / unlock / financing policy | Test physical screen lock separately from CpIPOS app/access lock. Device Owner lockNow is supported today; implement a documented unlock/release policy supported by Android APIs and verified contract authority. Add confirmation, audit, expiry and device ACK; never claim a software app can bypass a device PIN. |
