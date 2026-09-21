@@ -137,6 +137,7 @@ export async function GET(req: Request) {
       commands: commands ?? [],
       control_plane: { authority: "CpiPOS-001.mdm_commands" }
     });
+    response.headers.set("cache-control", "private, no-store");
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
     return response;
   } catch (error) {
@@ -170,7 +171,11 @@ export async function POST(req: Request) {
     const commandTypeRaw = text(body.command_type);
     const reason = text(body.reason);
     const rawPayload = body.payload;
-    const ttlMinutes = Math.min(Math.max(Number(body.ttl_minutes ?? 30), 1), 60);
+    const ttlRaw = body.ttl_minutes ?? 30;
+    const ttlMinutes = typeof ttlRaw === "number" ? ttlRaw : Number.NaN;
+    if (!Number.isInteger(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > 60) {
+      return fail("invalid_mdm_command_ttl", "ttl_minutes must be an integer from 1 to 60.", 422);
+    }
 
     if (!tenantId || !deviceId) return fail("missing_scope", "tenant_id and device_id are required.", 422);
     if (!isMdmCommandType(commandTypeRaw)) return fail("invalid_mdm_command_type", "Unknown MDM command type.", 422);

@@ -15,7 +15,7 @@ internal static class Program
 
 internal sealed class RuntimeOptions
 {
-    private const string ProductionAppUrl = "https://cp-ipos-web.vercel.app/it-admin/login";
+    private const string ProductionAppUrl = "https://cp-ipos-it-web.vercel.app/it-admin/login";
 
     public string AppUrl { get; init; } = ProductionAppUrl;
     public bool Fullscreen { get; init; }
@@ -79,7 +79,10 @@ internal sealed class RuntimeOptions
     private static bool IsProductionAppUri(Uri uri)
     {
         return uri.Scheme == Uri.UriSchemeHttps &&
-               string.Equals(uri.Host, "cp-ipos-web.vercel.app", StringComparison.OrdinalIgnoreCase);
+               string.Equals(uri.Host, "cp-ipos-it-web.vercel.app", StringComparison.OrdinalIgnoreCase) &&
+               uri.IsDefaultPort &&
+               string.IsNullOrEmpty(uri.UserInfo) &&
+               (uri.AbsolutePath == "/it-admin" || uri.AbsolutePath.StartsWith("/it-admin/", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsLocalDevelopmentUri(Uri uri)
