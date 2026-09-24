@@ -615,10 +615,10 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   ) : null}
 
                   <section className={styles.quickStats}>
-                    <article><span>เปิดสัญญา</span><strong>{formatDate(data.contract?.start_at)}</strong><small>{data.contract?.billing_cycle === "yearly" ? "รอบรายปี" : "รอบรายเดือน"}</small></article>
-                    <article><span>หมดอายุ</span><strong>{formatDate(data.contract?.end_at)}</strong><small>{data.contract?.end_at ? "POS ตรวจ ended_at อัตโนมัติ" : "ยังไม่กำหนด"}</small></article>
+                    <article><span>{isTrial ? "เริ่มทดลองใช้" : "เปิดสัญญา"}</span><strong>{formatDate(data.contract?.start_at)}</strong><small>{isTrial ? "ยังไม่เริ่มนับแพ็กเกจชำระเงิน" : data.contract?.billing_cycle === "yearly" ? "รอบรายปี" : "รอบรายเดือน"}</small></article>
+                    <article><span>{isTrial ? "หมดทดลองใช้" : "หมดอายุ"}</span><strong>{formatDate(data.contract?.end_at)}</strong><small>{isTrial ? "ตามเวลาสิทธิ์ทดลองใช้ในฐานข้อมูล" : data.contract?.end_at ? "POS ตรวจ ended_at อัตโนมัติ" : "ยังไม่กำหนด"}</small></article>
                     <article><span>คงเหลือ</span><strong>{data.contract?.days_remaining == null ? "—" : `${data.contract.days_remaining} วัน`}</strong><small>{contractLabel(currentStatus)}</small></article>
-                    <article><span>Auto renew</span><strong>{data.contract?.auto_renew ? "เปิด" : "ปิด"}</strong><small>แก้ไขด้านล่าง</small></article>
+                    <article><span>Auto renew</span><strong>{data.contract?.auto_renew ? "เปิด" : "ปิด"}</strong><small>{isPrepaidPendingTrial ? "คงค่าไว้หลังครบ Trial" : "แก้ไขด้านล่าง"}</small></article>
                   </section>
 
                   {data.contract ? (
@@ -642,7 +642,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <section className={styles.controlSection}>
                     <div className={styles.controlSectionHeader}>
                       <div><span>{isTrial ? "ACTIVATE PAID PACKAGE" : "CHANGE PACKAGE"}</span><h4>{isTrial ? "เปลี่ยนจาก Trial เป็นแพ็กเกจจริง" : "เปลี่ยนแพ็กเกจ"}</h4></div>
-                      <small>{isTrial ? "เปิดแพ็กเกจจริงได้ทันที ไม่ต้องรอ Trial หมด" : "สร้างสัญญาใหม่และเก็บประวัติสัญญาเดิม"}</small>
+                      <small>{isPrepaidPendingTrial ? "รับเงินล่วงหน้าแล้ว ระบบจะเปิดแพ็กเกจจริงเมื่อครบ Trial" : isTrial ? "เปิดแพ็กเกจจริงได้ทันที ไม่ต้องรอ Trial หมด" : "สร้างสัญญาใหม่และเก็บประวัติสัญญาเดิม"}</small>
                     </div>
                     <div className={styles.formGrid}>
                       <label><span>แพ็กเกจ</span><select value={packageId} onChange={(e) => selectPackage(e.target.value)}>{data.packages.map((pkg) => <option value={pkg.id} key={pkg.id}>{pkg.name} · {pkg.code}</option>)}</select></label>
