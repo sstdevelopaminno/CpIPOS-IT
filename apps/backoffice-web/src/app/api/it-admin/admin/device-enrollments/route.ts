@@ -29,7 +29,9 @@ export async function GET(request: Request) {
       allowTenantWide: auth.platformRole === "it_admin"
     });
 
-    await requireTenantFeatureIfConfigured(tenantId, "mobile_device_enrollment", branchId);
+    if (auth.platformRole !== "it_admin") {
+      await requireTenantFeatureIfConfigured(tenantId, "mobile_device_enrollment", branchId);
+    }
 
     let query = supabase
       .from("device_enrollments")
