@@ -62,12 +62,14 @@ const CONFIG: Record<ModuleName, ModuleConfig> = {
   devices: {
     eyebrow: "DEVICES / MDM",
     title: "Devices / MDM",
-    description: "ทะเบียนอุปกรณ์จาก CpiPOS-002 แยก Registry state ออกจาก Health telemetry จริงอย่างชัดเจน",
-    source: "CpiPOS-002 · IT / MDM Operations",
-    summaryLabels: { total: "อุปกรณ์ทั้งหมด", active: "Registry Active", health_reported: "มี Health", locked: "Locked" },
+    description: "ทะเบียนอุปกรณ์ออนไลน์จาก CpiPOS-001 เชื่อมตรงกับ POS Heartbeat, การอนุมัติ MDM และสถานะจอแสดงผลลูกค้า",
+    source: "CpiPOS-001 · POS + IT MDM Authority",
+    summaryLabels: { total: "อุปกรณ์ทั้งหมด", active: "Registry Active", health_reported: "มี Health", mdm_connected: "MDM เชื่อมต่อ", locked: "Locked" },
     columns: [
       { key: "tenant", label: "ร้าน" }, { key: "branch", label: "สาขา" }, { key: "device", label: "อุปกรณ์" },
       { key: "registry_status", label: "Registry", kind: "status" }, { key: "health", label: "Health", kind: "status" },
+      { key: "mdm_status", label: "MDM", kind: "status" }, { key: "full_mdm", label: "Device Owner / Full MDM" },
+      { key: "dual_screen_enabled", label: "จอที่ 2 เปิดใช้" },
       { key: "app_version", label: "App" }, { key: "runtime_version", label: "Runtime" }, { key: "last_seen_at", label: "Seen ล่าสุด", kind: "date" }
     ]
   },
@@ -252,7 +254,17 @@ export function ItAdminModuleConsole({ module }: { module: ModuleName }) {
                 <tr key={String(row.id ?? `${module}-${index}`)}>
                   {config.columns.map((column) => {
                     const display = formatValue(row[column.key], column.kind);
-                    return <td key={column.key}>{column.kind === "status" ? <span className={styles.statusBadge}>{display}</span> : display}</td>;
+                    return <td key={column.key}>
+                      {module === "devices" && column.key === "device" && row.id && row.tenant_id ? (
+                        <Link href={`/tenants/${encodeURIComponent(String(row.tenant_id))}/devices/${encodeURIComponent(String(row.id))}/health`}>
+                          {display} · ควบคุม MDM
+                        </Link>
+                      ) : module === "devices" && column.key === "full_mdm" ? (
+                        row.full_mdm === true && row.device_owner === true ? "พร้อม (Device Owner)" : "ยังไม่พร้อม"
+                      ) : module === "devices" && column.key === "dual_screen_enabled" ? (
+                        row.dual_screen_enabled === true ? "เปิด (เมื่อรองรับ)" : "ปิด"
+                      ) : column.kind === "status" ? <span className={styles.statusBadge}>{display}</span> : display}
+                    </td>;
                   })}
                 </tr>
               )) : !loading && !error ? <tr><td colSpan={config.columns.length} className={styles.empty}>ยังไม่มีข้อมูลจริงในโมดูลนี้</td></tr> : null}
