@@ -210,7 +210,12 @@ export const validateMdmCommandRequest = (
   }
 
   if (request.commandType === 'install_app' || request.commandType === 'uninstall_app') {
-    pushIfMissing(reasons, textValue(payload.packageName).length === 0, 'android_package_name_required');
+    const packageName = textValue(payload.packageName);
+    pushIfMissing(
+      reasons,
+      !/^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) || packageName.length > 200,
+      'android_package_name_invalid',
+    );
   }
 
   if (request.commandType === 'uninstall_app') {
