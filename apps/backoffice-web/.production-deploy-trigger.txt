@@ -1,8 +1,9 @@
 CpIPOS-IT production deployment request
-requested_at: 2026-09-24
-purpose: publish Store Control Center menu policies and cashier controls to the two IT web projects
+requested_at: 2026-09-25
+purpose: publish tenant-scoped IT POS menu control with independent visible navigation locks
 source_repository: sstdevelopaminno/CpIPOS-IT
 source_branch: main
-requested_from_commit: 7f79e79fdec4f8ed55869b398fa2a3c611f0d7e8
-projects: cp-ipos-it-backoffice-web, cp-ipos-it-web
-note: deployment trigger only; no application logic or environment changes
+requested_from_commit: 05286105ce703e714636717cd3eb862da8ee82c8
+existing_projects: cp-ipos-it-backoffice-web, cp-ipos-it-web
+database: existing Supabase CpiPOS-001 (no changes)
+note: deploy trigger only; no application logic or environment changes; verify READY and production source sha
