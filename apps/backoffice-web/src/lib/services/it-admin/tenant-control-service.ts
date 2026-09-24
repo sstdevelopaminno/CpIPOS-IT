@@ -246,10 +246,12 @@ function effectiveContractStatus(contract: ContractDbRow | null) {
   return contract.status;
 }
 
-function normalizeContract(contract: ContractDbRow | null) {
+function normalizeContract(contract: ContractDbRow | null, lifecycle: LifecycleRow | null) {
   if (!contract) return null;
   const metadata = asRecord(contract.metadata);
   const effectiveStatus = effectiveContractStatus(contract);
+  const trialEndsAt = contract.status === "trial" ? lifecycle?.trial_expires_at ?? contract.ended_at : null;
+  const displayedEndAt = contract.status === "trial" ? trialEndsAt : contract.ended_at;
   return {
     id: contract.id,
     tenant_id: contract.tenant_id,
@@ -266,9 +268,9 @@ function normalizeContract(contract: ContractDbRow | null) {
     activated_at: contract.started_at,
     start_at: contract.started_at,
     started_at: contract.started_at,
-    end_at: contract.ended_at,
-    ended_at: contract.ended_at,
-    trial_end_at: contract.status === "trial" ? contract.ended_at : null,
+    end_at: displayedEndAt,
+    ended_at: displayedEndAt,
+    trial_end_at: trialEndsAt,
     cancelled_at: cleanText(metadata.cancelled_at, 80) || null,
     max_branches: contract.max_branches ?? contract.branch_limit,
     max_devices: contract.max_devices ?? contract.terminal_limit_per_branch,
@@ -276,7 +278,7 @@ function normalizeContract(contract: ContractDbRow | null) {
     metadata: contract.metadata,
     created_at: contract.created_at,
     updated_at: contract.updated_at,
-    days_remaining: contract.ended_at ? Math.max(0, Math.ceil((new Date(contract.ended_at).getTime() - Date.now()) / DAY_MS)) : null
+    days_remaining: displayedEndAt ? Math.max(0, Math.ceil((new Date(displayedEndAt).getTime() - Date.now()) / DAY_MS)) : null
   };
 }
 
@@ -393,7 +395,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   if (userRolesResult.error) throw new Error(`tenant_users_count_failed:${userRolesResult.error.message}`);
 
   const storeCode = accessCode?.access_code ?? tenant.code;
-  const contractView = normalizeContract(contract);
+  const contractView = normalizeContract(contract, lifecycle);
   const metadata = asRecord(contract?.metadata);
   const salesModes = toPosSalesModeViews(metadata.sales_modes);
   const uniqueUsers = new Set((userRolesResult.data ?? []).map((row) => row.user_id).filter(Boolean));
