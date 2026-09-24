@@ -310,8 +310,11 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload)
       });
-      const next = await parse<ControlData | { deleted: true }>(response);
+      const next = await parse<ControlData | { deleted: true; storage_cleanup_pending?: boolean }>(response);
       if ("deleted" in next && next.deleted) {
+        if (next.storage_cleanup_pending) {
+          window.alert("ลบร้านและข้อมูลฐานข้อมูลแล้ว แต่ยังมีไฟล์สื่อที่รอลบซ้ำในระบบ IT กรุณาให้ผู้ดูแลตรวจสอบรายการ Storage Cleanup ก่อนถือว่าลบครบ");
+        }
         onDeleted();
         return next;
       }
@@ -680,7 +683,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
 
                   <section className={`${styles.controlSection} ${styles.dangerSection}`}>
                     <div className={styles.controlSectionHeader}><div><span>PERMANENT DELETE</span><h4>ลบร้านค้าและข้อมูลทั้งหมด</h4></div><strong>ถาวร</strong></div>
-                    <div className={styles.dangerWarning}><strong>คำเตือน</strong><p>การลบร้านจะ Cascade ข้อมูลร้านจำนวนมาก คืนกลับไม่ได้ ระบบอนุญาตเมื่อปิดร้าน ปิดสัญญา และไม่มีอุปกรณ์ออนไลน์ใน 5 นาทีล่าสุดเท่านั้น</p></div>
+                    <div className={styles.dangerWarning}><strong>คำเตือน · ลบถาวรและย้อนกลับไม่ได้</strong><p>ลบข้อมูลร้าน สาขา เมนู สต๊อก ยอดขาย บิล การชำระเงิน กะ อุปกรณ์ และสิทธิ์ผู้ใช้ของร้านนี้ รวมถึงบัญชีเข้าสู่ระบบที่ใช้เฉพาะร้านนี้ โดยไม่กระทบผู้ใช้ร่วมร้านอื่นหรือผู้ดูแล IT · ต้องปิดร้านและไม่มีอุปกรณ์ออนไลน์ใน 5 นาทีล่าสุด (Trial จะสิ้นสุดพร้อมร้าน ไม่ต้องยกเลิกแยก)</p></div>
                     <div className={styles.formGrid}>
                       <label><span>พิมพ์ Store Code เพื่อยืนยัน</span><input value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} placeholder={data.tenant.store_code ?? data.tenant.tenant_code} /></label>
                       <label><span>เหตุผลการลบถาวร</span><input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} placeholder="อย่างน้อย 8 ตัวอักษร" /></label>
