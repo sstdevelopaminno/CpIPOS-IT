@@ -76,6 +76,39 @@ async function audit(admin: ItAdminContext, device: CashierRow, action: string,
     userAgent: admin.requestMeta.userAgent ?? undefined
   });
 }
+async function enforceCashierActivation(admin: ItAdminContext, tenantId: string, branchId: string) {
+  const [tenantResult, limits] = await Promise.all([
+    admin.supabase.from("tenants").select("id,is_active").eq("id", tenantId)
+      .maybeSingle<{ id: string; is_active: boolean }>(),
+    getTenantLimits(tenantId)
+  ]);
+  if (tenantResult.error) throw tenantResult.error;
+  if (!tenantResult.data?.is_active) {
+    throw new ItAdminGuardError("store_inactive", "ต้องเปิดร้านก่อนจึงจะเปิดเครื่องแคชเชียร์", 409);
+  }
+  if (limits.contractStatus !== "active" && limits.contractStatus !== "trial") {
+    throw new ItAdminGuardError("cashier_contract_inactive", "ร้านต้องมีแพ็กเกจที่ใช้งานหรือทดลองใช้อยู่ก่อนเปิดเครื่อง", 409);
+  }
+  await enforceQuota(tenantId, "devices", branchId);
+}
+
+/** Mirror the POS settings service's branch-login capacity adjustment. */
+async function syncCashierLoginCapacity(admin: ItAdminContext, tenantId: string, branchId: string) {
+  const [usage, existing] = await Promise.all([
+    admin.supabase.from("branch_devices").select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId).eq("branch_id", branchId).eq("status", "active"),
+    admin.supabase.from("branch_login_policies").select("max_devices")
+      .eq("tenant_id", tenantId).eq("branch_id", branchId)
+      .maybeSingle<{ max_devices: number | null }>()
+  ]);
+  if (usage.error) throw usage.error;
+  if (existing.error) throw existing.error;
+  const nextMax = Math.max(1, Number(usage.count ?? 0), Number(existing.data?.max_devices ?? 1));
+  const update = await admin.supabase.from("branch_login_policies")
+    .upsert({ tenant_id: tenantId, branch_id: branchId, max_devices: nextMax },
+      { onConflict: "tenant_id,branch_id" });
+  if (update.error) throw update.error;
+}
 async function checkRate(admin: ItAdminContext) {
   const rate = await enforceRateLimit({
     namespace: "it_cashier_devices", key: admin.auth.userId, max: 30, windowMs: 60_000
@@ -126,7 +159,7 @@ export async function POST(request: Request, context: { params: Promise<{ tenant
     }
     if (typeof body?.enabled !== "boolean") return fail("enabled_required", "enabled ต้องเป็น boolean", 422);
     await ensureBranch(admin, tenantId, branchId, body.enabled);
-    if (body.enabled) await enforceQuota(tenantId, "devices", branchId);
+    if (body.enabled) await enforceCashierActivation(admin, tenantId, branchId);
     const result = await admin.supabase.from("branch_devices")
       .insert({
         tenant_id: tenantId, branch_id: branchId, device_code: code,
@@ -143,6 +176,10 @@ export async function POST(request: Request, context: { params: Promise<{ tenant
       return fail("cashier_code_duplicate", "รหัสเครื่องนี้มีอยู่แล้วในสาขา กรุณาใช้รหัสอื่น", 409);
     }
     if (result.error || !result.data) throw result.error ?? new Error("cashier_create_failed");
+    if (body.enabled) {
+      await syncCashierLoginCapacity(admin, tenantId, branchId)
+        .catch(error => console.error("[it-cashier] branch login capacity sync failed", error));
+    }
     await audit(admin, result.data, "it_cashier_device_created",
       { status: result.data.status, counter_name: counter, location });
     return ok({ device: serialize(result.data) }, 201);
@@ -174,7 +211,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ tenan
     if (typeof body?.enabled === "boolean") {
       if (body.enabled && (current.status !== "active" || !current.is_active)) {
         await ensureBranch(admin, tenantId, current.branch_id, true);
-        await enforceQuota(tenantId, "devices", current.branch_id);
+        await enforceCashierActivation(admin, tenantId, current.branch_id);
       }
       patch.status = body.enabled ? "active" : "inactive";
       patch.is_active = body.enabled;
@@ -191,6 +228,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ tenan
       .update(patch).eq("tenant_id", tenantId).eq("id", current.id)
       .eq("device_type", "pos_terminal").select(SELECT).single<CashierRow>();
     if (result.error || !result.data) throw result.error ?? new Error("cashier_update_failed");
+    if (typeof body?.enabled === "boolean") {
+      await syncCashierLoginCapacity(admin, tenantId, current.branch_id)
+        .catch(error => console.error("[it-cashier] branch login capacity sync failed", error));
+    }
     await audit(admin, result.data, "it_cashier_device_updated", {
       before_status: current.status, after_status: result.data.status,
       before_name: current.device_name, after_name: result.data.device_name
@@ -229,6 +270,8 @@ export async function DELETE(request: Request, context: { params: Promise<{ tena
       .eq("device_type", "pos_terminal").select(SELECT).single<CashierRow>();
     if (result.error || !result.data) throw result.error ?? new Error("cashier_archive_failed");
     await revokePosSessions(admin, current);
+    await syncCashierLoginCapacity(admin, tenantId, current.branch_id)
+      .catch(error => console.error("[it-cashier] branch login capacity sync failed", error));
     await audit(admin, result.data, "it_cashier_device_archived", {
       device_name: current.device_name, archived_at: now,
       preserved_history: true
