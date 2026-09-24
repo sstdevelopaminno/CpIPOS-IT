@@ -16,7 +16,8 @@ env:
   ITADMIN_RUNTIME_RELEASE_TAG: it-admin-runtime-latest
   ITADMIN_RUNTIME_SETUP_ASSET_NAME: CpIPOS-ITAdminRuntime-Setup.exe
   ITADMIN_RUNTIME_ZIP_ASSET_NAME: CpIPOS-ITAdminRuntime-win-x64.zip
-  ITADMIN_RUNTIME_VERSION: 0.1.1
+  ITADMIN_RUNTIME_VERSION: 0.1.2
+  ITADMIN_RUNTIME_LOGIN_URL: https://cp-ipos-it-web.vercel.app/it-admin/login
 
 jobs:
   build-it-admin-runtime:
@@ -63,6 +64,25 @@ jobs:
 
           if (-not $csproj.Contains($csprojVersion)) { throw "csproj Version does not match $expected" }
           if (-not $installer.Contains($installerVersion)) { throw "Installer default AppVersion does not match $expected" }
+
+      - name: Require live independent IT login before packaging or publishing
+        shell: pwsh
+        run: |
+          $url = $env:ITADMIN_RUNTIME_LOGIN_URL
+          if ($url -eq "https://cp-ipos-web.vercel.app/it-admin/login") {
+            throw "IT Admin installer must never use the customer POS deployment."
+          }
+          try {
+            $page = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 20 -MaximumRedirection 3
+          } catch {
+            throw "Independent IT Admin login is unreachable. Abort installer publishing: $url. $($_.Exception.Message)"
+          }
+          if ($page.StatusCode -ne 200 -or
+              $page.Content -match 'store-v2-page' -or
+              $page.Content -notmatch 'it-admin') {
+            throw "IT login smoke test failed or resolved to a customer POS page; publishing is blocked."
+          }
+          Write-Host "Independent IT login HTTP 200 confirmed: $url"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -142,7 +162,7 @@ jobs:
             Cpipos.ITAdminRuntime.exe --url=http://localhost:3000/it-admin/login --allow-custom-url
 
           Security:
-          - Production runtime URLs are restricted to https://cp-ipos-web.vercel.app unless --allow-custom-url is used for local development.
+          - Production runtime URLs are restricted to the separate IT Admin host https://cp-ipos-it-web.vercel.app. Publishing is blocked unless its /it-admin/login passes a live HTTP smoke test.
           - This app has no local print bridge, cash drawer, or POS-terminal bridge methods; it is a plain browser shell for the IT Admin web console.
 
           Icon behavior:
