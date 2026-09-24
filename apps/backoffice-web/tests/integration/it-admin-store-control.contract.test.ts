@@ -96,6 +96,6 @@ describe("IT Admin Store Control Center contract", () => {
     expect(service).toContain("storage_cleanup_pending");
     expect(controlCenter).toContain("ลบร้านค้าและข้อมูลทั้งหมด");
     expect(controlCenter).toContain("Store Code เพื่อยืนยัน");
-    expect(controlCenter).toContain("คืนกลับไม่ได้");
+    expect(controlCenter).toContain("ย้อนกลับไม่ได้");
   });
 });
