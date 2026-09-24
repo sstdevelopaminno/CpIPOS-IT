@@ -7,6 +7,7 @@ import { useTenantActionConfirm } from "./tenant-action-confirm";
 import { TenantPrimaryOwnerCard } from "./tenant-primary-owner-card";
 import { TenantSalesSummary } from "./tenant-sales-summary";
 import { TenantCashierDevices } from "./tenant-cashier-devices";
+import { TenantPosMenuPolicies } from "./tenant-pos-menu-policies";
 import dashboardStyles from "./tenant-control-center-dashboard.module.css";
 import styles from "./tenant-directory-console.module.css";
 
@@ -95,7 +96,7 @@ type ControlData = {
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "cashiers" | "salesModes" | "package" | "salesSummary" | "danger";
+type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "salesSummary" | "danger";
 type BillingCycle = "monthly" | "yearly";
 
 const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, true])) as Record<PosSalesModeKey, boolean>;
@@ -384,6 +385,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
       ? { eyebrow: "BRANCH MANAGEMENT", title: "สาขา", description: "จัดการสาขาปัจจุบันและเปิดสาขาใหม่" }
       : tab === "cashiers"
         ? { eyebrow: "CASHIER TERMINALS", title: "เครื่องแคชเชียร์", description: "เพิ่ม แก้ไข เปิด–ปิด และลบเครื่องตามโควตาแพ็กเกจ เชื่อม CpIPOS ออนไลน์" }
+      : tab === "menuPolicies"
+        ? { eyebrow: "POS MENU CONTROL", title: "เปิดปิดเมนูหลัก", description: "เปิด–ปิดเมนูหลักและเมนูย่อยของ CpIPOS สำหรับร้านนี้" }
       : tab === "salesModes"
         ? { eyebrow: "POS SALES MODES", title: "โหมดขาย", description: "เปิดหรือปิดโหมดหน้าขาย POS ของร้านนี้" }
         : tab === "package"
@@ -453,6 +456,12 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   </div>
                 </button>
 
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("menuPolicies")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>☰</div><span className={dashboardStyles.cardBadge}>IT CONTROL</span></div>
+                  <div className={dashboardStyles.cardText}><span>POS MAIN MENU CONTROL</span><strong>เปิดปิดเมนูหลัก</strong><small>กำหนดเมนูหลักและเมนูย่อยที่ร้านสามารถใช้งานได้</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>รายร้าน · ไม่ลบข้อมูล</span><strong>จัดการเมนู →</strong></div>
+                </button>
+
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("package")}>
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>แพ็ก</div><span className={dashboardStyles.cardBadge}>{contractLabel(currentStatus)}</span></div>
                   <div className={dashboardStyles.cardText}><span>PACKAGE & CONTRACT</span><strong>แพ็กเกจและสิทธิ์</strong><small>สัญญา รอบบิล การระงับ และสิทธิ์การใช้งาน</small></div>
@@ -517,6 +526,9 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
               {success ? <div className={styles.controlAlertSuccess}>{success}</div> : null}
 
               {tab === "salesSummary" ? <TenantSalesSummary tenantId={tenantId} /> : null}
+              {tab === "menuPolicies" ? (
+                <TenantPosMenuPolicies tenantId={tenantId} storeName={storeName} />
+              ) : null}
               {tab === "cashiers" ? (
                 <TenantCashierDevices tenantId={tenantId} storeName={storeName}
                   confirmAction={confirmAction}
