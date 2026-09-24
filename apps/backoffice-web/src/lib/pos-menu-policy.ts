@@ -1,6 +1,6 @@
-/** Shared contract between CpIPOS POS and the separate CpIPOS-IT repository.
- * Every menu is enabled by default until IT writes a tenant-scoped override.
- * Menu policy never expands role permissions or package entitlements.
+/** Shared contract between CpIPOS POS and CpIPOS-IT.
+ * Menu switches lock only their own POS navigation entry: keep links present,
+ * keep unrelated menus/features working, and leave subscription gates intact.
  */
 export type PosMenuGroup = "main" | "more" | "settings";
 export type PosMenuDefinition = {
@@ -43,10 +43,8 @@ export const POS_MENU_CATALOG: readonly PosMenuDefinition[] = [
 const catalog = new Map(POS_MENU_CATALOG.map(item => [item.key, item]));
 export function isValidPosMenuKey(key: string): boolean { return catalog.has(key); }
 export function isPosMenuEnabled(key: string, overrides: Record<string, boolean>): boolean {
-  const item = catalog.get(key);
-  if (!item) return true; // Unknown routes are not silently reclassified.
-  if (overrides[key] === false) return false;
-  return !item.parent || isPosMenuEnabled(item.parent, overrides);
+  if (!catalog.has(key)) return true;
+  return overrides[key] !== false;
 }
 /** Longest path wins; /preview/pos is an exact-match root, not a wildcard. */
 export function posMenuKeyForRoute(pathname: string): string | null {

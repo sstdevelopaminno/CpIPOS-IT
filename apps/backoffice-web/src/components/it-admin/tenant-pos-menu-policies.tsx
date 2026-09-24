@@ -37,7 +37,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
     if (!data || busy) return;
     const enabled = data.overrides[item.key] !== false;
     const prompt = enabled ? "ปิดใช้งาน" : "เปิดใช้งาน";
-    if (!window.confirm(`${prompt} "${item.label}" ของร้าน ${storeName}?\n\nการปิดเมนูหลักจะปิดเมนูย่อยทั้งหมดด้วย แต่ยังคงค่าของเมนูย่อยเดิมไว้`)) return;
+    if (!window.confirm(`${prompt} "${item.label}" ของร้าน ${storeName}?\n\nล็อกเฉพาะเมนูที่เลือก โดยยังแสดงรายการและลิงก์ใน POS ไม่เปลี่ยนค่าของเมนูอื่นหรือสิทธิ์แพ็กเกจ`)) return;
     setBusy(item.key); setError(""); setSuccess("");
     try {
       const response = await fetch(endpoint, {
@@ -60,15 +60,13 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   function menuRow(item: PosMenuDefinition, child: boolean) {
     const configured = data?.overrides[item.key] !== false;
     const effective = data ? isPosMenuEnabled(item.key, data.overrides) : true;
-    const parentOff = item.parent && data?.overrides[item.parent] === false;
     return <div key={item.key} className={child ? styles.child : styles.parent}>
       <div className={styles.menuLabel}>
         <strong>{item.label}</strong>
-        <small>{parentOff ? "ถูกปิดตามเมนูหลัก" : effective ? "เปิดให้ใช้งาน" : "ปิดใช้งาน"}</small>
+        <small>{effective ? "เปิดให้ใช้งาน" : "ล็อกเมนูใน POS"}</small>
       </div>
       <button type="button" role="switch" aria-checked={configured}
         aria-label={`${item.label}: ${configured ? "เปิด" : "ปิด"}`}
-        title={parentOff ? "เมนูหลักปิดอยู่ การเปิดเมนูย่อยจะยังไม่มีผลจนเปิดเมนูหลัก" : undefined}
         className={configured ? styles.switchOn : styles.switchOff}
         disabled={busy !== null} onClick={() => void toggle(item)}>
         <span>{configured ? "เปิด" : "ปิด"}</span><i aria-hidden />
@@ -78,7 +76,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   return <div className={styles.root}>
     <header className={styles.header}><div>
       <strong>เปิด–ปิดเมนูหลักและเมนูย่อย</strong>
-      <p>กำหนดสิทธิ์การแสดงเมนูของร้านนี้ใน CpIPOS ออนไลน์ • ตั้งค่าแยกร้าน ไม่กระทบร้านอื่น</p>
+      <p>ล็อกเฉพาะปุ่มเมนูที่เลือกใน POS โดยยังคงแสดงลิงก์และไม่กระทบระบบหรือเมนูอื่น • ตั้งค่าแยกร้าน</p>
     </div><button type="button" className={styles.refresh} disabled={busy !== null}
       onClick={() => { setLoading(true); void load(); }}>รีเฟรช</button></header>
     {error ? <p role="alert" className={styles.error}>{error}</p> : null}
@@ -90,6 +88,6 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
           {byParent.get(item.key)?.map(child => menuRow(child, true))}
         </div> : null}
       </section>)}
-    <p className={styles.note}>การปิดเมนูไม่ลบข้อมูล ไม่เพิ่มสิทธิ์ผู้ใช้หรือสิทธิ์แพ็กเกจ และไม่ปิดระบบ IT • การเปลี่ยนแปลงมีผลกับ POS หลังรีเฟรชหน้า/โหลดนโยบายใหม่</p>
+    <p className={styles.note}>การปิดสวิตช์จะล็อกปุ่มเมนูที่เลือกเท่านั้น ไม่ซ่อนลิงก์ ไม่ปิด API ไม่ลบข้อมูล และไม่แก้สิทธิ์ผู้ใช้หรือแพ็กเกจ • POS โหลดนโยบายใหม่หลังรีเฟรชหน้า</p>
   </div>;
 }
