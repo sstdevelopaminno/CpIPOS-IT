@@ -242,6 +242,9 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
       setError("Select device ownership before connecting MDM.");
       return;
     }
+    if (action === "revoke" && !window.confirm(
+      "ปิดการเชื่อมต่อ MDM ของเครื่องนี้? ระบบจะปฏิเสธคำสั่งใหม่ และต้องสร้าง Token เพื่อจับคู่ Android ใหม่ก่อนเชื่อมต่ออีกครั้ง"
+    )) return;
 
     setBusy(true);
     setError(null);
@@ -312,7 +315,12 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
       );
     }
 
-    return <span className={connectionBadge(enrollment.enrollment_status)}>{connectionLabel(enrollment.enrollment_status)}</span>;
+    return (
+      <div className={styles.actionRow}>
+        <span className={connectionBadge(enrollment.enrollment_status)}>{connectionLabel(enrollment.enrollment_status)}</span>
+        <small>หากต้องการเปิด MDM อีกครั้ง ให้สร้าง Token ใหม่และจับคู่บน Android แล้วอนุมัติคำขอใหม่</small>
+      </div>
+    );
   }
 
   return (
