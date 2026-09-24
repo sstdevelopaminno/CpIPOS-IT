@@ -88,6 +88,6 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
           {byParent.get(item.key)?.map(child => menuRow(child, true))}
         </div> : null}
       </section>)}
-    <p className={styles.note}>หาก IT เปิดสวิตช์แล้ว POS ยังมีรูปกุญแจ ให้ตรวจสิทธิ์แพ็กเกจหรือสิทธิ์พนักงานแยกต่างหาก เช่น เมนูเปิด/ปิดกะต้องมีสิทธิ์ attendance_tracking • <a href={`/it-admin/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • การปิดสวิตช์ล็อกเฉพาะปุ่มที่เลือก ไม่ซ่อนลิงก์ ไม่ปิด API และไม่ลบข้อมูล • POS อ่านนโยบายใหม่เมื่อกลับเข้าแท็บ</p>
+    <p className={styles.note}>หาก IT เปิดสวิตช์แล้ว POS ยังมีรูปกุญแจ ให้ตรวจสิทธิ์แพ็กเกจหรือสิทธิ์พนักงานแยกต่างหาก เช่น เมนูเปิด/ปิดกะต้องมีสิทธิ์ attendance_tracking • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • การปิดสวิตช์ล็อกเฉพาะปุ่มที่เลือก ไม่ซ่อนลิงก์ ไม่ปิด API และไม่ลบข้อมูล • POS อ่านนโยบายใหม่เมื่อกลับเข้าแท็บ</p>
   </div>;
 }
