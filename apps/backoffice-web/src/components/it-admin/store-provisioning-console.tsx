@@ -324,7 +324,20 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
             <span className={styles.flowBadge}>{text.standardOnly}</span>
             <p>{text.flow}</p>
           </div>
-          <code title={requestId}>{text.request}: {requestId}</code>
+          <label className={styles.requestIdField}>
+            <span>{text.request} · {language === "th" ? "ใช้ ID เดิมเมื่อกู้คืนร้านที่เปิดค้าง" : "Reuse the original ID to recover a partial store"}</span>
+            <input
+              aria-label={text.request}
+              required
+              spellCheck={false}
+              autoComplete="off"
+              pattern="[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"
+              title={requestId}
+              value={requestId}
+              disabled={submitting}
+              onChange={(event) => setRequestId(event.target.value.trim())}
+            />
+          </label>
         </div>
 
         <section className={styles.formSection}>
