@@ -3,8 +3,8 @@ import { POS_MENU_CATALOG } from "@/lib/pos-menu-policy";
 /**
  * Mirrors the feature gates on the CUSTOMER POS navigation surfaces.
  * Keep menu controls separate from subscription/role permissions: a green switch
- * means the selected navigation entry is actually usable in every active branch.
- * Null means the POS navigation has no package-feature lock for that entry.
+ * means IT permits the entry and its POS package gate permits every active branch.
+ * Roles and store-specific UI profile filters are evaluated separately at POS login.\n * Null means the POS navigation has no package-feature lock for that entry.
  */
 export const POS_MENU_NAV_FEATURES: Readonly<Record<string, string | null>> = {
   "main.sales": "core_pos_sales",
