@@ -75,6 +75,10 @@ export function TenantDirectoryConsole() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [selected, setSelected] = useState<TenantRow | null>(null);
+  const [pendingCleanups, setPendingCleanups] = useState<Array<{
+    tenant_id: string; file_count: number; created_at: string
+  }>>([]);
+  const [cleanupBusy, setCleanupBusy] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -85,6 +89,19 @@ export function TenantDirectoryConsole() {
       const body = (await response.json().catch(() => null)) as ApiEnvelope | null;
       if (!response.ok || !body?.data) throw new Error(body?.error?.message ?? `โหลดข้อมูลร้านค้าไม่สำเร็จ (${response.status})`);
       setData(body.data);
+      // Separate, IT-only recovery queue for physical files remaining after an
+      // already-committed atomic store deletion. Never block tenant listing.
+      try {
+        const cleanupResponse = await fetch("/api/it-admin/v1/tenant-deletion-cleanup", {
+          cache: "no-store", credentials: "include"
+        });
+        const cleanupPayload = (await cleanupResponse.json().catch(() => null)) as {
+          data?: { pending: Array<{ tenant_id: string; file_count: number; created_at: string }> }
+        } | null;
+        if (cleanupResponse.ok) setPendingCleanups(cleanupPayload?.data?.pending ?? []);
+      } catch {
+        // Ordinary store listing must stay available even during Storage outages.
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "ข้อมูลร้านค้าไม่พร้อมใช้งานชั่วคราว");
     } finally {
@@ -128,6 +145,26 @@ export function TenantDirectoryConsole() {
         .some((value) => String(value).toLowerCase().includes(normalized));
     });
   }, [data?.rows, query, statusFilter]);
+
+  async function retryStorageCleanup(tenantId: string) {
+    setCleanupBusy(tenantId);
+    try {
+      const response = await fetch("/api/it-admin/v1/tenant-deletion-cleanup", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tenant_id: tenantId })
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: { message?: string }
+      } | null;
+      if (!response.ok) throw new Error(body?.error?.message ?? "ลบไฟล์ค้างไม่สำเร็จ");
+      setPendingCleanups((current) => current.filter((item) => item.tenant_id !== tenantId));
+    } catch (cleanupError) {
+      window.alert(cleanupError instanceof Error ? cleanupError.message : "ลบไฟล์ค้างไม่สำเร็จ");
+    } finally {
+      setCleanupBusy(null);
+    }
+  }
 
   const summary = data?.summary ?? {};
 
@@ -214,6 +251,37 @@ export function TenantDirectoryConsole() {
           <span>อัปเดต: {data?.checked_at ? formatDate(data.checked_at) : "—"}</span>
         </footer>
       </section>
+
+      {pendingCleanups.length > 0 ? (
+        <section className={styles.panel} aria-label="Pending permanent store media cleanup">
+          <header className={styles.header}>
+            <div>
+              <div className={styles.eyebrow}>STORAGE CLEANUP</div>
+              <h2>ไฟล์ร้านค้าที่ลบแล้วแต่ยังล้างไม่ครบ</h2>
+              <p>ข้อมูลร้านและบัญชีเฉพาะร้านลบจากฐานข้อมูลแล้ว ส่วนไฟล์สื่อที่ค้างสามารถกดลบซ้ำได้โดยไม่สร้างร้านใหม่</p>
+            </div>
+          </header>
+          <div className={styles.tableWrap}>
+            <table>
+              <thead><tr><th>Tenant ID เดิม</th><th>จำนวนไฟล์</th><th>วันที่ลบ</th><th>จัดการ</th></tr></thead>
+              <tbody>
+                {pendingCleanups.map((item) => (
+                  <tr key={item.tenant_id}>
+                    <td><span className={styles.code}>{item.tenant_id}</span></td>
+                    <td>{item.file_count}</td>
+                    <td>{formatDate(item.created_at)}</td>
+                    <td><button type="button" className={styles.detailButton}
+                      disabled={cleanupBusy !== null}
+                      onClick={() => void retryStorageCleanup(item.tenant_id)}>
+                      {cleanupBusy === item.tenant_id ? "กำลังลบ…" : "ล้างไฟล์ค้าง"}
+                    </button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       {selected ? (
         <TenantControlCenter
