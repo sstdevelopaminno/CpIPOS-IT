@@ -1,9 +1,9 @@
 CpIPOS-IT production deployment request
 requested_at: 2026-09-25
-purpose: publish tenant-scoped IT POS menu control with independent visible navigation locks
+purpose: publish effective POS menu switch states across IT control center
 source_repository: sstdevelopaminno/CpIPOS-IT
 source_branch: main
-requested_from_commit: 05286105ce703e714636717cd3eb862da8ee82c8
+requested_from_commit: ae0ccfaedc716151656285bb3d0f8701c1ab30bb
 existing_projects: cp-ipos-it-backoffice-web, cp-ipos-it-web
 database: existing Supabase CpiPOS-001 (no changes)
-note: deploy trigger only; no application logic or environment changes; verify READY and production source sha
+note: retry build rate limit once; deploy trigger only; no application logic or environment changes; verify production SHA
