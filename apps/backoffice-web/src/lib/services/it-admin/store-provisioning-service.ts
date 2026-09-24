@@ -112,18 +112,34 @@ async function resolveOrCreateOwnerIdentity(context: ItAdminContext, input: { em
     .returns<ProfileRow[]>();
 
   if (profileLookupError) throw new StoreProvisioningError("owner_profile_lookup_failed", "Unable to resolve Owner profile.", 500);
-  if ((profiles ?? []).length > 1) throw new StoreProvisioningError("owner_email_ambiguous", "More than one Owner profile uses this email.", 409);
 
-  let profile = profiles?.[0] ?? null;
-  if (profile && !profile.is_active) {
-    throw new StoreProvisioningError("owner_identity_inactive", "This Owner identity is inactive and cannot be silently reactivated.", 409);
+  // Legacy POS profiles may share a contact email even when their actual Auth login
+  // uses an internal address. Never choose the first profile or merge identities:
+  // only an Auth user whose own login email matches may own the new store.
+  const matchingProfiles: ProfileRow[] = [];
+  for (const candidate of profiles ?? []) {
+    const authResult = await supabase.auth.admin.getUserById(candidate.id);
+    if (authResult.error) {
+      throw new StoreProvisioningError("owner_auth_lookup_failed", "Unable to verify Owner authentication identity.", 500);
+    }
+    if (authResult.data.user && normalizeEmail(authResult.data.user.email) === input.email) {
+      matchingProfiles.push(candidate);
+    }
+  }
+  if (matchingProfiles.length > 1) {
+    throw new StoreProvisioningError("owner_email_ambiguous", "More than one Auth identity uses this Owner email.", 409);
+  }
+  if ((profiles ?? []).length > 0 && matchingProfiles.length === 0) {
+    throw new StoreProvisioningError(
+      "owner_profile_auth_email_mismatch",
+      "A POS profile uses this contact email, but no matching Auth login was found. Resolve the identity conflict before retrying.",
+      409
+    );
   }
 
-  if (profile) {
-    const authResult = await supabase.auth.admin.getUserById(profile.id);
-    if (authResult.error || !authResult.data.user) {
-      throw new StoreProvisioningError("owner_auth_lookup_failed", "Owner profile is not linked to a valid Auth user.", 409);
-    }
+  let profile = matchingProfiles[0] ?? null;
+  if (profile && !profile.is_active) {
+    throw new StoreProvisioningError("owner_identity_inactive", "This Owner identity is inactive and cannot be silently reactivated.", 409);
   }
 
   if (!profile) {
