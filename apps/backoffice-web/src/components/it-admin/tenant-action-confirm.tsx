@@ -34,6 +34,36 @@ const actionCopy: Record<string, Copy> = {
     confirmLabel: "ยืนยันเปิดสาขา",
     tone: "info"
   },
+  create_cashier: {
+    eyebrow: "CASHIER REGISTRATION",
+    title: "ยืนยันเพิ่มเครื่องแคชเชียร์",
+    description: "เครื่องใหม่จะเข้าสู่ทะเบียน CpIPOS ออนไลน์ และใช้โควตาเครื่อง Active ตามสัญญาแพ็กเกจ",
+    confirmLabel: "เพิ่มเครื่อง", tone: "info"
+  },
+  update_cashier: {
+    eyebrow: "CASHIER SETTINGS",
+    title: "ยืนยันแก้ไขเครื่องแคชเชียร์",
+    description: "ชื่อเครื่อง เคาน์เตอร์ และตำแหน่งจะปรากฏบน CpIPOS ออนไลน์หลังบันทึก",
+    confirmLabel: "บันทึกเครื่อง", tone: "info"
+  },
+  enable_cashier: {
+    eyebrow: "CASHIER ACCESS",
+    title: "เปิดเครื่องแคชเชียร์?",
+    description: "ระบบจะตรวจโควตาแพ็กเกจและสิทธิ์สาขาก่อนเปิดเครื่อง",
+    confirmLabel: "เปิดเครื่อง", tone: "info"
+  },
+  disable_cashier: {
+    eyebrow: "CASHIER ACCESS",
+    title: "ปิดเครื่องแคชเชียร์?",
+    description: "เครื่องจะถูกปิดการเข้า POS และยกเลิกเซสชันที่ใช้งานอยู่ ไม่ใช่คำสั่งปิดเครื่องทางกายภาพ",
+    confirmLabel: "ปิดเครื่อง", tone: "warning"
+  },
+  delete_cashier: {
+    eyebrow: "CASHIER REMOVAL",
+    title: "ยืนยันลบเครื่องแคชเชียร์?",
+    description: "เครื่องจะถูกนำออกจากหน้าล็อกอิน POS แต่คงประวัติบิล กะ และ Audit Log ระบบปฏิเสธหากยังมีกะเปิดอยู่",
+    confirmLabel: "ลบเครื่อง", tone: "danger"
+  },
   update_branch: {
     eyebrow: "BRANCH UPDATE",
     title: "ยืนยันการบันทึกข้อมูลสาขา",
