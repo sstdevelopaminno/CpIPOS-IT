@@ -85,6 +85,7 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
   const [loading, setLoading] = useState(true);
   const [busyCommand, setBusyCommand] = useState<MdmCommandType | null>(null);
   const [reason, setReason] = useState("");
+  const [packageName, setPackageName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -131,6 +132,14 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
       return;
     }
 
+    if (control.commandType === "uninstall_app" && !/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName.trim())) {
+      setError("กรุณากรอกชื่อแพ็กเกจ Android ที่จะถอนการติดตั้ง เช่น com.example.app");
+      return;
+    }
+    if (control.commandType === "uninstall_app" && !window.confirm(
+      `ถอนการติดตั้ง ${packageName.trim()} จากเครื่องนี้? คำสั่งนี้อาจลบข้อมูลภายในแอปนั้นและย้อนกลับไม่ได้`
+    )) return;
+
     setBusyCommand(control.commandType);
     setError(null);
     setSuccess(null);
@@ -138,6 +147,9 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
       const payload: Record<string, unknown> = {};
       if (control.commandType === "sync_policy") {
         payload.policy_generation = new Date().toISOString();
+      }
+      if (control.commandType === "uninstall_app") {
+        payload.packageName = packageName.trim();
       }
 
       const response = await fetch("/api/it-admin/v1/mdm/commands", {
@@ -156,6 +168,7 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
       await parseResponse(response);
       setSuccess(`Queued Full MDM command: ${control.commandType}. Waiting for device pickup / ACK.`);
       setReason("");
+      setPackageName("");
       await load(true);
     } catch (commandError) {
       setError(commandError instanceof Error ? commandError.message : "Failed to queue Full MDM command.");
@@ -232,6 +245,13 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
           />
         </label>
 
+        <label className={styles.reason}>
+          <span>ชื่อแพ็กเกจที่จะถอนติดตั้ง (Uninstall App)</span>
+          <input value={packageName} onChange={event => setPackageName(event.target.value)}
+            placeholder="com.example.otherapp" disabled={busyCommand !== null}
+            autoCapitalize="none" spellCheck={false} />
+          <small>ถอนเฉพาะแอปอื่นบนเครื่องที่เป็น Android Device Owner จริง; ไม่อนุญาตลบ CpIPOS หรือแอปควบคุม MDM เอง</small>
+        </label>
         <div className={styles.controls}>
           {controls.map((control) => {
             const latest = commandByType.get(control.commandType);
