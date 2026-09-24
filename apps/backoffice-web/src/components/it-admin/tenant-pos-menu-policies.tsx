@@ -63,7 +63,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
     return <div key={item.key} className={child ? styles.child : styles.parent}>
       <div className={styles.menuLabel}>
         <strong>{item.label}</strong>
-        <small>{effective ? "เปิดให้ใช้งาน" : "ล็อกเมนูใน POS"}</small>
+        <small>{effective ? "เปิดสวิตช์เมนูใน POS" : "ล็อกเมนูใน POS"}</small>
       </div>
       <button type="button" role="switch" aria-checked={configured}
         aria-label={`${item.label}: ${configured ? "เปิด" : "ปิด"}`}
@@ -76,7 +76,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   return <div className={styles.root}>
     <header className={styles.header}><div>
       <strong>เปิด–ปิดเมนูหลักและเมนูย่อย</strong>
-      <p>ล็อกเฉพาะปุ่มเมนูที่เลือกใน POS โดยยังคงแสดงลิงก์และไม่กระทบระบบหรือเมนูอื่น • ตั้งค่าแยกร้าน</p>
+      <p>ควบคุมเฉพาะการล็อกปุ่มใน POS ตามร้านค้า • สิทธิ์แพ็กเกจและบทบาทผู้ใช้ตรวจแยกจากสวิตช์นี้</p>
     </div><button type="button" className={styles.refresh} disabled={busy !== null}
       onClick={() => { setLoading(true); void load(); }}>รีเฟรช</button></header>
     {error ? <p role="alert" className={styles.error}>{error}</p> : null}
@@ -88,6 +88,6 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
           {byParent.get(item.key)?.map(child => menuRow(child, true))}
         </div> : null}
       </section>)}
-    <p className={styles.note}>การปิดสวิตช์จะล็อกปุ่มเมนูที่เลือกเท่านั้น ไม่ซ่อนลิงก์ ไม่ปิด API ไม่ลบข้อมูล และไม่แก้สิทธิ์ผู้ใช้หรือแพ็กเกจ • POS โหลดนโยบายใหม่หลังรีเฟรชหน้า</p>
+    <p className={styles.note}>หาก IT เปิดสวิตช์แล้ว POS ยังมีรูปกุญแจ ให้ตรวจสิทธิ์แพ็กเกจหรือสิทธิ์พนักงานแยกต่างหาก เช่น เมนูเปิด/ปิดกะต้องมีสิทธิ์ attendance_tracking • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • การปิดสวิตช์ล็อกเฉพาะปุ่มที่เลือก ไม่ซ่อนลิงก์ ไม่ปิด API และไม่ลบข้อมูล • POS อ่านนโยบายใหม่เมื่อกลับเข้าแท็บ</p>
   </div>;
 }
