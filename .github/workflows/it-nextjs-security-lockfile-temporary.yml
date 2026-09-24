@@ -1,0 +1,47 @@
+name: Regenerate IT Next.js security lockfile (temporary)
+on:
+  push:
+    branches:
+      - security/it-nextjs-16-3-6-20260925
+
+permissions:
+  contents: write
+
+concurrency:
+  group: security-it-next-lock
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Update manifest and regenerate lockfile
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.4 --activate
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'apps/backoffice-web/package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          pkg.dependencies.next = '^16.3.6';
+          pkg.devDependencies['eslint-config-next'] = '^16.3.6';
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+          pnpm install --lockfile-only --ignore-scripts
+          pnpm install --frozen-lockfile
+      - name: Commit only security dependency files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/backoffice-web/package.json pnpm-lock.yaml
+          git diff --cached --quiet && exit 0
+          git commit -m 'security(it): patch Next.js to 16.3.6 and regenerate pnpm lockfile'
+          git push origin HEAD:refs/heads/security/it-nextjs-16-3-6-20260925
