@@ -66,8 +66,12 @@ export async function POST(request: Request) {
       return fail("activation_not_allowed", "Only it_admin can create admin_enrollment activation tokens.", 403);
     }
 
-    await requireTenantFeatureIfConfigured(tenantId, "mobile_device_enrollment", branchId);
-    await requireTenantFeatureIfConfigured(tenantId, "mobile_qr_login", branchId);
+    // IT enrollment authority must not depend on a customer's paid POS features.
+    // Non-IT mobile enrollment remains governed by package entitlements.
+    if (auth.platformRole !== "it_admin") {
+      await requireTenantFeatureIfConfigured(tenantId, "mobile_device_enrollment", branchId);
+      await requireTenantFeatureIfConfigured(tenantId, "mobile_qr_login", branchId);
+    }
 
     if (tokenType === "mobile_scanner" || tokenType === "pos_terminal") {
       await enforceQuota(tenantId, "devices", branchId);
