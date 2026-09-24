@@ -5,7 +5,8 @@ import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-ad
 
 type DevicePayload = {
   device_id?: string;
-  action?: "approve" | "activate" | "deactivate" | "block" | "update";
+  action?: "approve" | "activate" | "deactivate" | "block" | "update" | "set_dual_screen";
+  dual_screen_enabled?: boolean;
   device_name?: string;
   device_type?: "pos_terminal" | "mobile_scanner" | "kiosk";
   lock_mode?: "locked" | "unlocked";
@@ -54,7 +55,8 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
       devices:
         data?.map((item) => ({
           ...item,
-          lock_mode: item.is_locked ? "locked" : "unlocked"
+          lock_mode: item.is_locked ? "locked" : "unlocked",
+          dual_screen_enabled: item.metadata?.android_dual_screen_enabled !== false
         })) ?? []
     });
   } catch (error) {
@@ -179,6 +181,22 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       }
     }
 
+    if (action === "set_dual_screen") {
+      if (current.device_type !== "pos_terminal") {
+        return fail("dual_screen_pos_terminal_required", "Dual-screen policy is supported for POS terminals only.", 409);
+      }
+      if (typeof body.dual_screen_enabled !== "boolean") {
+        return fail("dual_screen_value_required", "dual_screen_enabled must be boolean.", 422);
+      }
+      if (body.dual_screen_enabled && current.status !== "active") {
+        return fail("dual_screen_device_inactive", "Activate the POS device before enabling its customer screen.", 409);
+      }
+      metadata.android_dual_screen_enabled = body.dual_screen_enabled;
+      metadata.android_dual_screen_policy_updated_at = new Date().toISOString();
+      metadata.android_dual_screen_policy_updated_by = auth.userId;
+      patch.metadata = metadata;
+    }
+
     if (Object.keys(patch).length === 0) {
       return fail("empty_patch", "No device changes were provided.", 422);
     }
@@ -210,7 +228,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
         before_status: current.status,
         after_status: updated.status,
         before_lock_mode: current.is_locked ? "locked" : "unlocked",
-        after_lock_mode: updated.is_locked ? "locked" : "unlocked"
+        after_lock_mode: updated.is_locked ? "locked" : "unlocked",
+        dual_screen_enabled: action === "set_dual_screen" ? body.dual_screen_enabled : undefined
       },
       ipAddress: requestMeta.ipAddress ?? undefined,
       userAgent: requestMeta.userAgent ?? undefined
@@ -219,7 +238,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
     return ok({
       device: {
         ...updated,
-        lock_mode: updated.is_locked ? "locked" : "unlocked"
+        lock_mode: updated.is_locked ? "locked" : "unlocked",
+        dual_screen_enabled: updated.metadata?.android_dual_screen_enabled !== false
       }
     });
   } catch (error) {
