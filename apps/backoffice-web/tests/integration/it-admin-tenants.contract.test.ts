@@ -10,6 +10,8 @@ const tenantsUi = source("../../src/components/it-admin/tenant-directory-console
 const controlCenter = source("../../src/components/it-admin/tenant-control-center.tsx");
 const primaryOwnerUi = source("../../src/components/it-admin/tenant-primary-owner-card.tsx");
 const primaryBridge = source("../../../../supabase/control-plane-functions/cpipos-it-module-primary/index.ts");
+const tenantControl = source("../../src/lib/services/it-admin/tenant-control-service.ts");
+const cascadeSql = source("../../../../supabase/migrations/20260924193500_it_tenant_cascade_delete.sql");
 
 describe("IT Admin tenant directory", () => {
   it("uses a dedicated tenant directory UI instead of the generic module table", () => {
@@ -56,4 +58,19 @@ describe("IT Admin tenant directory", () => {
     expect(controlCenter).toContain("อุปกรณ์ Active");
     expect(controlCenter).toContain("ผู้ใช้ที่ผูกสาขา");
   });
+  it("deletes tenant business data and exclusively-owned Auth users atomically", () => {
+    expect(tenantControl).toContain('rpc("it_delete_tenant_cascade"');
+    expect(tenantControl).not.toContain("Cancel or expire the subscription before permanent deletion.");
+    expect(cascadeSql).toContain("delete from public.tenants where id = p_tenant_id");
+    expect(cascadeSql).toContain("delete from auth.users where id = v_user");
+    expect(cascadeSql).toContain("platform_role <> 'tenant_user'");
+    expect(cascadeSql).toContain("delete from public.pos_device_health_snapshots");
+    expect(cascadeSql).toContain("delete from public.store_registration_requests");
+    expect(cascadeSql).toContain("delete from public.it_store_provisioning_requests");
+    expect(cascadeSql).toContain("it_tenant_deletion_cleanup");
+    expect(cascadeSql).toContain("tenant_delete_cross_plane_requires_reconciliation");
+    expect(cascadeSql).toContain("grant execute on function public.it_delete_tenant_cascade");
+    expect(controlCenter).toContain("storage_cleanup_pending");
+  });
+
 });
