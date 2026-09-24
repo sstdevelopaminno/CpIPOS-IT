@@ -1,3 +1,4 @@
+import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
@@ -75,6 +76,15 @@ export async function POST(request: Request) {
       .update({ status: "complete", completed_at: new Date().toISOString() })
       .eq("tenant_id", tenantId).eq("status", "pending");
     if (savedError) throw savedError;
+    await appendAuditLog({
+      actorUserId: admin.auth.userId,
+      actorRole: "it_admin",
+      action: "tenant_deletion_storage_cleanup_completed",
+      targetTable: "it_tenant_deletion_cleanup",
+      targetId: tenantId,
+      module: "it_admin",
+      metadata: { deleted_tenant_id: tenantId, storage_objects_removed: files.length }
+    });
     return ok({ completed: true, tenant_id: tenantId });
   } catch (error) {
     return guardItAdminError(error);
