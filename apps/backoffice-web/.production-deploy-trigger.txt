@@ -1,4 +1,5 @@
 CpIPOS-IT Vercel production deploy trigger
-requested_at_th: 2026-09-24T22:20:00+07:00
-purpose: trigger production deployment after GitHub/Vercel connection
-latest_verified_commit_before_trigger: 7843689ed191f9b5dee71e8591942fa1c600b4fc
+requested_at_th: 2026-09-24T22:44:00+07:00
+purpose: force both cp-ipos-it-web and cp-ipos-it-backoffice-web to redeploy Store Control Center menu-policy build
+latest_required_commit: 5062c406955790e504b386d49c7f790355f89d86
+note: cp-ipos-it-web was still serving 7dc64af; redeploy main so menuPolicies card is included
