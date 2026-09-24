@@ -89,7 +89,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
         <strong>{item.label}</strong>
         <small className={effective ? styles.available : styles.unavailable}>{message}</small>
         {blockedByAccess ? <small className={styles.accessHelp}>
-          คำสั่ง IT: เปิด แต่สิทธิ์ใช้งานจริงยังปิด •{" "}
+          คำสั่ง IT: เปิด แต่เงื่อนไขแพ็กเกจ/สาขายังปิด •{" "}
           <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์</a>
         </small> : null}
       </div>
@@ -106,7 +106,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   return <div className={styles.root}>
     <header className={styles.header}><div>
       <strong>เปิด–ปิดเมนูหลักและเมนูย่อย</strong>
-      <p>สีเขียว = POS ใช้งานได้ทุกสาขา • สีเทา = IT สั่งปิด หรือแพ็กเกจ/สิทธิ์สาขาทำให้เมนูถูกล็อก • สิทธิ์พนักงานรายคนตรวจแยก</p>
+      <p>สีเขียว = IT อนุญาตและแพ็กเกจรองรับทุกสาขา • สีเทา = IT สั่งปิด หรือแพ็กเกจ/สิทธิ์สาขาล็อก • สิทธิ์พนักงานรายคนตรวจแยก</p>
     </div><button type="button" className={styles.refresh} disabled={busy !== null}
       onClick={() => { setLoading(true); void load(); }}>รีเฟรช</button></header>
     {error ? <p role="alert" className={styles.error}>{error}</p> : null}
