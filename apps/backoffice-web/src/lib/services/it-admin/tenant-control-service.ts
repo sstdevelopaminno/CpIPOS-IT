@@ -812,23 +812,88 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (tenant.is_active) {
       throw new ItAdminGuardError("tenant_must_be_inactive", "Deactivate the store before permanent deletion.", 409);
     }
-    const contract = await loadCurrentContract(context, tenantId);
-    if (contract && contract.status !== "cancelled" && effectiveContractStatus(contract) !== "expired") {
-      throw new ItAdminGuardError("subscription_must_be_closed", "Cancel or expire the subscription before permanent deletion.", 409);
-    }
-    const onlineSince = new Date(Date.now() - 5 * 60_000).toISOString();
-    const online = await context.supabase.from("branch_devices").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("last_seen_at", onlineSince);
-    if (online.error) throw new Error(`tenant_delete_device_check_failed:${online.error.message}`);
-    if ((online.count ?? 0) > 0) {
-      throw new ItAdminGuardError("tenant_devices_still_online", "A device from this store was online within the last 5 minutes.", 409);
+
+    // A single database transaction removes primary store rows and exclusive Auth
+    // identities. An active trial is deleted with the store; no separate contract
+    // cancellation is required. Shared users and IT accounts are never removed.
+    const { data: deleted, error: deletionError } = await context.supabase.rpc("it_delete_tenant_cascade", {
+      p_tenant_id: tenantId,
+      p_confirmation_code: confirmationCode,
+      p_admin_reason: reason,
+      p_actor_user_id: context.auth.userId
+    });
+    if (deletionError || !deleted?.deleted) {
+      const dbCode = String(deletionError?.message ?? "");
+      const code = dbCode.match(/tenant_delete_[a-z_]+|tenant_must_be_inactive|tenant_devices_still_online|tenant_not_found/)?.[0];
+      const messages: Record<string, string> = {
+        tenant_delete_cross_plane_requires_reconciliation: "Store data may be on another database. Reconcile data routing before permanent deletion.",
+        tenant_delete_desktop_license_requires_reconciliation: "This store has a separate Desktop license. Resolve the license and its receipts before deleting the store.",
+        tenant_delete_unmanaged_table: "A store data table needs a safe deletion rule. Nothing has been deleted.",
+        tenant_delete_confirmation_failed: "Store code confirmation does not match.",
+        tenant_delete_reason_required: "A detailed deletion reason is required.",
+        tenant_devices_still_online: "A device from this store was online within the last 5 minutes.",
+        tenant_must_be_inactive: "Deactivate the store before permanent deletion.",
+        tenant_not_found: "Store was already removed or could not be found."
+      };
+      if (code) {
+        throw new ItAdminGuardError(code, messages[code] ?? "Store deletion was rolled back. Contact IT with the error code.", 409);
+      }
+      console.error("[tenant-permanent-delete] atomic transaction failed", {
+        tenantId, code: deletionError?.code, message: deletionError?.message
+      });
+      throw new ItAdminGuardError("tenant_delete_transaction_failed", "Unable to delete all related store data atomically. No store data was removed.", 409);
     }
 
-    const snapshot = { store_code: expectedCode, internal_code: tenant.code, name: tenant.name, deleted_at: now };
-    const { error } = await context.supabase.from("tenants").delete().eq("id", tenantId);
-    if (error) throw new Error(`tenant_delete_failed:${error.message}`);
+    const files = (Array.isArray(deleted.storage_objects) ? deleted.storage_objects : []) as Array<{
+      bucket: string; path: string
+    }>;
+    let storageCleanupPending = files.length > 0;
+    if (storageCleanupPending) {
+      try {
+        const byBucket = new Map<string, string[]>();
+        for (const file of files) {
+          if (!file.bucket || !file.path?.startsWith(tenantId + "/")) {
+            throw new Error("Invalid tenant-scoped storage path");
+          }
+          byBucket.set(file.bucket, [...(byBucket.get(file.bucket) ?? []), file.path]);
+        }
+        for (const [bucket, paths] of byBucket) {
+          for (let offset = 0; offset < paths.length; offset += 100) {
+            const { error } = await context.supabase.storage.from(bucket).remove(paths.slice(offset, offset + 100));
+            if (error) throw error;
+          }
+        }
+        const { error: cleanupError } = await context.supabase
+          .from("it_tenant_deletion_cleanup")
+          .update({ status: "complete", completed_at: new Date().toISOString() })
+          .eq("tenant_id", tenantId);
+        if (cleanupError) throw cleanupError;
+        storageCleanupPending = false;
+      } catch (cleanupError) {
+        // The durable journal still contains every tenant-owned storage path,
+        // so support can retry without ever resurrecting or duplicating a tenant.
+        console.error("[tenant-permanent-delete] storage cleanup pending", {
+          tenantId, message: cleanupError instanceof Error ? cleanupError.message : "unknown"
+        });
+      }
+    }
+
     invalidateTenantFeatureGateCache(tenantId);
-    await audit(context, undefined, "tenant_permanently_deleted", "tenants", tenantId, asRecord(tenant), {}, { ...snapshot, admin_reason: reason, deleted_tenant_id: tenantId });
-    return { deleted: true, tenant_id: tenantId, tenant_code: expectedCode };
+    const snapshot = { store_code: expectedCode, internal_code: tenant.code, name: tenant.name, deleted_at: now };
+    await audit(context, undefined, "tenant_permanently_deleted", "tenants", tenantId, asRecord(tenant), {}, {
+      ...snapshot, admin_reason: reason, deleted_tenant_id: tenantId,
+      auth_users_deleted: deleted.auth_users_deleted,
+      shared_users_preserved: deleted.shared_users_preserved,
+      storage_cleanup_pending: storageCleanupPending
+    });
+    return {
+      deleted: true,
+      tenant_id: tenantId,
+      tenant_code: expectedCode,
+      auth_users_deleted: deleted.auth_users_deleted,
+      shared_users_preserved: deleted.shared_users_preserved,
+      storage_cleanup_pending: storageCleanupPending
+    };
   }
 
   return loadTenantControlCenter(context, tenantId);
