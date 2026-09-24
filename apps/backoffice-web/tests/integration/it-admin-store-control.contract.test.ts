@@ -89,9 +89,11 @@ describe("IT Admin Store Control Center contract", () => {
   it("guards permanent tenant deletion because tenant foreign keys cascade business data", () => {
     expect(service).toContain("tenant_delete_confirmation_failed");
     expect(service).toContain("tenant_must_be_inactive");
-    expect(service).toContain("subscription_must_be_closed");
+    expect(service).toContain('rpc("it_delete_tenant_cascade"');
+    expect(service).not.toContain("Cancel or expire the subscription before permanent deletion.");
     expect(service).toContain("tenant_devices_still_online");
-    expect(service).toContain('from("tenants").delete()');
+    expect(service).toContain("shared_users_preserved");
+    expect(service).toContain("storage_cleanup_pending");
     expect(controlCenter).toContain("ลบร้านค้าและข้อมูลทั้งหมด");
     expect(controlCenter).toContain("Store Code เพื่อยืนยัน");
     expect(controlCenter).toContain("คืนกลับไม่ได้");
