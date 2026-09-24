@@ -1,5 +1,5 @@
 import { appendAuditLog } from "@/lib/audit-log";
-import { enforceQuota, FeatureGateError, requireTenantFeature } from "@/lib/feature-gate";
+import { enforceQuota, FeatureGateError } from "@/lib/feature-gate";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
 
@@ -30,7 +30,8 @@ export async function GET(req: Request, context: { params: Promise<{ tenantId: s
     const { supabase } = await requireItAdmin();
     const { tenantId: tenantIdParam } = await context.params;
     const tenantId = parseTenantParam(tenantIdParam);
-    await requireTenantFeature(tenantId, "device_management");
+    // IT inventory/MDM administration is an authority operation, not a POS
+    // subscription feature. Customer-facing device features stay feature-gated.
     const { searchParams } = new URL(req.url);
     const branchId = searchParams.get("branch_id")?.trim();
 
@@ -74,7 +75,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       return fail("invalid_payload", "device_id is required.", 422);
     }
 
-    await requireTenantFeature(tenantId, "device_management");
+    // IT-only endpoint: device write permissions come from requireItAdmin().
+    // Enforce device quotas on activation, not package feature access for IT.
 
     const { data: current, error: currentError } = await supabase
       .from("branch_devices")
