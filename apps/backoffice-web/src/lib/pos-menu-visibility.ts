@@ -58,7 +58,7 @@ export function isPosMenuVisible(policy: PosMenuVisibility | null | undefined, k
 }
 
 export function posMenuKeyForRoute(path: string): string | null {
-  const normalized = path.replace(/\\/$/, "") || "/preview/pos";
+  const normalized = path.endsWith("/") ? path.slice(0, -1) : path || "/preview/pos";
   const children = POS_MENU_GROUPS.flatMap(group => group.children)
     .filter(child => child.href !== "/preview/pos/settings")
     .sort((a, b) => b.href.length - a.href.length);
