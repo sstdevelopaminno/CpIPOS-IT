@@ -856,3 +856,36 @@
     width: 100%;
   }
 }
+/* Keep the original idempotency key accessible for owner-step recovery. */
+.flowHeader .requestIdField {
+  display: grid;
+  gap: 6px;
+  width: min(100%, 445px);
+  min-width: 0;
+  color: #566783;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.flowHeader .requestIdField input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid #d4def0;
+  border-radius: 9px;
+  padding: 8px 11px;
+  background: #fff;
+  color: #263c63;
+  font: 500 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.flowHeader .requestIdField input:focus-visible {
+  outline: 2px solid #3466d4;
+  outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+  .flowHeader .requestIdField {
+    width: 100%;
+  }
+}
