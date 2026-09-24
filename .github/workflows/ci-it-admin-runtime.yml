@@ -1,0 +1,49 @@
+name: CI CpIPOS IT Admin Windows Runtime
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "apps/windows-runtime-it-admin/**"
+      - ".github/workflows/ci-it-admin-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-runtime:
+    name: Compile Windows IT Runtime (no release)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore CpIPOS icon
+        shell: pwsh
+        run: |
+          $source = "apps/windows-runtime-it-admin/Cpipos.ITAdminRuntime/assets/cpipos.ico.b64"
+          $destination = "apps/windows-runtime-it-admin/Cpipos.ITAdminRuntime/assets/cpipos.ico"
+          [System.IO.File]::WriteAllBytes($destination, [Convert]::FromBase64String((Get-Content $source -Raw).Trim()))
+
+      - name: Build Windows runtime
+        shell: pwsh
+        run: dotnet build "apps/windows-runtime-it-admin/Cpipos.ITAdminRuntime/Cpipos.ITAdminRuntime.csproj" -c Release --nologo
+
+      - name: Verify IT URL separation
+        shell: pwsh
+        run: |
+          $program = Get-Content "apps/windows-runtime-it-admin/Cpipos.ITAdminRuntime/Program.cs" -Raw
+          if (-not $program.Contains('https://cp-ipos-it-web.vercel.app/it-admin/login')) {
+            throw "IT Runtime must target the separate IT Admin web host."
+          }
+          if ($program.Contains('https://cp-ipos-web.vercel.app/it-admin/login')) {
+            throw "IT Runtime must not open the customer POS host."
+          }

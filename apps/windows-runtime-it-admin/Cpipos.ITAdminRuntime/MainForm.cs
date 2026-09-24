@@ -164,6 +164,13 @@ internal sealed class MainForm : Form
 
         _webView.CoreWebView2.NavigationCompleted += (_, eventArgs) =>
         {
+            // HTTP 404/5xx may also set IsSuccess=false, so inspect the HTTP status first.
+            if (eventArgs.HttpStatusCode == 404 || eventArgs.HttpStatusCode >= 500)
+            {
+                ShowOfflinePage($"HTTP {eventArgs.HttpStatusCode} at {new Uri(_options.AppUrl).GetLeftPart(UriPartial.Path)}");
+                return;
+            }
+
             if (!eventArgs.IsSuccess)
             {
                 ShowOfflinePage(eventArgs.WebErrorStatus.ToString());
