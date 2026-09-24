@@ -79,6 +79,7 @@ type Lifecycle = {
   subscription_expires_at: string | null;
   access_locked: boolean;
   lock_reason: string | null;
+  metadata?: Record<string, unknown> | null;
 } | null;
 
 type ControlData = {
@@ -336,8 +337,11 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const canSuspend = currentStatus === "active" || currentStatus === "trial";
   const canResume = currentStatus === "suspended";
   const canCancel = Boolean(data?.contract) && !["cancelled", "expired"].includes(currentStatus);
-  const canEditContract = Boolean(data?.contract) && !["cancelled", "expired"].includes(currentStatus);
   const isTrial = currentStatus === "trial";
+  const lifecycleMeta = data?.lifecycle?.metadata ?? {};
+  const isPrepaidPendingTrial = isTrial && lifecycleMeta.prepaid_activation_state === "pending_trial_completion" &&
+    typeof lifecycleMeta.prepaid_payment_reference === "string";
+  const canEditContract = Boolean(data?.contract) && !["cancelled", "expired"].includes(currentStatus) && !isPrepaidPendingTrial;
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
   const selectedPackageYearlyAvailable = packageAllowsYearly(selectedPackage);
   const salesModeEnabledCount = data?.sales_modes.filter((mode) => mode.enabled).length ?? 0;
@@ -601,6 +605,15 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                     <div className={styles.packageMetrics}><span>สาขา {data.contract?.max_branches ?? data.current_package?.max_branches ?? "—"}</span><span>อุปกรณ์ {data.contract?.max_devices ?? data.current_package?.max_devices ?? "—"}</span><span>ผู้ใช้ {data.contract?.max_users ?? data.current_package?.max_users ?? "—"}</span></div>
                   </section>
 
+                  {isPrepaidPendingTrial ? (
+                    <div className={styles.securityNote} role="status" style={{ display: "grid", gap: 5 }}>
+                      <strong>ยืนยันรับชำระเงินล่วงหน้า {money(Number(lifecycleMeta.prepaid_amount_thb ?? 0))}</strong>
+                      <span>สิทธิ์ทดลองใช้: {formatDate(data.lifecycle?.trial_started_at)} – {formatDate(data.lifecycle?.trial_expires_at)}</span>
+                      <span>แพ็กเกจที่ชำระแล้วจะเริ่มหลังครบทดลองใช้: {formatDate(String(lifecycleMeta.prepaid_activation_due_at ?? data.lifecycle?.trial_expires_at ?? ""))}</span>
+                      <small>ระยะเวลาแพ็กเกจที่ชำระแล้ว 30 วันนับจากการเปิดใช้แพ็กเกจจริง โดยไม่เรียกเก็บเงินซ้ำระหว่างทดลองใช้</small>
+                    </div>
+                  ) : null}
+
                   <section className={styles.quickStats}>
                     <article><span>เปิดสัญญา</span><strong>{formatDate(data.contract?.start_at)}</strong><small>{data.contract?.billing_cycle === "yearly" ? "รอบรายปี" : "รอบรายเดือน"}</small></article>
                     <article><span>หมดอายุ</span><strong>{formatDate(data.contract?.end_at)}</strong><small>{data.contract?.end_at ? "POS ตรวจ ended_at อัตโนมัติ" : "ยังไม่กำหนด"}</small></article>
@@ -619,6 +632,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                         <label className={styles.switchLabel}><input type="checkbox" checked={contractAutoEnd} disabled={!canEditContract} onChange={(e) => { const checked = e.target.checked; setContractAutoEnd(checked); if (checked) setContractEndDate(addBillingDate(contractStartDate, contractCycle)); }} /><span>คำนวณวันหมดอายุอัตโนมัติ</span></label>
                         <label className={styles.switchLabel}><input type="checkbox" checked={contractAutoRenew} disabled={!canEditContract} onChange={(e) => setContractAutoRenew(e.target.checked)} /><span>ต่ออายุอัตโนมัติ</span></label>
                       </div>
+                      {isPrepaidPendingTrial ? <div className={styles.securityNote}>แพ็กเกจชำระล่วงหน้ารอเริ่มหลังครบ Trial ระบบปิดการแก้วันสัญญาชั่วคราวเพื่อไม่ให้สิทธิ์ลูกค้าหาย</div> : null}
                       {!currentPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจนี้ยังไม่ได้กำหนดราคารายปีใน Package / Subscription จึงไม่เปิดให้เปลี่ยนเป็นรายปี เพื่อป้องกันสัญญาราคา 0 บาทโดยไม่ตั้งใจ</div> : null}
                       <div className={styles.packagePreview}><strong>{contractCycle === "yearly" ? "สัญญารายปี" : "สัญญารายเดือน"}</strong><span>{contractStartDate || "—"} → {contractEndDate || "—"}</span></div>
                       <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate || (contractCycle === "yearly" && !currentPackageYearlyAvailable)} onClick={() => void mutate({ action: "update_contract", billing_cycle: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew }, "อัปเดตวันที่สัญญาและรอบบิลแล้ว", true)}>บันทึกวันที่สัญญา</button></div>
@@ -641,7 +655,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                     </div>
                     {!selectedPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจที่เลือกยังไม่มีราคารายปี ระบบจะใช้รายเดือนเท่านั้นจนกว่าจะตั้งราคารายปีในเมนู Package / Subscription</div> : null}
                     {selectedPackage ? <div className={styles.packagePreview}><strong>{selectedPackage.name}</strong><span>{billingCycle === "yearly" ? money(selectedPackage.yearly_price) : money(selectedPackage.monthly_price)} · {changeStartDate || "—"} → {changeEndDate || "—"} · สูงสุด {selectedPackage.max_branches ?? "—"} สาขา / {selectedPackage.max_devices ?? "—"} อุปกรณ์</span></div> : null}
-                    <div className={styles.sectionActions}><button className={styles.primaryButton} type="button" disabled={busy || !packageId || !changeStartDate || !changeEndDate || (billingCycle === "yearly" && !selectedPackageYearlyAvailable)} onClick={() => void mutate({ action: "change_package", package_id: packageId, billing_cycle: billingCycle, start_date: changeStartDate, end_date: changeAutoEnd ? undefined : changeEndDate, auto_calculate_end: changeAutoEnd, auto_renew: changeAutoRenew, admin_reason: changeReason }, isTrial ? "เปิดแพ็กเกจจริงเรียบร้อย" : "เปลี่ยนแพ็กเกจเรียบร้อย", true)}>{isTrial ? "เปิดแพ็กเกจจริงตอนนี้" : "ยืนยันเปลี่ยนแพ็กเกจ"}</button></div>
+                    <div className={styles.sectionActions}><button className={styles.primaryButton} type="button" disabled={busy || isPrepaidPendingTrial || !packageId || !changeStartDate || !changeEndDate || (billingCycle === "yearly" && !selectedPackageYearlyAvailable)} onClick={() => void mutate({ action: "change_package", package_id: packageId, billing_cycle: billingCycle, start_date: changeStartDate, end_date: changeAutoEnd ? undefined : changeEndDate, auto_calculate_end: changeAutoEnd, auto_renew: changeAutoRenew, admin_reason: changeReason }, isTrial ? "เปิดแพ็กเกจจริงเรียบร้อย" : "เปลี่ยนแพ็กเกจเรียบร้อย", true)}>{isTrial ? "เปิดแพ็กเกจจริงตอนนี้" : "ยืนยันเปลี่ยนแพ็กเกจ"}</button></div>
                   </section>
 
                   <section className={styles.controlSection}>
