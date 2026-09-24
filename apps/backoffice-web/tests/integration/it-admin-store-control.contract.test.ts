@@ -10,6 +10,8 @@ const controlCenter = source("../../src/components/it-admin/tenant-control-cente
 const actionConfirm = source("../../src/components/it-admin/tenant-action-confirm.tsx");
 const actionConfirmStyles = source("../../src/components/it-admin/tenant-action-confirm.module.css");
 const ownerCard = source("../../src/components/it-admin/tenant-primary-owner-card.tsx");
+const cashierConsole = source("../../src/components/it-admin/tenant-cashier-devices.tsx");
+const cashierRoute = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/cashier-devices/route.ts");
 const route = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/control/route.ts");
 const service = source("../../src/lib/services/it-admin/tenant-control-service.ts");
 const prepaidMigration = source("../../../../supabase/migrations/20260924203500_prepaid_trial_handoff.sql");
@@ -113,6 +115,35 @@ describe("IT Admin Store Control Center contract", () => {
     expect(controlCenter).toContain("ยืนยันรับชำระเงินล่วงหน้า");
     expect(controlCenter).toContain("disabled={busy || isPrepaidPendingTrial");
     expect(controlCenter).not.toContain("093186");
+  });
+
+  it("adds Cashier Terminals after Branches in the Store Control popup", () => {
+    expect(controlCenter).toContain('setTab("cashiers")');
+    expect(controlCenter).toContain("<TenantCashierDevices");
+    const branches = controlCenter.indexOf('setTab("branches")');
+    const cashiers = controlCenter.indexOf('setTab("cashiers")');
+    const packages = controlCenter.indexOf('setTab("package")');
+    expect(branches).toBeLessThan(cashiers);
+    expect(cashiers).toBeLessThan(packages);
+    expect(controlCenter).toContain("data.usage.cashier_active");
+    expect(service).toContain('cashier_active: cashierResult.count ?? 0');
+  });
+
+  it("uses primary branch_devices and the POS package quota for real cashier CRUD", () => {
+    expect(cashierRoute).toContain("requireItAdmin()");
+    expect(cashierRoute).toContain("getTenantLimits(tenantId)");
+    expect(cashierRoute).toContain('enforceQuota(tenantId, "devices", branchId)');
+    expect(cashierRoute).toContain('enforceQuota(tenantId, "devices", current.branch_id)');
+    expect(cashierRoute).toContain('from("branch_devices")');
+    expect(cashierRoute).toContain('device_type: "pos_terminal"');
+    expect(cashierRoute).toContain('from("pos_sessions")');
+    expect(cashierRoute).toContain('from("shifts")');
+    expect(cashierRoute).toContain('it_cashier_archived_at');
+    expect(cashierConsole).toContain('method: "DELETE"');
+    expect(cashierConsole).toContain('method: "PATCH"');
+    expect(cashierConsole).toContain('"POST"');
+    expect(actionConfirm).toContain("delete_cashier");
+    expect(actionConfirm).toContain("disable_cashier");
   });
 
 });
