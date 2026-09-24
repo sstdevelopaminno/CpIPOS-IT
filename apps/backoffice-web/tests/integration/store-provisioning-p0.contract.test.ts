@@ -52,6 +52,15 @@ describe("IT Store Provisioning P0", () => {
     expect(service).toContain('is_default: true');
   });
 
+  it("resolves duplicate contact emails only by matching the real Auth login", () => {
+    expect(service).toContain("const matchingProfiles: ProfileRow[] = []");
+    expect(service).toContain("normalizeEmail(authResult.data.user.email) === input.email");
+    expect(service).toContain("owner_profile_auth_email_mismatch");
+    expect(service).toContain("matchingProfiles.length > 1");
+    expect(service).not.toContain("let profile = profiles?.[0] ?? null");
+    expect(service).not.toContain("(profiles ?? []).length > 1");
+  });
+
   it("hashes the Owner PIN and does not send it to the core RPC", () => {
     expect(service).toContain("bcrypt.hash(input.pin, 12)");
     expect(service).toContain("bcrypt.compare(input.pin, profile.pin_hash)");
