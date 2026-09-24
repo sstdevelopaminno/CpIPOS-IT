@@ -1,0 +1,46 @@
+.root{display:grid;gap:13px;color:#1b3557;font-size:12px}
+.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.summary article{min-width:0;background:#fff;border:1px solid #dbe5f1;border-radius:13px;padding:13px;display:grid;gap:6px}
+.summary span{font-size:11px;font-weight:800;color:#69809b}
+.summary strong{font-size:23px;line-height:1.1;color:#143862}
+.summary small{font-size:10px;color:#8293aa}
+.panel{background:#fff;border:1px solid #d9e4f1;border-radius:15px;overflow:hidden}
+.sectionTitle{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:14px 15px;border-bottom:1px solid #e7edf5;background:linear-gradient(125deg,#fff,#f7faff)}
+.sectionTitle>div:first-child{display:grid;gap:3px}
+.sectionTitle strong{font-size:14px;color:#1a3d6a}
+.sectionTitle small{font-size:10px;color:#8495a9}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:15px}
+.form label{display:grid;gap:6px;font-size:11px;font-weight:800;color:#5f7897;min-width:0}
+.form input,.form select,.toolbar select{width:100%;min-width:0;box-sizing:border-box;padding:10px 11px;border:1px solid #d3e0f0;background:#fff;border-radius:10px;font:inherit;font-size:12px;color:#173859}
+.form input:disabled,.form select:disabled{background:#f3f6fa;color:#728397}
+.form input:focus,.form select:focus{outline:2px solid rgba(55,109,214,.18);border-color:#5590ed}
+.form .wide{grid-column:1/-1}
+.form .check{display:flex;align-items:center;gap:9px;color:#245080}
+.check input{width:17px;height:17px;accent-color:#246fdb}
+.formFooter{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 15px 14px}
+.formFooter span{color:#7087a0;font-size:11px}
+.primary,.secondary,.actions button{font:inherit;font-size:11px;font-weight:800;border-radius:9px;padding:9px 12px;border:1px solid #d1dfef;background:#fff;color:#2d63a8;cursor:pointer}
+.primary{background:#275fc6;border-color:#275fc6;color:#fff}
+.primary:hover{background:#1d4eab}
+.secondary:hover,.actions button:hover{background:#eef5ff}
+.primary:disabled,.secondary:disabled,.actions button:disabled{opacity:.55;cursor:not-allowed}
+.hint{font-size:10px;line-height:1.6;color:#8191a4;padding:0 15px 13px;margin:0}
+.toolbar{display:flex;align-items:center;gap:8px}
+.toolbar select{max-width:170px}
+.list{display:grid;gap:8px;padding:12px}
+.device{border:1px solid #e0e8f2;border-radius:11px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;background:#fcfdff}
+.deviceName{display:flex;gap:10px;align-items:center;min-width:0}
+.deviceName>div:last-child{display:grid;min-width:0;gap:4px}
+.deviceName strong{font-size:13px;color:#193b63;overflow-wrap:anywhere}
+.deviceName span,.deviceName small{font-size:10px;color:#73879f;overflow-wrap:anywhere}
+.icon{display:grid;place-items:center;flex:0 0 auto;width:38px;height:38px;border-radius:11px;border:1px solid #cbdfff;background:#eff5ff;color:#2364ba;font-size:10px;font-weight:900}
+.on,.off{display:inline-flex;justify-self:end;font-size:10px;font-weight:800;padding:6px 9px;border-radius:999px;white-space:nowrap}
+.on{background:#e6f7ee;color:#17814a}.off{background:#f1f3f7;color:#788596}
+.actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;grid-column:1/-1}
+.actions .danger{color:#b92e3a;border-color:#f2ccd1}
+.actions .danger:hover{background:#fff0f2}
+.empty{text-align:center;color:#8595aa;padding:24px 14px}
+.error,.success{padding:12px 14px;border-radius:11px;border:1px solid #eac7cd;background:#fff6f6;color:#a52e40;line-height:1.5}
+.success{background:#f0fbf6;border-color:#c8e7d5;color:#1d7c4e}
+.note{margin:0;padding:4px 6px 6px;line-height:1.6;color:#778ca4;font-size:10px}
+@media(max-width:650px){.summary{grid-template-columns:1fr 1fr}.summary article:last-child{grid-column:1/-1}.form{grid-template-columns:1fr}.form .wide{grid-column:auto}.formFooter{align-items:stretch;flex-direction:column}.device{grid-template-columns:1fr}.on,.off{justify-self:start}.actions{justify-content:flex-start}}
