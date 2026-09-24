@@ -385,12 +385,15 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   }
 
   const activeSince = new Date(Date.now() - 5 * 60_000).toISOString();
-  const [devicesResult, onlineResult, userRolesResult] = await Promise.all([
+  const [devicesResult, cashierResult, onlineResult, userRolesResult] = await Promise.all([
     context.supabase.from("branch_devices").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("is_active", true),
+    context.supabase.from("branch_devices").select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId).eq("device_type", "pos_terminal").eq("status", "active").eq("is_active", true),
     context.supabase.from("branch_devices").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("is_active", true).gte("last_seen_at", activeSince),
     context.supabase.from("user_branch_roles").select("user_id").eq("tenant_id", tenantId).returns<Array<{ user_id: string }>>()
   ]);
   if (devicesResult.error) throw new Error(`tenant_devices_count_failed:${devicesResult.error.message}`);
+  if (cashierResult.error) throw new Error(`tenant_cashier_count_failed:${cashierResult.error.message}`);
   if (onlineResult.error) throw new Error(`tenant_online_devices_count_failed:${onlineResult.error.message}`);
   if (userRolesResult.error) throw new Error(`tenant_users_count_failed:${userRolesResult.error.message}`);
 
@@ -430,6 +433,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
     lifecycle,
     usage: {
       active_devices: devicesResult.count ?? 0,
+      cashier_active: cashierResult.count ?? 0,
       assigned_users: uniqueUsers.size,
       online_devices_5m: onlineResult.count ?? 0
     },
