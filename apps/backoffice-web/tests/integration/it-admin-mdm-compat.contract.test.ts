@@ -13,6 +13,11 @@ const pairingConsole = source("../../src/components/it-admin/device-pairing-cons
 const tenantSectionConsole = source("../../src/components/it-admin/tenant-section-console.tsx");
 const healthConsole = source("../../src/components/it-admin/device-health-console.tsx");
 const devicePage = source("../../src/app/(it-admin)/tenants/[tenantId]/devices/page.tsx");
+const primaryDeviceModule = source("../../src/lib/services/it-admin/primary-device-module-service.ts");
+const moduleRoute = source("../../src/app/api/it-admin/v1/modules/[module]/route.ts");
+const deviceAdminRoute = source("../../src/app/api/it-admin/admin/tenants/[tenantId]/devices/route.ts");
+const displayAccessRoute = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/customer-display-access/route.ts");
+const mdmConsole = source("../../src/components/it-admin/full-mdm-control-console.tsx");
 
 describe("IT Admin MDM compatibility and pairing contract", () => {
   it("keeps the legacy bridge available for rollback without synthesizing CPU or RAM", () => {
@@ -102,4 +107,27 @@ describe("IT Admin MDM compatibility and pairing contract", () => {
     expect(healthConsole).toContain("Command history / ACK");
     expect(healthConsole).toContain("30_000");
   });
+
+  it("loads the IT Device/MDM list from authoritative CpiPOS-001 and ignores customer feature gates", () => {
+    expect(moduleRoute).toContain('moduleName === "devices"');
+    expect(moduleRoute).toContain("loadPrimaryDeviceModule(context)");
+    expect(primaryDeviceModule).toContain('from("branch_devices")');
+    expect(primaryDeviceModule).toContain('from("mdm_devices")');
+    expect(primaryDeviceModule).toContain('from("device_enrollments")');
+    expect(primaryDeviceModule).toContain('from("pos_device_health_latest")');
+    expect(primaryDeviceModule).not.toContain("getTrialSupabaseServiceClient");
+    expect(deviceAdminRoute).not.toContain("requireTenantFeature(");
+  });
+
+  it("keeps IT enrollment, dual-screen policy and package-level customer display controls separate", () => {
+    expect(pairingConsole).toContain("setDeviceDualScreen");
+    expect(pairingConsole).toContain("setBranchCustomerDisplay");
+    expect(pairingConsole).toContain("set_dual_screen");
+    expect(deviceAdminRoute).toContain("android_dual_screen_enabled");
+    expect(displayAccessRoute).toContain("customer_facing_display");
+    expect(displayAccessRoute).toContain("requireItAdmin()");
+    expect(mdmConsole).toContain("packageName");
+    expect(mdmConsole).toContain("uninstall_app");
+  });
+
 });
