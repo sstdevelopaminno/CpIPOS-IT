@@ -6,6 +6,7 @@ import { POS_SALES_MODE_KEYS, type PosSalesModeKey, type PosSalesModeView } from
 import { useTenantActionConfirm } from "./tenant-action-confirm";
 import { TenantPrimaryOwnerCard } from "./tenant-primary-owner-card";
 import { TenantSalesSummary } from "./tenant-sales-summary";
+import { TenantCashierDevices } from "./tenant-cashier-devices";
 import dashboardStyles from "./tenant-control-center-dashboard.module.css";
 import styles from "./tenant-directory-console.module.css";
 
@@ -89,12 +90,12 @@ type ControlData = {
   contract: Contract;
   current_package: Package | null;
   lifecycle?: Lifecycle;
-  usage: { active_devices: number; assigned_users: number; online_devices_5m: number };
+  usage: { active_devices: number; cashier_active: number; assigned_users: number; online_devices_5m: number };
   sales_modes: PosSalesModeView[];
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "salesModes" | "package" | "salesSummary" | "danger";
+type Tab = "overview" | "profile" | "branches" | "cashiers" | "salesModes" | "package" | "salesSummary" | "danger";
 type BillingCycle = "monthly" | "yearly";
 
 const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, true])) as Record<PosSalesModeKey, boolean>;
@@ -381,6 +382,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     ? { eyebrow: "STORE PROFILE", title: "ข้อมูลร้าน", description: "แก้ไขชื่อร้าน ข้อมูลติดต่อ ที่อยู่ และโลโก้" }
     : tab === "branches"
       ? { eyebrow: "BRANCH MANAGEMENT", title: "สาขา", description: "จัดการสาขาปัจจุบันและเปิดสาขาใหม่" }
+      : tab === "cashiers"
+        ? { eyebrow: "CASHIER TERMINALS", title: "เครื่องแคชเชียร์", description: "เพิ่ม แก้ไข เปิด–ปิด และลบเครื่องตามโควตาแพ็กเกจ เชื่อม CpIPOS ออนไลน์" }
       : tab === "salesModes"
         ? { eyebrow: "POS SALES MODES", title: "โหมดขาย", description: "เปิดหรือปิดโหมดหน้าขาย POS ของร้านนี้" }
         : tab === "package"
@@ -439,6 +442,15 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>สาขา</div><span className={dashboardStyles.cardBadge}>{data.branches.length} แห่ง</span></div>
                   <div className={dashboardStyles.cardText}><span>BRANCH MANAGEMENT</span><strong>สาขา</strong><small>แก้ไขชื่อ ที่อยู่ สถานะ และเปิดสาขาใหม่</small></div>
                   <div className={dashboardStyles.cardBottom}><span>เปิด {data.branches.filter((branch) => branch.is_active).length} / {data.branches.length}</span><strong>จัดการสาขา →</strong></div>
+                </button>
+
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("cashiers")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>POS</div><span className={dashboardStyles.cardBadge}>ตามแพ็กเกจ</span></div>
+                  <div className={dashboardStyles.cardText}><span>CASHIER TERMINALS</span><strong>เครื่องแคชเชียร์</strong><small>เพิ่ม แก้ไข ลบ และเปิด–ปิดเครื่องที่ใช้ขายจริง</small></div>
+                  <div className={dashboardStyles.cardBottom}>
+                    <span>Active {data.usage.cashier_active} / {data.contract?.max_devices ?? data.current_package?.max_devices ?? "∞"}</span>
+                    <strong>จัดการเครื่อง →</strong>
+                  </div>
                 </button>
 
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("package")}>
@@ -505,6 +517,11 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
               {success ? <div className={styles.controlAlertSuccess}>{success}</div> : null}
 
               {tab === "salesSummary" ? <TenantSalesSummary tenantId={tenantId} /> : null}
+              {tab === "cashiers" ? (
+                <TenantCashierDevices tenantId={tenantId} storeName={storeName}
+                  confirmAction={confirmAction}
+                  onChanged={() => { void load(); onChanged(); }} />
+              ) : null}
 
               {tab === "profile" ? (
                 <div className={styles.controlStack}>
