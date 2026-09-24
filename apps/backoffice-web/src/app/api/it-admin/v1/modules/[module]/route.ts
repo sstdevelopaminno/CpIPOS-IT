@@ -3,6 +3,7 @@ import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-a
 import { readThroughRuntimeCache } from "@/lib/route-runtime-cache";
 import { loadItAdminModule, parseItAdminModule } from "@/lib/services/it-admin/control-plane-module-service";
 import { getVerifiedSupabaseAccessToken } from "@/lib/supabase-server";
+import { loadPrimaryDeviceModule } from "@/lib/services/it-admin/primary-device-module-service";
 
 export const dynamic = "force-dynamic";
 const MODULE_CACHE_TTL_MS = 30_000;
@@ -15,6 +16,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ mod
     if (!moduleName) return fail("unknown_it_admin_module", "Unknown IT Admin module.", 404);
 
     const context = await requireItAdmin();
+    if (moduleName === "devices") {
+      const { value: payload, source } = await readThroughRuntimeCache({
+        key: `it-admin-primary-devices:${context.auth.userId}`,
+        ttlMs: 15_000,
+        loader: () => loadPrimaryDeviceModule(context)
+      });
+      const response = ok(payload);
+      response.headers.set("cache-control", "private, no-store");
+      response.headers.set("x-it-admin-module-cache", source);
+      response.headers.set("x-it-admin-plane", "primary");
+      response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
+      return response;
+    }
     const accessToken = await getVerifiedSupabaseAccessToken(context.auth.userId);
     if (!accessToken) {
       throw new ItAdminGuardError("unauthorized", "Authentication is required.", 401);
