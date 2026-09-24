@@ -12,7 +12,7 @@ type HealthRow = { pos_device_id: string | null; status: string; app_version: st
   runtime_version: string | null; last_seen_at: string; last_error: string | null };
 type MdmRow = { tenant_id: string; device_id: string; is_device_owner: boolean;
   is_full_mdm_eligible: boolean; app_version: string; last_heartbeat_at: string | null };
-type EnrollmentRow = { tenant_id: string; device_code: string; enrollment_status: string };
+type EnrollmentRow = { tenant_id: string; device_code: string; enrollment_status: string; trust_level: string };
 
 export async function loadPrimaryDeviceModule(context: ItAdminContext): Promise<ItAdminModulePayload> {
   // POS and IT share CpiPOS-001 as device, enrollment, health and Full MDM
@@ -29,7 +29,7 @@ export async function loadPrimaryDeviceModule(context: ItAdminContext): Promise<
       .select("tenant_id,device_id,is_device_owner,is_full_mdm_eligible,app_version,last_heartbeat_at")
       .limit(500).returns<MdmRow[]>(),
     db.from("device_enrollments")
-      .select("tenant_id,device_code,enrollment_status")
+      .select("tenant_id,device_code,enrollment_status,trust_level")
       .order("updated_at", { ascending: false }).limit(500).returns<EnrollmentRow[]>(),
     db.from("tenants").select("id,name").limit(500),
     db.from("branches").select("id,name").limit(500)
@@ -66,7 +66,7 @@ export async function loadPrimaryDeviceModule(context: ItAdminContext): Promise<
       last_seen_at: latest?.last_seen_at ?? item.last_seen_at,
       mdm_status: enrollment?.enrollment_status ?? "not_enrolled",
       device_owner: mdmDevice?.is_device_owner ?? false,
-      full_mdm: mdmDevice?.is_full_mdm_eligible ?? false,
+      full_mdm: Boolean(mdmDevice?.is_full_mdm_eligible && enrollment?.enrollment_status === "active" && enrollment.trust_level === "trusted"),
       dual_screen_enabled: metadata.android_dual_screen_enabled !== false,
       locked: item.is_locked
     };
