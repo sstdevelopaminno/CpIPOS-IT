@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/server/limited-json";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin, type ItAdminContext } from "@/lib/it-admin-guard";
 import {
@@ -119,7 +120,7 @@ export async function POST(req: Request) {
 
   try {
     const context = await requireItAdmin();
-    const rawBody = await req.json().catch(() => ({}));
+    const rawBody = await readBoundedJson(req, 32_768);
     const body = (rawBody && typeof rawBody === "object" ? { ...(rawBody as Record<string, unknown>) } : {}) as TenantCreateInput;
 
     // `tenants.code` is now an internal compatibility identifier. New onboarding

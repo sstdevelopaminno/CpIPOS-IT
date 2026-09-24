@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/server/limited-json";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
       namespace: "it_store_registration_actions", key: ctx.auth.userId, max: 20, windowMs: 60_000
     });
     if (!rl.ok) return fail("rate_limited", "กรุณารอสักครู่แล้วลองใหม่", 429);
-    const input = await req.json().catch(() => null) as RecordInput | null;
+    const input = await readBoundedJson<RecordInput | null>(req, 16_384);
     if (!input || !uuid(input.id) || !["edit", "delete", "activate"].includes(input.action ?? "")) {
       return fail("invalid_registration_action", "คำขอไม่ถูกต้อง", 422);
     }

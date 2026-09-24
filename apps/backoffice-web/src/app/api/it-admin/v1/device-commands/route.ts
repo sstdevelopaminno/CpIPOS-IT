@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/server/limited-json";
 import { appendAuditLog } from "@/lib/audit-log";
 import {
   DEVICE_COMMAND_TTL_MS,
@@ -44,7 +45,8 @@ export async function POST(req: Request) {
       return fail("rate_limited", "Too many device commands issued. Please wait and try again.", 429);
     }
 
-    const body = (await req.json().catch(() => ({}))) as DeviceCommandRequestBody;
+    const body = await readBoundedJson<DeviceCommandRequestBody>(req, 16_384);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return fail("invalid_body", "Invalid device command body.", 422);
     const tenantId = sanitizeId(body.tenant_id);
     const branchId = sanitizeId(body.branch_id);
     const posDeviceId = sanitizeId(body.pos_device_id);

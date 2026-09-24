@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/server/limited-json";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
@@ -43,7 +44,7 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
     });
     if (!rateLimit.ok) return fail("rate_limited", "Too many store control changes. Please wait and try again.", 429);
 
-    const body = (await req.json().catch(() => null)) as TenantControlInput | null;
+    const body = await readBoundedJson<TenantControlInput | null>(req, 32_768);
     if (!body || typeof body !== "object") return fail("invalid_body", "Request body is required.", 422);
 
     const data = await applyTenantControlAction(admin, tenantId, body);

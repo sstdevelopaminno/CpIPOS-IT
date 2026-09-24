@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/server/limited-json";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import {
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   const startedAt = Date.now();
   try {
     const context = await requireItAdmin();
-    const body = (await request.json().catch(() => null)) as StoreProvisioningInput | null;
+    const body = await readBoundedJson<StoreProvisioningInput | null>(request, 32_768);
     if (!body || typeof body !== "object") {
       return fail("invalid_store_provisioning_payload", "Request body is required.", 422);
     }
