@@ -1,0 +1,4 @@
+CpIPOS-IT Vercel production deploy trigger
+requested_at_th: 2026-09-24T22:20:00+07:00
+purpose: trigger production deployment after GitHub/Vercel connection
+latest_verified_commit_before_trigger: 7843689ed191f9b5dee71e8591942fa1c600b4fc
