@@ -1,5 +1,6 @@
 import type { BranchRole, PlatformRole } from "@pos/shared-types";
 import { getSupabaseServiceClient } from "@/lib/supabase-admin";
+import { sanitizeAuditObject } from "@/lib/server/audit-sanitizer";
 
 type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -59,7 +60,7 @@ function normalizeJsonObject(value: unknown): JsonObject {
     return {};
   }
 
-  return value as JsonObject;
+  return sanitizeAuditObject(value) as JsonObject;
 }
 
 function inferModule(targetTable: string, action: string): string {

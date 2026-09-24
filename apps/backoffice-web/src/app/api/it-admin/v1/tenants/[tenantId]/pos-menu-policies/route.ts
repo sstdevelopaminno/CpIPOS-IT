@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/server/limited-json";
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
@@ -38,9 +39,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ tenan
     });
     if (!rate.ok) return fail("rate_limited", "กรุณารอสักครู่แล้วลองใหม่", 429);
     const tenantId = parseTenantParam((await context.params).tenantId);
-    const body = await request.json().catch(() => null) as {
+    const body = await readBoundedJson<{
       menu_key?: unknown; is_enabled?: unknown
-    } | null;
+    } | null>(request, 4_096);
     const key = typeof body?.menu_key === "string" ? body.menu_key.trim() : "";
     if (!isValidPosMenuKey(key) || typeof body?.is_enabled !== "boolean") {
       return fail("invalid_menu_policy", "กรุณาเลือกเมนูและสถานะที่ถูกต้อง", 422);
