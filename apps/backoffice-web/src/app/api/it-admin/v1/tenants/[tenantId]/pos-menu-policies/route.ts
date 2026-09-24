@@ -3,6 +3,7 @@ import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
 import { POS_MENU_CATALOG, isValidPosMenuKey } from "@/lib/pos-menu-policy";
+import { resolvePosMenuAvailability, type FeatureFlag, type PlanFlag, type ContractStatus } from "@/lib/pos-menu-effective-state";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -11,19 +12,46 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
   try {
     const admin = await requireItAdmin();
     const tenantId = parseTenantParam((await context.params).tenantId);
-    const [tenant, rows] = await Promise.all([
+    // Read the same independent IT switches plus the subscription feature
+    // grants that the customer POS uses for each active store branch.
+    const [tenant, rows, contract, branches, featureOverrides] = await Promise.all([
       admin.supabase.from("tenants").select("id").eq("id", tenantId).maybeSingle(),
       admin.supabase.from("tenant_pos_menu_policies").select("menu_key,is_enabled,updated_at")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", tenantId),
+      admin.supabase.from("tenant_subscription_contracts")
+        .select("package_id,status,ended_at").eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false }).limit(1)
+        .maybeSingle<{ package_id: string; status: string; ended_at: string | null }>(),
+      admin.supabase.from("branches").select("id").eq("tenant_id", tenantId).eq("is_active", true),
+      admin.supabase.from("tenant_feature_subscriptions")
+        .select("feature_code,is_enabled,branch_id").eq("tenant_id", tenantId)
+        .returns<FeatureFlag[]>()
     ]);
     if (tenant.error) throw tenant.error;
     if (!tenant.data) return fail("tenant_not_found", "ไม่พบร้านค้า", 404);
     if (rows.error) throw rows.error;
+    if (contract.error) throw contract.error;
+    if (branches.error) throw branches.error;
+    if (featureOverrides.error) throw featureOverrides.error;
+    const plan = contract.data?.package_id
+      ? await admin.supabase.from("subscription_package_features")
+        .select("feature_code,included").eq("package_id", contract.data.package_id)
+        .returns<PlanFlag[]>()
+      : { data: [] as PlanFlag[], error: null };
+    if (plan.error) throw plan.error;
     const overrides = Object.fromEntries((rows.data ?? []).map(row => [row.menu_key, row.is_enabled]));
+    const availability = resolvePosMenuAvailability({
+      overrides,
+      contract: (contract.data ?? null) as ContractStatus,
+      plan: plan.data ?? [],
+      feature_overrides: featureOverrides.data ?? [],
+      active_branch_ids: (branches.data ?? []).map(branch => branch.id)
+    });
     const response = ok({
-      tenant_id: tenantId, catalog: POS_MENU_CATALOG,
-      overrides, total: POS_MENU_CATALOG.length,
-      disabled: POS_MENU_CATALOG.filter(item => overrides[item.key] === false).length
+      tenant_id: tenantId, catalog: POS_MENU_CATALOG, overrides, availability,
+      total: POS_MENU_CATALOG.length,
+      disabled: POS_MENU_CATALOG.filter(item => overrides[item.key] === false).length,
+      unavailable: POS_MENU_CATALOG.filter(item => availability[item.key]?.reason !== "available").length
     });
     response.headers.set("cache-control", "private, no-store");
     return response;
