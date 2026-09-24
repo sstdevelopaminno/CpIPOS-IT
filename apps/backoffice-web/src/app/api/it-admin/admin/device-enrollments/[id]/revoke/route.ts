@@ -77,6 +77,30 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       throw new Error(updateError?.message ?? "Failed to revoke enrollment.");
     }
 
+    // Cancel commands not yet picked up. A physical action that was already
+    // delivered cannot be undone by disconnecting and remains auditable.
+    const scopedDevice = await supabase.from("branch_devices")
+      .select("id").eq("tenant_id", current.tenant_id)
+      .eq("branch_id", current.branch_id)
+      .eq("device_code", current.device_code)
+      .maybeSingle<{ id: string }>();
+    let pendingCommandsCancelled = false;
+    if (scopedDevice.error) {
+      console.error("[mdm-revoke] device lookup failed", { message: scopedDevice.error.message });
+    } else if (scopedDevice.data) {
+      const cancelled = await supabase.from("mdm_commands")
+        .update({
+          status: "cancelled", updated_at: nowIso,
+          command_result: { code: "mdm_enrollment_revoked", revoked_at: nowIso }
+        }).eq("tenant_id", current.tenant_id)
+        .eq("device_id", scopedDevice.data.id).eq("status", "queued");
+      if (cancelled.error) {
+        console.error("[mdm-revoke] pending queue cleanup failed", { message: cancelled.error.message });
+      } else {
+        pendingCommandsCancelled = true;
+      }
+    }
+
     await appendAuditLog({
       tenantId: current.tenant_id,
       branchId: current.branch_id ?? undefined,
@@ -87,13 +111,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       targetId: current.id,
       metadata: {
         device_code: current.device_code,
-        reason
+        reason,
+        pending_commands_cancelled: pendingCommandsCancelled
       },
       ipAddress: requestMeta.ipAddress ?? undefined,
       userAgent: requestMeta.userAgent ?? undefined
     });
 
-    return ok({ enrollment: updated });
+    return ok({ enrollment: updated, pending_commands_cancelled: pendingCommandsCancelled });
   } catch (error) {
     return guardActivationAdminError(error);
   }
