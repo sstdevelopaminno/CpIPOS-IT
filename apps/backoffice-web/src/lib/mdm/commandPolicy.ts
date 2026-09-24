@@ -213,7 +213,7 @@ export const validateMdmCommandRequest = (
     const packageName = textValue(payload.packageName);
     pushIfMissing(
       reasons,
-      !/^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) || packageName.length > 200,
+      !/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) || packageName.length > 200,
       'android_package_name_invalid',
     );
   }
