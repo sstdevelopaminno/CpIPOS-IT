@@ -135,7 +135,8 @@ export async function POST(request: Request, context: { params: Promise<{ tenant
         is_active: body.enabled, is_locked: !body.enabled,
         metadata: {
           counter_name: counter || null, location: location || null,
-          provisioned_from: "it_cashier_control"
+          provisioned_from: "it_cashier_control",
+          it_cashier_disabled: !body.enabled
         }
       }).select(SELECT).single<CashierRow>();
     if (result.error?.code === "23505") {
@@ -178,6 +179,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ tenan
       patch.status = body.enabled ? "active" : "inactive";
       patch.is_active = body.enabled;
       patch.is_locked = !body.enabled;
+      metadata.it_cashier_disabled = !body.enabled;
+      patch.metadata = metadata;
     }
     if (!Object.keys(patch).length) return fail("cashier_empty_update", "ยังไม่มีข้อมูลที่ต้องเปลี่ยน", 422);
     // Disconnect sessions before disabling, so no new bill can run under this cashier.
@@ -218,7 +221,8 @@ export async function DELETE(request: Request, context: { params: Promise<{ tena
         status: "inactive", is_active: false, is_locked: true,
         metadata: {
           ...(current.metadata ?? {}), it_cashier_archived_at: now,
-          it_cashier_archived_by: admin.auth.userId
+          it_cashier_archived_by: admin.auth.userId,
+          it_cashier_disabled: true
         }
       })
       .eq("tenant_id", tenantId).eq("id", current.id)
