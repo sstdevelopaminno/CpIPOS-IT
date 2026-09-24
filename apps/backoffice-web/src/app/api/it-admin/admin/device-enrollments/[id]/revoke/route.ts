@@ -44,7 +44,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       branchId: current.branch_id,
       allowTenantWide: auth.platformRole === "it_admin"
     });
-    await requireTenantFeatureIfConfigured(current.tenant_id, "mobile_device_enrollment", current.branch_id);
+    if (auth.platformRole !== "it_admin") {
+      await requireTenantFeatureIfConfigured(current.tenant_id, "mobile_device_enrollment", current.branch_id);
+    }
 
     const nowIso = new Date().toISOString();
     const reason = String(body.reason ?? "").trim() || "manual_revoke";
