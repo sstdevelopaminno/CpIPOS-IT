@@ -42,7 +42,7 @@ export type PosMenuKey = (typeof POS_MENU_GROUPS)[number]["key"] |
 
 export type PosMenuVisibility = Record<string, boolean>;
 
-export const POS_MENU_POLICY_KEYS = POS_MENU_GROUPS.flatMap(group => [
+export const POS_MENU_POLICY_KEYS: readonly string[] = POS_MENU_GROUPS.flatMap(group => [
   group.key, ...group.children.map(child => child.key)
 ]);
 
@@ -59,10 +59,13 @@ export function isPosMenuVisible(policy: PosMenuVisibility | null | undefined, k
 
 export function posMenuKeyForRoute(path: string): string | null {
   const normalized = path.endsWith("/") ? path.slice(0, -1) : path || "/preview/pos";
-  const children = POS_MENU_GROUPS.flatMap(group => group.children)
-    .filter(child => child.href !== "/preview/pos/settings")
-    .sort((a, b) => b.href.length - a.href.length);
-  const child = children.find(item => normalized === item.href ||
+  const children: Array<{ key: string; label: string; href: string }> = [];
+  for (const group of POS_MENU_GROUPS) {
+    for (const child of group.children) children.push(child);
+  }
+  children.sort((a, b) => b.href.length - a.href.length);
+  const routeChildren = children.filter(child => child.href !== "/preview/pos/settings");
+  const child = routeChildren.find(item => normalized === item.href ||
     normalized.startsWith(item.href + "/"));
   if (child) return child.key;
   if (normalized.startsWith("/preview/pos/settings")) return "settings";
