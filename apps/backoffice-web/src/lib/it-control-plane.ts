@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { readRequiredEnv } from "@/lib/env";
+import { sanitizeAuditObject } from "@/lib/server/audit-sanitizer";
 
 type ItControlPlaneClient = SupabaseClient<any, "public", "public", any, any>;
 
@@ -54,7 +55,7 @@ export async function appendItAuditLog(input: ItAuditInput): Promise<void> {
       request_id: input.requestId ?? null,
       ip_address: input.ipAddress ?? null,
       user_agent: input.userAgent ?? null,
-      metadata: input.metadata ?? {}
+      metadata: sanitizeAuditObject(input.metadata)
     });
     if (error) throw new Error(error.message);
   } catch (error) {

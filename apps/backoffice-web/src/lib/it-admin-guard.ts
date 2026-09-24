@@ -7,6 +7,7 @@ import { FeatureGateError } from "@/lib/feature-gate";
 import { fail } from "@/lib/http";
 import { getItControlPlaneClient } from "@/lib/it-control-plane";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
+import { JsonRequestError } from "@/lib/server/limited-json";
 
 export type ItAdminContext = {
   auth: AuthContext;
@@ -51,6 +52,19 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
     throw new ItAdminGuardError("forbidden", "Only platform admin can access this endpoint.", 403);
   }
 
+  // JWT app_metadata can outlive privilege revocation and account deactivation.
+  // Recheck the primary, authoritative profile on every privileged IT request.
+  const profileLookup = await getPrimarySupabaseServiceClient()
+    .from("users_profiles").select("is_active,platform_role")
+    .eq("id", auth.userId)
+    .maybeSingle<{ is_active: boolean | null; platform_role: string | null }>();
+  if (profileLookup.error) {
+    throw new ItAdminGuardError("admin_profile_unavailable", "Unable to verify current IT admin privileges.", 503);
+  }
+  if (profileLookup.data?.is_active !== true || profileLookup.data.platform_role !== "it_admin") {
+    throw new ItAdminGuardError("forbidden", "IT admin account is inactive or its privileges were revoked.", 403);
+  }
+
   const headerStore = await headers();
   const requestMeta = {
     ipAddress: readIpAddress(headerStore),
@@ -87,6 +101,7 @@ export function parseBranchParam(raw: unknown): string | null {
 }
 
 export function guardItAdminError(error: unknown): Response {
+  if (error instanceof JsonRequestError) return fail(error.code, error.message, error.status);
   if (error instanceof ItAdminGuardError) {
     return fail(error.code, error.message, error.status);
   }
