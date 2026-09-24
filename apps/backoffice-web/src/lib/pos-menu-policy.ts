@@ -34,9 +34,10 @@ export const POS_MENU_CATALOG: readonly PosMenuDefinition[] = [
   { key: "settings.taxes", label: "ตั้งค่าภาษี", group: "settings", parent: "main.settings" },
   { key: "settings.notifications", label: "ตั้งค่าการแจ้งเตือน", group: "settings", parent: "main.settings" },
   { key: "settings.users", label: "ผู้ใช้งาน", group: "settings", parent: "main.settings" },
+  { key: "settings.pos_users", label: "ผู้ใช้งาน POS", group: "settings", parent: "main.settings", route: "/preview/pos/users" },
   { key: "settings.language", label: "เปลี่ยนภาษา", group: "settings", parent: "main.settings" },
   { key: "settings.placement", label: "สลับแถบเมนูหลัก", group: "settings", parent: "main.settings" },
-  { key: "settings.display", label: "จอลูกค้า", group: "settings", parent: "main.settings" },
+  { key: "settings.display", label: "จอลูกค้า", group: "settings", parent: "main.settings", route: "/preview/pos/customer-display" },
   { key: "settings.order_kitchen", label: "การแจ้งเตือนออเดอร์และครัว", group: "settings", parent: "main.settings", route: "/preview/pos/settings/order-kitchen" },
   { key: "settings.table_qr", label: "ตั้งค่า QR โต๊ะ", group: "settings", parent: "main.settings", route: "/preview/pos/settings/table-qr" }
 ] as const;
