@@ -90,6 +90,28 @@ async function loadMdmDevice(
   return device ?? null;
 }
 
+async function isTrustedMdmEnrollment(
+  supabase: Awaited<ReturnType<typeof requireItAdmin>>["supabase"],
+  tenantId: string,
+  deviceId: string
+): Promise<boolean> {
+  const device = await supabase.from("branch_devices")
+    .select("id,branch_id,device_code,is_active,status")
+    .eq("tenant_id", tenantId).eq("id", deviceId).maybeSingle<{
+      id: string; branch_id: string; device_code: string;
+      is_active: boolean; status: string;
+    }>();
+  if (device.error) throw new Error(`mdm_device_scope_failed:${device.error.message}`);
+  if (!device.data?.is_active || device.data.status !== "active") return false;
+  const enrollment = await supabase.from("device_enrollments")
+    .select("enrollment_status,trust_level")
+    .eq("tenant_id", tenantId).eq("branch_id", device.data.branch_id)
+    .eq("device_code", device.data.device_code)
+    .maybeSingle<{ enrollment_status: string; trust_level: string }>();
+  if (enrollment.error) throw new Error(`mdm_enrollment_lookup_failed:${enrollment.error.message}`);
+  return enrollment.data?.enrollment_status === "active" && enrollment.data.trust_level === "trusted";
+}
+
 export async function GET(req: Request) {
   const startedAt = Date.now();
 
@@ -103,9 +125,17 @@ export async function GET(req: Request) {
     const device = await loadMdmDevice(supabase, tenantId, deviceId);
     if (!device) return fail("mdm_device_not_found", "Device has not been enrolled in the Full MDM registry.", 404);
 
+    const connected = await isTrustedMdmEnrollment(supabase, tenantId, deviceId);
     const snapshot = toSnapshot(device);
-    const controls = getMdmConsoleControls(snapshot);
-    const banner = getMdmConsoleBanner(snapshot);
+    const controls = getMdmConsoleControls(snapshot).map(control =>
+      connected ? control : {
+        ...control, enabled: false, disabledReason: "trusted_mdm_enrollment_required"
+      }
+    );
+    const banner = connected ? getMdmConsoleBanner(snapshot) : {
+      tone: "warning" as const,
+      message: "MDM is disconnected or the device registry is inactive. Re-enroll and approve this device before issuing commands."
+    };
 
     const { data: commands, error: commandError } = await supabase
       .from("mdm_commands")
@@ -128,7 +158,8 @@ export async function GET(req: Request) {
         ownership_type: device.ownership_type,
         enrollment_mode: device.enrollment_mode,
         is_device_owner: device.is_device_owner,
-        is_full_mdm_eligible: device.is_full_mdm_eligible,
+        is_full_mdm_eligible: connected && device.is_full_mdm_eligible,
+        enrollment_connected: connected,
         capabilities: capabilityList(device.capabilities),
         last_heartbeat_at: device.last_heartbeat_at
       },
@@ -178,6 +209,11 @@ export async function POST(req: Request) {
 
     const device = await loadMdmDevice(supabase, tenantId, deviceId);
     if (!device) return fail("mdm_device_not_found", "Device has not been enrolled in the Full MDM registry.", 404);
+
+    if (!(await isTrustedMdmEnrollment(supabase, tenantId, deviceId))) {
+      return fail("mdm_enrollment_inactive",
+        "MDM connection is disabled or the POS registry is inactive. Re-enroll this device before queueing commands.", 409);
+    }
 
     const snapshot = toSnapshot(device);
     const validation = validateMdmCommandRequest({
