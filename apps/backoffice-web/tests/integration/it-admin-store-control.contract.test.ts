@@ -133,7 +133,9 @@ describe("IT Admin Store Control Center contract", () => {
     expect(cashierRoute).toContain("requireItAdmin()");
     expect(cashierRoute).toContain("getTenantLimits(tenantId)");
     expect(cashierRoute).toContain('enforceQuota(tenantId, "devices", branchId)');
-    expect(cashierRoute).toContain('enforceQuota(tenantId, "devices", current.branch_id)');
+    expect(cashierRoute).toContain("enforceCashierActivation(admin, tenantId, current.branch_id)");
+    expect(cashierRoute).toContain("syncCashierLoginCapacity");
+    expect(cashierRoute).toContain('from("branch_login_policies")');
     expect(cashierRoute).toContain('from("branch_devices")');
     expect(cashierRoute).toContain('device_type: "pos_terminal"');
     expect(cashierRoute).toContain('from("pos_sessions")');
