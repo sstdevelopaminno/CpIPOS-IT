@@ -268,8 +268,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     }])));
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const response = await fetch(`/api/it-admin/v1/tenants/${tenantId}/control`, { cache: "no-store", credentials: "include" });
@@ -277,7 +277,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "โหลดข้อมูลร้านไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [applyData, tenantId]);
 
@@ -520,7 +520,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
               {tab === "cashiers" ? (
                 <TenantCashierDevices tenantId={tenantId} storeName={storeName}
                   confirmAction={confirmAction}
-                  onChanged={() => { void load(); onChanged(); }} />
+                  onChanged={() => { void load(true); onChanged(); }} />
               ) : null}
 
               {tab === "profile" ? (
