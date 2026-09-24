@@ -23,6 +23,7 @@ type DeviceRow = {
   device_type: string;
   status: string;
   last_seen_at: string | null;
+  dual_screen_enabled?: boolean;
 };
 
 type EnrollmentRow = {
@@ -93,6 +94,8 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [customerDisplayEnabled, setCustomerDisplayEnabled] = useState(false);
+  const [displayAccessLoading, setDisplayAccessLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,6 +126,68 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!branchId) {
+      setCustomerDisplayEnabled(false);
+      return;
+    }
+    const controller = new AbortController();
+    setDisplayAccessLoading(true);
+    fetch(`/api/it-admin/v1/tenants/${tenantId}/customer-display-access?branch_id=${encodeURIComponent(branchId)}`, {
+      cache: "no-store", credentials: "include", signal: controller.signal
+    }).then(response => parseResponse<{ enabled: boolean }>(response))
+      .then(result => { if (!controller.signal.aborted) setCustomerDisplayEnabled(result.enabled); })
+      .catch(loadError => {
+        if (!controller.signal.aborted) {
+          setCustomerDisplayEnabled(false);
+          setError(loadError instanceof Error ? loadError.message : "Unable to load customer display entitlement.");
+        }
+      }).finally(() => { if (!controller.signal.aborted) setDisplayAccessLoading(false); });
+    return () => controller.abort();
+  }, [branchId, tenantId]);
+
+  async function setBranchCustomerDisplay(enabled: boolean) {
+    if (!branchId || !window.confirm(enabled
+      ? "เปิดสิทธิ์จอแสดงผลลูกค้าให้สาขานี้ (IT override)?"
+      : "ปิดสิทธิ์จอแสดงผลลูกค้าให้สาขานี้?")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/it-admin/v1/tenants/${tenantId}/customer-display-access`, {
+        method: "PATCH", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ branch_id: branchId, enabled })
+      });
+      const updated = await parseResponse<{ enabled: boolean }>(response);
+      setCustomerDisplayEnabled(updated.enabled);
+      setSuccess(updated.enabled ? "เปิดสิทธิ์จอแสดงผลลูกค้าสำหรับสาขาแล้ว" : "ปิดสิทธิ์จอแสดงผลลูกค้าสำหรับสาขาแล้ว");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Unable to update customer display feature.");
+    } finally { setBusy(false); }
+  }
+
+  async function setDeviceDualScreen(device: DeviceRow, enabled: boolean) {
+    if (!window.confirm(enabled
+      ? `อนุญาตให้เครื่อง ${device.device_name} แสดงผลจอที่ 2 เมื่อมีจอจริงและ APK รองรับ?`
+      : `ปิดจอแสดงผลลูกค้าของเครื่อง ${device.device_name}?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/it-admin/v1/tenants/${tenantId}/devices`, {
+        method: "PATCH", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ device_id: device.id, action: "set_dual_screen", dual_screen_enabled: enabled })
+      });
+      await parseResponse(response);
+      setSuccess(enabled
+        ? "บันทึกคำสั่งเปิดจอที่ 2 แล้ว เครื่อง Android ที่รองรับจะรับนโยบายเมื่อ Heartbeat รอบถัดไป"
+        : "บันทึกคำสั่งปิดจอที่ 2 แล้ว เครื่อง Android ที่เชื่อมต่อจะรับนโยบายเมื่อ Heartbeat รอบถัดไป");
+      await load();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Unable to update device dual-screen policy.");
+    } finally { setBusy(false); }
+  }
 
   const enrollmentByDeviceCode = useMemo(() => {
     const map = new Map<string, EnrollmentRow>();
@@ -289,6 +354,27 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
         </button>
       </div>
 
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <h3>จอแสดงผลลูกค้า / Dual Screen</h3>
+            <p>ขั้นแรกเปิดสิทธิ์สาขา แล้วกำหนดเปิด/ปิดรายเครื่องด้านล่าง การสั่งจอที่ 2 ไม่ใช่การเพิ่มสิทธิ์ Android Device Owner</p>
+          </div>
+          <span className={connectionBadge(customerDisplayEnabled ? "active" : "")}>
+            {displayAccessLoading ? "กำลังตรวจสอบ…" : customerDisplayEnabled ? "สาขาเปิดใช้งาน" : "สาขาปิดใช้งาน"}
+          </span>
+        </div>
+        <div className={styles.actionRow}>
+          <button className={`${styles.button} ${styles.buttonPrimary}`} type="button"
+            disabled={busy || !branchId || displayAccessLoading || customerDisplayEnabled}
+            onClick={() => void setBranchCustomerDisplay(true)}>เปิดสิทธิ์จอแสดงผลสาขา</button>
+          <button className={`${styles.button} ${styles.buttonDanger}`} type="button"
+            disabled={busy || !branchId || displayAccessLoading || !customerDisplayEnabled}
+            onClick={() => void setBranchCustomerDisplay(false)}>ปิดสิทธิ์จอแสดงผลสาขา</button>
+        </div>
+        <p className={styles.connectionNote}>เครื่องต้องเป็น APK ที่ build รองรับ Dual Screen และตรวจพบจอจริงก่อนจึงจะแสดงภาพได้ ไม่สามารถเพิ่มฮาร์ดแวร์จอจากเว็บหรือสั่งยกระดับ Device Owner ได้</p>
+      </section>
+
       {token ? (
         <div className={styles.token}>
           <strong>One-time pairing token</strong>
@@ -311,12 +397,13 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
                 <th>Pairing / MDM</th>
                 <th>Last seen</th>
                 <th>MDM action</th>
+                <th>จอที่ 2</th>
                 <th>Health</th>
               </tr>
             </thead>
             <tbody>
               {devices.length === 0 ? (
-                <tr><td colSpan={6} className={styles.empty}>{loading ? "Loading..." : "No registered devices."}</td></tr>
+                <tr><td colSpan={7} className={styles.empty}>{loading ? "Loading..." : "ยังไม่มี POS ลงทะเบียนในสาขานี้ โปรดลงทะเบียนเครื่องที่ POS ก่อนสร้าง Token เชื่อม MDM"}</td></tr>
               ) : (
                 devices.map((device) => {
                   const enrollment = enrollmentByDeviceCode.get(device.device_code);
@@ -329,8 +416,19 @@ export function DevicePairingConsole({ tenantId }: { tenantId: string }) {
                         <span className={styles.muted}>{enrollment ? `${enrollment.trust_level} · ${enrollment.device_type}` : "Legacy · not enrolled"}</span>
                       </td>
                       <td>{formatDateTime(device.last_seen_at)}</td>
-                      <td>{enrollment ? <EnrollmentActions enrollment={enrollment}/> : <span className={styles.muted}>Generate token / wait for request</span>}</td>
-                      <td><a className={styles.healthLink} href={`/it-admin/tenants/${tenantId}/devices/${device.id}`}>Open health</a></td>
+                      <td>{enrollment ? <EnrollmentActions enrollment={enrollment}/> : <span className={styles.muted}>ต้องลงทะเบียนและจับคู่เครื่องก่อน</span>}</td>
+                      <td>
+                        <button type="button" className={styles.button}
+                          disabled={busy || device.device_type !== "pos_terminal" || device.status !== "active"}
+                          onClick={() => void setDeviceDualScreen(device, device.dual_screen_enabled === false)}>
+                          {device.dual_screen_enabled === false ? "เปิดจอที่ 2" : "ปิดจอที่ 2"}
+                        </button>
+                        <span className={styles.muted}>
+                          {device.dual_screen_enabled === false ? "ปิดตามนโยบาย IT" :
+                            customerDisplayEnabled ? "อนุญาต เมื่อ APK/จอรองรับ" : "สาขายังไม่เปิดสิทธิ์"}
+                        </span>
+                      </td>
+                      <td><a className={styles.healthLink} href={`/tenants/${tenantId}/devices/${device.id}/health`}>Health / Full MDM</a></td>
                     </tr>
                   );
                 })
