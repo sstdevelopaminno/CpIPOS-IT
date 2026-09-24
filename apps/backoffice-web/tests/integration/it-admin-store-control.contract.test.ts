@@ -12,6 +12,7 @@ const actionConfirmStyles = source("../../src/components/it-admin/tenant-action-
 const ownerCard = source("../../src/components/it-admin/tenant-primary-owner-card.tsx");
 const route = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/control/route.ts");
 const service = source("../../src/lib/services/it-admin/tenant-control-service.ts");
+const prepaidMigration = source("../../../../supabase/migrations/20260924203500_prepaid_trial_handoff.sql");
 
 describe("IT Admin Store Control Center contract", () => {
   it("opens an editable Store Control Center instead of the old read-only tenant detail", () => {
@@ -98,4 +99,20 @@ describe("IT Admin Store Control Center contract", () => {
     expect(controlCenter).toContain("Store Code เพื่อยืนยัน");
     expect(controlCenter).toContain("ย้อนกลับไม่ได้");
   });
+  it("preserves prepaid seven-day trials and converts them before the subscription lock", () => {
+    expect(prepaidMigration).toContain("CREATE OR REPLACE FUNCTION app.refresh_subscription_locks()");
+    expect(prepaidMigration).toContain("app.approve_paid_subscription");
+    expect(prepaidMigration).toContain("pending_trial_completion");
+    expect(prepaidMigration).toContain("FOR UPDATE OF l SKIP LOCKED");
+    expect(prepaidMigration).toContain("prepaid_payment_reference");
+    expect(prepaidMigration).toContain("prepaid_amount_thb");
+    expect(prepaidMigration).toContain("prepaid_activation_state");
+    expect(prepaidMigration).toContain("NOT EXISTS");
+    expect(service).toContain("lifecycle?.trial_expires_at ?? contract.ended_at");
+    expect(controlCenter).toContain("isPrepaidPendingTrial");
+    expect(controlCenter).toContain("ยืนยันรับชำระเงินล่วงหน้า");
+    expect(controlCenter).toContain("disabled={busy || isPrepaidPendingTrial");
+    expect(controlCenter).not.toContain("093186");
+  });
+
 });
