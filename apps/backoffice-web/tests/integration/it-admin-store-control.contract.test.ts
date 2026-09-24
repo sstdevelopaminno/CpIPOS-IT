@@ -12,6 +12,10 @@ const actionConfirmStyles = source("../../src/components/it-admin/tenant-action-
 const ownerCard = source("../../src/components/it-admin/tenant-primary-owner-card.tsx");
 const cashierConsole = source("../../src/components/it-admin/tenant-cashier-devices.tsx");
 const cashierRoute = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/cashier-devices/route.ts");
+const menuPanel = source("../../src/components/it-admin/tenant-pos-menu-policies.tsx");
+const menuRoute = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/pos-menu-policies/route.ts");
+const menuCatalog = source("../../src/lib/pos-menu-policy.ts");
+const menuMigration = source("../../../../supabase/migrations/20260924220000_tenant_pos_menu_policies.sql");
 const route = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/control/route.ts");
 const service = source("../../src/lib/services/it-admin/tenant-control-service.ts");
 const prepaidMigration = source("../../../../supabase/migrations/20260924203500_prepaid_trial_handoff.sql");
@@ -146,6 +150,31 @@ describe("IT Admin Store Control Center contract", () => {
     expect(cashierConsole).toContain('"POST"');
     expect(actionConfirm).toContain("delete_cashier");
     expect(actionConfirm).toContain("disable_cashier");
+  });
+
+  it("adds the tenant main-menu card after cashier terminals and before package", () => {
+    expect(controlCenter).toContain('setTab("menuPolicies")');
+    expect(controlCenter).toContain("<TenantPosMenuPolicies");
+    const cashier = controlCenter.indexOf('setTab("cashiers")');
+    const menu = controlCenter.indexOf('setTab("menuPolicies")');
+    const packages = controlCenter.indexOf('setTab("package")');
+    expect(cashier).toBeLessThan(menu);
+    expect(menu).toBeLessThan(packages);
+    expect(menuPanel).toContain("isPosMenuEnabled");
+    expect(menuPanel).toContain("group === \"main\"");
+  });
+
+  it("persists audited tenant-scoped switches via service-role-only data", () => {
+    expect(menuRoute).toContain("requireItAdmin()");
+    expect(menuRoute).toContain("parseTenantParam");
+    expect(menuRoute).toContain("isValidPosMenuKey");
+    expect(menuRoute).toContain('from("tenant_pos_menu_policies")');
+    expect(menuRoute).toContain("appendAuditLog");
+    expect(menuCatalog).toContain('"main.more"');
+    expect(menuCatalog).toContain('"settings.table_qr"');
+    expect(menuMigration).toContain("references public.tenants(id) on delete cascade");
+    expect(menuMigration).toContain("revoke all on public.tenant_pos_menu_policies");
+    expect(menuMigration).toContain("to service_role");
   });
 
 });
