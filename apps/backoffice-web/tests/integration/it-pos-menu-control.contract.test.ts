@@ -10,7 +10,7 @@ const ui = read("../../src/components/it-admin/tenant-pos-menu-policies.tsx");
 describe("IT ↔ POS single-source menu policy", () => {
   it("maps every legacy menu switch to exactly one canonical key (including shift)", () => {
     const canonical = POS_MENU_CATALOG.map(item => item.key).sort();
-    const aliases = [...legacy.matchAll(/\\b[a-z_]+: "((?:main|more|settings)\\.[a-z_]+)"/g)].map(match => match[1]);
+    const aliases = [...legacy.matchAll(/\b[a-z_]+: "((?:main|more|settings)\.[a-z_]+)"/g)].map(match => match[1]);
     expect(canonical).toHaveLength(31);
     expect(new Set(canonical).size).toBe(canonical.length);
     expect(new Set(aliases).size).toBe(aliases.length);
@@ -30,7 +30,7 @@ describe("IT ↔ POS single-source menu policy", () => {
   });
 
   it("reads and writes the same tenant-scoped Supabase table, not subscription metadata", () => {
-    expect(api.match(/from\\("tenant_pos_menu_policies"\\)/g)).toHaveLength(3);
+    expect(api.match(/from\("tenant_pos_menu_policies"\)/g)).toHaveLength(3);
     expect(api).toContain('.eq("tenant_id", tenantId)');
     expect(api).toContain('onConflict: "tenant_id,menu_key"');
     expect(api).not.toContain("pos_menu_visibility");
