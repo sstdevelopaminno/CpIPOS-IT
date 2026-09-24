@@ -72,6 +72,8 @@ const CORE_AGENT_PACKAGES = new Set([
 ]);
 
 const MAX_PAYLOAD_BYTES = 4096;
+const MAX_REASON_LENGTH = 240;
+const SENSITIVE_REASON_TEXT = /(?:password|passwd|api[_-]?key|secret|token|pin)\s*[:=]\s*\S+|\bbearer\s+\S+|\bpin\s+\d{4,}|\bsk-[A-Za-z0-9]{12,}/i;
 const MAX_PAYLOAD_DEPTH = 4;
 const MAX_PAYLOAD_KEYS = 40;
 const MAX_PAYLOAD_ARRAY_ITEMS = 20;
@@ -182,7 +184,11 @@ export const validateMdmCommandRequest = (
   const requestedByRole = normalize(request.requestedByRole) || 'unknown';
   const payloadResult = sanitizeMdmCommandPayload(request.payload);
   const payload = payloadResult.payload;
-  const reasonText = textValue(request.reason);
+  const originalReasonText = textValue(request.reason);
+  const reasonMayContainSecret = SENSITIVE_REASON_TEXT.test(originalReasonText);
+  const reasonText = reasonMayContainSecret ? '[redacted: sensitive reason]' : originalReasonText.slice(0, MAX_REASON_LENGTH);
+  pushIfMissing(reasons, originalReasonText.length > MAX_REASON_LENGTH, 'reason_too_long');
+  pushIfMissing(reasons, reasonMayContainSecret, 'reason_may_contain_secret');
 
   for (const reason of payloadResult.reasons) pushIfMissing(reasons, true, reason);
   pushIfMissing(reasons, !request.tenantId, 'tenant_id_required');
@@ -195,7 +201,7 @@ export const validateMdmCommandRequest = (
     !eligibility.allowedCommands.includes(request.commandType),
     'command_not_allowed_by_device_eligibility',
   );
-  pushIfMissing(reasons, SENSITIVE_COMMANDS.has(request.commandType) && reasonText.length < 8, 'reason_required_for_sensitive_mdm_command');
+  pushIfMissing(reasons, SENSITIVE_COMMANDS.has(request.commandType) && originalReasonText.length < 8, 'reason_required_for_sensitive_mdm_command');
 
   if (request.commandType === 'start_remote_support') {
     const sessionMode = normalize(textValue(payload.sessionMode));

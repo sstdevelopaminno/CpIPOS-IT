@@ -5,6 +5,7 @@ import { validateMdmCommandRequest } from "@/lib/mdm/commandPolicy";
 import { type MdmCommandType, type MdmDeviceSnapshot } from "@/lib/mdm/eligibility";
 import { getMdmConsoleBanner, getMdmConsoleControls } from "@/lib/mdm/webConsoleControls";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
+import { readBoundedJson } from "@/lib/server/limited-json";
 
 const MDM_COMMAND_TYPES: readonly MdmCommandType[] = [
   "lock_device",
@@ -186,22 +187,25 @@ export async function POST(req: Request) {
       namespace: "it_admin_full_mdm_command",
       key: auth.userId,
       max: 20,
-      windowMs: 60_000
+      windowMs: 60_000,
+      failClosedOnBackendError: true
     });
     if (!rateLimit.ok) return fail("rate_limited", "Too many MDM commands. Please wait and try again.", 429);
 
-    const contentLength = Number(req.headers.get("content-length") ?? 0);
-    if (Number.isFinite(contentLength) && contentLength > MAX_MDM_COMMAND_REQUEST_BYTES) {
-      return fail("mdm_command_payload_too_large", "MDM command request body is too large.", 413);
+    const body = await readBoundedJson<MdmCommandRequestBody>(req, MAX_MDM_COMMAND_REQUEST_BYTES);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return fail("invalid_mdm_command_body", "MDM command request must be a JSON object.", 422);
     }
-
-    const body = (await req.json().catch(() => ({}))) as MdmCommandRequestBody;
     const tenantId = text(body.tenant_id);
     const deviceId = text(body.device_id);
     const commandTypeRaw = text(body.command_type);
     const reason = text(body.reason);
     const rawPayload = body.payload;
-    const ttlMinutes = Math.min(Math.max(Number(body.ttl_minutes ?? 30), 1), 60);
+    const ttlRaw = Number(body.ttl_minutes ?? 30);
+    if (!Number.isSafeInteger(ttlRaw) || ttlRaw < 1 || ttlRaw > 60) {
+      return fail("invalid_mdm_command_ttl", "Command TTL must be 1–60 whole minutes.", 422);
+    }
+    const ttlMinutes = ttlRaw;
 
     if (!tenantId || !deviceId) return fail("missing_scope", "tenant_id and device_id are required.", 422);
     if (!isMdmCommandType(commandTypeRaw)) return fail("invalid_mdm_command_type", "Unknown MDM command type.", 422);
@@ -226,6 +230,7 @@ export async function POST(req: Request) {
       payload: rawPayload
     }, snapshot);
     const payload = validation.auditEvent.payload;
+    const safeReason = validation.auditEvent.reasonText ?? "";
 
     const eligibilitySnapshot = {
       platform: device.platform,
@@ -252,7 +257,7 @@ export async function POST(req: Request) {
         reason: rejection,
         actor_id: auth.userId,
         actor_role: "it_admin",
-        metadata: { reason_text: reason, payload, eligibility: eligibilitySnapshot }
+        metadata: { reason_text: safeReason, payload, eligibility: eligibilitySnapshot }
       });
       await appendItAuditLog({
         tenantId,
@@ -275,7 +280,7 @@ export async function POST(req: Request) {
         device_id: deviceId,
         command_type: commandType,
         status: "queued",
-        reason: reason || null,
+        reason: safeReason || null,
         payload,
         requested_by: auth.userId,
         requested_by_role: "it_admin",
@@ -299,7 +304,7 @@ export async function POST(req: Request) {
         started_by: auth.userId,
         command_id: command.id,
         expires_at: new Date(now.getTime() + requestedTtl * 60_000).toISOString(),
-        audit_metadata: { source: "cpipos_it_admin", reason }
+        audit_metadata: { source: "cpipos_it_admin", reason: safeReason }
       });
       if (supportError) {
         await supabase.from("mdm_commands").update({
@@ -319,7 +324,7 @@ export async function POST(req: Request) {
         command_type: commandType,
         event_type: "queued",
         decision: "accepted",
-        reason: reason || null,
+        reason: safeReason || null,
         actor_id: auth.userId,
         actor_role: "it_admin",
         metadata: { payload, eligibility: eligibilitySnapshot }
