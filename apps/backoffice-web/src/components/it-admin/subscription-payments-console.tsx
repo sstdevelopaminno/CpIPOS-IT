@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SubscriptionBusinessProfile } from "@/components/it-admin/subscription-business-profile";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Row = {
@@ -13,7 +14,7 @@ type Row = {
     period_start: string; period_end: string } | null;
   payment: { id: string; status: string; amount_reported: number | null; submitted_at: string | null;
     reviewed_at: string | null; has_evidence: boolean } | null;
-  has_verified_receipt: boolean;
+  has_paid_cycle: boolean;
 };
 type Envelope = { data?: { rows: Row[]; generated_at: string }; error?: { message?: string } };
 type ContactSettings = { billing_email: string; support_email: string; billing_sender_name: string; support_sender_name: string };
@@ -161,6 +162,7 @@ export function SubscriptionPaymentsConsole() {
           className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
           {saving ? "กำลังบันทึก..." : "บันทึกการตั้งค่า"}</button>
       </div> : null}
+      <SubscriptionBusinessProfile />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {([["ร้านค้าทั้งหมด", rows.length], ["ใช้งานอยู่", activeCount], ["หมดอายุใน 7 วัน", expiring], ["รอตรวจชำระ", pending]] as const)
           .map(([label, value]) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -212,6 +214,7 @@ export function SubscriptionPaymentsConsole() {
                     `รอบบิล: ${row.billing_cycle.status}` : "ยังไม่มีรอบบิล"}</span></td>
                 <td className="px-4 py-4"><div className="flex flex-col items-start gap-2">
                   <Link href={`/tenants/${row.tenant_id}`} className="text-xs font-semibold text-blue-700 underline">ดูสัญญา / จัดการร้าน</Link>
+                  <Link href={`/it-admin/subscription-payments/${row.tenant_id}`} className="text-xs font-semibold text-blue-700 underline">ประวัติการชำระ</Link>
                   <button type="button" onClick={() => openEmailDraft(row)}
                     className="rounded-md border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-700">
                     ร่างอีเมลถึงร้าน
@@ -220,8 +223,8 @@ export function SubscriptionPaymentsConsole() {
                     className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-400">
                     ดูใบเสร็จ
                   </button>
-                  <span className="text-xs text-slate-500">{row.has_verified_receipt ?
-                    "ชำระครบแล้ว — รอเอกสารใบเสร็จที่ออกจริง" : "ใบเสร็จ: ยังไม่มีหลักฐานชำระครบ"}</span>
+                  <span className="text-xs text-slate-500">{row.has_paid_cycle ?
+                    "รอบบิลบันทึกว่าชำระครบ — ยังไม่ได้ออกใบเสร็จ" : "ยังไม่มีรอบบิลที่ชำระครบ"}</span>
                 </div></td>
               </tr>) : <tr><td colSpan={10} className="p-8 text-center text-slate-500">ไม่มีข้อมูลตามตัวกรอง</td></tr>}
           </tbody></table></div>
