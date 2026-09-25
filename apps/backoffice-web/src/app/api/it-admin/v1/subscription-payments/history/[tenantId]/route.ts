@@ -13,7 +13,7 @@ type RequestRow = {
   id: string; request_type: string; requested_package_id: string | null;
   amount_reported: number | null; currency: string | null; evidence_url: string | null;
   status: string; submitted_at: string | null; reviewed_at: string | null;
-  review_note: string | null; created_at: string
+  review_note: string | null; created_at: string; metadata: Record<string,unknown> | null
 };
 type Approval = { id: string; payment_request_id: string | null; action: string; from_status: string | null;
   to_status: string | null; created_at: string };
@@ -34,7 +34,7 @@ export async function GET(_request: Request, { params }: Params) {
         .select("id,period_start,period_end,amount_due,amount_paid,status,created_at,package_id")
         .eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(100).returns<Cycle[]>(),
       supabase.from("tenant_subscription_payment_requests")
-        .select("id,request_type,requested_package_id,amount_reported,currency,evidence_url,status,submitted_at,reviewed_at,review_note,created_at")
+        .select("id,request_type,requested_package_id,amount_reported,currency,evidence_url,status,submitted_at,reviewed_at,review_note,created_at,metadata")
         .eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(100).returns<RequestRow[]>(),
       supabase.from("tenant_subscription_approval_events")
         .select("id,payment_request_id,action,from_status,to_status,created_at")
@@ -49,7 +49,18 @@ export async function GET(_request: Request, { params }: Params) {
           .createSignedUrl(evidence_url, 300);
         if (!signed.error && signed.data) slip_url = signed.data.signedUrl;
       }
-      return { ...row, has_evidence: Boolean(evidence_url), slip_url };
+      const { metadata, ...visible } = row;
+      const info = metadata ?? {};
+      const quoted = Number(info.expected_amount);
+      return {
+        ...visible, has_evidence: Boolean(evidence_url), slip_url,
+        kind: info.kind === "payment_notice" ? "payment_notice" : "renewal_intent",
+        billing_interval: info.billing_interval === "yearly" ? "yearly" : "monthly",
+        expected_amount: info.expected_amount == null || !Number.isFinite(quoted) ? null : quoted,
+        transfer_reference: typeof info.transfer_reference === "string" ? info.transfer_reference : "",
+        payer_name: typeof info.payer_name === "string" ? info.payer_name : "",
+        transfer_at: typeof info.transfer_at === "string" ? info.transfer_at : ""
+      };
     }));
     const response = ok({
       store: store.data,
