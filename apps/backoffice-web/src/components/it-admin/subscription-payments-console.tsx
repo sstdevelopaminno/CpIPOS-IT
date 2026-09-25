@@ -105,7 +105,7 @@ export function SubscriptionPaymentsConsole() {
       `ติดต่อ Support: ${contacts.support_email}`
     ].join("\n");
     const cc = contacts.billing_email ? `&cc=${encodeURIComponent(contacts.billing_email)}` : "";
-    window.location.href = `mailto:${encodeURIComponent(row.billing_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}${cc}`;
+    window.open(`mailto:${encodeURIComponent(row.billing_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}${cc}`, "_self");
   }
   async function saveContacts() {
     setSaving(true); setError(""); setNotice("");
