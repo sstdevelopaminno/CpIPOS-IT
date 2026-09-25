@@ -9,7 +9,7 @@ type History = {
     amount_paid: number; status: string; created_at: string; package_id: string }[];
   payment_requests: { id: string; request_type: string; amount_reported: number | null;
     currency: string | null; status: string; submitted_at: string | null;
-    reviewed_at: string | null; review_note: string | null; has_evidence: boolean }[];
+    reviewed_at: string | null; review_note: string | null; has_evidence: boolean; slip_url: string | null }[];
   approval_events: { id: string; payment_request_id: string | null; action: string;
     from_status: string | null; to_status: string | null; created_at: string }[];
 };
@@ -24,6 +24,9 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   const [history, setHistory] = useState<History | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const [notes, setNotes] = useState<Record<string,string>>({});
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
@@ -42,6 +45,26 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     return () => controller.abort();
   }, [tenantId]);
 
+  async function review(requestId:string,action:"under_review"|"reject") {
+    const note=(notes[requestId]||"").trim();
+    if(action==="reject" && !note) {setError("กรุณาระบุเหตุผลการปฏิเสธ");return;}
+    setBusyId(requestId);setError("");setNotice("");
+    try {
+      const response=await fetch("/api/it-admin/v1/subscription-payments/review/"+encodeURIComponent(requestId),{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({action,note})
+      });
+      const json=await response.json() as {error?:{message?:string}};
+      if(!response.ok)throw new Error(json.error?.message||"ไม่สามารถปรับสถานะคำขอ");
+      const updated=await fetch("/api/it-admin/v1/subscription-payments/history/"+encodeURIComponent(tenantId),{cache:"no-store"});
+      const data=await updated.json() as Envelope;
+      if(!updated.ok||!data.data)throw new Error(data.error?.message||"ไม่สามารถโหลดประวัติใหม่");
+      setHistory(data.data);
+      setNotice(action==="reject"?"ปฏิเสธคำขอแล้ว":"บันทึกสถานะกำลังตรวจสอบแล้ว");
+    } catch(cause){setError(cause instanceof Error?cause.message:"ดำเนินการไม่สำเร็จ");}
+    finally {setBusyId("");}
+  }
+
   return (
     <section className="space-y-5 px-5 py-6 md:px-7">
       <Link href="/it-admin/subscription-payments" className="text-sm font-semibold text-blue-700 underline">
@@ -57,6 +80,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       </header>
       {loading ? <p>กำลังโหลด...</p> : null}
       {error ? <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-700">{error}</p> : null}
+      {notice ? <p role="status" className="rounded-lg bg-green-50 p-4 text-green-700">{notice}</p> : null}
       <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         การแจ้งชำระและไฟล์สลิปไม่ใช่หลักฐานว่าธนาคารรับเงินจริงแล้ว
         · รอบบิลที่ระบุชำระครบไม่ใช่ใบเสร็จ PDF ที่ออกแล้ว
@@ -67,14 +91,28 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           <h2 className="mb-4 text-lg font-bold">รายการแจ้งชำระ ({history.payment_requests.length})</h2>
           {history.payment_requests.length === 0 ? <p className="text-sm text-slate-500">ยังไม่มีการแจ้งชำระในระบบ</p> :
             <div className="overflow-x-auto"><table className="w-full min-w-[740px] text-left text-sm">
-              <thead><tr className="border-b text-slate-500">{["วันแจ้ง","ประเภท","ยอดที่แจ้ง","สถานะตรวจสอบ","หลักฐาน","วันตรวจ","หมายเหตุ IT"]
+              <thead><tr className="border-b text-slate-500">{["วันแจ้ง","ประเภท","ยอดที่แจ้ง","สถานะตรวจสอบ","หลักฐาน","วันตรวจ","หมายเหตุ IT","จัดการ"]
                 .map((label) => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
               <tbody>{history.payment_requests.map((row) => <tr className="border-b" key={row.id}>
                 <td className="p-3">{formatDate(row.submitted_at)}</td><td className="p-3">{row.request_type}</td>
                 <td className="p-3">{formatMoney(row.amount_reported, row.currency || "THB")}</td>
                 <td className="p-3 font-semibold">{row.status}</td>
-                <td className="p-3">{row.has_evidence ? "มีการแนบหลักฐาน" : "—"}</td>
+                <td className="p-3">{row.slip_url ? <a className="text-blue-700 underline" href={row.slip_url} target="_blank" rel="noopener noreferrer">เปิดสลิป (ลิงก์ชั่วคราว)</a> : row.has_evidence ? "มีหลักฐาน · โหลดลิงก์ไม่สำเร็จ" : "—"}</td>
                 <td className="p-3">{formatDate(row.reviewed_at)}</td><td className="p-3">{row.review_note || "—"}</td>
+                <td className="p-3">{["pending","under_review"].includes(row.status) ? <div className="grid min-w-[180px] gap-2">
+                  <input aria-label="หมายเหตุ IT" maxLength={500} value={notes[row.id]||""}
+                    onChange={event=>setNotes(current=>({...current,[row.id]:event.target.value}))}
+                    className="rounded-md border border-slate-300 px-2 py-1.5 text-xs" placeholder="หมายเหตุ / เหตุผลการปฏิเสธ" />
+                  {row.status==="pending"?<button type="button" disabled={Boolean(busyId)}
+                    onClick={()=>void review(row.id,"under_review")}
+                    className="rounded-md border border-blue-200 px-2 py-1.5 text-xs font-bold text-blue-700 disabled:opacity-50">
+                    รับเรื่องตรวจสอบ</button>:null}
+                  <button type="button" disabled={Boolean(busyId)}
+                    onClick={()=>void review(row.id,"reject")}
+                    className="rounded-md border border-red-200 px-2 py-1.5 text-xs font-bold text-red-700 disabled:opacity-50">
+                    ปฏิเสธพร้อมเหตุผล</button>
+                  <span className="text-xs text-amber-800">ยังไม่เปิดอนุมัติรับเงิน จนกว่าจะยืนยันรายการธนาคาร</span>
+                </div> : "—"}</td>
               </tr>)}</tbody></table></div>}
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
