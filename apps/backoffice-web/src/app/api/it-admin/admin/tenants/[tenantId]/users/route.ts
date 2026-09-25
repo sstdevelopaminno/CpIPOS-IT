@@ -122,6 +122,14 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
       throw new Error(error.message);
     }
 
+    if (role === "owner") {
+      // Only IT can establish the first Owner; later Owner assignments never replace it.
+      const { error: protectError } = await supabase.from("tenants")
+        .update({ primary_owner_user_id: userId })
+        .eq("id", tenantId).is("primary_owner_user_id", null);
+      if (protectError) throw new Error("primary_owner_protection_failed");
+    }
+
     await appendAuditLog({
       tenantId,
       branchId,
@@ -219,6 +227,13 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
 
     if (updateError) {
       throw new Error(updateError.message);
+    }
+
+    if (updated.role === "owner") {
+      const { error: protectError } = await supabase.from("tenants")
+        .update({ primary_owner_user_id: userId })
+        .eq("id", tenantId).is("primary_owner_user_id", null);
+      if (protectError) throw new Error("primary_owner_protection_failed");
     }
 
     await appendAuditLog({
