@@ -7,8 +7,8 @@ create table if not exists public.it_communication_settings (
   support_sender_name text not null default 'Cutting Point Tech Support',
   updated_by uuid references public.users_profiles(id) on delete set null,
   updated_at timestamptz not null default now(),
-  constraint billing_email_format check (billing_email ~* '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'),
-  constraint support_email_format check (support_email ~* '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$')
+  constraint billing_email_format check (billing_email ~* '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$'),
+  constraint support_email_format check (support_email ~* '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$')
 );
 alter table public.it_communication_settings enable row level security;
 revoke all on table public.it_communication_settings from public, anon, authenticated;
