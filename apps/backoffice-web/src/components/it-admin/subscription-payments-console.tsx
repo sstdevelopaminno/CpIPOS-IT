@@ -9,7 +9,7 @@ type Row = {
   billing_email: string | null; package_name: string; package_code: string | null;
   billing_interval: "monthly" | "yearly" | "other"; service_status: string;
   start_date: string | null; end_date: string | null; days_remaining: number | null;
-  amount_per_cycle: number | null; currency: string; contract_id: string | null;
+  amount_per_cycle: number | null; currency: string; contract_id: string | null; is_internal_demo: boolean;
   billing_cycle: { id: string; status: string; amount_due: number; amount_paid: number;
     period_start: string; period_end: string } | null;
   payment: { id: string; status: string; amount_reported: number | null; submitted_at: string | null;
@@ -28,7 +28,8 @@ const defaultContacts: ContactSettings = {
 
 const statusText: Record<string, string> = {
   active: "ใช้งานอยู่", trial: "ทดลองใช้", suspended: "ระงับบริการ", expired: "หมดอายุ",
-  cancelled: "ยกเลิกสัญญา", store_suspended: "ร้านถูกระงับ", no_contract: "ยังไม่มีสัญญา"
+  cancelled: "ยกเลิกสัญญา", store_suspended: "ร้านถูกระงับ", no_contract: "ยังไม่มีสัญญา",
+  locked: "ถูกล็อกบริการ", internal_demo: "บัญชีทดสอบภายใน"
 };
 function date(value: string | null) {
   if (!value) return "—";
@@ -207,7 +208,9 @@ export function SubscriptionPaymentsConsole() {
                 <td className="px-4 py-4 font-bold">{row.days_remaining === null ? "—"
                   : row.days_remaining < 0 ? `เกิน ${Math.abs(row.days_remaining)} วัน`
                   : `${row.days_remaining} วัน`}</td>
-                <td className="whitespace-nowrap px-4 py-4">{money(row.amount_per_cycle, row.currency)}</td>
+                <td className="whitespace-nowrap px-4 py-4">{row.is_internal_demo ? "ยกเว้นการเรียกเก็บ (บัญชีภายใน)" :
+                  row.package_code === "custom" && (row.amount_per_cycle === null || row.amount_per_cycle <= 0)
+                    ? "ตามสัญญา" : money(row.amount_per_cycle, row.currency)}</td>
                 <td className="px-4 py-4"><span className="block text-xs text-slate-600">
                   {row.payment?.status ? `แจ้งชำระ: ${row.payment.status}` : "ยังไม่มีรายการแจ้งชำระ"}</span>
                   <span className="text-xs text-slate-500">{row.billing_cycle ?
