@@ -9,7 +9,8 @@ type History = {
     amount_paid: number; status: string; created_at: string; package_id: string }[];
   payment_requests: { id: string; request_type: string; amount_reported: number | null;
     currency: string | null; status: string; submitted_at: string | null;
-    reviewed_at: string | null; review_note: string | null; has_evidence: boolean; slip_url: string | null }[];
+    reviewed_at: string | null; review_note: string | null; has_evidence: boolean; slip_url: string | null;
+    kind:string; billing_interval:string; expected_amount:number|null; transfer_reference:string; payer_name:string; transfer_at:string }[];
   approval_events: { id: string; payment_request_id: string | null; action: string;
     from_status: string | null; to_status: string | null; created_at: string }[];
 };
@@ -91,13 +92,13 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           <h2 className="mb-4 text-lg font-bold">รายการแจ้งชำระ ({history.payment_requests.length})</h2>
           {history.payment_requests.length === 0 ? <p className="text-sm text-slate-500">ยังไม่มีการแจ้งชำระในระบบ</p> :
             <div className="overflow-x-auto"><table className="w-full min-w-[740px] text-left text-sm">
-              <thead><tr className="border-b text-slate-500">{["วันแจ้ง","ประเภท","ยอดที่แจ้ง","สถานะตรวจสอบ","หลักฐาน","วันตรวจ","หมายเหตุ IT","จัดการ"]
+              <thead><tr className="border-b text-slate-500">{["วันแจ้ง","ประเภท / รอบ","ยอดที่แจ้ง / ตามแพ็กเกจ","สถานะตรวจสอบ","หลักฐาน / เลขอ้างอิง","วันตรวจ","หมายเหตุ IT","จัดการ"]
                 .map((label) => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
               <tbody>{history.payment_requests.map((row) => <tr className="border-b" key={row.id}>
-                <td className="p-3">{formatDate(row.submitted_at)}</td><td className="p-3">{row.request_type}</td>
-                <td className="p-3">{formatMoney(row.amount_reported, row.currency || "THB")}</td>
+                <td className="p-3">{formatDate(row.submitted_at)}</td><td className="p-3">{row.kind==="payment_notice"?"แจ้งโอน":"ขอต่ออายุ"}<br /><span className="text-xs text-slate-500">{row.request_type} · {row.billing_interval==="yearly"?"รายปี":"รายเดือน"}</span></td>
+                <td className="p-3">{formatMoney(row.amount_reported, row.currency || "THB")}<br/><span className="text-xs text-slate-500">ตามแพ็กเกจ {formatMoney(row.expected_amount, row.currency || "THB")}</span></td>
                 <td className="p-3 font-semibold">{row.status}</td>
-                <td className="p-3">{row.slip_url ? <a className="text-blue-700 underline" href={row.slip_url} target="_blank" rel="noopener noreferrer">เปิดสลิป (ลิงก์ชั่วคราว)</a> : row.has_evidence ? "มีหลักฐาน · โหลดลิงก์ไม่สำเร็จ" : "—"}</td>
+                <td className="p-3">{row.slip_url ? <a className="text-blue-700 underline" href={row.slip_url} target="_blank" rel="noopener noreferrer">เปิดสลิป (ลิงก์ชั่วคราว)</a> : row.has_evidence ? "มีหลักฐาน · โหลดลิงก์ไม่สำเร็จ" : "—"}{row.transfer_reference?<p className="mt-1 max-w-[170px] break-all text-xs text-slate-500">อ้างอิง {row.transfer_reference}</p>:null}{row.payer_name?<p className="mt-1 text-xs text-slate-500">ผู้โอน {row.payer_name}</p>:null}</td>
                 <td className="p-3">{formatDate(row.reviewed_at)}</td><td className="p-3">{row.review_note || "—"}</td>
                 <td className="p-3">{["pending","under_review"].includes(row.status) ? <div className="grid min-w-[180px] gap-2">
                   <input aria-label="หมายเหตุ IT" maxLength={500} value={notes[row.id]||""}
