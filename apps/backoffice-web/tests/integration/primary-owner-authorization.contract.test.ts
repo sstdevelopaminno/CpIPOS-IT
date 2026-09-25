@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const migration = read("../../../../supabase/migrations/20260925045231_cpipos_protect_primary_owner_and_self_role_escalation.sql");
 const rolesMigration = read("../../../../supabase/migrations/20260925045630_cpipos_guard_direct_owner_role_mutations.sql");
+const activeAccessMigration = read("../../../../supabase/migrations/20260925050243_deny_inactive_users_in_tenant_and_role_access_helpers.sql");
 const provisioning = read("../../src/lib/services/it-admin/store-provisioning-service.ts");
 const primaryOwner = read("../../src/app/api/it-admin/v1/tenants/[tenantId]/primary-owner/route.ts");
 const adminRole = read("../../src/app/api/it-admin/admin/tenants/[tenantId]/users/route.ts");
@@ -31,5 +32,8 @@ describe("first Owner and IT role hardening", () => {
     expect(migration).toContain("cpipos_protect_primary_owner_reference");
     expect(rolesMigration).toContain("owner_role_assignment_requires_it");
     expect(rolesMigration).toContain("owner_role_removal_requires_it");
+    expect(activeAccessMigration).toContain("app.has_role");
+    expect(activeAccessMigration).toContain("app.has_tenant_access");
+    expect(activeAccessMigration).toContain("up.is_active=true");
   });
 });
