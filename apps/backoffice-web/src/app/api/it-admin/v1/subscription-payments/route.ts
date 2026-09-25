@@ -95,7 +95,7 @@ export async function GET() {
         payment: payment ? { id: payment.id, status: payment.status,
           amount_reported: payment.amount_reported, submitted_at: payment.submitted_at,
           reviewed_at: payment.reviewed_at, has_evidence: Boolean(payment.evidence_url) } : null,
-        has_verified_receipt: Boolean(cycle && Number(cycle.amount_due) > 0
+        has_paid_cycle: Boolean(cycle && Number(cycle.amount_due) > 0
           && Number(cycle.amount_paid) >= Number(cycle.amount_due) && cycle.status === "paid"),
         contract_id: contract?.id ?? null
       };
