@@ -18,6 +18,8 @@ type Cycle = { id: string; tenant_id: string; package_id: string; period_start: 
 type Payment = { id: string; tenant_id: string; status: string; evidence_url: string | null;
   amount_reported: number | null; submitted_at: string | null; reviewed_at: string | null; created_at: string };
 type Owner = { id: string; email: string | null };
+type Lifecycle = { tenant_id: string; lifecycle_status: string; access_locked: boolean;
+  trial_expires_at: string | null; subscription_expires_at: string | null };
 
 function daysRemaining(endDate: string | null, now: number): number | null {
   if (!endDate) return null;
@@ -43,7 +45,7 @@ export async function GET() {
     if (!ids.length) return ok({ rows: [], generated_at: new Date().toISOString() });
 
     const ownerIds = [...new Set(stores.map((store) => store.primary_owner_user_id).filter((id): id is string => Boolean(id)))];
-    const [contractsResult, cyclesResult, paymentsResult, ownersResult] = await Promise.all([
+    const [contractsResult, cyclesResult, paymentsResult, ownersResult, lifecycleResult] = await Promise.all([
       supabase.from("tenant_subscription_contracts")
         .select("id,tenant_id,package_id,billing_interval,status,started_at,ended_at,amount_per_cycle,currency,created_at")
         .in("tenant_id", ids).order("created_at", { ascending: false }).limit(1000).returns<Contract[]>(),
@@ -55,9 +57,12 @@ export async function GET() {
         .in("tenant_id", ids).order("created_at", { ascending: false }).limit(1000).returns<Payment[]>(),
       ownerIds.length
         ? supabase.from("users_profiles").select("id,email").in("id", ownerIds).returns<Owner[]>()
-        : Promise.resolve({ data: [] as Owner[], error: null })
+        : Promise.resolve({ data: [] as Owner[], error: null }),
+      supabase.from("tenant_data_lifecycle")
+        .select("tenant_id,lifecycle_status,access_locked,trial_expires_at,subscription_expires_at")
+        .in("tenant_id", ids).returns<Lifecycle[]>()
     ]);
-    if (contractsResult.error || cyclesResult.error || paymentsResult.error || ownersResult.error) {
+    if (contractsResult.error || cyclesResult.error || paymentsResult.error || ownersResult.error || lifecycleResult.error) {
       throw new Error("subscription_payment_data_query_failed");
     }
 
@@ -71,6 +76,7 @@ export async function GET() {
     const contracts = latestByTenant(contractsResult.data ?? []);
     const cycles = latestByTenant(cyclesResult.data ?? []);
     const payments = latestByTenant(paymentsResult.data ?? []);
+    const lifecycleByTenant = new Map((lifecycleResult.data ?? []).map((item) => [item.tenant_id, item]));
     const now = Date.now();
 
     const rows = stores.map((store) => {
@@ -78,6 +84,12 @@ export async function GET() {
       const pkg = contract ? packagesById.get(contract.package_id) : undefined;
       const cycle = cycles.get(store.id);
       const payment = payments.get(store.id);
+      const lifecycle = lifecycleByTenant.get(store.id);
+      const isInternalDemo = lifecycle?.lifecycle_status === "sales_demo";
+      const isTrial = lifecycle?.lifecycle_status === "trial" || contract?.status === "trial";
+      const effectiveExpiry = isInternalDemo ? null
+        : isTrial ? lifecycle?.trial_expires_at ?? contract?.ended_at ?? null
+        : lifecycle?.subscription_expires_at ?? contract?.ended_at ?? null;
       const interval = contract?.billing_interval === "yearly" ? "yearly"
         : contract?.billing_interval === "monthly" ? "monthly" : "other";
       return {
@@ -85,9 +97,12 @@ export async function GET() {
         store_name: store.display_name || store.name, owner_name: store.owner_name,
         billing_email: store.primary_owner_user_id ? ownersById.get(store.primary_owner_user_id)?.email ?? null : null,
         package_name: pkg?.name ?? "ยังไม่กำหนด", package_code: pkg?.code ?? null,
-        billing_interval: interval, service_status: !store.is_active ? "store_suspended" : contract?.status ?? "no_contract",
-        start_date: contract?.started_at ?? null, end_date: contract?.ended_at ?? null,
-        days_remaining: daysRemaining(contract?.ended_at ?? null, now),
+        billing_interval: interval,
+        service_status: !store.is_active ? "store_suspended" : isInternalDemo ? "internal_demo"
+          : lifecycle?.access_locked ? "locked" : contract?.status ?? "no_contract",
+        is_internal_demo: isInternalDemo,
+        start_date: contract?.started_at ?? null, end_date: effectiveExpiry,
+        days_remaining: daysRemaining(effectiveExpiry, now),
         amount_per_cycle: contract?.amount_per_cycle ?? (interval === "yearly" ? pkg?.yearly_price : pkg?.monthly_price) ?? null,
         currency: contract?.currency ?? "THB",
         billing_cycle: cycle ? { id: cycle.id, status: cycle.status, amount_due: cycle.amount_due,
