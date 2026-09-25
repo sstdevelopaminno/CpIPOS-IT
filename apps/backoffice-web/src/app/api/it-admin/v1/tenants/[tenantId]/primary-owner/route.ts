@@ -94,6 +94,16 @@ async function loadPrimaryOwner(admin: Awaited<ReturnType<typeof requireItAdmin>
   if (profilesResult.error) throw new Error(`primary_owner_profiles_query_failed:${profilesResult.error.message}`);
 
   const profilesByUser = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile]));
+  const canonicalResult = await admin.supabase.from("tenants")
+    .select("primary_owner_user_id").eq("id", tenantId)
+    .maybeSingle<{ primary_owner_user_id: string | null }>();
+  if (canonicalResult.error || !canonicalResult.data) {
+    throw new Error("primary_owner_reference_query_failed");
+  }
+  const canonicalId = canonicalResult.data.primary_owner_user_id;
+  if (canonicalId && !roles.data.some((role) => role.user_id === canonicalId)) {
+    throw new ItAdminGuardError("primary_owner_assignment_missing", "The protected first Owner has no Owner role; ask IT to repair the assignment.", 409);
+  }
   const rankedRoles = [...roles.data].sort((left, right) => {
     if (left.is_default !== right.is_default) return left.is_default ? -1 : 1;
     const leftProfile = profilesByUser.get(left.user_id);
@@ -104,7 +114,9 @@ async function loadPrimaryOwner(admin: Awaited<ReturnType<typeof requireItAdmin>
     return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
   });
 
-  const firstRole = rankedRoles.find((row) => profilesByUser.has(row.user_id)) ?? null;
+  const firstRole = (canonicalId
+    ? rankedRoles.find((row) => row.user_id === canonicalId && profilesByUser.has(row.user_id))
+    : rankedRoles.find((row) => profilesByUser.has(row.user_id))) ?? null;
   if (!firstRole) throw new ItAdminGuardError("primary_owner_profile_missing", "Primary owner profile was not found.", 409);
   const profile = profilesByUser.get(firstRole.user_id);
   if (!profile) throw new ItAdminGuardError("primary_owner_profile_missing", "Primary owner profile was not found.", 409);

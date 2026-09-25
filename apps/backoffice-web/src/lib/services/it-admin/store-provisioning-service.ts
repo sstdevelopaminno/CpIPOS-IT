@@ -334,6 +334,25 @@ export async function provisionStore(context: ItAdminContext, input: StoreProvis
   try {
     const owner = await resolveOrCreateOwnerIdentity(context, { email: ownerEmail, fullName: ownerName, pin });
     await bindOwnerToStore(context, { tenantId: core.tenant.id, branchId: core.branch.id, userId: owner.userId, employeeCode });
+    // Canonical identity is IT-managed, not inferred from later role order.
+    // Never overwrite an already protected Owner on a replayed provisioning request.
+    const { data: primaryOwner, error: primaryOwnerError } = await context.supabase
+      .from("tenants")
+      .select("primary_owner_user_id")
+      .eq("id", core.tenant.id)
+      .single<{ primary_owner_user_id: string | null }>();
+    if (primaryOwnerError || !primaryOwner) {
+      throw new StoreProvisioningError("primary_owner_lookup_failed", "Unable to verify the store's primary Owner.", 500);
+    }
+    if (primaryOwner.primary_owner_user_id && primaryOwner.primary_owner_user_id !== owner.userId) {
+      throw new StoreProvisioningError("primary_owner_conflict", "The store already has a protected primary Owner. Ask IT to transfer the Owner identity.", 409);
+    }
+    if (!primaryOwner.primary_owner_user_id) {
+      const { error: assignError } = await context.supabase.from("tenants")
+        .update({ primary_owner_user_id: owner.userId })
+        .eq("id", core.tenant.id).is("primary_owner_user_id", null);
+      if (assignError) throw new StoreProvisioningError("primary_owner_assignment_failed", "Unable to protect the first Owner identity.", 500);
+    }
 
     const result = {
       ...core,
