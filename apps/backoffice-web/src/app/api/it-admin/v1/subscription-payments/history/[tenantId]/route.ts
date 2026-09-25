@@ -41,12 +41,20 @@ export async function GET(_request: Request, { params }: Params) {
         .eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(100).returns<Approval[]>()
     ]);
     if (cycles.error || requests.error || approvals.error) throw new Error("subscription_payment_history_read_failed");
+    const paymentRequests = await Promise.all((requests.data ?? []).map(async ({ evidence_url, ...row }) => {
+      // Never expose raw storage paths or generate a link outside this store's private prefix.
+      let slip_url: string | null = null;
+      if (evidence_url?.startsWith(tenantId + "/")) {
+        const signed = await supabase.storage.from("subscription-payment-evidence")
+          .createSignedUrl(evidence_url, 300);
+        if (!signed.error && signed.data) slip_url = signed.data.signedUrl;
+      }
+      return { ...row, has_evidence: Boolean(evidence_url), slip_url };
+    }));
     const response = ok({
       store: store.data,
       cycles: cycles.data ?? [],
-      payment_requests: (requests.data ?? []).map(({ evidence_url, ...row }) => ({
-        ...row, has_evidence: Boolean(evidence_url)
-      })),
+      payment_requests: paymentRequests,
       approval_events: approvals.data ?? []
     });
     response.headers.set("cache-control", "private, no-store");
