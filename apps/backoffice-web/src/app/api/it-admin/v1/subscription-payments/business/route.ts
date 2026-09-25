@@ -78,10 +78,10 @@ export async function PATCH(request: Request) {
     if (!patch.billing_legal_name_th || !patch.billing_legal_name_en) {
       throw new ItAdminGuardError("missing_legal_name", "Both legal names are required.", 422);
     }
-    if (patch.billing_registration_no && !/^\\d{13}$/.test(patch.billing_registration_no)) {
+    if (patch.billing_registration_no && !/^\d{13}$/.test(patch.billing_registration_no)) {
       throw new ItAdminGuardError("invalid_registration_no", "Registration number must contain 13 digits.", 422);
     }
-    if (patch.billing_bank_account_number && !/^[\\d -]{5,40}$/.test(patch.billing_bank_account_number)) {
+    if (patch.billing_bank_account_number && !/^[\d -]{5,40}$/.test(patch.billing_bank_account_number)) {
       throw new ItAdminGuardError("invalid_bank_account", "Check the bank account number.", 422);
     }
     const previous = await supabase.from("it_communication_settings").select(SELECT)
