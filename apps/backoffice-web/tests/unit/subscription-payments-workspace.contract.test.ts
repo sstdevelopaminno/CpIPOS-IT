@@ -63,4 +63,22 @@ describe("subscription payments IT workspace", () => {
     expect(historyUi).toContain("การแจ้งชำระและไฟล์สลิปไม่ใช่หลักฐานว่าธนาคารรับเงินจริงแล้ว");
     expect(ui).toContain("ประวัติการชำระ");
   });
+
+  it("keeps private bank-slip evidence and admin review separate from bank receipt", () => {
+    const evidenceMigration = src("../../supabase/migrations/20260925103100_subscription_evidence_bucket.sql");
+    const indexMigration = src("../../supabase/migrations/20260925103000_subscription_open_request_index.sql");
+    const adminReview = src("src/app/api/it-admin/v1/subscription-payments/review/[requestId]/route.ts");
+    const historyApi = src("src/app/api/it-admin/v1/subscription-payments/history/[tenantId]/route.ts");
+    const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
+    expect(evidenceMigration).toContain("'subscription-payment-evidence'");
+    expect(evidenceMigration).toContain("false,5242880");
+    expect(indexMigration).toContain("where status in ('pending','under_review')");
+    expect(adminReview).toContain("requireItAdmin()");
+    expect(adminReview).toContain("rejection_note_required");
+    expect(adminReview).not.toContain('"approved"');
+    expect(historyApi).toContain("createSignedUrl(evidence_url, 300)");
+    expect(historyApi).toContain('evidence_url?.startsWith(tenantId + "/")');
+    expect(historyUi).toContain("รับเรื่องตรวจสอบ");
+    expect(historyUi).toContain("ปฏิเสธพร้อมเหตุผล");
+  });
 });
