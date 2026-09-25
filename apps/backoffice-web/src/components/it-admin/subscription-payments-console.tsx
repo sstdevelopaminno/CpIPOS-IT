@@ -216,6 +216,10 @@ export function SubscriptionPaymentsConsole() {
                     className="rounded-md border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-700">
                     ร่างอีเมลถึงร้าน
                   </button>
+                  <button type="button" disabled title="เปิดใช้เมื่อมีใบเสร็จที่ออกจากรายการรับเงินจริง"
+                    className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-400">
+                    ดูใบเสร็จ
+                  </button>
                   <span className="text-xs text-slate-500">{row.has_verified_receipt ?
                     "ชำระครบแล้ว — รอเอกสารใบเสร็จที่ออกจริง" : "ใบเสร็จ: ยังไม่มีหลักฐานชำระครบ"}</span>
                 </div></td>
