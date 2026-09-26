@@ -48,6 +48,9 @@ type Receipt = {
   billing_interval: string;
   period_start: string;
   period_end: string;
+  correction_note: string | null;
+  voided_at: string | null;
+  voided: boolean;
 };
 type History = {
   store: {
@@ -375,6 +378,83 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     } finally {
       setSavingPackageId("");
     }
+  }
+
+  async function mutateAdminRecord(kind:"request"|"cycle"|"receipt", id:string, method:"PATCH"|"DELETE",
+    payload:Record<string,unknown>, successMessage:string) {
+    setBusyId(id);
+    setError("");
+    setNotice("");
+    try {
+      const response=await fetch("/api/it-admin/v1/subscription-payments/records/"+kind+"/"+encodeURIComponent(id),{
+        method,headers:{"content-type":"application/json"},body:JSON.stringify(payload)
+      });
+      const json=await response.json() as {data?:unknown;error?:{message?:string}};
+      if(!response.ok) throw new Error(json.error?.message||"ไม่สามารถแก้ไขข้อมูลได้");
+      await reload();
+      setNotice(successMessage);
+    } catch(cause) {
+      setError(cause instanceof Error ? cause.message : "ไม่สามารถแก้ไขข้อมูลได้");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function editRequestRecord(row:PaymentRequest) {
+    if(row.status==="approved"){ setError("รายการที่อนุมัติและ Settlement แล้วแก้ไขไม่ได้"); return; }
+    const amount=window.prompt("ยอดที่ร้านแจ้ง (บาท)", row.amount_reported==null?"":String(row.amount_reported));
+    if(amount===null) return;
+    const reviewNote=window.prompt("หมายเหตุ IT / ผลตรวจสอบ", row.review_note||"");
+    if(reviewNote===null) return;
+    const note=window.prompt("หมายเหตุรายการ", row.note||"");
+    if(note===null) return;
+    await mutateAdminRecord("request",row.id,"PATCH",{
+      amount_reported:amount.trim()===""?null:Number(amount),review_note:reviewNote,note
+    },"แก้ไขคำขอชำระเงินแล้ว");
+  }
+
+  async function deleteRequestRecord(row:PaymentRequest) {
+    if(row.status==="approved"){ setError("รายการที่อนุมัติและ Settlement แล้วลบไม่ได้"); return; }
+    const reason=window.prompt("ระบุเหตุผลที่ลบรายการ","");
+    if(!reason?.trim()) return;
+    if(!window.confirm("ยืนยันลบคำขอนี้? การลบทำได้เฉพาะรายการที่ยังไม่ Settlement")) return;
+    await mutateAdminRecord("request",row.id,"DELETE",{reason},"ลบคำขอที่ยังไม่ Settlement แล้ว");
+  }
+
+  async function editCycleRecord(row:History["cycles"][number]) {
+    if(row.status==="paid" || Number(row.amount_paid)>0){ setError("รอบบิลที่ชำระแล้วแก้ไขไม่ได้"); return; }
+    const start=window.prompt("วันเริ่มรอบ YYYY-MM-DD",row.period_start);
+    if(start===null) return;
+    const end=window.prompt("วันสิ้นสุดรอบ YYYY-MM-DD",row.period_end);
+    if(end===null) return;
+    const amountDue=window.prompt("ยอดเรียกเก็บ",String(row.amount_due));
+    if(amountDue===null) return;
+    await mutateAdminRecord("cycle",row.id,"PATCH",{period_start:start,period_end:end,amount_due:Number(amountDue)},
+      "แก้ไขรอบบิลที่ยังไม่ชำระแล้ว");
+  }
+
+  async function deleteCycleRecord(row:History["cycles"][number]) {
+    if(row.status==="paid" || Number(row.amount_paid)>0){ setError("รอบบิลที่ชำระแล้วลบไม่ได้"); return; }
+    const reason=window.prompt("ระบุเหตุผลที่ลบรอบบิล","");
+    if(!reason?.trim()) return;
+    if(!window.confirm("ยืนยันลบรอบบิลที่ยังไม่ชำระนี้?")) return;
+    await mutateAdminRecord("cycle",row.id,"DELETE",{reason},"ลบรอบบิลที่ยังไม่ชำระแล้ว");
+  }
+
+  async function editReceiptRecord(row:Receipt) {
+    const note=window.prompt("หมายเหตุแก้ไขเอกสาร (ต้นฉบับใบเสร็จจะไม่ถูกแก้ไข)",row.correction_note||"");
+    if(note===null) return;
+    await mutateAdminRecord("receipt",row.id,"PATCH",{correction_note:note},
+      "บันทึกหมายเหตุแก้ไขใบเสร็จแล้ว โดยไม่เปลี่ยนต้นฉบับ");
+  }
+
+  async function voidReceiptRecord(row:Receipt) {
+    if(row.voided){ setError("ใบเสร็จนี้ถูกยกเลิกเอกสารแล้ว"); return; }
+    const reason=window.prompt("ระบุเหตุผลที่ยกเลิกใบเสร็จ","");
+    if(!reason?.trim()) return;
+    if(!window.confirm("ยืนยันยกเลิกใบเสร็จ? ระบบจะไม่ลบหลักฐานการรับเงินจริงและ Settlement")) return;
+    await mutateAdminRecord("receipt",row.id,"DELETE",{reason},
+      "ยกเลิกใบเสร็จแล้ว โดยเก็บต้นฉบับและ Audit ไว้");
   }
 
   async function createFirstPaymentRequest() {
@@ -840,7 +920,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead><tr className="border-b bg-slate-50 text-slate-500">
-                  {["วันที่รับชำระ","เลขที่ใบเสร็จ","แพ็กเกจ","รอบ","ช่วงบริการ","ยอดรับจริง","เอกสาร"].map((label) =>
+                  {["วันที่รับชำระ","เลขที่ใบเสร็จ","แพ็กเกจ","รอบ","ช่วงบริการ","ยอดรับจริง","เอกสาร","จัดการ"].map((label) =>
                     <th className="p-3" key={label}>{label}</th>)}
                 </tr></thead>
                 <tbody>{history.receipts.map((row) => <tr className="border-b" key={row.id}>
@@ -852,12 +932,21 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     : "rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-700"}>{billingLabel(row.billing_interval)}</span></td>
                   <td className="p-3">{formatDate(row.period_start || null)} → {formatDate(row.period_end || null)}</td>
                   <td className="p-3 font-bold">{formatMoney(row.amount,row.currency)}</td>
-                  <td className="p-3"><a
-                    href={"/api/it-admin/v1/subscription-payments/receipts/" + encodeURIComponent(row.id)}
-                    target="_blank" rel="noopener noreferrer"
-                    className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
-                    เปิดใบเสร็จ / พิมพ์ PDF
-                  </a></td>
+                  <td className="p-3">
+                    <a href={"/api/it-admin/v1/subscription-payments/receipts/" + encodeURIComponent(row.id)}
+                      target="_blank" rel="noopener noreferrer"
+                      className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
+                      เปิดใบเสร็จ / พิมพ์ PDF
+                    </a>
+                    {row.voided ? <p className="mt-1 text-xs font-bold text-red-600">ยกเลิกเอกสารแล้ว</p> : null}
+                    {row.correction_note ? <p className="mt-1 max-w-[220px] text-xs text-slate-500">{row.correction_note}</p> : null}
+                  </td>
+                  <td className="p-3"><div className="flex flex-wrap gap-1">
+                    <button type="button" disabled={busyId===row.id} onClick={()=>void editReceiptRecord(row)}
+                      className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">แก้ไขหมายเหตุ</button>
+                    <button type="button" disabled={busyId===row.id || row.voided} onClick={()=>void voidReceiptRecord(row)}
+                      className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-40">ยกเลิกเอกสาร</button>
+                  </div></td>
                 </tr>)}</tbody>
               </table>
             </div>}
@@ -869,7 +958,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           <h2 className="text-lg font-black text-slate-900">รอบบิลแพ็กเกจ</h2>
           {history.cycles.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีรอบบิลที่บันทึกไว้</p> :
             <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[820px] text-left text-sm">
-              <thead><tr className="border-b text-slate-500">{["แพ็กเกจ","เริ่มรอบ","สิ้นสุดรอบ","ยอดเรียกเก็บ","ยอดชำระ","สถานะ"]
+              <thead><tr className="border-b text-slate-500">{["แพ็กเกจ","เริ่มรอบ","สิ้นสุดรอบ","ยอดเรียกเก็บ","ยอดชำระ","สถานะ","จัดการ"]
                 .map((label) => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
               <tbody>{history.cycles.map((row) => <tr className="border-b" key={row.id}>
                 <td className="p-3">{row.package_name || "—"}</td>
@@ -878,6 +967,14 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                 <td className="p-3">{formatMoney(row.amount_due)}</td>
                 <td className="p-3">{formatMoney(row.amount_paid)}</td>
                 <td className="p-3">{row.status}</td>
+                <td className="p-3"><div className="flex gap-1">
+                  <button type="button" disabled={busyId===row.id || row.status==="paid" || Number(row.amount_paid)>0}
+                    onClick={()=>void editCycleRecord(row)}
+                    className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 disabled:opacity-35">แก้ไข</button>
+                  <button type="button" disabled={busyId===row.id || row.status==="paid" || Number(row.amount_paid)>0}
+                    onClick={()=>void deleteCycleRecord(row)}
+                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-35">ลบ</button>
+                </div></td>
               </tr>)}</tbody>
             </table></div>}
         </section></WorkspaceModal> : null}
@@ -888,7 +985,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           <h2 className="text-lg font-black text-slate-900">ประวัติคำขอและผลตรวจสอบ</h2>
           {completedRequests.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีคำขอที่ปิดรายการ</p> :
             <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm">
-              <thead><tr className="border-b text-slate-500">{["วันที่","แพ็กเกจ / รอบ","ประเภท","ยอดแจ้ง","ผลตรวจสอบ","ใบเสร็จ"]
+              <thead><tr className="border-b text-slate-500">{["วันที่","แพ็กเกจ / รอบ","ประเภท","ยอดแจ้ง","ผลตรวจสอบ","ใบเสร็จ","จัดการ"]
                 .map((label) => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
               <tbody>{completedRequests.map((row) => {
                 const receipt = receiptByRequest.get(row.id);
@@ -902,6 +999,14 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     href={"/api/it-admin/v1/subscription-payments/receipts/" + encodeURIComponent(receipt.id)}
                     target="_blank" rel="noopener noreferrer"
                     className="font-bold text-blue-700 underline">{receipt.receipt_number}</a> : "—"}</td>
+                  <td className="p-3"><div className="flex flex-wrap gap-1">
+                    <button type="button" disabled={busyId===row.id || row.status==="approved"}
+                      onClick={()=>void editRequestRecord(row)}
+                      className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 disabled:opacity-35">แก้ไข</button>
+                    <button type="button" disabled={busyId===row.id || row.status==="approved"}
+                      onClick={()=>void deleteRequestRecord(row)}
+                      className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-35">ลบ</button>
+                  </div></td>
                 </tr>;
               })}</tbody>
             </table></div>}
@@ -911,6 +1016,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           description="ประวัติสถานะการอนุมัติและการไม่อนุมัติสำหรับตรวจสอบย้อนหลัง"
           onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-900">Audit การอนุมัติ / ไม่อนุมัติ</h2>
+          <p className="mt-1 text-xs text-slate-500">Audit เป็นหลักฐานระบบ จึงไม่อนุญาตให้แก้ไขหรือลบจากหน้าจอนี้</p>
           {history.approval_events.length === 0 ? <p className="mt-3 text-sm text-slate-500">ยังไม่มีเหตุการณ์อนุมัติแพ็กเกจ</p>
             : <ul className="mt-3 grid gap-2 md:grid-cols-2">{history.approval_events.map((item) => <li key={item.id}
               className="rounded-lg border border-slate-100 p-3 text-sm">
