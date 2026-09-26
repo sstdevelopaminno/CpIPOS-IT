@@ -177,6 +177,8 @@ describe("subscription payments IT workspace", () => {
     expect(receiptApi).toContain("requireItAdmin()");
     expect(receiptApi).toContain('from("tenant_subscription_receipts")');
     expect(receiptApi).toContain("renderSubscriptionReceiptHtml");
+    expect(receiptApi).toContain('from("tenant_subscription_receipt_annotations")');
+    expect(receiptApi).toContain("ยกเลิกเอกสาร / VOID");
     expect(historyUi).toContain("/api/it-admin/v1/subscription-payments/receipts/");
     expect(historyUi).toContain("เปิดใบเสร็จ / พิมพ์ PDF");
     expect(receiptTemplate).toContain("ใบเสร็จรับเงิน / RECEIPT");
