@@ -111,7 +111,8 @@ describe("IT Admin Store Control Center contract", () => {
     expect(service).toContain("settlement_rows_unchanged");
     expect(service).toContain("receipt_rows_unchanged");
     expect(service).toContain("last_admin_contract_correction");
-    expect(service).toContain("paidActiveContract ? contract.amount_per_cycle");
+    expect(service).toContain("amount_per_cycle: paidActiveContract");
+    expect(service).toContain("contract.amount_per_cycle");
     expect(service).toContain("subscription_expires_at: endIso");
   });
 
