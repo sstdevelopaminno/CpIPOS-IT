@@ -183,6 +183,30 @@ describe("subscription payments IT workspace", () => {
     expect(receiptTemplate).toContain("พิมพ์ / บันทึกเป็น PDF");
   });
 
+  it("allows guarded admin edits/deletes while preserving immutable financial evidence", () => {
+    const recordsApi = src("src/app/api/it-admin/v1/subscription-payments/records/[kind]/[recordId]/route.ts");
+    const historyApi = src("src/app/api/it-admin/v1/subscription-payments/history/[tenantId]/route.ts");
+    const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
+    const annotationMigration = src("../../supabase/migrations/20260927023000_subscription_receipt_annotations.sql");
+    expect(recordsApi).toContain("requireItAdmin()");
+    expect(recordsApi).toContain('kind==="request"');
+    expect(recordsApi).toContain('kind==="cycle"');
+    expect(recordsApi).toContain('kind==="receipt"');
+    expect(recordsApi).toContain("settled_request_immutable");
+    expect(recordsApi).toContain("paid_cycle_immutable");
+    expect(recordsApi).toContain("subscription_receipt_voided");
+    expect(recordsApi).toContain("tenant_subscription_receipt_annotations");
+    expect(recordsApi).not.toContain('from("tenant_subscription_receipts").delete');
+    expect(annotationMigration).toContain("on delete restrict");
+    expect(annotationMigration).toContain("Original receipt/settlement rows are never updated or deleted");
+    expect(historyApi).toContain('from("tenant_subscription_receipt_annotations")');
+    expect(historyUi).toContain("แก้ไขรายการ");
+    expect(historyUi).toContain("ลบรายการ");
+    expect(historyUi).toContain("แก้ไขหมายเหตุ");
+    expect(historyUi).toContain("ยกเลิกเอกสาร");
+    expect(historyUi).toContain("Audit เป็นหลักฐานระบบ");
+  });
+
   it("retires legacy paid activation so no first activation can bypass receipt issuance", () => {
     const retirement = src("../../supabase/migrations/20260926173000_retire_legacy_paid_activation.sql");
     expect(retirement).toContain("legacy_paid_activation_disabled_use_settlement");
