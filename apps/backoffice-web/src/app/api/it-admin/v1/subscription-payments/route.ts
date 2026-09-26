@@ -21,6 +21,8 @@ type Payment = { id: string; tenant_id: string; status: string; evidence_url: st
 type Owner = { id: string; email: string | null };
 type Lifecycle = { tenant_id: string; lifecycle_status: string; access_locked: boolean;
   trial_expires_at: string | null; subscription_expires_at: string | null };
+type Receipt = { id: string; tenant_id: string; payment_request_id: string; receipt_number: string;
+  issued_at: string; amount: number; currency: string };
 
 function daysRemaining(endDate: string | null, now: number): number | null {
   if (!endDate) return null;
@@ -46,7 +48,7 @@ export async function GET() {
     if (!ids.length) return ok({ rows: [], generated_at: new Date().toISOString() });
 
     const ownerIds = [...new Set(stores.map((store) => store.primary_owner_user_id).filter((id): id is string => Boolean(id)))];
-    const [contractsResult, cyclesResult, paymentsResult, ownersResult, lifecycleResult] = await Promise.all([
+    const [contractsResult, cyclesResult, paymentsResult, ownersResult, lifecycleResult, receiptsResult] = await Promise.all([
       supabase.from("tenant_subscription_contracts")
         .select("id,tenant_id,package_id,billing_interval,status,started_at,ended_at,amount_per_cycle,currency,created_at")
         .in("tenant_id", ids).order("created_at", { ascending: false }).limit(1000).returns<Contract[]>(),
@@ -61,9 +63,13 @@ export async function GET() {
         : Promise.resolve({ data: [] as Owner[], error: null }),
       supabase.from("tenant_data_lifecycle")
         .select("tenant_id,lifecycle_status,access_locked,trial_expires_at,subscription_expires_at")
-        .in("tenant_id", ids).returns<Lifecycle[]>()
+        .in("tenant_id", ids).returns<Lifecycle[]>(),
+      supabase.from("tenant_subscription_receipts")
+        .select("id,tenant_id,payment_request_id,receipt_number,issued_at,amount,currency")
+        .in("tenant_id", ids).order("issued_at", { ascending: false }).limit(1000).returns<Receipt[]>()
     ]);
-    if (contractsResult.error || cyclesResult.error || paymentsResult.error || ownersResult.error || lifecycleResult.error) {
+    if (contractsResult.error || cyclesResult.error || paymentsResult.error || ownersResult.error ||
+        lifecycleResult.error || receiptsResult.error) {
       throw new Error("subscription_payment_data_query_failed");
     }
 
@@ -77,6 +83,7 @@ export async function GET() {
     const contracts = latestByTenant(contractsResult.data ?? []);
     const cycles = latestByTenant(cyclesResult.data ?? []);
     const payments = latestByTenant(paymentsResult.data ?? []);
+    const receipts = latestByTenant(receiptsResult.data ?? []);
     const lifecycleByTenant = new Map((lifecycleResult.data ?? []).map((item) => [item.tenant_id, item]));
     const now = Date.now();
 
@@ -85,6 +92,7 @@ export async function GET() {
       const pkg = contract ? packagesById.get(contract.package_id) : undefined;
       const cycle = cycles.get(store.id);
       const payment = payments.get(store.id);
+      const receipt = receipts.get(store.id);
       const lifecycle = lifecycleByTenant.get(store.id);
       const isInternalDemo = lifecycle?.lifecycle_status === "sales_demo";
       const isTrial = lifecycle?.lifecycle_status === "trial" || contract?.status === "trial";
@@ -125,6 +133,11 @@ export async function GET() {
         } : null,
         has_paid_cycle: Boolean(cycle && Number(cycle.amount_due) > 0
           && Number(cycle.amount_paid) >= Number(cycle.amount_due) && cycle.status === "paid"),
+        receipt: receipt ? {
+          id: receipt.id, payment_request_id: receipt.payment_request_id,
+          number: receipt.receipt_number, issued_at: receipt.issued_at,
+          amount: receipt.amount, currency: receipt.currency
+        } : null,
         contract_id: contract?.id ?? null
       };
     });

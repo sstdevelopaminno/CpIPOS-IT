@@ -183,6 +183,23 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       }
     }
 
+    const effectiveStatus = String(patch.status ?? latestContract?.status ?? "trial");
+    const effectiveAmount = Number(patch.amount_per_cycle ?? latestContract?.amount_per_cycle ?? 0);
+    const requestedPlanChanged = Boolean(latestContract && patch.package_id && latestContract.package_id !== patch.package_id);
+    const requestedIntervalChanged = Boolean(latestContract && patch.billing_interval &&
+      latestContract.billing_interval !== patch.billing_interval);
+    const initialPaidActivation = !latestContract && effectiveStatus === "active" && effectiveAmount > 0;
+    const paidPlanActivation = Boolean(latestContract && effectiveStatus === "active" && effectiveAmount > 0 &&
+      (["trial","expired","cancelled"].includes(latestContract.status) || requestedPlanChanged || requestedIntervalChanged));
+
+    if (initialPaidActivation || paidPlanActivation) {
+      return fail(
+        "paid_activation_requires_settlement",
+        "แพ็กเกจที่มีค่าบริการต้องเปิดผ่านการยืนยันรับเงินจริง เพื่อสร้างรอบบิลและใบเสร็จทุกครั้ง",
+        409
+      );
+    }
+
     let updated: ContractRow;
     if (latestContract) {
       const { data, error } = await supabase
