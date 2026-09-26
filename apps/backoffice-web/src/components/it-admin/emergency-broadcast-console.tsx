@@ -100,7 +100,7 @@ export function EmergencyBroadcastConsole() {
     const response = await fetch("/api/it-admin/v1/emergency-broadcast", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(next)
+      body: JSON.stringify({ ...next, dismissible: true })
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload?.error?.message || "บันทึกไม่สำเร็จ");
@@ -228,7 +228,7 @@ export function EmergencyBroadcastConsole() {
               whiteSpace: "nowrap"
             }}>{previewAction}</span>
           ) : null}
-          {settings.dismissible ? <span style={{ fontWeight: 900 }}>×</span> : null}
+          <span style={{ fontWeight: 900 }}>×</span>
         </div>
       </section>
 
