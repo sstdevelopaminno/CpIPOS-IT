@@ -172,6 +172,8 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   const [busyId, setBusyId] = useState("");
   const [notes, setNotes] = useState<Record<string,string>>({});
   const [settlementDrafts, setSettlementDrafts] = useState<Record<string,SettlementDraft>>({});
+  const [annualPriceDrafts, setAnnualPriceDrafts] = useState<Record<string,string>>({});
+  const [savingPackageId, setSavingPackageId] = useState("");
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch(
@@ -181,6 +183,9 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     const json = await response.json() as Envelope;
     if (!response.ok || !json.data) throw new Error(json.error?.message || "โหลดรายละเอียดการชำระแพ็กเกจไม่สำเร็จ");
     setHistory(json.data);
+    setAnnualPriceDrafts(Object.fromEntries(
+      json.data.packages.map((pkg) => [pkg.id, pkg.yearly_price && pkg.yearly_price > 0 ? String(pkg.yearly_price) : ""])
+    ));
     return json.data;
   }, [tenantId]);
 
@@ -255,6 +260,49 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       setError(cause instanceof Error ? cause.message : "ดำเนินการไม่สำเร็จ");
     } finally {
       setBusyId("");
+    }
+  }
+
+  function annualSuggestion(pkg: PackagePrice, discountPercent = 0) {
+    if (!pkg.monthly_price || pkg.monthly_price <= 0) return "";
+    const base = Number(pkg.monthly_price) * 12;
+    const discount = Math.max(0, Math.min(100, discountPercent));
+    return (base * (1 - discount / 100)).toFixed(2);
+  }
+
+  async function saveAnnualPrice(pkg: PackagePrice) {
+    if (pkg.code === "custom") {
+      setError("แพ็กเกจ CUSTOM ใช้ราคาตามสัญญาร้านค้า ไม่ควรกำหนดราคาปีแบบกลาง");
+      return;
+    }
+    const raw = (annualPriceDrafts[pkg.id] || "").trim();
+    const value = Number(raw);
+    if (!raw || !Number.isFinite(value) || value <= 0 || value > 10_000_000) {
+      setError("กรุณากรอกราคารายปีที่มากกว่า 0 บาท");
+      return;
+    }
+    setSavingPackageId(pkg.id);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/it-admin/v1/packages/" + encodeURIComponent(pkg.id), {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          yearly_price: Number(value.toFixed(2)),
+          reason: "subscription_billing_workspace_annual_price"
+        })
+      });
+      const json = await response.json() as { data?: unknown; error?: { message?: string } };
+      if (!response.ok || !json.data) {
+        throw new Error(json.error?.message || "บันทึกราคารายปีไม่สำเร็จ");
+      }
+      await reload();
+      setNotice("บันทึกราคารายปี " + pkg.name + " เป็น " + formatMoney(value) + " แล้ว · ฝั่ง CpIPOS จะอ่านราคานี้จาก CpiPOS-001");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "บันทึกราคารายปีไม่สำเร็จ");
+    } finally {
+      setSavingPackageId("");
     }
   }
 
@@ -388,6 +436,39 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     <dd className="mt-1 font-extrabold text-slate-900">{pkg.yearly_price && pkg.yearly_price > 0 ? formatMoney(pkg.yearly_price) : "ยังไม่กำหนด"}</dd>
                   </div>
                 </dl>
+                {pkg.code !== "custom" ? <div className="mt-3 rounded-xl border border-blue-100 bg-white p-3">
+                  <p className="text-xs font-bold text-blue-700">ตั้งราคารายปีสำหรับ POS</p>
+                  <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                    ตัวเลขแนะนำด้านล่างเป็นเพียงเครื่องช่วยคำนวณ ยังไม่เปลี่ยนราคาจริงจนกด “บันทึกราคารายปี”
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button"
+                      onClick={() => setAnnualPriceDrafts((current) => ({ ...current, [pkg.id]: annualSuggestion(pkg, 0) }))}
+                      className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                      12 เดือน {annualSuggestion(pkg, 0) ? "· " + formatMoney(Number(annualSuggestion(pkg, 0))) : ""}
+                    </button>
+                    <button type="button"
+                      onClick={() => setAnnualPriceDrafts((current) => ({ ...current, [pkg.id]: annualSuggestion(pkg, 10) }))}
+                      className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                      ตัวอย่างลด 10% {annualSuggestion(pkg, 10) ? "· " + formatMoney(Number(annualSuggestion(pkg, 10))) : ""}
+                    </button>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <input type="number" min="0.01" max="10000000" step="0.01"
+                      aria-label={"ราคารายปี " + pkg.name}
+                      value={annualPriceDrafts[pkg.id] ?? ""}
+                      onChange={(event) => setAnnualPriceDrafts((current) => ({ ...current, [pkg.id]: event.target.value }))}
+                      placeholder="กรอกราคารายปี (บาท)"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                    <button type="button" disabled={Boolean(savingPackageId)}
+                      onClick={() => void saveAnnualPrice(pkg)}
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                      {savingPackageId === pkg.id ? "กำลังบันทึก..." : "บันทึกราคารายปี"}
+                    </button>
+                  </div>
+                </div> : <p className="mt-3 rounded-lg bg-violet-50 p-2 text-xs text-violet-700">
+                  CUSTOM ใช้ราคาตามสัญญาของแต่ละร้าน ไม่กำหนดราคารายปีแบบกลาง
+                </p>}
               </article>;
             })}
           </div>
