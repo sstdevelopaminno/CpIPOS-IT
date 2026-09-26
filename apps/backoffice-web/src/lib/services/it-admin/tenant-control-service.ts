@@ -589,7 +589,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       throw new ItAdminGuardError("subscription_closed", "Closed contracts cannot be edited. Activate a package to create a new contract.", 409);
     }
     const paidActiveContract = contract.status === "active" && Number(contract.amount_per_cycle ?? 0) > 0;
-    const currentBillingCycle = BILLING_CYCLES.has(contract.billing_interval) ? contract.billing_interval : "monthly";
+    const currentBillingCycle: "monthly" | "yearly" = contract.billing_interval === "yearly" ? "yearly" : "monthly";
     const requestedBillingCycle = requireBillingCycle(input.billing_cycle, currentBillingCycle);
     if (paidActiveContract && requestedBillingCycle !== currentBillingCycle) {
       throw new ItAdminGuardError(
