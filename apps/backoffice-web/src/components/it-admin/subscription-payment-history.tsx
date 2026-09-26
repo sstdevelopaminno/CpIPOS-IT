@@ -522,6 +522,59 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           </article>
         </section>
 
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">เมนูจัดการการชำระแพ็กเกจ</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                กดเมนูเพื่อเปิด POP UP เฉพาะข้อมูลที่ต้องการ ลดความยาวของหน้า และใช้ข้อมูล CpiPOS-001 ชุดเดียวกับฝั่ง POS
+              </p>
+            </div>
+            <button type="button"
+              onClick={() => setActivePanel("first-payment")}
+              disabled={isInternalDemo || openRequests.length > 0}
+              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45">
+              {history.summary.receipt_count === 0 ? "＋ สร้างรายการชำระรอบแรก" : "＋ สร้างรายการชำระใหม่"}
+            </button>
+          </div>
+
+          {openRequests.length > 0 ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div>
+              <strong className="text-sm text-amber-900">มีรายการชำระรอตรวจสอบ {openRequests.length} รายการ</strong>
+              <p className="mt-0.5 text-xs text-amber-800">ต้องจัดการรายการเดิมก่อนจึงจะสร้างรายการใหม่ได้</p>
+            </div>
+            <button type="button" onClick={() => setActivePanel("pending")}
+              className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white">
+              เปิดตรวจสอบรายการ
+            </button>
+          </div> : null}
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {[
+              ["pending","ตรวจสอบรายการรออนุมัติ",openRequests.length + " รายการเปิดอยู่","amber"],
+              ["payments","ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง",history.receipts.length + " ใบเสร็จ","blue"],
+              ["cycles","รอบบิลแพ็กเกจ",history.cycles.length + " รอบบิล","violet"],
+              ["history","ประวัติคำขอและผลตรวจสอบ",completedRequests.length + " รายการปิด","slate"],
+              ["audit","Audit การอนุมัติ / ไม่อนุมัติ",history.approval_events.length + " เหตุการณ์","rose"],
+              ["summary","สรุปยอดชำระ",formatMoney(history.summary.total_paid),"emerald"]
+            ].map(([key,label,detail,tone]) => <button type="button" key={key}
+              onClick={() => setActivePanel(key as WorkspacePanel)}
+              className={"flex min-h-[74px] items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm " +
+                (tone === "amber" ? "border-amber-200 bg-amber-50/70" :
+                 tone === "blue" ? "border-blue-200 bg-blue-50/70" :
+                 tone === "violet" ? "border-violet-200 bg-violet-50/70" :
+                 tone === "rose" ? "border-rose-200 bg-rose-50/60" :
+                 tone === "emerald" ? "border-emerald-200 bg-emerald-50/70" :
+                 "border-slate-200 bg-slate-50")}>
+              <span className="min-w-0">
+                <strong className="block text-sm font-extrabold text-slate-900">{label}</strong>
+                <span className="mt-1 block text-xs text-slate-500">{detail}</span>
+              </span>
+              <span className="text-lg font-bold text-slate-400" aria-hidden>→</span>
+            </button>)}
+          </div>
+        </section>
+
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -588,58 +641,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-black text-slate-900">เมนูจัดการการชำระแพ็กเกจ</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                กดเมนูเพื่อเปิด POP UP เฉพาะข้อมูลที่ต้องการ ลดความยาวของหน้า และใช้ข้อมูล CpiPOS-001 ชุดเดียวกับฝั่ง POS
-              </p>
-            </div>
-            <button type="button"
-              onClick={() => setActivePanel("first-payment")}
-              disabled={isInternalDemo || openRequests.length > 0}
-              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45">
-              {history.summary.receipt_count === 0 ? "＋ สร้างรายการชำระรอบแรก" : "＋ สร้างรายการชำระใหม่"}
-            </button>
-          </div>
-
-          {openRequests.length > 0 ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <div>
-              <strong className="text-sm text-amber-900">มีรายการชำระรอตรวจสอบ {openRequests.length} รายการ</strong>
-              <p className="mt-0.5 text-xs text-amber-800">ต้องจัดการรายการเดิมก่อนจึงจะสร้างรายการใหม่ได้</p>
-            </div>
-            <button type="button" onClick={() => setActivePanel("pending")}
-              className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white">
-              เปิดตรวจสอบรายการ
-            </button>
-          </div> : null}
-
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {[
-              ["pending","ตรวจสอบรายการรออนุมัติ",openRequests.length + " รายการเปิดอยู่","amber"],
-              ["payments","ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง",history.receipts.length + " ใบเสร็จ","blue"],
-              ["cycles","รอบบิลแพ็กเกจ",history.cycles.length + " รอบบิล","violet"],
-              ["history","ประวัติคำขอและผลตรวจสอบ",completedRequests.length + " รายการปิด","slate"],
-              ["audit","Audit การอนุมัติ / ไม่อนุมัติ",history.approval_events.length + " เหตุการณ์","rose"],
-              ["summary","สรุปยอดชำระ",formatMoney(history.summary.total_paid),"emerald"]
-            ].map(([key,label,detail,tone]) => <button type="button" key={key}
-              onClick={() => setActivePanel(key as WorkspacePanel)}
-              className={"flex min-h-[74px] items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm " +
-                (tone === "amber" ? "border-amber-200 bg-amber-50/70" :
-                 tone === "blue" ? "border-blue-200 bg-blue-50/70" :
-                 tone === "violet" ? "border-violet-200 bg-violet-50/70" :
-                 tone === "rose" ? "border-rose-200 bg-rose-50/60" :
-                 tone === "emerald" ? "border-emerald-200 bg-emerald-50/70" :
-                 "border-slate-200 bg-slate-50")}>
-              <span className="min-w-0">
-                <strong className="block text-sm font-extrabold text-slate-900">{label}</strong>
-                <span className="mt-1 block text-xs text-slate-500">{detail}</span>
-              </span>
-              <span className="text-lg font-bold text-slate-400" aria-hidden>→</span>
-            </button>)}
-          </div>
-        </section>
+        
 
         {activePanel === "first-payment" ? <WorkspaceModal
           title={history.summary.receipt_count === 0 ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระแพ็กเกจ"}
