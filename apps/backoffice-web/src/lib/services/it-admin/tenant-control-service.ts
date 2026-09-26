@@ -588,14 +588,25 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (contract.status === "cancelled" || contract.status === "expired") {
       throw new ItAdminGuardError("subscription_closed", "Closed contracts cannot be edited. Activate a package to create a new contract.", 409);
     }
-    if (contract.status === "active" && Number(contract.amount_per_cycle ?? 0) > 0) {
+    const paidActiveContract = contract.status === "active" && Number(contract.amount_per_cycle ?? 0) > 0;
+    const currentBillingCycle = BILLING_CYCLES.has(contract.billing_interval) ? contract.billing_interval : "monthly";
+    const requestedBillingCycle = requireBillingCycle(input.billing_cycle, currentBillingCycle);
+    if (paidActiveContract && requestedBillingCycle !== currentBillingCycle) {
       throw new ItAdminGuardError(
-        "paid_contract_billing_managed_by_settlement",
-        "สัญญาแพ็กเกจที่ชำระเงินจริงต้องต่ออายุหรือเปลี่ยนรอบผ่านตารางชำระแพ็กเกจ เพื่อให้เกิดรอบบิลและใบเสร็จที่ตรวจสอบได้",
+        "paid_contract_cycle_managed_by_settlement",
+        "แพ็กเกจที่ชำระเงินจริงเปลี่ยนรอบรายเดือน/รายปีได้ผ่านตารางชำระแพ็กเกจเท่านั้น เพื่อให้ Settlement และใบเสร็จตรงกัน",
         409
       );
     }
-    const billingCycle = requireBillingCycle(input.billing_cycle, BILLING_CYCLES.has(contract.billing_interval) ? contract.billing_interval : "monthly");
+    const correctionReason = optionalText(input.admin_reason, 600);
+    if (paidActiveContract && (!correctionReason || correctionReason.length < 4)) {
+      throw new ItAdminGuardError(
+        "paid_contract_correction_reason_required",
+        "กรุณาระบุเหตุผลการแก้ไขสัญญาอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit",
+        422
+      );
+    }
+    const billingCycle = paidActiveContract ? currentBillingCycle : requestedBillingCycle;
     const startIso = input.start_date ? parseContractDate(input.start_date, "start_date") : contract.started_at;
     const endIso = input.auto_calculate_end === false && input.end_date
       ? parseContractDate(input.end_date, "end_date")
@@ -606,26 +617,61 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
 
     const packageResult = await context.supabase.from("subscription_packages").select(PACKAGE_SELECT).eq("id", contract.package_id).maybeSingle<PackageRow>();
     if (packageResult.error) throw new Error(`package_query_failed:${packageResult.error.message}`);
-    const changes = {
+    const contractMetadata = asRecord(contract.metadata);
+    const changes: JsonRecord = {
       billing_interval: billingCycle,
-      amount_per_cycle: packageResult.data ? packageAmount(packageResult.data, billingCycle) : contract.amount_per_cycle,
+      amount_per_cycle: paidActiveContract
+        ? contract.amount_per_cycle
+        : packageResult.data ? packageAmount(packageResult.data, billingCycle) : contract.amount_per_cycle,
       auto_renew: typeof input.auto_renew === "boolean" ? input.auto_renew : contract.auto_renew,
       started_at: startIso,
       ended_at: endIso,
       updated_at: now
     };
+    if (paidActiveContract) {
+      changes.metadata = {
+        ...contractMetadata,
+        last_admin_contract_correction: {
+          reason: correctionReason,
+          corrected_at: now,
+          corrected_by: context.auth.userId,
+          previous_started_at: contract.started_at,
+          previous_ended_at: contract.ended_at,
+          new_started_at: startIso,
+          new_ended_at: endIso,
+          settlement_rows_unchanged: true,
+          receipt_rows_unchanged: true
+        }
+      };
+    }
     const { error } = await context.supabase.from("tenant_subscription_contracts").update(changes).eq("id", contract.id).eq("tenant_id", tenantId);
     if (error) throw new Error(`contract_update_failed:${error.message}`);
 
     const lifecycle = await loadLifecycle(context, tenantId);
     if (lifecycle) {
+      const expiresInPast = Date.parse(endIso) <= Date.now();
       const lifecyclePatch: JsonRecord = contract.status === "trial"
-        ? { trial_started_at: startIso, trial_expires_at: endIso, access_locked: false, lock_reason: null }
-        : { current_package_started_at: startIso, subscription_expires_at: endIso, access_locked: contract.status === "suspended", lock_reason: contract.status === "suspended" ? lifecycle.lock_reason : null };
+        ? { trial_started_at: startIso, trial_expires_at: endIso, access_locked: expiresInPast, lock_reason: expiresInPast ? "trial_expired" : null }
+        : {
+            current_package_started_at: startIso,
+            subscription_expires_at: endIso,
+            lifecycle_status: contract.status === "active" ? (expiresInPast ? "expired" : "active") : lifecycle.lifecycle_status,
+            access_locked: contract.status === "suspended" || expiresInPast,
+            lock_reason: contract.status === "suspended" ? lifecycle.lock_reason : expiresInPast ? "subscription_expired" : null
+          };
       await updateLifecycle(context, tenantId, lifecyclePatch);
     }
     invalidateTenantFeatureGateCache(tenantId);
-    await audit(context, tenantId, "tenant_contract_dates_updated", "tenant_subscription_contracts", contract.id, asRecord(contract), asRecord(changes));
+    await audit(
+      context,
+      tenantId,
+      paidActiveContract ? "tenant_paid_contract_admin_corrected" : "tenant_contract_dates_updated",
+      "tenant_subscription_contracts",
+      contract.id,
+      asRecord(contract),
+      asRecord(changes),
+      paidActiveContract ? { admin_reason: correctionReason, settlement_rows_unchanged: true, receipt_rows_unchanged: true } : {}
+    );
   }
 
   if (action === "change_package") {
