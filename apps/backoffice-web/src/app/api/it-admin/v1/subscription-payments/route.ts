@@ -118,9 +118,10 @@ export async function GET() {
           source: typeof payment.metadata?.source === "string" ? payment.metadata.source : "unknown",
           kind: payment.metadata?.kind === "payment_notice" ? "payment_notice" : "renewal_intent",
           billing_interval: payment.metadata?.billing_interval === "yearly" ? "yearly" : "monthly",
-          expected_amount: Number.isFinite(Number(payment.metadata?.expected_amount))
-            ? Number(payment.metadata?.expected_amount)
-            : null
+          expected_amount: payment.metadata?.expected_amount == null ||
+            !Number.isFinite(Number(payment.metadata.expected_amount))
+            ? null
+            : Number(payment.metadata.expected_amount)
         } : null,
         has_paid_cycle: Boolean(cycle && Number(cycle.amount_due) > 0
           && Number(cycle.amount_paid) >= Number(cycle.amount_due) && cycle.status === "paid"),
