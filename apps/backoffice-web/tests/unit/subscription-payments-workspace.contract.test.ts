@@ -17,6 +17,11 @@ describe("subscription payments IT workspace", () => {
     expect(api).toContain('from("tenant_subscription_payment_requests")');
     expect(api).toContain("primary_owner_user_id");
     expect(api).toContain('from("tenant_data_lifecycle")');
+    expect(api).toContain("metadata");
+    expect(api).toContain('source: typeof payment.metadata?.source');
+    expect(api).toContain('kind: payment.metadata?.kind === "payment_notice"');
+    expect(ui).toContain("CpiPOS-001 · POS ↔ IT");
+    expect(ui).toContain("POS → IT");
     expect(api).toContain("effectiveExpiry");
     expect(ui).toContain("ยกเว้นการเรียกเก็บ (บัญชีภายใน)");
 

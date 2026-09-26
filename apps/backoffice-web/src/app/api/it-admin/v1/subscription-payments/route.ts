@@ -16,7 +16,8 @@ type Package = { id: string; code: string; name: string; monthly_price: number |
 type Cycle = { id: string; tenant_id: string; package_id: string; period_start: string; period_end: string;
   amount_due: number; amount_paid: number; status: string; created_at: string };
 type Payment = { id: string; tenant_id: string; status: string; evidence_url: string | null;
-  amount_reported: number | null; submitted_at: string | null; reviewed_at: string | null; created_at: string };
+  amount_reported: number | null; submitted_at: string | null; reviewed_at: string | null; created_at: string;
+  metadata: Record<string, unknown> | null };
 type Owner = { id: string; email: string | null };
 type Lifecycle = { tenant_id: string; lifecycle_status: string; access_locked: boolean;
   trial_expires_at: string | null; subscription_expires_at: string | null };
@@ -53,7 +54,7 @@ export async function GET() {
         .select("id,tenant_id,package_id,period_start,period_end,amount_due,amount_paid,status,created_at")
         .in("tenant_id", ids).order("created_at", { ascending: false }).limit(1000).returns<Cycle[]>(),
       supabase.from("tenant_subscription_payment_requests")
-        .select("id,tenant_id,status,evidence_url,amount_reported,submitted_at,reviewed_at,created_at")
+        .select("id,tenant_id,status,evidence_url,amount_reported,submitted_at,reviewed_at,created_at,metadata")
         .in("tenant_id", ids).order("created_at", { ascending: false }).limit(1000).returns<Payment[]>(),
       ownerIds.length
         ? supabase.from("users_profiles").select("id,email").in("id", ownerIds).returns<Owner[]>()
@@ -107,9 +108,21 @@ export async function GET() {
         currency: contract?.currency ?? "THB",
         billing_cycle: cycle ? { id: cycle.id, status: cycle.status, amount_due: cycle.amount_due,
           amount_paid: cycle.amount_paid, period_start: cycle.period_start, period_end: cycle.period_end } : null,
-        payment: payment ? { id: payment.id, status: payment.status,
-          amount_reported: payment.amount_reported, submitted_at: payment.submitted_at,
-          reviewed_at: payment.reviewed_at, has_evidence: Boolean(payment.evidence_url) } : null,
+        payment: payment ? {
+          id: payment.id,
+          status: payment.status,
+          amount_reported: payment.amount_reported,
+          submitted_at: payment.submitted_at,
+          reviewed_at: payment.reviewed_at,
+          has_evidence: Boolean(payment.evidence_url),
+          source: typeof payment.metadata?.source === "string" ? payment.metadata.source : "unknown",
+          kind: payment.metadata?.kind === "payment_notice" ? "payment_notice" : "renewal_intent",
+          billing_interval: payment.metadata?.billing_interval === "yearly" ? "yearly" : "monthly",
+          expected_amount: payment.metadata?.expected_amount == null ||
+            !Number.isFinite(Number(payment.metadata.expected_amount))
+            ? null
+            : Number(payment.metadata.expected_amount)
+        } : null,
         has_paid_cycle: Boolean(cycle && Number(cycle.amount_due) > 0
           && Number(cycle.amount_paid) >= Number(cycle.amount_due) && cycle.status === "paid"),
         contract_id: contract?.id ?? null

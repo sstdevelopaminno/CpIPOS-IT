@@ -13,7 +13,8 @@ type Row = {
   billing_cycle: { id: string; status: string; amount_due: number; amount_paid: number;
     period_start: string; period_end: string } | null;
   payment: { id: string; status: string; amount_reported: number | null; submitted_at: string | null;
-    reviewed_at: string | null; has_evidence: boolean } | null;
+    reviewed_at: string | null; has_evidence: boolean; source: string; kind: "payment_notice" | "renewal_intent";
+    billing_interval: "monthly" | "yearly"; expected_amount: number | null } | null;
   has_paid_cycle: boolean;
 };
 type Envelope = { data?: { rows: Row[]; generated_at: string }; error?: { message?: string } };
@@ -134,7 +135,11 @@ export function SubscriptionPaymentsConsole() {
           <h1 className="mt-1 text-2xl font-bold text-slate-900">ตารางชำระแพ็กเกจ</h1>
           <p className="mt-1 text-sm text-slate-600">ติดตามสัญญา รอบบริการ ยอดที่แจ้งชำระ และข้อมูลสำหรับติดต่อร้านค้า</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+            CpiPOS-001 · POS ↔ IT
+          </span>
           <button type="button" onClick={() => setContactsOpen((value) => !value)}
             className="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700">
             ตั้งค่าอีเมลบริษัท
@@ -211,10 +216,20 @@ export function SubscriptionPaymentsConsole() {
                 <td className="whitespace-nowrap px-4 py-4">{row.is_internal_demo ? "ยกเว้นการเรียกเก็บ (บัญชีภายใน)" :
                   row.package_code === "custom" && (row.amount_per_cycle === null || row.amount_per_cycle <= 0)
                     ? "ตามสัญญา" : money(row.amount_per_cycle, row.currency)}</td>
-                <td className="px-4 py-4"><span className="block text-xs text-slate-600">
-                  {row.payment?.status ? `แจ้งชำระ: ${row.payment.status}` : "ยังไม่มีรายการแจ้งชำระ"}</span>
-                  <span className="text-xs text-slate-500">{row.billing_cycle ?
-                    `รอบบิล: ${row.billing_cycle.status}` : "ยังไม่มีรอบบิล"}</span></td>
+                <td className="px-4 py-4">
+                  <span className="block text-xs text-slate-600">
+                    {row.payment?.status ? `แจ้งชำระ: ${row.payment.status}` : "ยังไม่มีรายการแจ้งชำระ"}
+                  </span>
+                  {row.payment ? <span className="mt-1 block text-xs font-semibold text-blue-700">
+                    {row.payment.source === "pos_subscription_center" ? "POS → IT" : "ระบบ"}
+                    {" · "}
+                    {row.payment.kind === "payment_notice" ? "แจ้งโอน" : "ขอต่ออายุ"}
+                    {" · "}
+                    {row.payment.billing_interval === "yearly" ? "รายปี" : "รายเดือน"}
+                  </span> : null}
+                  <span className="mt-1 block text-xs text-slate-500">{row.billing_cycle ?
+                    `รอบบิล: ${row.billing_cycle.status}` : "ยังไม่มีรอบบิล"}</span>
+                </td>
                 <td className="px-4 py-4"><div className="flex flex-col items-start gap-2">
                   <Link href={`/tenants/${row.tenant_id}`} className="text-xs font-semibold text-blue-700 underline">ดูสัญญา / จัดการร้าน</Link>
                   <Link href={`/it-admin/subscription-payments/${row.tenant_id}`} className="text-xs font-semibold text-blue-700 underline">ประวัติการชำระ</Link>
