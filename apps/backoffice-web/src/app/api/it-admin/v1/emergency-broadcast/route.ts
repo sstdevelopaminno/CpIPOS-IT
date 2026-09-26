@@ -120,7 +120,7 @@ export async function PATCH(request: Request) {
       button_text_color: color(body.button_text_color, "Button text color"),
       target_company_web: bool(body.target_company_web),
       target_pos: bool(body.target_pos),
-      dismissible: bool(body.dismissible),
+      dismissible: true,
       starts_at: startsAt,
       ends_at: endsAt
     };
