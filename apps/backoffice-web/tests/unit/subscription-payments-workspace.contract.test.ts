@@ -101,6 +101,20 @@ describe("subscription payments IT workspace", () => {
     expect(packageService).toContain("package_updated");
   });
 
+  it("uses Tenant setup only to create a pending first-payment review, never a receipt", () => {
+    const tenantService = src("src/lib/services/it-admin/tenant-control-service.ts");
+    const tenantUi = src("src/components/it-admin/tenant-control-center.tsx");
+    expect(tenantService).toContain('action === "prepare_paid_package"');
+    expect(tenantService).toContain('from("tenant_subscription_payment_requests")');
+    expect(tenantService).toContain('kind: "payment_notice"');
+    expect(tenantService).toContain('status: "pending"');
+    expect(tenantService).toContain('receipt_policy: "issue_only_after_verified_settlement"');
+    expect(tenantService).toContain("paid_activation_requires_settlement");
+    expect(tenantUi).toContain("ใบเสร็จออกอัตโนมัติหลัง IT ตรวจเงินเข้าจริง");
+    expect(tenantUi).toContain("สร้างรายการชำระรอบแรก");
+    expect(tenantUi).toContain("/it-admin/subscription-payments/");
+  });
+
   it("settles only reviewed bank-confirmed payments and issues exactly one immutable receipt", () => {
     const evidenceMigration = src("../../supabase/migrations/20260925103100_subscription_evidence_bucket.sql");
     const indexMigration = src("../../supabase/migrations/20260925103000_subscription_open_request_index.sql");

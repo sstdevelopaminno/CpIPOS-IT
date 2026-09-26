@@ -1,5 +1,6 @@
 import "server-only";
 
+import crypto from "node:crypto";
 import { appendAuditLog } from "@/lib/audit-log";
 import { invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
 import { normalizePosSalesModes, toPosSalesModeViews, type PosSalesModeMap } from "@/lib/pos-sales-modes";
@@ -88,6 +89,31 @@ type ContractDbRow = {
   updated_at: string;
 };
 
+type PaymentRequestRow = {
+  id: string;
+  tenant_id: string;
+  requested_package_id: string | null;
+  request_type: string;
+  amount_reported: number | string | null;
+  currency: string | null;
+  status: string;
+  evidence_url: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type ReceiptRow = {
+  id: string;
+  tenant_id: string;
+  payment_request_id: string;
+  receipt_number: string;
+  issued_at: string;
+  amount: number | string;
+  currency: string;
+};
+
 type LifecycleRow = {
   tenant_id: string;
   lifecycle_status: string;
@@ -106,6 +132,7 @@ export type TenantControlAction =
   | "create_branch"
   | "update_branch"
   | "update_contract"
+  | "prepare_paid_package"
   | "change_package"
   | "update_sales_modes"
   | "suspend_package"
@@ -166,6 +193,7 @@ function requireAction(raw: unknown): TenantControlAction {
     "create_branch",
     "update_branch",
     "update_contract",
+    "prepare_paid_package",
     "change_package",
     "update_sales_modes",
     "suspend_package",
@@ -358,7 +386,7 @@ async function audit(
 
 export async function loadTenantControlCenter(context: ItAdminContext, tenantId: string) {
   const tenant = await loadTenant(context, tenantId);
-  const [branchesResult, packagesResult, contract, accessCode, lifecycle] = await Promise.all([
+  const [branchesResult, packagesResult, contract, accessCode, lifecycle, paymentRequestResult, receiptResult] = await Promise.all([
     context.supabase.from("branches").select(BRANCH_SELECT).eq("tenant_id", tenantId).order("created_at", { ascending: true }).returns<BranchDbRow[]>(),
     context.supabase
       .from("subscription_packages")
@@ -369,11 +397,27 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
       .returns<PackageRow[]>(),
     loadCurrentContract(context, tenantId),
     loadLatestAccessCode(context, tenantId),
-    loadLifecycle(context, tenantId)
+    loadLifecycle(context, tenantId),
+    context.supabase
+      .from("tenant_subscription_payment_requests")
+      .select("id,tenant_id,requested_package_id,request_type,amount_reported,currency,status,evidence_url,submitted_at,reviewed_at,metadata,created_at")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<PaymentRequestRow>(),
+    context.supabase
+      .from("tenant_subscription_receipts")
+      .select("id,tenant_id,payment_request_id,receipt_number,issued_at,amount,currency")
+      .eq("tenant_id", tenantId)
+      .order("issued_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<ReceiptRow>()
   ]);
 
   if (branchesResult.error) throw new Error(`tenant_branches_query_failed:${branchesResult.error.message}`);
   if (packagesResult.error) throw new Error(`subscription_packages_query_failed:${packagesResult.error.message}`);
+  if (paymentRequestResult.error) throw new Error(`subscription_payment_request_query_failed:${paymentRequestResult.error.message}`);
+  if (receiptResult.error) throw new Error(`subscription_receipt_query_failed:${receiptResult.error.message}`);
 
   const packages = packagesResult.data ?? [];
   const currentPackageId = contract?.package_id ?? tenant.package_id;
@@ -438,6 +482,35 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
       online_devices_5m: onlineResult.count ?? 0
     },
     sales_modes: salesModes,
+    billing: {
+      latest_request: paymentRequestResult.data ? {
+        id: paymentRequestResult.data.id,
+        requested_package_id: paymentRequestResult.data.requested_package_id,
+        request_type: paymentRequestResult.data.request_type,
+        amount_reported: paymentRequestResult.data.amount_reported,
+        currency: paymentRequestResult.data.currency ?? "THB",
+        status: paymentRequestResult.data.status,
+        has_evidence: Boolean(paymentRequestResult.data.evidence_url),
+        submitted_at: paymentRequestResult.data.submitted_at,
+        reviewed_at: paymentRequestResult.data.reviewed_at,
+        kind: paymentRequestResult.data.metadata?.kind === "payment_notice" ? "payment_notice" : "renewal_intent",
+        billing_interval: paymentRequestResult.data.metadata?.billing_interval === "yearly" ? "yearly" : "monthly",
+        expected_amount: paymentRequestResult.data.metadata?.expected_amount == null
+          ? null
+          : Number(paymentRequestResult.data.metadata.expected_amount),
+        source: typeof paymentRequestResult.data.metadata?.source === "string"
+          ? paymentRequestResult.data.metadata.source
+          : "unknown"
+      } : null,
+      latest_receipt: receiptResult.data ? {
+        id: receiptResult.data.id,
+        payment_request_id: receiptResult.data.payment_request_id,
+        number: receiptResult.data.receipt_number,
+        issued_at: receiptResult.data.issued_at,
+        amount: Number(receiptResult.data.amount),
+        currency: receiptResult.data.currency || "THB"
+      } : null
+    },
     pos_notice: contract
       ? {
           status: contractView?.effective_status ?? contract.status,
@@ -515,6 +588,13 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (contract.status === "cancelled" || contract.status === "expired") {
       throw new ItAdminGuardError("subscription_closed", "Closed contracts cannot be edited. Activate a package to create a new contract.", 409);
     }
+    if (contract.status === "active" && Number(contract.amount_per_cycle ?? 0) > 0) {
+      throw new ItAdminGuardError(
+        "paid_contract_billing_managed_by_settlement",
+        "สัญญาแพ็กเกจที่ชำระเงินจริงต้องต่ออายุหรือเปลี่ยนรอบผ่านตารางชำระแพ็กเกจ เพื่อให้เกิดรอบบิลและใบเสร็จที่ตรวจสอบได้",
+        409
+      );
+    }
     const billingCycle = requireBillingCycle(input.billing_cycle, BILLING_CYCLES.has(contract.billing_interval) ? contract.billing_interval : "monthly");
     const startIso = input.start_date ? parseContractDate(input.start_date, "start_date") : contract.started_at;
     const endIso = input.auto_calculate_end === false && input.end_date
@@ -549,6 +629,14 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
   }
 
   if (action === "change_package") {
+    throw new ItAdminGuardError(
+      "paid_activation_requires_settlement",
+      "ห้ามเปิดหรือเปลี่ยนแพ็กเกจที่มีค่าบริการจาก Tenants / Stores โดยตรง กรุณาสร้างรายการชำระแล้วไปอนุมัติในตารางชำระแพ็กเกจ",
+      409
+    );
+  }
+
+  if (action === "prepare_paid_package") {
     const packageId = cleanText(input.package_id, 80);
     if (!packageId) throw new ItAdminGuardError("package_id_required", "package_id is required.", 422);
     const billingCycle = requireBillingCycle(input.billing_cycle);
@@ -562,98 +650,107 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (packageResult.error) throw new Error(`package_query_failed:${packageResult.error.message}`);
     if (!packageResult.data) throw new ItAdminGuardError("package_not_available", "Selected package is not available.", 409);
 
-    const startIso = input.start_date ? parseContractDate(input.start_date, "start_date") : parseContractDate(now.slice(0, 10), "start_date");
-    if (new Date(startIso).getTime() > Date.now() + DAY_MS) {
-      throw new ItAdminGuardError("contract_start_in_future", "Immediate package activation cannot start in the future.", 422);
+    const expectedAmount = packageAmount(packageResult.data, billingCycle);
+    if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
+      throw new ItAdminGuardError(
+        billingCycle === "yearly" ? "yearly_price_not_configured" : "package_price_not_configured",
+        billingCycle === "yearly"
+          ? "แพ็กเกจนี้ยังไม่มีราคารายปี กรุณาตั้งราคาในระบบ IT ก่อนสร้างรายการชำระ"
+          : "แพ็กเกจนี้ไม่มีราคากลาง กรุณาใช้สัญญา CUSTOM ที่กำหนดราคาเฉพาะร้าน",
+        422
+      );
     }
-    const endIso = input.end_date ? parseContractDate(input.end_date, "end_date") : addBillingPeriod(startIso, billingCycle);
-    validateContractWindow(startIso, endIso);
+
+    const existing = await context.supabase
+      .from("tenant_subscription_payment_requests")
+      .select("id,status,requested_package_id,metadata")
+      .eq("tenant_id", tenantId)
+      .in("status", ["pending", "under_review"])
+      .limit(1)
+      .maybeSingle<{ id: string; status: string; requested_package_id: string | null; metadata: Record<string, unknown> | null }>();
+    if (existing.error) throw new Error(`subscription_open_request_query_failed:${existing.error.message}`);
+    if (existing.data) {
+      throw new ItAdminGuardError(
+        "open_payment_request_exists",
+        "ร้านนี้มีรายการชำระที่กำลังรอตรวจสอบอยู่แล้ว กรุณาเปิดตารางชำระแพ็กเกจเพื่อตรวจสอบรายการเดิม",
+        409
+      );
+    }
 
     const previous = await loadCurrentContract(context, tenantId);
+    const requestType = !previous
+      ? "new_subscription"
+      : previous.status === "trial"
+        ? "trial_conversion"
+        : previous.package_id !== packageId
+          ? "package_change"
+          : "renewal";
     const reason = optionalText(input.admin_reason, 600);
-    const newContract = {
-      tenant_id: tenantId,
-      package_id: packageId,
-      contract_type: "saas",
+    const requestId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const metadata = {
+      kind: "payment_notice",
       billing_interval: billingCycle,
-      deployment_mode: previous?.deployment_mode ?? "cloud",
-      status: "active",
-      branch_limit: packageResult.data.max_branches,
-      terminal_limit_per_branch: packageResult.data.max_devices,
-      max_branches: packageResult.data.max_branches,
-      max_devices: packageResult.data.max_devices,
-      max_users: packageResult.data.max_users,
-      amount_per_cycle: packageAmount(packageResult.data, billingCycle),
-      currency: "THB",
-      auto_renew: typeof input.auto_renew === "boolean" ? input.auto_renew : false,
-      started_at: startIso,
-      ended_at: endIso,
-      metadata: {
-        source: "cpipos_it_admin",
-        changed_by: context.auth.userId,
-        admin_reason: reason,
-        previous_contract_id: previous?.id ?? null,
-        activated_early_from_trial: previous?.status === "trial"
-      }
+      expected_amount: expectedAmount,
+      source: "it_tenant_control",
+      created_by_it: context.auth.userId,
+      payer_name: "",
+      transfer_reference: "",
+      transfer_at: "",
+      note: reason ?? "",
+      requested_start_date: cleanText(input.start_date, 10) || null,
+      auto_renew_requested: typeof input.auto_renew === "boolean" ? input.auto_renew : false,
+      receipt_policy: "issue_only_after_verified_settlement"
     };
-    const inserted = await context.supabase.from("tenant_subscription_contracts").insert(newContract).select("id").single<{ id: string }>();
-    if (inserted.error || !inserted.data) throw new Error(`contract_create_failed:${inserted.error?.message ?? "unknown"}`);
 
-    if (previous && previous.id !== inserted.data.id && previous.status !== "cancelled" && previous.status !== "expired") {
-      const previousMeta = asRecord(previous.metadata);
-      const previousUpdate = await context.supabase
-        .from("tenant_subscription_contracts")
-        .update({
-          status: "cancelled",
-          ended_at: startIso,
-          updated_at: now,
-          metadata: { ...previousMeta, cancelled_at: now, superseded_by_contract_id: inserted.data.id, superseded_at: now, superseded_by: context.auth.userId }
-        })
-        .eq("id", previous.id)
-        .eq("tenant_id", tenantId);
-      if (previousUpdate.error) {
-        await context.supabase.from("tenant_subscription_contracts").delete().eq("id", inserted.data.id);
-        throw new Error(`previous_contract_close_failed:${previousUpdate.error.message}`);
+    const inserted = await context.supabase
+      .from("tenant_subscription_payment_requests")
+      .insert({
+        id: requestId,
+        tenant_id: tenantId,
+        requested_package_id: packageId,
+        request_type: requestType,
+        amount_reported: null,
+        currency: "THB",
+        evidence_url: null,
+        status: "pending",
+        metadata
+      })
+      .select("id")
+      .single<{ id: string }>();
+    if (inserted.error || !inserted.data) {
+      if (inserted.error?.code === "23505") {
+        throw new ItAdminGuardError(
+          "open_payment_request_exists",
+          "ร้านนี้มีรายการชำระที่กำลังรอตรวจสอบอยู่แล้ว กรุณาเปิดตารางชำระแพ็กเกจเพื่อตรวจสอบรายการเดิม",
+          409
+        );
       }
+      throw new Error(`subscription_payment_request_create_failed:${inserted.error?.message ?? "unknown"}`);
     }
 
-    const tenantPackageUpdate = await context.supabase.from("tenants").update({ package_id: packageId, updated_at: now }).eq("id", tenantId);
-    if (tenantPackageUpdate.error) {
-      await context.supabase.from("tenant_subscription_contracts").delete().eq("id", inserted.data.id);
-      if (previous) {
-        await context.supabase
-          .from("tenant_subscription_contracts")
-          .update({ status: previous.status, ended_at: previous.ended_at, metadata: previous.metadata, updated_at: previous.updated_at })
-          .eq("id", previous.id)
-          .eq("tenant_id", tenantId);
-      }
-      throw new Error(`tenant_package_update_failed:${tenantPackageUpdate.error.message}`);
-    }
-
-    const lifecycle = await loadLifecycle(context, tenantId);
-    if (lifecycle) {
-      const lifecycleMeta = asRecord(lifecycle.metadata);
-      await updateLifecycle(context, tenantId, {
-        lifecycle_status: "active",
-        first_package_started_at: lifecycle.first_package_started_at ?? startIso,
-        current_package_started_at: startIso,
-        subscription_expires_at: endIso,
-        access_locked: false,
-        lock_reason: null,
-        metadata: { ...lifecycleMeta, package_code: packageResult.data.code, last_it_activation_at: now, pos_notice: null }
-      });
-    }
-
-    invalidateTenantFeatureGateCache(tenantId);
     await audit(
       context,
       tenantId,
-      previous?.status === "trial" ? "tenant_trial_converted_to_paid" : "tenant_package_changed",
-      "tenant_subscription_contracts",
+      "subscription_payment_request_created_by_it",
+      "tenant_subscription_payment_requests",
       inserted.data.id,
-      asRecord(previous ?? {}),
-      asRecord(newContract),
-      { package_code: packageResult.data.code, package_name: packageResult.data.name, started_at: startIso, ended_at: endIso }
+      {},
+      {
+        tenant_id: tenantId,
+        requested_package_id: packageId,
+        request_type: requestType,
+        expected_amount: expectedAmount,
+        billing_interval: billingCycle,
+        status: "pending",
+        created_at: createdAt
+      },
+      {
+        package_code: packageResult.data.code,
+        package_name: packageResult.data.name,
+        first_paid_activation: previous?.status === "trial" || !previous,
+        receipt_policy: "automatic_after_verified_settlement"
+      }
     );
   }
 

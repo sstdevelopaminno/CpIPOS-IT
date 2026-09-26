@@ -77,10 +77,27 @@ describe("IT Admin Store Control Center contract", () => {
     expect(controlCenter).toContain("ที่อยู่ร้าน");
     expect(controlCenter).toContain("โลโก้ร้าน (URL)");
     expect(controlCenter).toContain("เปิดสาขาใหม่");
-    expect(controlCenter).toContain("ยืนยันเปลี่ยนแพ็กเกจ");
+    expect(controlCenter).toContain("สร้างรายการชำระรอบแรก");
+    expect(controlCenter).toContain("ไปตารางชำระแพ็กเกจ");
+    expect(controlCenter).toContain("ใบเสร็จออกอัตโนมัติหลัง IT ตรวจเงินเข้าจริง");
     expect(controlCenter).toContain("หยุดแพ็กเกจชั่วคราว");
     expect(controlCenter).toContain("เปิดใช้งานต่อ");
     expect(controlCenter).toContain("ยกเลิกแพ็กเกจ");
+  });
+
+  it("never lets Tenants / Stores issue the first paid receipt before verified settlement", () => {
+    expect(service).toContain('action === "prepare_paid_package"');
+    expect(service).toContain('source: "it_tenant_control"');
+    expect(service).toContain('receipt_policy: "issue_only_after_verified_settlement"');
+    expect(service).toContain('status: "pending"');
+    expect(service).toContain('action === "change_package"');
+    expect(service).toContain("paid_activation_requires_settlement");
+    expect(service).toContain("paid_contract_billing_managed_by_settlement");
+    expect(controlCenter).toContain("ลำดับที่ถูกต้อง:");
+    expect(controlCenter).toContain("เปิดตรวจสอบการชำระ");
+    expect(controlCenter).toContain('action: "prepare_paid_package"');
+    expect(controlCenter).not.toContain('action: "change_package", package_id');
+    expect(actionConfirm).toContain("ขั้นตอนนี้ยังไม่เปิดแพ็กเกจและยังไม่ออกใบเสร็จ");
   });
 
   it("strictly separates customer-visible POS copy from internal IT reasons", () => {

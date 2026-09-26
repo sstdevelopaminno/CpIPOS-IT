@@ -93,6 +93,31 @@ type ControlData = {
   lifecycle?: Lifecycle;
   usage: { active_devices: number; cashier_active: number; assigned_users: number; online_devices_5m: number };
   sales_modes: PosSalesModeView[];
+  billing: {
+    latest_request: {
+      id: string;
+      requested_package_id: string | null;
+      request_type: string;
+      amount_reported: number | string | null;
+      currency: string;
+      status: string;
+      has_evidence: boolean;
+      submitted_at: string | null;
+      reviewed_at: string | null;
+      kind: "payment_notice" | "renewal_intent";
+      billing_interval: "monthly" | "yearly";
+      expected_amount: number | null;
+      source: string;
+    } | null;
+    latest_receipt: {
+      id: string;
+      payment_request_id: string;
+      number: string;
+      issued_at: string;
+      amount: number;
+      currency: string;
+    } | null;
+  };
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
@@ -343,9 +368,17 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const lifecycleMeta = data?.lifecycle?.metadata ?? {};
   const isPrepaidPendingTrial = isTrial && lifecycleMeta.prepaid_activation_state === "pending_trial_completion" &&
     typeof lifecycleMeta.prepaid_payment_reference === "string";
-  const canEditContract = Boolean(data?.contract) && !["cancelled", "expired"].includes(currentStatus) && !isPrepaidPendingTrial;
+  const isInternalDemo = data?.lifecycle?.lifecycle_status === "sales_demo";
+  const canEditContract = Boolean(data?.contract) && (isTrial || isInternalDemo) &&
+    !["cancelled", "expired"].includes(currentStatus) && !isPrepaidPendingTrial;
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
   const selectedPackageYearlyAvailable = packageAllowsYearly(selectedPackage);
+  const latestBillingRequest = data?.billing.latest_request ?? null;
+  const latestReceipt = data?.billing.latest_receipt ?? null;
+  const hasOpenBillingRequest = Boolean(latestBillingRequest && ["pending", "under_review"].includes(latestBillingRequest.status));
+  const selectedPackageAmount = selectedPackage
+    ? Number(billingCycle === "yearly" ? selectedPackage.yearly_price ?? 0 : selectedPackage.monthly_price ?? 0)
+    : 0;
   const salesModeEnabledCount = data?.sales_modes.filter((mode) => mode.enabled).length ?? 0;
   const salesModeTotal = data?.sales_modes.length || POS_SALES_MODE_KEYS.length;
   const hasSalesModeEnabled = Object.values(salesModeDrafts).some(Boolean);
@@ -390,7 +423,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
       : tab === "salesModes"
         ? { eyebrow: "POS SALES MODES", title: "โหมดขาย", description: "เปิดหรือปิดโหมดหน้าขาย POS ของร้านนี้" }
         : tab === "package"
-          ? { eyebrow: "PACKAGE & CONTRACT", title: "แพ็กเกจและสิทธิ์", description: "จัดการสัญญา รอบบิล แพ็กเกจ และสิทธิ์การใช้งาน" }
+          ? { eyebrow: "PACKAGE & CONTRACT", title: "แพ็กเกจและสิทธิ์", description: "ตั้งค่าแพ็กเกจและส่งรายการชำระไปตรวจสอบ โดยการเปิดสิทธิ์แบบชำระเงินจริงต้องผ่าน Settlement และใบเสร็จ" }
           : tab === "danger"
             ? { eyebrow: "STORE SECURITY", title: "พื้นที่อันตราย", description: "ปิดร้านชั่วคราวหรือดำเนินการลบร้านแบบถาวร" }
           : null;
@@ -653,7 +686,9 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   {data.contract ? (
                     <section className={styles.controlSection}>
                       <div className={styles.controlSectionHeader}><div><span>CONTRACT PERIOD</span><h4>วันที่สัญญาและรอบบิล</h4></div><span className={`${styles.controlPill} ${statusClass(currentStatus)}`}>{contractLabel(currentStatus)}</span></div>
-                      <p className={styles.sectionCopy}>เลือกวันที่เริ่มและรายเดือน/รายปี ระบบจะคำนวณวันหมดอายุให้อัตโนมัติ หรือปิด Auto calculate เพื่อกำหนดวันหมดอายุเอง</p>
+                      <p className={styles.sectionCopy}>{canEditContract
+                        ? "ช่วง Trial / บัญชีภายในสามารถแก้ช่วงสัญญาได้จากหน้านี้"
+                        : "แพ็กเกจที่รับชำระเงินจริงล็อกช่วงรอบบิลไว้กับ Settlement เพื่อไม่ให้วันหมดอายุถูกขยายโดยไม่มีรายการรับเงินและใบเสร็จ"}</p>
                       <div className={styles.formGrid}>
                         <label><span>วันที่เปิดสัญญา</span><input type="date" value={contractStartDate} onChange={(e) => changeContractStart(e.target.value)} disabled={!canEditContract} /></label>
                         <label><span>รอบสัญญา</span><select value={contractCycle} onChange={(e) => changeContractCycle(e.target.value as BillingCycle)} disabled={!canEditContract}><option value="monthly">รายเดือน</option><option value="yearly" disabled={!currentPackageYearlyAvailable}>รายปี{!currentPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select></label>
@@ -670,21 +705,54 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
 
                   <section className={styles.controlSection}>
                     <div className={styles.controlSectionHeader}>
-                      <div><span>{isTrial ? "ACTIVATE PAID PACKAGE" : "CHANGE PACKAGE"}</span><h4>{isTrial ? "เปลี่ยนจาก Trial เป็นแพ็กเกจจริง" : "เปลี่ยนแพ็กเกจ"}</h4></div>
-                      <small>{isPrepaidPendingTrial ? "รับเงินล่วงหน้าแล้ว ระบบจะเปิดแพ็กเกจจริงเมื่อครบ Trial" : isTrial ? "เปิดแพ็กเกจจริงได้ทันที ไม่ต้องรอ Trial หมด" : "สร้างสัญญาใหม่และเก็บประวัติสัญญาเดิม"}</small>
+                      <div><span>FIRST BILLING / PACKAGE PAYMENT</span><h4>{isTrial ? "เตรียมชำระรอบแรกเพื่อเปิดแพ็กเกจจริง" : "เตรียมรายการชำระสำหรับแพ็กเกจ"}</h4></div>
+                      <small>Tenants / Stores ตั้งค่าร้านและแพ็กเกจเท่านั้น · ใบเสร็จออกอัตโนมัติหลัง IT ตรวจเงินเข้าจริง</small>
                     </div>
-                    <div className={styles.formGrid}>
-                      <label><span>แพ็กเกจ</span><select value={packageId} onChange={(e) => selectPackage(e.target.value)}>{data.packages.map((pkg) => <option value={pkg.id} key={pkg.id}>{pkg.name} · {pkg.code}</option>)}</select></label>
-                      <label><span>รอบบิล</span><select value={billingCycle} onChange={(e) => changePackageCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly" disabled={!selectedPackageYearlyAvailable}>รายปี{!selectedPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select></label>
-                      <label><span>วันที่เริ่มแพ็กเกจจริง</span><input type="date" max={todayLocal()} value={changeStartDate} onChange={(e) => changePackageStart(e.target.value)} /></label>
-                      <label><span>วันหมดอายุ</span><input type="date" value={changeEndDate} onChange={(e) => setChangeEndDate(e.target.value)} disabled={changeAutoEnd} /></label>
-                      <label className={styles.switchLabel}><input type="checkbox" checked={changeAutoEnd} onChange={(e) => { const checked = e.target.checked; setChangeAutoEnd(checked); if (checked) setChangeEndDate(addBillingDate(changeStartDate, billingCycle)); }} /><span>คำนวณวันหมดอายุอัตโนมัติ</span></label>
-                      <label className={styles.switchLabel}><input type="checkbox" checked={changeAutoRenew} onChange={(e) => setChangeAutoRenew(e.target.checked)} /><span>ต่ออายุอัตโนมัติ</span></label>
-                      <label className={styles.span2}><span>เหตุผลภายใน (Audit)</span><input placeholder={isTrial ? "เช่น ลูกค้ายืนยันเปิดแพ็กเกจจริงก่อน Trial หมด" : "เช่น ลูกค้าขออัปเกรดแพ็กเกจ"} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} /></label>
+
+                    <div className={styles.securityNote} role="note">
+                      <strong>ลำดับที่ถูกต้อง:</strong> สร้างรายการชำระจากหน้านี้ → เปิด “ตารางชำระแพ็กเกจ” → ตรวจยอดเงินจริงจากธนาคาร →
+                      กดอนุมัติ → ระบบเปิด/ต่อแพ็กเกจ สร้างรอบบิล และออกใบเสร็จพร้อมกันอัตโนมัติ
                     </div>
-                    {!selectedPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจที่เลือกยังไม่มีราคารายปี ระบบจะใช้รายเดือนเท่านั้นจนกว่าจะตั้งราคารายปีในเมนู Package / Subscription</div> : null}
-                    {selectedPackage ? <div className={styles.packagePreview}><strong>{selectedPackage.name}</strong><span>{billingCycle === "yearly" ? money(selectedPackage.yearly_price) : money(selectedPackage.monthly_price)} · {changeStartDate || "—"} → {changeEndDate || "—"} · สูงสุด {selectedPackage.max_branches ?? "—"} สาขา / {selectedPackage.max_devices ?? "—"} อุปกรณ์</span></div> : null}
-                    <div className={styles.sectionActions}><button className={styles.primaryButton} type="button" disabled={busy || isPrepaidPendingTrial || !packageId || !changeStartDate || !changeEndDate || (billingCycle === "yearly" && !selectedPackageYearlyAvailable)} onClick={() => void mutate({ action: "change_package", package_id: packageId, billing_cycle: billingCycle, start_date: changeStartDate, end_date: changeAutoEnd ? undefined : changeEndDate, auto_calculate_end: changeAutoEnd, auto_renew: changeAutoRenew, admin_reason: changeReason }, isTrial ? "เปิดแพ็กเกจจริงเรียบร้อย" : "เปลี่ยนแพ็กเกจเรียบร้อย", true)}>{isTrial ? "เปิดแพ็กเกจจริงตอนนี้" : "ยืนยันเปลี่ยนแพ็กเกจ"}</button></div>
+
+                    {latestReceipt ? <div className={styles.packagePreview}>
+                      <strong>ใบเสร็จล่าสุด {latestReceipt.number}</strong>
+                      <span>{formatDate(latestReceipt.issued_at)} · {money(latestReceipt.amount)} · ออกแล้วจาก Settlement ที่ยืนยันเงินจริง</span>
+                    </div> : null}
+
+                    {hasOpenBillingRequest ? <div className={styles.securityNote} role="status" style={{ display: "grid", gap: 6 }}>
+                      <strong>มีรายการชำระรอตรวจสอบแล้ว · {latestBillingRequest?.status === "under_review" ? "กำลังตรวจสอบ" : "รอตรวจสอบ"}</strong>
+                      <span>ยอดตามแพ็กเกจ {money(latestBillingRequest?.expected_amount ?? 0)} · {latestBillingRequest?.billing_interval === "yearly" ? "รายปี" : "รายเดือน"}</span>
+                      <small>ยังไม่ออกใบเสร็จจนกว่า IT จะตรวจรายการธนาคารและกดอนุมัติ</small>
+                      <div className={styles.sectionActions}>
+                        <Link className={styles.primaryButton} href={`/it-admin/subscription-payments/${tenantId}`}>เปิดตรวจสอบการชำระ →</Link>
+                      </div>
+                    </div> : <>
+                      <div className={styles.formGrid}>
+                        <label><span>แพ็กเกจ</span><select value={packageId} onChange={(e) => selectPackage(e.target.value)}>{data.packages.map((pkg) => <option value={pkg.id} key={pkg.id}>{pkg.name} · {pkg.code}</option>)}</select></label>
+                        <label><span>รอบชำระ</span><select value={billingCycle} onChange={(e) => changePackageCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly" disabled={!selectedPackageYearlyAvailable}>รายปี{!selectedPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select></label>
+                        <label className={styles.span2}><span>หมายเหตุภายใน (Audit)</span><input placeholder={isTrial ? "เช่น เตรียมเปิดแพ็กเกจจริงหลังตรวจรับเงินรอบแรก" : "เช่น ลูกค้าขอต่ออายุ/เปลี่ยนแพ็กเกจ"} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} /></label>
+                      </div>
+                      {!selectedPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจที่เลือกยังไม่มีราคารายปี ระบบจะยังไม่สร้างรายการรายปีจนกว่าจะตั้งราคาในระบบ IT</div> : null}
+                      {selectedPackage ? <div className={styles.packagePreview}>
+                        <strong>{selectedPackage.name}</strong>
+                        <span>{billingCycle === "yearly" ? "รายปี" : "รายเดือน"} · ยอดที่ต้องตรวจรับ {money(selectedPackageAmount)} · รอบบริการจริงจะเริ่มจาก Settlement</span>
+                      </div> : null}
+                      <div className={styles.sectionActions}>
+                        <button className={styles.primaryButton} type="button"
+                          disabled={busy || isPrepaidPendingTrial || !packageId || selectedPackageAmount <= 0 ||
+                            (billingCycle === "yearly" && !selectedPackageYearlyAvailable)}
+                          onClick={() => void mutate({
+                            action: "prepare_paid_package",
+                            package_id: packageId,
+                            billing_cycle: billingCycle,
+                            auto_renew: changeAutoRenew,
+                            admin_reason: changeReason
+                          }, "สร้างรายการชำระแล้ว กรุณาไปตารางชำระแพ็กเกจเพื่อตรวจเงินเข้าและอนุมัติ", true)}>
+                          {isTrial ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระแพ็กเกจ"}
+                        </button>
+                        <Link className={styles.secondaryButton} href={`/it-admin/subscription-payments/${tenantId}`}>ไปตารางชำระแพ็กเกจ</Link>
+                      </div>
+                    </>}
                   </section>
 
                   <section className={styles.controlSection}>
