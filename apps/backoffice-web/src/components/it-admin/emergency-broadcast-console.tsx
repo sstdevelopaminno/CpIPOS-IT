@@ -96,21 +96,43 @@ export function EmergencyBroadcastConsole() {
     setSettings((current) => ({ ...current, [key]: value }));
   };
 
+  const persist = async (next: Settings) => {
+    const response = await fetch("/api/it-admin/v1/emergency-broadcast", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(next)
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload?.error?.message || "บันทึกไม่สำเร็จ");
+    setSettings(payload.data.settings);
+    return payload.data.settings as Settings;
+  };
+
   const save = async () => {
     setSaving(true);
     setMessage("");
     try {
-      const response = await fetch("/api/it-admin/v1/emergency-broadcast", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(settings)
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error?.message || "บันทึกไม่สำเร็จ");
-      setSettings(payload.data.settings);
-      setMessage("บันทึกและเผยแพร่การตั้งค่าแล้ว");
+      await persist(settings);
+      setMessage(settings.enabled ? "บันทึกและเผยแพร่การตั้งค่าแล้ว" : "บันทึกและปิดแถบแจ้งเตือนแล้ว");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const disableNow = async () => {
+    if (!settings.enabled) {
+      setMessage("แถบแจ้งเตือนถูกปิดอยู่แล้ว");
+      return;
+    }
+    setSaving(true);
+    setMessage("");
+    try {
+      await persist({ ...settings, enabled: false });
+      setMessage("ปิดแถบแจ้งเตือนทันทีแล้ว");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "ปิดแถบไม่สำเร็จ");
     } finally {
       setSaving(false);
     }
@@ -155,10 +177,28 @@ export function EmergencyBroadcastConsole() {
               ควบคุมแถบแจ้งเตือนส่วนกลางสำหรับเว็บไซต์บริษัทและระบบ CpIPOS โดยไม่ต้องแก้โค้ดทุกครั้ง
             </p>
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 800, color: settings.enabled ? "#047857" : "#64748b" }}>
-            <input type="checkbox" checked={settings.enabled} onChange={(event) => update("enabled", event.target.checked)} />
-            {settings.enabled ? "กำลังเปิดใช้งาน" : "ปิดการแจ้งเตือน"}
-          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 800, color: settings.enabled ? "#047857" : "#64748b" }}>
+              <input type="checkbox" checked={settings.enabled} onChange={(event) => update("enabled", event.target.checked)} />
+              {settings.enabled ? "กำลังเปิดใช้งาน" : "ปิดการแจ้งเตือน"}
+            </label>
+            <button
+              type="button"
+              disabled={saving || !settings.enabled}
+              onClick={disableNow}
+              style={{
+                border: "1px solid #fecaca",
+                borderRadius: 10,
+                background: settings.enabled ? "#fff1f2" : "#f8fafc",
+                color: settings.enabled ? "#b91c1c" : "#94a3b8",
+                padding: "8px 12px",
+                fontWeight: 900,
+                cursor: saving || !settings.enabled ? "not-allowed" : "pointer"
+              }}
+            >
+              ปิดแถบแจ้งเตือนทันที
+            </button>
+          </div>
         </div>
         <div style={{ fontSize: 13, color: "#64748b" }}>ปลายทาง: {enabledTargets}</div>
       </section>
@@ -209,9 +249,8 @@ export function EmergencyBroadcastConsole() {
             </span>
           </label>
           <label style={label}>การปิดแถบโดยผู้ใช้
-            <span style={{ display: "flex", minHeight: 42, alignItems: "center", gap: 8 }}>
-              <input type="checkbox" checked={settings.dismissible} onChange={(event) => update("dismissible", event.target.checked)} />
-              อนุญาตให้กดปิด
+            <span style={{ display: "flex", minHeight: 42, alignItems: "center", gap: 8, color: "#047857" }}>
+              ✓ ผู้ใช้กด × ปิดแถบได้เสมอ
             </span>
           </label>
         </div>
