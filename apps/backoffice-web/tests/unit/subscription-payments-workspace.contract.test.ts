@@ -84,6 +84,23 @@ describe("subscription payments IT workspace", () => {
     expect(historyUi).toContain("กลับตารางชำระแพ็กเกจ");
   });
 
+  it("lets IT define annual package prices explicitly without inventing a commercial price", () => {
+    const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
+    const packageApi = src("src/app/api/it-admin/v1/packages/[packageId]/route.ts");
+    const packageService = src("src/lib/services/it-admin/package-admin-service.ts");
+    expect(historyUi).toContain("ตั้งราคารายปีสำหรับ POS");
+    expect(historyUi).toContain("12 เดือน");
+    expect(historyUi).toContain("ตัวอย่างลด 10%");
+    expect(historyUi).toContain("ยังไม่เปลี่ยนราคาจริงจนกด");
+    expect(historyUi).toContain("บันทึกราคารายปี");
+    expect(historyUi).toContain("/api/it-admin/v1/packages/");
+    expect(historyUi).toContain('yearly_price: Number(value.toFixed(2))');
+    expect(historyUi).toContain("CUSTOM ใช้ราคาตามสัญญาของแต่ละร้าน");
+    expect(packageApi).toContain("requireItAdmin()");
+    expect(packageService).toContain("yearly_price");
+    expect(packageService).toContain("package_updated");
+  });
+
   it("settles only reviewed bank-confirmed payments and issues exactly one immutable receipt", () => {
     const evidenceMigration = src("../../supabase/migrations/20260925103100_subscription_evidence_bucket.sql");
     const indexMigration = src("../../supabase/migrations/20260925103000_subscription_open_request_index.sql");
