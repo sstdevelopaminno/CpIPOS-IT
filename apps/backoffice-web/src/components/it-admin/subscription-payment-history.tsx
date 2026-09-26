@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 type PackagePrice = {
   id: string;
@@ -116,6 +116,43 @@ type SettlementDraft = {
   confirmed_bank_receipt: boolean;
 };
 
+type WorkspacePanel = "pending" | "payments" | "cycles" | "history" | "audit" | "summary" | "first-payment" | null;
+
+function WorkspaceModal({ title, description, onClose, children }: {
+  title: string;
+  description?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return <div
+    className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-[2px] sm:p-5"
+    role="presentation"
+    onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+    <section role="dialog" aria-modal="true" aria-label={title}
+      className="flex max-h-[92vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+        <div className="min-w-0">
+          <h2 className="text-lg font-black text-slate-900 sm:text-xl">{title}</h2>
+          {description ? <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p> : null}
+        </div>
+        <button type="button" onClick={onClose} aria-label="ปิดหน้าต่าง"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-500 hover:bg-slate-50">
+          ×
+        </button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
+      <footer className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-3 sm:px-6">
+        <button type="button" onClick={onClose}
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+          ปิด
+        </button>
+      </footer>
+    </section>
+  </div>;
+}
+
 const REQUEST_STATUS: Record<string,string> = {
   pending: "รอตรวจสอบ",
   under_review: "กำลังตรวจสอบ",
@@ -174,6 +211,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   const [settlementDrafts, setSettlementDrafts] = useState<Record<string,SettlementDraft>>({});
   const [annualPriceDrafts, setAnnualPriceDrafts] = useState<Record<string,string>>({});
   const [savingPackageId, setSavingPackageId] = useState("");
+  const [activePanel, setActivePanel] = useState<WorkspacePanel>(null);
+  const [firstPackageId, setFirstPackageId] = useState("");
+  const [firstBillingInterval, setFirstBillingInterval] = useState<"monthly" | "yearly">("monthly");
+  const [firstPaymentNote, setFirstPaymentNote] = useState("");
+  const [creatingFirstPayment, setCreatingFirstPayment] = useState(false);
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch(
@@ -186,6 +228,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     setAnnualPriceDrafts(Object.fromEntries(
       json.data.packages.map((pkg) => [pkg.id, pkg.yearly_price && pkg.yearly_price > 0 ? String(pkg.yearly_price) : ""])
     ));
+    const preferredPackageId = json.data.contract?.package_id ||
+      json.data.packages.find((pkg) => pkg.code !== "custom" && (pkg.monthly_price ?? 0) > 0)?.id ||
+      json.data.packages[0]?.id || "";
+    setFirstPackageId(preferredPackageId);
+    setFirstBillingInterval(json.data.contract?.billing_interval === "yearly" ? "yearly" : "monthly");
     return json.data;
   }, [tenantId]);
 
@@ -217,6 +264,30 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     () => (history?.payment_requests ?? []).filter((row) => !["pending","under_review"].includes(row.status)),
     [history?.payment_requests]
   );
+  const firstPackage = useMemo(
+    () => history?.packages.find((pkg) => pkg.id === firstPackageId) ?? null,
+    [history?.packages, firstPackageId]
+  );
+  const firstExpectedAmount = firstPackage
+    ? Number(firstBillingInterval === "yearly" ? firstPackage.yearly_price ?? 0 : firstPackage.monthly_price ?? 0)
+    : 0;
+  const isInternalDemo = history?.contract?.lifecycle_status === "sales_demo";
+  const canCreatePaymentRequest = Boolean(history) && !isInternalDemo && openRequests.length === 0 &&
+    Boolean(firstPackageId) && Number.isFinite(firstExpectedAmount) && firstExpectedAmount > 0;
+
+  useEffect(() => {
+    if (!activePanel) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActivePanel(null);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activePanel]);
 
   function draftFor(row: PaymentRequest): SettlementDraft {
     return settlementDrafts[row.id] ?? {
@@ -303,6 +374,49 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       setError(cause instanceof Error ? cause.message : "บันทึกราคารายปีไม่สำเร็จ");
     } finally {
       setSavingPackageId("");
+    }
+  }
+
+  async function createFirstPaymentRequest() {
+    if (!history || !canCreatePaymentRequest || !firstPackage) {
+      if (openRequests.length > 0) {
+        setError("ร้านนี้มีรายการชำระที่รอตรวจสอบอยู่แล้ว กรุณาเปิดเมนูตรวจสอบรายการรออนุมัติ");
+        setActivePanel("pending");
+      } else {
+        setError(isInternalDemo
+          ? "บัญชีทดสอบภายในไม่สร้างรายการรับชำระแพ็กเกจ"
+          : "กรุณาเลือกแพ็กเกจและรอบชำระที่มีราคาก่อนสร้างรายการ");
+      }
+      return;
+    }
+
+    setCreatingFirstPayment(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/it-admin/v1/tenants/" + encodeURIComponent(tenantId) + "/control", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "prepare_paid_package",
+          package_id: firstPackage.id,
+          billing_cycle: firstBillingInterval,
+          admin_reason: firstPaymentNote.trim()
+        })
+      });
+      const json = await response.json() as { data?: unknown; error?: { message?: string } };
+      if (!response.ok || !json.data) {
+        throw new Error(json.error?.message || "สร้างรายการชำระไม่สำเร็จ");
+      }
+      await reload();
+      setFirstPaymentNote("");
+      setNotice((history.summary.receipt_count === 0 ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระ") +
+        "แล้ว · รอร้านแนบสลิป/แจ้งชำระ และรอ IT ตรวจเงินเข้าจริงก่อนออกใบเสร็จ");
+      setActivePanel("pending");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "สร้างรายการชำระไม่สำเร็จ");
+    } finally {
+      setCreatingFirstPayment(false);
     }
   }
 
@@ -408,6 +522,59 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           </article>
         </section>
 
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">เมนูจัดการการชำระแพ็กเกจ</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                กดเมนูเพื่อเปิด POP UP เฉพาะข้อมูลที่ต้องการ ลดความยาวของหน้า และใช้ข้อมูล CpiPOS-001 ชุดเดียวกับฝั่ง POS
+              </p>
+            </div>
+            <button type="button"
+              onClick={() => setActivePanel("first-payment")}
+              disabled={isInternalDemo || openRequests.length > 0}
+              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-45">
+              {history.summary.receipt_count === 0 ? "＋ สร้างรายการชำระรอบแรก" : "＋ สร้างรายการชำระใหม่"}
+            </button>
+          </div>
+
+          {openRequests.length > 0 ? <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div>
+              <strong className="text-sm text-amber-900">มีรายการชำระรอตรวจสอบ {openRequests.length} รายการ</strong>
+              <p className="mt-0.5 text-xs text-amber-800">ต้องจัดการรายการเดิมก่อนจึงจะสร้างรายการใหม่ได้</p>
+            </div>
+            <button type="button" onClick={() => setActivePanel("pending")}
+              className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white">
+              เปิดตรวจสอบรายการ
+            </button>
+          </div> : null}
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {[
+              ["pending","ตรวจสอบรายการรออนุมัติ",openRequests.length + " รายการเปิดอยู่","amber"],
+              ["payments","ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง",history.receipts.length + " ใบเสร็จ","blue"],
+              ["cycles","รอบบิลแพ็กเกจ",history.cycles.length + " รอบบิล","violet"],
+              ["history","ประวัติคำขอและผลตรวจสอบ",completedRequests.length + " รายการปิด","slate"],
+              ["audit","Audit การอนุมัติ / ไม่อนุมัติ",history.approval_events.length + " เหตุการณ์","rose"],
+              ["summary","สรุปยอดชำระ",formatMoney(history.summary.total_paid),"emerald"]
+            ].map(([key,label,detail,tone]) => <button type="button" key={key}
+              onClick={() => setActivePanel(key as WorkspacePanel)}
+              className={"flex min-h-[74px] items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm " +
+                (tone === "amber" ? "border-amber-200 bg-amber-50/70" :
+                 tone === "blue" ? "border-blue-200 bg-blue-50/70" :
+                 tone === "violet" ? "border-violet-200 bg-violet-50/70" :
+                 tone === "rose" ? "border-rose-200 bg-rose-50/60" :
+                 tone === "emerald" ? "border-emerald-200 bg-emerald-50/70" :
+                 "border-slate-200 bg-slate-50")}>
+              <span className="min-w-0">
+                <strong className="block text-sm font-extrabold text-slate-900">{label}</strong>
+                <span className="mt-1 block text-xs text-slate-500">{detail}</span>
+              </span>
+              <span className="text-lg font-bold text-slate-400" aria-hidden>→</span>
+            </button>)}
+          </div>
+        </section>
+
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -474,7 +641,72 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+        
+
+        {activePanel === "first-payment" ? <WorkspaceModal
+          title={history.summary.receipt_count === 0 ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระแพ็กเกจ"}
+          description="ขั้นตอนนี้ยังไม่ออกใบเสร็จ ระบบจะสร้างรายการรอตรวจสอบก่อน และใบเสร็จจะออกอัตโนมัติหลัง IT ยืนยันเงินเข้าจริง"
+          onClose={() => setActivePanel(null)}>
+          <div className="mx-auto max-w-2xl space-y-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+              <strong>ลำดับการทำงาน:</strong> สร้างรายการ → ร้านแจ้งชำระ/แนบสลิป → IT ตรวจรายการธนาคาร →
+              อนุมัติ → ระบบเปิด/ต่อแพ็กเกจ + สร้างรอบบิล + ออกใบเสร็จอัตโนมัติ
+            </div>
+            {isInternalDemo ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              บัญชีทดสอบภายในไม่สร้างรายการรับชำระแพ็กเกจ
+            </p> : null}
+            {openRequests.length > 0 ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              มีรายการรอตรวจสอบอยู่แล้ว กรุณาปิดรายการเดิมก่อนสร้างรายการใหม่
+            </p> : null}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm font-bold text-slate-700">
+                แพ็กเกจ
+                <select value={firstPackageId} onChange={(event) => setFirstPackageId(event.target.value)}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal">
+                  {history.packages.map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name} · {pkg.code}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm font-bold text-slate-700">
+                รอบชำระ
+                <select value={firstBillingInterval}
+                  onChange={(event) => setFirstBillingInterval(event.target.value === "yearly" ? "yearly" : "monthly")}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal">
+                  <option value="monthly">รายเดือน</option>
+                  <option value="yearly" disabled={!firstPackage?.yearly_price || firstPackage.yearly_price <= 0}>
+                    รายปี{!firstPackage?.yearly_price || firstPackage.yearly_price <= 0 ? " · ยังไม่กำหนดราคา" : ""}
+                  </option>
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+              <div><p className="text-xs text-slate-500">แพ็กเกจที่เลือก</p>
+                <strong className="mt-1 block text-lg text-slate-900">{firstPackage?.name || "—"}</strong></div>
+              <div><p className="text-xs text-slate-500">ยอดที่ต้องตรวจรับ</p>
+                <strong className="mt-1 block text-lg text-blue-700">{firstExpectedAmount > 0 ? formatMoney(firstExpectedAmount) : "ยังไม่มีราคา"}</strong></div>
+            </div>
+            <label className="grid gap-1 text-sm font-bold text-slate-700">
+              หมายเหตุภายใน IT
+              <textarea rows={3} maxLength={500} value={firstPaymentNote}
+                onChange={(event) => setFirstPaymentNote(event.target.value)}
+                className="rounded-xl border border-slate-300 px-3 py-2.5 font-normal"
+                placeholder="เช่น สร้างรายการชำระรอบแรกหลังตั้งค่าร้านแล้ว" />
+            </label>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setActivePanel(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700">ยกเลิก</button>
+              <button type="button" disabled={!canCreatePaymentRequest || creatingFirstPayment}
+                onClick={() => void createFirstPaymentRequest()}
+                className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">
+                {creatingFirstPayment ? "กำลังสร้าง..." :
+                  history.summary.receipt_count === 0 ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระ"}
+              </button>
+            </div>
+          </div>
+        </WorkspaceModal> : null}
+
+        {activePanel === "pending" ? <WorkspaceModal title="ตรวจสอบรายการรออนุมัติ"
+          description="ตรวจสลิป ยอดตามแพ็กเกจ และรายการเงินจริงจากบัญชีบริษัทก่อนอนุมัติ"
+          onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-slate-900">ตรวจสอบรายการรออนุมัติ</h2>
@@ -597,27 +829,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                 </div>
               </article>;
             })}</div>}
-        </section>
+        </section></WorkspaceModal> : null}
 
-        <section className="grid gap-3 md:grid-cols-3">
-          <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
-            <p className="text-sm font-semibold text-blue-700">ยอดชำระแบบรายเดือน</p>
-            <strong className="mt-2 block text-2xl text-blue-950">{formatMoney(history.summary.monthly_paid)}</strong>
-            <p className="mt-1 text-xs text-blue-700">{history.summary.monthly_count} ครั้ง</p>
-          </article>
-          <article className="rounded-2xl border border-violet-200 bg-violet-50 p-5">
-            <p className="text-sm font-semibold text-violet-700">ยอดชำระแบบรายปี</p>
-            <strong className="mt-2 block text-2xl text-violet-950">{formatMoney(history.summary.yearly_paid)}</strong>
-            <p className="mt-1 text-xs text-violet-700">{history.summary.yearly_count} ครั้ง</p>
-          </article>
-          <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-            <p className="text-sm font-semibold text-emerald-700">ยอดรับชำระรวมทั้งหมด</p>
-            <strong className="mt-2 block text-2xl text-emerald-950">{formatMoney(history.summary.total_paid)}</strong>
-            <p className="mt-1 text-xs text-emerald-700">คำนวณจากใบเสร็จที่ออกจริง {history.summary.receipt_count} ใบ</p>
-          </article>
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {activePanel === "payments" ? <WorkspaceModal title="ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง"
+          description="รายการรับเงินจริงและใบเสร็จที่เชื่อมกับฝั่ง CpIPOS เมนูชำระเงิน"
+          onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-900">ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง</h2>
           <p className="mt-1 text-sm text-slate-500">ข้อมูลรับเงินจริงและใบเสร็จเป็นแหล่งคำนวณยอด รายการเดียวกันจะแสดงในฝั่ง CpIPOS เมนูชำระเงินด้วย</p>
           {history.receipts.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีใบเสร็จจากรายการรับเงินจริง</p> :
@@ -645,9 +861,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                 </tr>)}</tbody>
               </table>
             </div>}
-        </section>
+        </section></WorkspaceModal> : null}
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {activePanel === "cycles" ? <WorkspaceModal title="รอบบิลแพ็กเกจ"
+          description="ตรวจสอบช่วงบริการ ยอดเรียกเก็บ และยอดชำระของแต่ละรอบ"
+          onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-900">รอบบิลแพ็กเกจ</h2>
           {history.cycles.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีรอบบิลที่บันทึกไว้</p> :
             <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[820px] text-left text-sm">
@@ -662,9 +880,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                 <td className="p-3">{row.status}</td>
               </tr>)}</tbody>
             </table></div>}
-        </section>
+        </section></WorkspaceModal> : null}
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {activePanel === "history" ? <WorkspaceModal title="ประวัติคำขอและผลตรวจสอบ"
+          description="ดูคำขอทั้งหมด ผลตรวจสอบ หมายเหตุ และใบเสร็จที่เชื่อมกัน"
+          onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-900">ประวัติคำขอและผลตรวจสอบ</h2>
           {completedRequests.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีคำขอที่ปิดรายการ</p> :
             <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm">
@@ -685,9 +905,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                 </tr>;
               })}</tbody>
             </table></div>}
-        </section>
+        </section></WorkspaceModal> : null}
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {activePanel === "audit" ? <WorkspaceModal title="Audit การอนุมัติ / ไม่อนุมัติ"
+          description="ประวัติสถานะการอนุมัติและการไม่อนุมัติสำหรับตรวจสอบย้อนหลัง"
+          onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-900">Audit การอนุมัติ / ไม่อนุมัติ</h2>
           {history.approval_events.length === 0 ? <p className="mt-3 text-sm text-slate-500">ยังไม่มีเหตุการณ์อนุมัติแพ็กเกจ</p>
             : <ul className="mt-3 grid gap-2 md:grid-cols-2">{history.approval_events.map((item) => <li key={item.id}
@@ -695,7 +917,27 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
               <strong>{formatDateTime(item.created_at)}</strong><br/>
               {item.action} · {item.from_status || "—"} → {item.to_status || "—"}
             </li>)}</ul>}
-        </section>
+        </section></WorkspaceModal> : null}
+
+        {activePanel === "summary" ? <WorkspaceModal title="สรุปยอดชำระ"
+          description="คำนวณจากใบเสร็จที่ออกจริง แยกรายเดือน รายปี และยอดรวม"
+          onClose={() => setActivePanel(null)}><section className="grid gap-3 md:grid-cols-3">
+          <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+            <p className="text-sm font-semibold text-blue-700">ยอดชำระแบบรายเดือน</p>
+            <strong className="mt-2 block text-2xl text-blue-950">{formatMoney(history.summary.monthly_paid)}</strong>
+            <p className="mt-1 text-xs text-blue-700">{history.summary.monthly_count} ครั้ง</p>
+          </article>
+          <article className="rounded-2xl border border-violet-200 bg-violet-50 p-5">
+            <p className="text-sm font-semibold text-violet-700">ยอดชำระแบบรายปี</p>
+            <strong className="mt-2 block text-2xl text-violet-950">{formatMoney(history.summary.yearly_paid)}</strong>
+            <p className="mt-1 text-xs text-violet-700">{history.summary.yearly_count} ครั้ง</p>
+          </article>
+          <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-sm font-semibold text-emerald-700">ยอดรับชำระรวมทั้งหมด</p>
+            <strong className="mt-2 block text-2xl text-emerald-950">{formatMoney(history.summary.total_paid)}</strong>
+            <p className="mt-1 text-xs text-emerald-700">คำนวณจากใบเสร็จที่ออกจริง {history.summary.receipt_count} ใบ</p>
+          </article>
+        </section></WorkspaceModal> : null}
       </> : null}
     </section>
   );
