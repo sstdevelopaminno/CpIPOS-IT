@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 type Severity = "info" | "warning" | "danger" | "emergency";
 type Settings = {
@@ -120,7 +120,7 @@ export function EmergencyBroadcastConsole() {
     return <div style={{ padding: 24 }}>กำลังโหลดระบบส่งข้อความฉุกเฉิน…</div>;
   }
 
-  const field: React.CSSProperties = {
+  const field: CSSProperties = {
     width: "100%",
     minHeight: 42,
     border: "1px solid #d8e0eb",
@@ -130,14 +130,14 @@ export function EmergencyBroadcastConsole() {
     color: "#14213d",
     font: "inherit"
   };
-  const label: React.CSSProperties = {
+  const label: CSSProperties = {
     display: "grid",
     gap: 7,
     fontSize: 13,
     fontWeight: 700,
     color: "#334155"
   };
-  const card: React.CSSProperties = {
+  const card: CSSProperties = {
     background: "#fff",
     border: "1px solid #dce4ef",
     borderRadius: 16,
