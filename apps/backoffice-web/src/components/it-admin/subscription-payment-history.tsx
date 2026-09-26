@@ -831,6 +831,16 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                       </a> : <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500">
                         {row.has_evidence ? "มีสลิป แต่สร้างลิงก์ชั่วคราวไม่สำเร็จ" : "ยังไม่มีสลิป"}
                       </span>}
+                      <button type="button" disabled={Boolean(busyId)}
+                        onClick={()=>void editRequestRecord(row)}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700 disabled:opacity-40">
+                        แก้ไขรายการ
+                      </button>
+                      <button type="button" disabled={Boolean(busyId)}
+                        onClick={()=>void deleteRequestRecord(row)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 disabled:opacity-40">
+                        ลบรายการ
+                      </button>
                     </div>
                   </div>
 
