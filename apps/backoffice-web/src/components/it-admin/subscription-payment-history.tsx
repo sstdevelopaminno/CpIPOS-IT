@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 type PackagePrice = {
   id: string;
@@ -116,6 +116,43 @@ type SettlementDraft = {
   confirmed_bank_receipt: boolean;
 };
 
+type WorkspacePanel = "pending" | "payments" | "cycles" | "history" | "audit" | "summary" | "first-payment" | null;
+
+function WorkspaceModal({ title, description, onClose, children }: {
+  title: string;
+  description?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return <div
+    className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-[2px] sm:p-5"
+    role="presentation"
+    onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+    <section role="dialog" aria-modal="true" aria-label={title}
+      className="flex max-h-[92vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+        <div className="min-w-0">
+          <h2 className="text-lg font-black text-slate-900 sm:text-xl">{title}</h2>
+          {description ? <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p> : null}
+        </div>
+        <button type="button" onClick={onClose} aria-label="ปิดหน้าต่าง"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-bold text-slate-500 hover:bg-slate-50">
+          ×
+        </button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
+      <footer className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-3 sm:px-6">
+        <button type="button" onClick={onClose}
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+          ปิด
+        </button>
+      </footer>
+    </section>
+  </div>;
+}
+
 const REQUEST_STATUS: Record<string,string> = {
   pending: "รอตรวจสอบ",
   under_review: "กำลังตรวจสอบ",
@@ -174,6 +211,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   const [settlementDrafts, setSettlementDrafts] = useState<Record<string,SettlementDraft>>({});
   const [annualPriceDrafts, setAnnualPriceDrafts] = useState<Record<string,string>>({});
   const [savingPackageId, setSavingPackageId] = useState("");
+  const [activePanel, setActivePanel] = useState<WorkspacePanel>(null);
+  const [firstPackageId, setFirstPackageId] = useState("");
+  const [firstBillingInterval, setFirstBillingInterval] = useState<"monthly" | "yearly">("monthly");
+  const [firstPaymentNote, setFirstPaymentNote] = useState("");
+  const [creatingFirstPayment, setCreatingFirstPayment] = useState(false);
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch(
@@ -186,6 +228,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     setAnnualPriceDrafts(Object.fromEntries(
       json.data.packages.map((pkg) => [pkg.id, pkg.yearly_price && pkg.yearly_price > 0 ? String(pkg.yearly_price) : ""])
     ));
+    const preferredPackageId = json.data.contract?.package_id ||
+      json.data.packages.find((pkg) => pkg.code !== "custom" && (pkg.monthly_price ?? 0) > 0)?.id ||
+      json.data.packages[0]?.id || "";
+    setFirstPackageId(preferredPackageId);
+    setFirstBillingInterval(json.data.contract?.billing_interval === "yearly" ? "yearly" : "monthly");
     return json.data;
   }, [tenantId]);
 
@@ -217,6 +264,30 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     () => (history?.payment_requests ?? []).filter((row) => !["pending","under_review"].includes(row.status)),
     [history?.payment_requests]
   );
+  const firstPackage = useMemo(
+    () => history?.packages.find((pkg) => pkg.id === firstPackageId) ?? null,
+    [history?.packages, firstPackageId]
+  );
+  const firstExpectedAmount = firstPackage
+    ? Number(firstBillingInterval === "yearly" ? firstPackage.yearly_price ?? 0 : firstPackage.monthly_price ?? 0)
+    : 0;
+  const isInternalDemo = history?.contract?.lifecycle_status === "sales_demo";
+  const canCreatePaymentRequest = Boolean(history) && !isInternalDemo && openRequests.length === 0 &&
+    Boolean(firstPackageId) && Number.isFinite(firstExpectedAmount) && firstExpectedAmount > 0;
+
+  useEffect(() => {
+    if (!activePanel) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActivePanel(null);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activePanel]);
 
   function draftFor(row: PaymentRequest): SettlementDraft {
     return settlementDrafts[row.id] ?? {
@@ -303,6 +374,49 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       setError(cause instanceof Error ? cause.message : "บันทึกราคารายปีไม่สำเร็จ");
     } finally {
       setSavingPackageId("");
+    }
+  }
+
+  async function createFirstPaymentRequest() {
+    if (!history || !canCreatePaymentRequest || !firstPackage) {
+      if (openRequests.length > 0) {
+        setError("ร้านนี้มีรายการชำระที่รอตรวจสอบอยู่แล้ว กรุณาเปิดเมนูตรวจสอบรายการรออนุมัติ");
+        setActivePanel("pending");
+      } else {
+        setError(isInternalDemo
+          ? "บัญชีทดสอบภายในไม่สร้างรายการรับชำระแพ็กเกจ"
+          : "กรุณาเลือกแพ็กเกจและรอบชำระที่มีราคาก่อนสร้างรายการ");
+      }
+      return;
+    }
+
+    setCreatingFirstPayment(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/it-admin/v1/tenants/" + encodeURIComponent(tenantId) + "/control", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "prepare_paid_package",
+          package_id: firstPackage.id,
+          billing_cycle: firstBillingInterval,
+          admin_reason: firstPaymentNote.trim()
+        })
+      });
+      const json = await response.json() as { data?: unknown; error?: { message?: string } };
+      if (!response.ok || !json.data) {
+        throw new Error(json.error?.message || "สร้างรายการชำระไม่สำเร็จ");
+      }
+      await reload();
+      setFirstPaymentNote("");
+      setNotice((history.summary.receipt_count === 0 ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระ") +
+        "แล้ว · รอร้านแนบสลิป/แจ้งชำระ และรอ IT ตรวจเงินเข้าจริงก่อนออกใบเสร็จ");
+      setActivePanel("pending");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "สร้างรายการชำระไม่สำเร็จ");
+    } finally {
+      setCreatingFirstPayment(false);
     }
   }
 
