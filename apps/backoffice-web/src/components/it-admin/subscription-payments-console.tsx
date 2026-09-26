@@ -16,6 +16,8 @@ type Row = {
     reviewed_at: string | null; has_evidence: boolean; source: string; kind: "payment_notice" | "renewal_intent";
     billing_interval: "monthly" | "yearly"; expected_amount: number | null } | null;
   has_paid_cycle: boolean;
+  receipt: { id: string; payment_request_id: string; number: string; issued_at: string;
+    amount: number; currency: string } | null;
 };
 type Envelope = { data?: { rows: Row[]; generated_at: string }; error?: { message?: string } };
 type ContactSettings = { billing_email: string; support_email: string; billing_sender_name: string; support_sender_name: string };
@@ -237,18 +239,20 @@ export function SubscriptionPaymentsConsole() {
                     className="rounded-md border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-700">
                     ร่างอีเมลถึงร้าน
                   </button>
-                  <button type="button" disabled title="เปิดใช้เมื่อมีใบเสร็จที่ออกจากรายการรับเงินจริง"
-                    className="cursor-not-allowed rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-400">
-                    ดูใบเสร็จ
-                  </button>
-                  <span className="text-xs text-slate-500">{row.has_paid_cycle ?
-                    "รอบบิลบันทึกว่าชำระครบ — ยังไม่ได้ออกใบเสร็จ" : "ยังไม่มีรอบบิลที่ชำระครบ"}</span>
+                  {row.receipt ? <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                    ใบเสร็จ {row.receipt.number}
+                  </span> : null}
+                  <span className="text-xs text-slate-500">{row.receipt
+                    ? `ออกใบเสร็จแล้ว ${date(row.receipt.issued_at)} · ${money(row.receipt.amount,row.receipt.currency)}`
+                    : row.has_paid_cycle ? "พบรอบบิลชำระครบ แต่ยังไม่พบใบเสร็จ — ตรวจสอบประวัติ"
+                    : "ยังไม่มีรอบบิลที่ชำระครบ"}</span>
                 </div></td>
               </tr>) : <tr><td colSpan={10} className="p-8 text-center text-slate-500">ไม่มีข้อมูลตามตัวกรอง</td></tr>}
           </tbody></table></div>
         <p className="border-t border-slate-100 p-3 text-xs text-slate-500">
           {updatedAt ? `อัปเดต: ${date(updatedAt)} · ` : ""}
-          ตารางนี้อ่านข้อมูลจริงจาก CpiPOS-001 เท่านั้น ใบเสร็จและการส่งอีเมลอัตโนมัติจะเปิดใช้หลังเชื่อมระบบรับเงินและช่องทางส่งจริง
+          ตารางนี้อ่านข้อมูลจริงจาก CpiPOS-001 เท่านั้น ใบเสร็จจะออกอัตโนมัติเมื่อ IT ยืนยันเงินเข้าจากรายการธนาคาร
+          ส่วนการส่งอีเมลอัตโนมัติยังรอช่องทางส่งที่ได้รับอนุญาต
         </p>
       </div>
     </section>
