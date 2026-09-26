@@ -157,8 +157,8 @@ export async function PATCH(request: Request) {
       action: "platform_emergency_broadcast_updated",
       targetTable: "platform_emergency_broadcast",
       module: "it_admin",
-      beforeData: existing.data ?? null,
-      afterData: saved.data,
+      beforeData: existing.data ? { ...existing.data } : undefined,
+      afterData: { ...saved.data },
       ipAddress: requestMeta.ipAddress ?? undefined,
       userAgent: requestMeta.userAgent ?? undefined
     });
