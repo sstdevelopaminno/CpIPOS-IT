@@ -90,7 +90,7 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
     { href: "/it-admin/entitlements", label: text.items.entitlements, group: text.groups.commercial, icon: "entitlement" },
     { href: "/it-admin/monitoring", label: text.items.monitoring, group: text.groups.operations, icon: "monitoring" },
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
-    { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
+    { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },\n    { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
     { href: "/it-admin/settings/language", label: text.items.settings, group: text.groups.system, icon: "settings" }
   ];
 }
