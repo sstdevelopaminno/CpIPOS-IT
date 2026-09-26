@@ -3,26 +3,109 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type PackagePrice = {
+  id: string;
+  code: string;
+  name: string;
+  monthly_price: number | null;
+  yearly_price: number | null;
+  quota_mode: string;
+};
 type PaymentRequest = {
-  id: string; request_type: string; amount_reported: number | null;
-  currency: string | null; status: string; submitted_at: string | null;
-  reviewed_at: string | null; review_note: string | null; has_evidence: boolean; slip_url: string | null;
-  kind: string; billing_interval: string; expected_amount: number | null;
-  transfer_reference: string; payer_name: string; transfer_at: string;
+  id: string;
+  request_type: string;
+  requested_package_id: string | null;
+  requested_package_name: string;
+  requested_package_code: string;
+  amount_reported: number | null;
+  currency: string | null;
+  status: string;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  has_evidence: boolean;
+  slip_url: string | null;
+  kind: string;
+  billing_interval: string;
+  expected_amount: number | null;
+  transfer_reference: string;
+  payer_name: string;
+  transfer_at: string;
+  note: string;
+  source: string;
 };
 type Receipt = {
-  id: string; payment_request_id: string; billing_cycle_id: string; receipt_number: string;
-  issued_at: string; amount: number; currency: string; package_name: string;
-  billing_interval: string; period_start: string; period_end: string;
+  id: string;
+  payment_request_id: string;
+  billing_cycle_id: string;
+  receipt_number: string;
+  issued_at: string;
+  amount: number;
+  currency: string;
+  package_id: string;
+  package_code: string;
+  package_name: string;
+  billing_interval: string;
+  period_start: string;
+  period_end: string;
 };
 type History = {
-  store: { id: string; code: string | null; name: string; display_name: string | null };
-  cycles: { id: string; period_start: string; period_end: string; amount_due: number;
-    amount_paid: number; status: string; created_at: string; package_id: string }[];
+  store: {
+    id: string;
+    code: string | null;
+    name: string;
+    display_name: string | null;
+    owner_name: string | null;
+    billing_email: string | null;
+  };
+  contract: {
+    id: string;
+    package_id: string;
+    package_name: string;
+    package_code: string;
+    billing_interval: string | null;
+    status: string;
+    started_at: string | null;
+    ended_at: string | null;
+    amount_per_cycle: number | null;
+    currency: string | null;
+    effective_expires_at: string | null;
+    lifecycle_status: string;
+    access_locked: boolean;
+  } | null;
+  packages: PackagePrice[];
+  cycles: {
+    id: string;
+    period_start: string;
+    period_end: string;
+    amount_due: number;
+    amount_paid: number;
+    status: string;
+    created_at: string;
+    package_id: string;
+    package_name: string;
+    package_code: string;
+  }[];
   payment_requests: PaymentRequest[];
-  approval_events: { id: string; payment_request_id: string | null; action: string;
-    from_status: string | null; to_status: string | null; created_at: string }[];
+  approval_events: {
+    id: string;
+    payment_request_id: string | null;
+    action: string;
+    from_status: string | null;
+    to_status: string | null;
+    created_at: string;
+  }[];
   receipts: Receipt[];
+  summary: {
+    total_paid: number;
+    monthly_paid: number;
+    yearly_paid: number;
+    receipt_count: number;
+    monthly_count: number;
+    yearly_count: number;
+    pending_request_count: number;
+    paid_cycle_count: number;
+  };
 };
 type Envelope = { data?: History; error?: { message?: string } };
 type SettleEnvelope = { data?: { settlement?: { receipt_number?: string } }; error?: { message?: string } };
@@ -33,11 +116,53 @@ type SettlementDraft = {
   confirmed_bank_receipt: boolean;
 };
 
-const formatDate = (value: string | null) => value
-  ? new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(new Date(value))
-  : "—";
-const formatMoney = (value: number | null, currency = "THB") => value == null ? "—"
-  : new Intl.NumberFormat("th-TH", { style: "currency", currency }).format(value);
+const REQUEST_STATUS: Record<string,string> = {
+  pending: "รอตรวจสอบ",
+  under_review: "กำลังตรวจสอบ",
+  approved: "อนุมัติแล้ว",
+  rejected: "ไม่อนุมัติ",
+  cancelled: "ยกเลิก"
+};
+const SERVICE_STATUS: Record<string,string> = {
+  trial: "ทดลองใช้",
+  active: "ใช้งานอยู่",
+  grace: "ช่วงผ่อนผัน",
+  expired: "หมดอายุ",
+  suspended: "ระงับ",
+  cancelled: "ยกเลิก"
+};
+
+function formatDateTime(value: string | null) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok"
+  }).format(parsed);
+}
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  const parsed = new Date(value.length === 10 ? value + "T12:00:00+07:00" : value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeZone: "Asia/Bangkok"
+  }).format(parsed);
+}
+function formatMoney(value: number | null, currency = "THB") {
+  return value == null || !Number.isFinite(Number(value))
+    ? "—"
+    : new Intl.NumberFormat("th-TH", { style: "currency", currency: currency || "THB" }).format(Number(value));
+}
+function billingLabel(value: string | null) {
+  return value === "yearly" ? "รายปี" : value === "monthly" ? "รายเดือน" : "—";
+}
+function amountDifference(row: PaymentRequest) {
+  if (row.amount_reported == null || row.expected_amount == null) return null;
+  return Number(row.amount_reported) - Number(row.expected_amount);
+}
 
 export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   const [history, setHistory] = useState<History | null>(null);
@@ -54,7 +179,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       { cache: "no-store", signal }
     );
     const json = await response.json() as Envelope;
-    if (!response.ok || !json.data) throw new Error(json.error?.message || "โหลดประวัติการชำระเงินไม่สำเร็จ");
+    if (!response.ok || !json.data) throw new Error(json.error?.message || "โหลดรายละเอียดการชำระแพ็กเกจไม่สำเร็จ");
     setHistory(json.data);
     return json.data;
   }, [tenantId]);
@@ -62,10 +187,15 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      try { await reload(controller.signal); }
-      catch (cause) {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "ไม่สามารถโหลดข้อมูล");
-      } finally { if (!controller.signal.aborted) setLoading(false); }
+      try {
+        await reload(controller.signal);
+      } catch (cause) {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : "ไม่สามารถโหลดข้อมูล");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
     })();
     return () => controller.abort();
   }, [reload]);
@@ -73,6 +203,14 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   const receiptByRequest = useMemo(
     () => new Map((history?.receipts ?? []).map((row) => [row.payment_request_id, row])),
     [history?.receipts]
+  );
+  const openRequests = useMemo(
+    () => (history?.payment_requests ?? []).filter((row) => ["pending","under_review"].includes(row.status)),
+    [history?.payment_requests]
+  );
+  const completedRequests = useMemo(
+    () => (history?.payment_requests ?? []).filter((row) => !["pending","under_review"].includes(row.status)),
+    [history?.payment_requests]
   );
 
   function draftFor(row: PaymentRequest): SettlementDraft {
@@ -91,35 +229,55 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     setSettlementDrafts((value) => ({ ...value, [row.id]: { ...current, ...patch } }));
   }
 
-  async function review(requestId:string,action:"under_review"|"reject") {
-    const note=(notes[requestId]||"").trim();
-    if(action==="reject" && !note) {setError("กรุณาระบุเหตุผลการปฏิเสธ");return;}
-    setBusyId(requestId);setError("");setNotice("");
+  async function review(requestId: string, action: "under_review" | "reject") {
+    const note = (notes[requestId] || "").trim();
+    if (action === "reject" && !note) {
+      setError("กรุณาระบุเหตุผลที่ไม่อนุมัติ");
+      return;
+    }
+    setBusyId(requestId);
+    setError("");
+    setNotice("");
     try {
-      const response=await fetch("/api/it-admin/v1/subscription-payments/review/"+encodeURIComponent(requestId),{
-        method:"POST",headers:{"content-type":"application/json"},
-        body:JSON.stringify({action,note})
-      });
-      const json=await response.json() as {error?:{message?:string}};
-      if(!response.ok)throw new Error(json.error?.message||"ไม่สามารถปรับสถานะคำขอ");
+      const response = await fetch(
+        "/api/it-admin/v1/subscription-payments/review/" + encodeURIComponent(requestId),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action, note })
+        }
+      );
+      const json = await response.json() as { error?: { message?: string } };
+      if (!response.ok) throw new Error(json.error?.message || "ไม่สามารถปรับสถานะคำขอ");
       await reload();
-      setNotice(action==="reject"?"ปฏิเสธคำขอแล้ว":"บันทึกสถานะกำลังตรวจสอบแล้ว");
-    } catch(cause){setError(cause instanceof Error?cause.message:"ดำเนินการไม่สำเร็จ");}
-    finally {setBusyId("");}
+      setNotice(action === "reject" ? "บันทึกไม่อนุมัติคำขอแล้ว" : "รับเรื่องเข้าตรวจสอบแล้ว");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ดำเนินการไม่สำเร็จ");
+    } finally {
+      setBusyId("");
+    }
   }
 
   async function settle(row: PaymentRequest) {
     const draft = draftFor(row);
     const amount = Number(draft.amount_received);
-    if (!draft.confirmed_bank_receipt) {
-      setError("กรุณาติ๊กยืนยันว่าได้ตรวจสอบเงินเข้าบัญชีบริษัทจากรายการธนาคารแล้ว");
+    if (row.kind !== "payment_notice" || !row.has_evidence) {
+      setError("ยังอนุมัติไม่ได้ ต้องมีรายการแจ้งชำระและสลิปจากร้านก่อน");
       return;
     }
-    if (!draft.bank_transaction_reference.trim() || !draft.bank_received_at || !Number.isFinite(amount) || amount <= 0) {
+    if (!draft.confirmed_bank_receipt) {
+      setError("กรุณายืนยันว่าได้ตรวจสอบเงินเข้าบัญชีบริษัทจากรายการธนาคารแล้ว");
+      return;
+    }
+    if (!draft.bank_transaction_reference.trim() || !draft.bank_received_at ||
+        !Number.isFinite(amount) || amount <= 0) {
       setError("กรอกเลขอ้างอิงธนาคาร วันเวลาเงินเข้า และยอดเงินจริงให้ครบ");
       return;
     }
-    setBusyId(row.id); setError(""); setNotice("");
+
+    setBusyId(row.id);
+    setError("");
+    setNotice("");
     try {
       const response = await fetch(
         "/api/it-admin/v1/subscription-payments/settle/" + encodeURIComponent(row.id),
@@ -137,168 +295,323 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       );
       const json = await response.json() as SettleEnvelope;
       if (!response.ok || !json.data?.settlement) {
-        throw new Error(json.error?.message || "ยืนยันเงินเข้าและเปิดแพ็กเกจไม่สำเร็จ");
+        throw new Error(json.error?.message || "อนุมัติรับเงินและต่อแพ็กเกจไม่สำเร็จ");
       }
       await reload();
       const receiptNo = json.data.settlement.receipt_number || "";
       setNotice(receiptNo
-        ? "ยืนยันเงินเข้า เปิดแพ็กเกจ และออกใบเสร็จ " + receiptNo + " แล้ว"
-        : "ยืนยันเงินเข้า เปิดแพ็กเกจ และออกใบเสร็จแล้ว");
+        ? "อนุมัติแล้ว · ต่อแพ็กเกจและออกใบเสร็จ " + receiptNo + " สำเร็จ"
+        : "อนุมัติแล้ว · ต่อแพ็กเกจและออกใบเสร็จสำเร็จ");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ยืนยันรายการไม่สำเร็จ");
-    } finally { setBusyId(""); }
+    } finally {
+      setBusyId("");
+    }
   }
 
   return (
     <section className="space-y-5 px-5 py-6 md:px-7">
-      <Link href="/it-admin/subscription-payments" className="text-sm font-semibold text-blue-700 underline">
-        ← ตารางชำระแพ็กเกจ
-      </Link>
-      <header>
-        <p className="text-xs font-bold tracking-widest text-blue-600">BILLING HISTORY / IT CONTROL PLANE</p>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900">ประวัติการชำระแพ็กเกจ</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link href="/it-admin/subscription-payments"
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-blue-700 shadow-sm">
+          ← กลับตารางชำระแพ็กเกจ
+        </Link>
+        <button type="button" onClick={() => void reload()} disabled={loading}
+          className="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 disabled:opacity-50">
+          รีเฟรชข้อมูล
+        </button>
+      </div>
+
+      <header className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-white p-5 shadow-sm">
+        <p className="text-xs font-bold tracking-[0.14em] text-blue-600">SUBSCRIPTION PAYMENT REVIEW / CpiPOS-001</p>
+        <h1 className="mt-1 text-2xl font-black text-slate-900">ตรวจสอบการชำระและต่อแพ็กเกจ</h1>
         <p className="mt-2 text-sm text-slate-600">
-          {history ? (history.store.display_name || history.store.name) + " · " + (history.store.code || "ไม่มีรหัสร้าน")
-            : "แสดงรายการรอบบิล การตรวจรับเงินจริง และใบเสร็จจากฐานข้อมูลกลาง"}
+          {history
+            ? (history.store.display_name || history.store.name) + " · " + (history.store.code || "ไม่มีรหัสร้าน")
+            : "โหลดข้อมูลร้านและรายการชำระจากฐานข้อมูลกลาง"}
         </p>
       </header>
-      {loading ? <p>กำลังโหลด...</p> : null}
-      {error ? <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-700">{error}</p> : null}
-      {notice ? <p role="status" className="rounded-lg bg-green-50 p-4 text-green-700">{notice}</p> : null}
-      <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        สลิปที่ร้านแนบมาไม่ถือว่าเงินเข้าจริง ต้องตรวจรายการธนาคารของบริษัทก่อนทุกครั้ง
-        · เมื่อ IT ยืนยันยอดและเลขอ้างอิงธนาคาร ระบบจะเปิด/ต่ออายุแพ็กเกจ สร้างรอบบิลชำระแล้ว
-        และออกใบเสร็จเลขที่จริงในธุรกรรมเดียวกัน
-      </p>
+
+      {loading ? <p className="rounded-xl bg-white p-5 text-sm text-slate-500">กำลังโหลดข้อมูล...</p> : null}
+      {error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</p> : null}
+      {notice ? <p role="status" className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">{notice}</p> : null}
 
       {history ? <>
-        <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-bold">รายการแจ้งชำระ ({history.payment_requests.length})</h2>
-          {history.payment_requests.length === 0 ? <p className="text-sm text-slate-500">ยังไม่มีการแจ้งชำระในระบบ</p> :
-            <div className="overflow-x-auto"><table className="w-full min-w-[1180px] text-left text-sm">
-              <thead><tr className="border-b text-slate-500">{[
-                "วันแจ้ง","ประเภท / รอบ","ยอดที่แจ้ง / ตามแพ็กเกจ","สถานะ","หลักฐาน / อ้างอิงร้าน",
-                "วันตรวจ","หมายเหตุ IT","ตรวจรับเงินจริง / จัดการ"
-              ].map((label) => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
-              <tbody>{history.payment_requests.map((row) => {
-                const receipt = receiptByRequest.get(row.id);
-                const draft = draftFor(row);
-                return <tr className="border-b align-top" key={row.id}>
-                  <td className="p-3">{formatDate(row.submitted_at)}</td>
-                  <td className="p-3">{row.kind==="payment_notice"?"แจ้งโอน":"ขอต่ออายุ"}<br />
-                    <span className="text-xs text-slate-500">{row.request_type} · {row.billing_interval==="yearly"?"รายปี":"รายเดือน"}</span></td>
-                  <td className="p-3">{formatMoney(row.amount_reported, row.currency || "THB")}<br/>
-                    <span className="text-xs text-slate-500">ตามแพ็กเกจ {formatMoney(row.expected_amount, row.currency || "THB")}</span></td>
-                  <td className="p-3 font-semibold">{row.status}
-                    {receipt ? <span className="mt-1 block text-xs font-bold text-emerald-700">ใบเสร็จ {receipt.receipt_number}</span> : null}
-                  </td>
-                  <td className="p-3">{row.slip_url ? <a className="text-blue-700 underline" href={row.slip_url} target="_blank" rel="noopener noreferrer">เปิดสลิป (ลิงก์ชั่วคราว)</a> : row.has_evidence ? "มีหลักฐาน · โหลดลิงก์ไม่สำเร็จ" : "—"}
-                    {row.transfer_reference?<p className="mt-1 max-w-[180px] break-all text-xs text-slate-500">อ้างอิงร้าน {row.transfer_reference}</p>:null}
-                    {row.payer_name?<p className="mt-1 text-xs text-slate-500">ผู้โอน {row.payer_name}</p>:null}</td>
-                  <td className="p-3">{formatDate(row.reviewed_at)}</td>
-                  <td className="p-3">{row.review_note || "—"}</td>
-                  <td className="p-3">
-                    {row.status === "pending" ? <div className="grid min-w-[220px] gap-2">
-                      <input aria-label="หมายเหตุ IT" maxLength={500} value={notes[row.id]||""}
-                        onChange={event=>setNotes(current=>({...current,[row.id]:event.target.value}))}
-                        className="rounded-md border border-slate-300 px-2 py-1.5 text-xs" placeholder="หมายเหตุ / เหตุผลการปฏิเสธ" />
-                      <button type="button" disabled={Boolean(busyId)}
-                        onClick={()=>void review(row.id,"under_review")}
-                        className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs font-bold text-blue-700 disabled:opacity-50">
-                        รับเรื่องตรวจสอบ</button>
-                      <button type="button" disabled={Boolean(busyId)} onClick={()=>void review(row.id,"reject")}
-                        className="rounded-md border border-red-200 px-2 py-1.5 text-xs font-bold text-red-700 disabled:opacity-50">
-                        ปฏิเสธพร้อมเหตุผล</button>
-                    </div> : null}
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold text-slate-500">แพ็กเกจปัจจุบัน</p>
+            <strong className="mt-2 block text-xl text-slate-900">{history.contract?.package_name || "ยังไม่มีแพ็กเกจ"}</strong>
+            <p className="mt-1 text-sm text-slate-500">{billingLabel(history.contract?.billing_interval ?? null)} · {SERVICE_STATUS[history.contract?.lifecycle_status || ""] || history.contract?.lifecycle_status || "—"}</p>
+          </article>
+          <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold text-slate-500">ค่าบริการต่อรอบปัจจุบัน</p>
+            <strong className="mt-2 block text-xl text-slate-900">{formatMoney(history.contract?.amount_per_cycle ?? null, history.contract?.currency || "THB")}</strong>
+            <p className="mt-1 text-sm text-slate-500">หมดอายุ {formatDate(history.contract?.effective_expires_at ?? null)}</p>
+          </article>
+          <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+            <p className="text-xs font-semibold text-emerald-700">ยอดรับชำระสะสม</p>
+            <strong className="mt-2 block text-xl text-emerald-900">{formatMoney(history.summary.total_paid)}</strong>
+            <p className="mt-1 text-sm text-emerald-700">{history.summary.receipt_count} ใบเสร็จ · {history.summary.paid_cycle_count} รอบบิลชำระแล้ว</p>
+          </article>
+          <article className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+            <p className="text-xs font-semibold text-amber-700">รอตรวจสอบ</p>
+            <strong className="mt-2 block text-xl text-amber-900">{history.summary.pending_request_count} รายการ</strong>
+            <p className="mt-1 text-sm text-amber-700">ต้องยืนยันเงินเข้าธนาคารก่อนอนุมัติ</p>
+          </article>
+        </section>
 
-                    {row.status === "under_review" ? <div className="grid min-w-[280px] gap-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
-                      <strong className="text-xs text-emerald-900">ยืนยันจากรายการธนาคารของบริษัท</strong>
-                      <input aria-label="เลขอ้างอิงธุรกรรมธนาคาร" maxLength={160}
-                        value={draft.bank_transaction_reference}
-                        onChange={(event)=>patchDraft(row,{bank_transaction_reference:event.target.value})}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs"
-                        placeholder="Bank Transaction Ref." />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input aria-label="วันเวลาเงินเข้าธนาคาร" type="datetime-local"
-                          value={draft.bank_received_at}
-                          onChange={(event)=>patchDraft(row,{bank_received_at:event.target.value})}
-                          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs" />
-                        <input aria-label="ยอดเงินจริงที่เข้าบัญชี" type="number" min="0.01" step="0.01"
-                          value={draft.amount_received}
-                          onChange={(event)=>patchDraft(row,{amount_received:event.target.value})}
-                          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs"
-                          placeholder="ยอดเงินจริง" />
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">ราคาแพ็กเกจ</h2>
+              <p className="mt-1 text-sm text-slate-500">ใช้ตรวจสอบยอดที่ร้านแจ้งก่อนอนุมัติ รายเดือนและรายปีอ่านจากแพ็กเกจจริงใน CpiPOS-001</p>
+            </div>
+            <span className="text-xs font-semibold text-slate-500">เจ้าของร้าน: {history.store.owner_name || "—"} · {history.store.billing_email || "ไม่มีอีเมล"}</span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {history.packages.map((pkg) => {
+              const current = history.contract?.package_id === pkg.id;
+              return <article key={pkg.id}
+                className={"rounded-xl border p-4 " + (current ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-slate-50/60")}>
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="text-base text-slate-900">{pkg.name}</strong>
+                  {current ? <span className="rounded-full bg-blue-600 px-2 py-1 text-[11px] font-bold text-white">แพ็กเกจปัจจุบัน</span> : null}
+                </div>
+                <p className="mt-1 text-xs uppercase text-slate-500">{pkg.code}</p>
+                <dl className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg bg-white p-3">
+                    <dt className="text-xs text-slate-500">รายเดือน</dt>
+                    <dd className="mt-1 font-extrabold text-slate-900">{pkg.monthly_price && pkg.monthly_price > 0 ? formatMoney(pkg.monthly_price) : "ยังไม่กำหนด"}</dd>
+                  </div>
+                  <div className="rounded-lg bg-white p-3">
+                    <dt className="text-xs text-slate-500">รายปี</dt>
+                    <dd className="mt-1 font-extrabold text-slate-900">{pkg.yearly_price && pkg.yearly_price > 0 ? formatMoney(pkg.yearly_price) : "ยังไม่กำหนด"}</dd>
+                  </div>
+                </dl>
+              </article>;
+            })}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">ตรวจสอบรายการรออนุมัติ</h2>
+              <p className="mt-1 text-sm text-slate-500">สลิปจากร้านเป็นเพียงหลักฐานประกอบ ต้องตรวจยอดเงินจริงในบัญชีบริษัทก่อนออกใบเสร็จ</p>
+            </div>
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{openRequests.length} รายการเปิดอยู่</span>
+          </div>
+
+          {openRequests.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ไม่มีรายการรอตรวจสอบ</p> :
+            <div className="mt-4 space-y-4">{openRequests.map((row) => {
+              const draft = draftFor(row);
+              const diff = amountDifference(row);
+              const canApprove = row.status === "under_review" && row.kind === "payment_notice" && row.has_evidence;
+              return <article key={row.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="text-base text-slate-900">{row.requested_package_name || "แพ็กเกจ"}</strong>
+                      <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">{billingLabel(row.billing_interval)}</span>
+                      <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">{REQUEST_STATUS[row.status] || row.status}</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="rounded-lg bg-white p-3"><p className="text-xs text-slate-500">ยอดตามแพ็กเกจ</p><strong>{formatMoney(row.expected_amount,row.currency || "THB")}</strong></div>
+                      <div className="rounded-lg bg-white p-3"><p className="text-xs text-slate-500">ยอดที่ร้านแจ้ง</p><strong>{formatMoney(row.amount_reported,row.currency || "THB")}</strong></div>
+                      <div className="rounded-lg bg-white p-3"><p className="text-xs text-slate-500">ผลต่าง</p>
+                        <strong className={diff === null ? "text-slate-500" : Math.abs(diff) < 0.005 ? "text-emerald-700" : "text-red-700"}>
+                          {diff === null ? "—" : Math.abs(diff) < 0.005 ? "ยอดตรงกัน" : formatMoney(diff,row.currency || "THB")}
+                        </strong>
                       </div>
-                      <input aria-label="หมายเหตุ IT" maxLength={500} value={notes[row.id]||""}
-                        onChange={event=>setNotes(current=>({...current,[row.id]:event.target.value}))}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs"
-                        placeholder="หมายเหตุการตรวจสอบ (ถ้ามี)" />
-                      <label className="flex items-start gap-2 text-xs font-semibold text-emerald-950">
-                        <input type="checkbox" checked={draft.confirmed_bank_receipt}
-                          onChange={(event)=>patchDraft(row,{confirmed_bank_receipt:event.target.checked})}
-                          className="mt-0.5 h-4 w-4" />
-                        <span>ตรวจสอบแล้วว่าเงินเข้าบัญชีบริษัทจริง และเลขอ้างอิงนี้ตรงกับรายการธนาคาร</span>
-                      </label>
-                      <button type="button" disabled={Boolean(busyId) || !draft.confirmed_bank_receipt}
-                        onClick={()=>void settle(row)}
-                        className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                        {busyId===row.id ? "กำลังยืนยัน..." : "ยืนยันเงินเข้า + เปิดแพ็กเกจ + ออกใบเสร็จ"}
+                    </div>
+                    <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                      <div><dt className="text-xs text-slate-500">วันที่แจ้ง</dt><dd className="font-semibold">{formatDateTime(row.submitted_at)}</dd></div>
+                      <div><dt className="text-xs text-slate-500">วันที่ร้านแจ้งว่าโอน</dt><dd className="font-semibold">{formatDateTime(row.transfer_at || null)}</dd></div>
+                      <div><dt className="text-xs text-slate-500">ชื่อผู้โอน</dt><dd className="font-semibold">{row.payer_name || "—"}</dd></div>
+                      <div><dt className="text-xs text-slate-500">อ้างอิงจากร้าน</dt><dd className="break-all font-semibold">{row.transfer_reference || "—"}</dd></div>
+                    </dl>
+                    {row.note ? <p className="mt-3 rounded-lg bg-white p-3 text-sm text-slate-600">หมายเหตุร้าน: {row.note}</p> : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {row.slip_url ? <a href={row.slip_url} target="_blank" rel="noopener noreferrer"
+                        className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-700">
+                        เปิดสลิปการชำระเงิน
+                      </a> : <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500">
+                        {row.has_evidence ? "มีสลิป แต่สร้างลิงก์ชั่วคราวไม่สำเร็จ" : "ยังไม่มีสลิป"}
+                      </span>}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <label className="grid gap-1 text-xs font-bold text-slate-700">
+                      หมายเหตุ IT / เหตุผลไม่อนุมัติ
+                      <textarea rows={2} maxLength={500} value={notes[row.id] || ""}
+                        onChange={(event) => setNotes((current) => ({ ...current, [row.id]: event.target.value }))}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+                        placeholder="ระบุข้อมูลตรวจสอบ หรือเหตุผลเมื่อไม่อนุมัติ" />
+                    </label>
+
+                    {row.status === "pending" ? <div className="mt-3 grid gap-2">
+                      <button type="button" disabled={Boolean(busyId)}
+                        onClick={() => void review(row.id,"under_review")}
+                        className="rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+                        รับเรื่องและเริ่มตรวจสอบ
                       </button>
-                      <button type="button" disabled={Boolean(busyId)} onClick={()=>void review(row.id,"reject")}
-                        className="rounded-md border border-red-200 bg-white px-2 py-1.5 text-xs font-bold text-red-700 disabled:opacity-50">
-                        ปฏิเสธพร้อมเหตุผล</button>
+                      <button type="button" disabled={Boolean(busyId)}
+                        onClick={() => void review(row.id,"reject")}
+                        className="rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm font-bold text-red-700 disabled:opacity-50">
+                        ไม่อนุมัติ
+                      </button>
                     </div> : null}
 
-                    {row.status === "approved" ? <div className="min-w-[200px] rounded-lg bg-emerald-50 p-3 text-xs text-emerald-900">
-                      รับเงินจริงและเปิดแพ็กเกจแล้ว
-                      {receipt ? <><strong className="mt-1 block">{receipt.receipt_number}</strong>
-                        <span className="block">{formatMoney(receipt.amount, receipt.currency)} · {formatDate(receipt.issued_at)}</span></> : null}
-                    </div> : null}
-                    {row.status === "rejected" ? <span className="text-xs text-red-700">รายการถูกปฏิเสธ</span> : null}
-                  </td>
+                    {row.status === "under_review" ? <>
+                      {row.kind !== "payment_notice" || !row.has_evidence ?
+                        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                          รายการนี้ยังเป็นคำขอต่ออายุ/ยังไม่มีสลิป ต้องให้ร้านแจ้งชำระจากฝั่ง CpIPOS ก่อนจึงจะอนุมัติรับเงินจริงได้
+                        </p> :
+                        <div className="mt-3 grid gap-2">
+                          <label className="grid gap-1 text-xs font-bold text-slate-700">เลขอ้างอิงธุรกรรมธนาคาร
+                            <input maxLength={160} value={draft.bank_transaction_reference}
+                              onChange={(event) => patchDraft(row,{bank_transaction_reference:event.target.value})}
+                              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+                              placeholder="Bank Transaction Ref." />
+                          </label>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <label className="grid gap-1 text-xs font-bold text-slate-700">วันเวลาเงินเข้าจริง
+                              <input type="datetime-local" value={draft.bank_received_at}
+                                onChange={(event) => patchDraft(row,{bank_received_at:event.target.value})}
+                                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+                            </label>
+                            <label className="grid gap-1 text-xs font-bold text-slate-700">ยอดเงินจริงที่เข้าบัญชี
+                              <input type="number" min="0.01" step="0.01" value={draft.amount_received}
+                                onChange={(event) => patchDraft(row,{amount_received:event.target.value})}
+                                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+                            </label>
+                          </div>
+                          <label className="flex items-start gap-2 rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-950">
+                            <input type="checkbox" checked={draft.confirmed_bank_receipt}
+                              onChange={(event) => patchDraft(row,{confirmed_bank_receipt:event.target.checked})}
+                              className="mt-0.5 h-4 w-4" />
+                            <span>ตรวจสอบแล้วว่าเงินเข้าบัญชีบริษัทจริง ยอดและเลขอ้างอิงตรงกับรายการธนาคาร</span>
+                          </label>
+                        </div>}
+
+                      <div className="mt-3 grid gap-2">
+                        <button type="button"
+                          disabled={Boolean(busyId) || !canApprove || !draft.confirmed_bank_receipt}
+                          onClick={() => void settle(row)}
+                          className="rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-black text-white disabled:opacity-50">
+                          {busyId === row.id ? "กำลังอนุมัติ..." : "อนุมัติ + ต่อแพ็กเกจ + ออกใบเสร็จ"}
+                        </button>
+                        <button type="button" disabled={Boolean(busyId)}
+                          onClick={() => void review(row.id,"reject")}
+                          className="rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm font-bold text-red-700 disabled:opacity-50">
+                          ไม่อนุมัติ
+                        </button>
+                      </div>
+                    </> : null}
+                  </div>
+                </div>
+              </article>;
+            })}</div>}
+        </section>
+
+        <section className="grid gap-3 md:grid-cols-3">
+          <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+            <p className="text-sm font-semibold text-blue-700">ยอดชำระแบบรายเดือน</p>
+            <strong className="mt-2 block text-2xl text-blue-950">{formatMoney(history.summary.monthly_paid)}</strong>
+            <p className="mt-1 text-xs text-blue-700">{history.summary.monthly_count} ครั้ง</p>
+          </article>
+          <article className="rounded-2xl border border-violet-200 bg-violet-50 p-5">
+            <p className="text-sm font-semibold text-violet-700">ยอดชำระแบบรายปี</p>
+            <strong className="mt-2 block text-2xl text-violet-950">{formatMoney(history.summary.yearly_paid)}</strong>
+            <p className="mt-1 text-xs text-violet-700">{history.summary.yearly_count} ครั้ง</p>
+          </article>
+          <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-sm font-semibold text-emerald-700">ยอดรับชำระรวมทั้งหมด</p>
+            <strong className="mt-2 block text-2xl text-emerald-950">{formatMoney(history.summary.total_paid)}</strong>
+            <p className="mt-1 text-xs text-emerald-700">คำนวณจากใบเสร็จที่ออกจริง {history.summary.receipt_count} ใบ</p>
+          </article>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-black text-slate-900">ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง</h2>
+          <p className="mt-1 text-sm text-slate-500">ข้อมูลรับเงินจริงและใบเสร็จเป็นแหล่งคำนวณยอด รายการเดียวกันจะแสดงในฝั่ง CpIPOS เมนูชำระเงินด้วย</p>
+          {history.receipts.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีใบเสร็จจากรายการรับเงินจริง</p> :
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead><tr className="border-b bg-slate-50 text-slate-500">
+                  {["วันที่รับชำระ","เลขที่ใบเสร็จ","แพ็กเกจ","รอบ","ช่วงบริการ","ยอดรับจริง","เอกสาร"].map((label) =>
+                    <th className="p-3" key={label}>{label}</th>)}
+                </tr></thead>
+                <tbody>{history.receipts.map((row) => <tr className="border-b" key={row.id}>
+                  <td className="p-3">{formatDateTime(row.issued_at)}</td>
+                  <td className="p-3 font-bold text-blue-700">{row.receipt_number}</td>
+                  <td className="p-3">{row.package_name || "แพ็กเกจ"}<br/><span className="text-xs text-slate-500">{row.package_code || "—"}</span></td>
+                  <td className="p-3"><span className={row.billing_interval === "yearly"
+                    ? "rounded-full bg-violet-50 px-2 py-1 font-semibold text-violet-700"
+                    : "rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-700"}>{billingLabel(row.billing_interval)}</span></td>
+                  <td className="p-3">{formatDate(row.period_start || null)} → {formatDate(row.period_end || null)}</td>
+                  <td className="p-3 font-bold">{formatMoney(row.amount,row.currency)}</td>
+                  <td className="p-3"><a
+                    href={"/api/it-admin/v1/subscription-payments/receipts/" + encodeURIComponent(row.id)}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
+                    เปิดใบเสร็จ / พิมพ์ PDF
+                  </a></td>
+                </tr>)}</tbody>
+              </table>
+            </div>}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-black text-slate-900">รอบบิลแพ็กเกจ</h2>
+          {history.cycles.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีรอบบิลที่บันทึกไว้</p> :
+            <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[820px] text-left text-sm">
+              <thead><tr className="border-b text-slate-500">{["แพ็กเกจ","เริ่มรอบ","สิ้นสุดรอบ","ยอดเรียกเก็บ","ยอดชำระ","สถานะ"]
+                .map((label) => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
+              <tbody>{history.cycles.map((row) => <tr className="border-b" key={row.id}>
+                <td className="p-3">{row.package_name || "—"}</td>
+                <td className="p-3">{formatDate(row.period_start)}</td>
+                <td className="p-3">{formatDate(row.period_end)}</td>
+                <td className="p-3">{formatMoney(row.amount_due)}</td>
+                <td className="p-3">{formatMoney(row.amount_paid)}</td>
+                <td className="p-3">{row.status}</td>
+              </tr>)}</tbody>
+            </table></div>}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-black text-slate-900">ประวัติคำขอและผลตรวจสอบ</h2>
+          {completedRequests.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีคำขอที่ปิดรายการ</p> :
+            <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm">
+              <thead><tr className="border-b text-slate-500">{["วันที่","แพ็กเกจ / รอบ","ประเภท","ยอดแจ้ง","ผลตรวจสอบ","ใบเสร็จ"]
+                .map((label) => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
+              <tbody>{completedRequests.map((row) => {
+                const receipt = receiptByRequest.get(row.id);
+                return <tr className="border-b" key={row.id}>
+                  <td className="p-3">{formatDateTime(row.submitted_at)}</td>
+                  <td className="p-3">{row.requested_package_name || "—"} · {billingLabel(row.billing_interval)}</td>
+                  <td className="p-3">{row.kind === "payment_notice" ? "แจ้งชำระเงิน" : "ขอต่ออายุ"}</td>
+                  <td className="p-3">{formatMoney(row.amount_reported,row.currency || "THB")}</td>
+                  <td className="p-3"><strong>{REQUEST_STATUS[row.status] || row.status}</strong>{row.review_note ? <p className="mt-1 text-xs text-slate-500">{row.review_note}</p> : null}</td>
+                  <td className="p-3">{receipt ? <a
+                    href={"/api/it-admin/v1/subscription-payments/receipts/" + encodeURIComponent(receipt.id)}
+                    target="_blank" rel="noopener noreferrer"
+                    className="font-bold text-blue-700 underline">{receipt.receipt_number}</a> : "—"}</td>
                 </tr>;
               })}</tbody>
             </table></div>}
-        </article>
+        </section>
 
-        <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-bold">ใบเสร็จแพ็กเกจ ({history.receipts.length})</h2>
-          {history.receipts.length === 0 ? <p className="text-sm text-slate-500">ยังไม่มีใบเสร็จจากรายการรับเงินจริง</p> :
-            <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm">
-              <thead><tr className="border-b text-slate-500">{["เลขที่ใบเสร็จ","วันที่ออก","แพ็กเกจ / รอบ","ช่วงบริการ","ยอดรับจริง","สถานะ"]
-                .map((label)=><th className="p-3" key={label}>{label}</th>)}</tr></thead>
-              <tbody>{history.receipts.map((row)=><tr className="border-b" key={row.id}>
-                <td className="p-3 font-bold text-blue-700">{row.receipt_number}</td>
-                <td className="p-3">{formatDate(row.issued_at)}</td>
-                <td className="p-3">{row.package_name || "แพ็กเกจ"} · {row.billing_interval==="yearly"?"รายปี":"รายเดือน"}</td>
-                <td className="p-3">{row.period_start || "—"} → {row.period_end || "—"}</td>
-                <td className="p-3 font-semibold">{formatMoney(row.amount,row.currency)}</td>
-                <td className="p-3 text-emerald-700">ออกแล้ว · ร้านเปิดดูได้จาก POS</td>
-              </tr>)}</tbody>
-            </table></div>}
-        </article>
-
-        <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-bold">รอบบิลแพ็กเกจ ({history.cycles.length})</h2>
-          {history.cycles.length === 0 ? <p className="text-sm text-slate-500">ยังไม่มีรอบบิลที่บันทึกไว้</p> :
-            <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm">
-              <thead><tr className="border-b text-slate-500">{["เริ่มรอบ","สิ้นสุดรอบ","ยอดเรียกเก็บ","ยอดบันทึกชำระ","สถานะรอบบิล"]
-                .map((label) => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
-              <tbody>{history.cycles.map((row) => <tr className="border-b" key={row.id}>
-                <td className="p-3">{row.period_start}</td><td className="p-3">{row.period_end}</td>
-                <td className="p-3">{formatMoney(row.amount_due)}</td><td className="p-3">{formatMoney(row.amount_paid)}</td>
-                <td className="p-3">{row.status}</td>
-              </tr>)}</tbody></table></div>}
-        </article>
-
-        <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-bold">ประวัติการอนุมัติ / ปฏิเสธ ({history.approval_events.length})</h2>
-          {history.approval_events.length === 0 ? <p className="text-sm text-slate-500">ยังไม่มีเหตุการณ์อนุมัติแพ็กเกจ</p>
-            : <ul className="space-y-2">{history.approval_events.map((item) => <li key={item.id}
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-black text-slate-900">Audit การอนุมัติ / ไม่อนุมัติ</h2>
+          {history.approval_events.length === 0 ? <p className="mt-3 text-sm text-slate-500">ยังไม่มีเหตุการณ์อนุมัติแพ็กเกจ</p>
+            : <ul className="mt-3 grid gap-2 md:grid-cols-2">{history.approval_events.map((item) => <li key={item.id}
               className="rounded-lg border border-slate-100 p-3 text-sm">
-              {formatDate(item.created_at)} · {item.action} · {item.from_status || "—"} → {item.to_status || "—"}
+              <strong>{formatDateTime(item.created_at)}</strong><br/>
+              {item.action} · {item.from_status || "—"} → {item.to_status || "—"}
             </li>)}</ul>}
-        </article>
+        </section>
       </> : null}
     </section>
   );
