@@ -92,11 +92,18 @@ const actionCopy: Record<string, Copy> = {
     confirmLabel: "ยืนยันการแก้ไข",
     tone: "info"
   },
+  prepare_paid_package: {
+    eyebrow: "PACKAGE BILLING",
+    title: "สร้างรายการชำระแพ็กเกจ?",
+    description: "ขั้นตอนนี้ยังไม่เปิดแพ็กเกจและยังไม่ออกใบเสร็จ ระบบจะส่งรายการไปตารางชำระแพ็กเกจเพื่อให้ IT ตรวจเงินเข้าจริงก่อน",
+    confirmLabel: "สร้างรายการชำระ",
+    tone: "info"
+  },
   change_package: {
     eyebrow: "PACKAGE CHANGE",
-    title: "ยืนยันการเปลี่ยนแพ็กเกจ",
-    description: "ระบบจะสร้างสัญญาใหม่ ปิดสัญญาเดิม และเปลี่ยนสิทธิ์ของร้านตามแพ็กเกจที่เลือก",
-    confirmLabel: "ยืนยันเปลี่ยนแพ็กเกจ",
+    title: "ไม่อนุญาตให้เปิดแพ็กเกจแบบชำระเงินจริงโดยตรง",
+    description: "แพ็กเกจที่มีค่าบริการต้องผ่านรายการชำระและ Settlement เพื่อให้มีรอบบิลและใบเสร็จทุกครั้ง",
+    confirmLabel: "รับทราบ",
     tone: "warning"
   },
   suspend_package: {
