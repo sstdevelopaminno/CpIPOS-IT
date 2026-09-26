@@ -92,12 +92,28 @@ describe("IT Admin Store Control Center contract", () => {
     expect(service).toContain('status: "pending"');
     expect(service).toContain('action === "change_package"');
     expect(service).toContain("paid_activation_requires_settlement");
-    expect(service).toContain("paid_contract_billing_managed_by_settlement");
+    expect(service).toContain("paid_contract_cycle_managed_by_settlement");
+    expect(service).toContain("paid_contract_correction_reason_required");
     expect(controlCenter).toContain("ลำดับที่ถูกต้อง:");
     expect(controlCenter).toContain("เปิดตรวจสอบการชำระ");
     expect(controlCenter).toContain('action: "prepare_paid_package"');
     expect(controlCenter).not.toContain('action: "change_package", package_id');
     expect(actionConfirm).toContain("ขั้นตอนนี้ยังไม่เปิดแพ็กเกจและยังไม่ออกใบเสร็จ");
+  });
+
+  it("allows IT to correct active paid contract dates with audit without mutating settlement rows", () => {
+    expect(controlCenter).toContain("isPaidActiveContract");
+    expect(controlCenter).toContain("canEditBillingCycle");
+    expect(controlCenter).toContain("เหตุผลการแก้ไขโดย IT (Audit)");
+    expect(controlCenter).toContain("บันทึกการแก้ไขสัญญา");
+    expect(controlCenter).toContain("วันที่เปิดสัญญา วันหมดอายุ และ Auto renew สามารถแก้และบันทึกได้");
+    expect(service).toContain("tenant_paid_contract_admin_corrected");
+    expect(service).toContain("settlement_rows_unchanged");
+    expect(service).toContain("receipt_rows_unchanged");
+    expect(service).toContain("last_admin_contract_correction");
+    expect(service).toContain("amount_per_cycle: paidActiveContract");
+    expect(service).toContain("contract.amount_per_cycle");
+    expect(service).toContain("subscription_expires_at: endIso");
   });
 
   it("strictly separates customer-visible POS copy from internal IT reasons", () => {
