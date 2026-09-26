@@ -109,4 +109,15 @@ describe("subscription payments IT workspace", () => {
     expect(historyUi).toContain("ปฏิเสธพร้อมเหตุผล");
     expect(contractApi).toContain("paid_activation_requires_settlement");
   });
+  it("retires legacy paid activation so no first activation can bypass receipt issuance", () => {
+    const retirement = src("../../supabase/migrations/20260926173000_retire_legacy_paid_activation.sql");
+    expect(retirement).toContain("legacy_paid_activation_disabled_use_settlement");
+    expect(retirement).toContain("legacy_prepaid_migration");
+    expect(retirement).toContain("awaiting_verified_settlement");
+    expect(retirement).toContain("interval '7 days'");
+    expect(retirement).toContain("subscription_payment_unverified");
+    expect(retirement).toContain("must never activate a paid package");
+    expect(retirement).not.toContain("PERFORM app.approve_paid_subscription");
+  });
+
 });
