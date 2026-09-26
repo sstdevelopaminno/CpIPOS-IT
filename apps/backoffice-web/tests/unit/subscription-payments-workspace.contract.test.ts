@@ -84,6 +84,25 @@ describe("subscription payments IT workspace", () => {
     expect(historyUi).toContain("กลับตารางชำระแพ็กเกจ");
   });
 
+  it("keeps the billing detail compact with closable popup menus and first-payment creation", () => {
+    const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
+    expect(historyUi).toContain('type WorkspacePanel = "pending"');
+    expect(historyUi).toContain('role="dialog"');
+    expect(historyUi).toContain("event.key === \"Escape\"");
+    expect(historyUi).toContain("event.target === event.currentTarget");
+    expect(historyUi).toContain("เมนูจัดการการชำระแพ็กเกจ");
+    expect(historyUi).toContain("ตรวจสอบรายการรออนุมัติ");
+    expect(historyUi).toContain("ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง");
+    expect(historyUi).toContain("รอบบิลแพ็กเกจ");
+    expect(historyUi).toContain("ประวัติคำขอและผลตรวจสอบ");
+    expect(historyUi).toContain("Audit การอนุมัติ / ไม่อนุมัติ");
+    expect(historyUi).toContain("สรุปยอดชำระ");
+    expect(historyUi).toContain("สร้างรายการชำระรอบแรก");
+    expect(historyUi).toContain('action: "prepare_paid_package"');
+    expect(historyUi).toContain("/api/it-admin/v1/tenants/");
+    expect(historyUi).toContain("ใบเสร็จจะออกอัตโนมัติหลัง IT ยืนยันเงินเข้าจริง");
+  });
+
   it("lets IT define annual package prices explicitly without inventing a commercial price", () => {
     const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
     const packageApi = src("src/app/api/it-admin/v1/packages/[packageId]/route.ts");
