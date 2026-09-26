@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { SubscriptionBusinessProfile } from "@/components/it-admin/subscription-business-profile";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -50,6 +51,7 @@ function intervalText(value: Row["billing_interval"]) {
 }
 
 export function SubscriptionPaymentsConsole() {
+  const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   const [contacts, setContacts] = useState<ContactSettings>(defaultContacts);
   const [loading, setLoading] = useState(true);
@@ -179,7 +181,10 @@ export function SubscriptionPaymentsConsole() {
       </div>
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
-          <h2 className="font-bold text-slate-900">รายการร้านค้าและรอบบริการ</h2>
+          <div>
+            <h2 className="font-bold text-slate-900">รายการร้านค้าและรอบบริการ</h2>
+            <p className="mt-1 text-xs text-slate-500">คลิกที่แถวร้านค้าเพื่อเปิดหน้าตรวจสอบการชำระ ต่ออายุ สลิป ประวัติ และใบเสร็จ</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <input aria-label="ค้นหาร้าน" value={search} onChange={(event) => setSearch(event.target.value)}
               placeholder="ค้นหาร้าน / รหัส / แพ็กเกจ" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
@@ -198,7 +203,19 @@ export function SubscriptionPaymentsConsole() {
               .map((head) => <th key={head} className="whitespace-nowrap border-b border-slate-200 px-4 py-3 font-semibold">{head}</th>)}
           </tr></thead><tbody className="divide-y divide-slate-100">
             {loading ? <tr><td colSpan={10} className="p-8 text-center text-slate-500">กำลังโหลดข้อมูล...</td></tr>
-              : filtered.length ? filtered.map((row) => <tr key={row.tenant_id} className="align-top hover:bg-blue-50/30">
+              : filtered.length ? filtered.map((row) => {
+                const detailHref = `/it-admin/subscription-payments/${row.tenant_id}`;
+                return <tr key={row.tenant_id}
+                  role="link" tabIndex={0}
+                  aria-label={`เปิดตรวจสอบการชำระแพ็กเกจของ ${row.store_name}`}
+                  onClick={() => router.push(detailHref)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(detailHref);
+                    }
+                  }}
+                  className="cursor-pointer align-top outline-none transition hover:bg-blue-50/60 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-300">
                 <td className="px-4 py-4"><strong className="block text-slate-900">{row.store_name}</strong>
                   <span className="text-xs text-slate-500">{row.store_code}</span></td>
                 <td className="px-4 py-4"><strong className="block">{row.package_name}</strong>
@@ -232,10 +249,12 @@ export function SubscriptionPaymentsConsole() {
                   <span className="mt-1 block text-xs text-slate-500">{row.billing_cycle ?
                     `รอบบิล: ${row.billing_cycle.status}` : "ยังไม่มีรอบบิล"}</span>
                 </td>
-                <td className="px-4 py-4"><div className="flex flex-col items-start gap-2">
-                  <Link href={`/tenants/${row.tenant_id}`} className="text-xs font-semibold text-blue-700 underline">ดูสัญญา / จัดการร้าน</Link>
-                  <Link href={`/it-admin/subscription-payments/${row.tenant_id}`} className="text-xs font-semibold text-blue-700 underline">ประวัติการชำระ</Link>
-                  <button type="button" onClick={() => openEmailDraft(row)}
+                <td className="px-4 py-4"><div className="flex min-w-[190px] flex-col items-start gap-2">
+                  <Link href={`/tenants/${row.tenant_id}`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="text-xs font-semibold text-blue-700 underline">ดูสัญญา / จัดการร้าน</Link>
+                  <button type="button"
+                    onClick={(event) => { event.stopPropagation(); openEmailDraft(row); }}
                     className="rounded-md border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-700">
                     ร่างอีเมลถึงร้าน
                   </button>
@@ -244,10 +263,14 @@ export function SubscriptionPaymentsConsole() {
                   </span> : null}
                   <span className="text-xs text-slate-500">{row.receipt
                     ? `ออกใบเสร็จแล้ว ${date(row.receipt.issued_at)} · ${money(row.receipt.amount,row.receipt.currency)}`
-                    : row.has_paid_cycle ? "พบรอบบิลชำระครบ แต่ยังไม่พบใบเสร็จ — ตรวจสอบประวัติ"
+                    : row.has_paid_cycle ? "พบรอบบิลชำระครบ แต่ยังไม่พบใบเสร็จ — ตรวจสอบรายละเอียด"
                     : "ยังไม่มีรอบบิลที่ชำระครบ"}</span>
+                  <span className="mt-1 inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-bold text-white">
+                    เปิดหน้าตรวจสอบ <span aria-hidden>→</span>
+                  </span>
                 </div></td>
-              </tr>) : <tr><td colSpan={10} className="p-8 text-center text-slate-500">ไม่มีข้อมูลตามตัวกรอง</td></tr>}
+              </tr>;
+              }) : <tr><td colSpan={10} className="p-8 text-center text-slate-500">ไม่มีข้อมูลตามตัวกรอง</td></tr>}
           </tbody></table></div>
         <p className="border-t border-slate-100 p-3 text-xs text-slate-500">
           {updatedAt ? `อัปเดต: ${date(updatedAt)} · ` : ""}
