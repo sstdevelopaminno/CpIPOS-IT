@@ -40,6 +40,9 @@ type Receipt = {
   id: string; payment_request_id: string; billing_cycle_id: string; receipt_number: string;
   issued_at: string; amount: number; currency: string; package_snapshot: Record<string,unknown> | null
 };
+type ReceiptAnnotation = {
+  receipt_id:string; correction_note:string|null; voided_at:string|null;
+};
 
 function numeric(value: unknown) {
   const parsed = Number(value);
@@ -54,7 +57,7 @@ export async function GET(_request: Request, { params }: Params) {
     }
 
     const { supabase } = await requireItAdmin();
-    const [store, contract, lifecycle, packages, cycles, requests, approvals, receipts] = await Promise.all([
+    const [store, contract, lifecycle, packages, cycles, requests, approvals, receipts, receiptAnnotations] = await Promise.all([
       supabase.from("tenants")
         .select("id,code,name,display_name,owner_name,primary_owner_user_id")
         .eq("id", tenantId).maybeSingle<Store>(),
@@ -78,12 +81,15 @@ export async function GET(_request: Request, { params }: Params) {
         .eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(200).returns<Approval[]>(),
       supabase.from("tenant_subscription_receipts")
         .select("id,payment_request_id,billing_cycle_id,receipt_number,issued_at,amount,currency,package_snapshot")
-        .eq("tenant_id", tenantId).order("issued_at", { ascending: false }).limit(200).returns<Receipt[]>()
+        .eq("tenant_id", tenantId).order("issued_at", { ascending: false }).limit(200).returns<Receipt[]>(),
+      supabase.from("tenant_subscription_receipt_annotations")
+        .select("receipt_id,correction_note,voided_at")
+        .eq("tenant_id",tenantId).returns<ReceiptAnnotation[]>()
     ]);
 
     if (store.error) throw new Error("history_store_read_failed");
     if (!store.data) throw new ItAdminGuardError("store_not_found", "Store not found.", 404);
-    if (contract.error || lifecycle.error || packages.error || cycles.error || requests.error || approvals.error || receipts.error) {
+    if (contract.error || lifecycle.error || packages.error || cycles.error || requests.error || approvals.error || receipts.error || receiptAnnotations.error) {
       throw new Error("subscription_payment_history_read_failed");
     }
 
@@ -131,8 +137,12 @@ export async function GET(_request: Request, { params }: Params) {
       };
     }));
 
+    const annotationByReceipt = new Map((receiptAnnotations.data ?? []).map((row)=>[row.receipt_id,row]));
     const receiptRows = (receipts.data ?? []).map((row) => ({
       ...row,
+      correction_note: annotationByReceipt.get(row.id)?.correction_note ?? null,
+      voided_at: annotationByReceipt.get(row.id)?.voided_at ?? null,
+      voided: Boolean(annotationByReceipt.get(row.id)?.voided_at),
       package_id: typeof row.package_snapshot?.package_id === "string" ? row.package_snapshot.package_id : "",
       package_code: typeof row.package_snapshot?.package_code === "string" ? row.package_snapshot.package_code : "",
       package_name: typeof row.package_snapshot?.package_name === "string" ? row.package_snapshot.package_name : "",
