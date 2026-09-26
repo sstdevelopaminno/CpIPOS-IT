@@ -35,6 +35,7 @@ const copy = {
       monitoring: "Monitoring",
       incidents: "Incidents",
       audit: "Audit Logs",
+      emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
       settings: "ตั้งค่า / Security"
     }
   },
@@ -67,6 +68,7 @@ const copy = {
       monitoring: "Monitoring",
       incidents: "Incidents",
       audit: "Audit Logs",
+      emergencyBroadcast: "Emergency Broadcast",
       settings: "Settings / Security"
     }
   }
@@ -91,6 +93,7 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
     { href: "/it-admin/monitoring", label: text.items.monitoring, group: text.groups.operations, icon: "monitoring" },
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
+    { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
     { href: "/it-admin/settings/language", label: text.items.settings, group: text.groups.system, icon: "settings" }
   ];
 }
