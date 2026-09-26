@@ -261,8 +261,8 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   async function settle(row: PaymentRequest) {
     const draft = draftFor(row);
     const amount = Number(draft.amount_received);
-    if (row.kind !== "payment_notice" || !row.has_evidence) {
-      setError("ยังอนุมัติไม่ได้ ต้องมีรายการแจ้งชำระและสลิปจากร้านก่อน");
+    if (row.kind !== "payment_notice") {
+      setError("ยังอนุมัติไม่ได้ รายการนี้ต้องเป็นการแจ้งชำระเงินจริงก่อน");
       return;
     }
     if (!draft.confirmed_bank_receipt) {
@@ -406,7 +406,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
             <div className="mt-4 space-y-4">{openRequests.map((row) => {
               const draft = draftFor(row);
               const diff = amountDifference(row);
-              const canApprove = row.status === "under_review" && row.kind === "payment_notice" && row.has_evidence;
+              const canApprove = row.status === "under_review" && row.kind === "payment_notice";
               return <article key={row.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
                 <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
                   <div>
@@ -464,11 +464,14 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     </div> : null}
 
                     {row.status === "under_review" ? <>
-                      {row.kind !== "payment_notice" || !row.has_evidence ?
+                      {row.kind !== "payment_notice" ?
                         <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                          รายการนี้ยังเป็นคำขอต่ออายุ/ยังไม่มีสลิป ต้องให้ร้านแจ้งชำระจากฝั่ง CpIPOS ก่อนจึงจะอนุมัติรับเงินจริงได้
+                          รายการนี้ยังเป็นคำขอต่ออายุ ต้องให้ร้านแจ้งชำระจากฝั่ง CpIPOS ก่อนจึงจะอนุมัติรับเงินจริงได้
                         </p> :
                         <div className="mt-3 grid gap-2">
+                          {!row.has_evidence ? <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+                            รายการนี้ไม่มีไฟล์สลิปในระบบ ให้ยึดการตรวจรายการธนาคารของบริษัทเป็นหลักก่อนอนุมัติ
+                          </p> : null}
                           <label className="grid gap-1 text-xs font-bold text-slate-700">เลขอ้างอิงธุรกรรมธนาคาร
                             <input maxLength={160} value={draft.bank_transaction_reference}
                               onChange={(event) => patchDraft(row,{bank_transaction_reference:event.target.value})}
