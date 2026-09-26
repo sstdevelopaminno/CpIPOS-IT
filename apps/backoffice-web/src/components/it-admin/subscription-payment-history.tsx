@@ -925,7 +925,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           description="รายการรับเงินจริงและใบเสร็จที่เชื่อมกับฝั่ง CpIPOS เมนูชำระเงิน"
           onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-900">ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง</h2>
-          <p className="mt-1 text-sm text-slate-500">ข้อมูลรับเงินจริงและใบเสร็จเป็นแหล่งคำนวณยอด รายการเดียวกันจะแสดงในฝั่ง CpIPOS เมนูชำระเงินด้วย</p>
+          <p className="mt-1 text-sm text-slate-500">ข้อมูลรับเงินจริงและใบเสร็จเป็นแหล่งคำนวณยอด รายการเดียวกันจะแสดงในฝั่ง CpIPOS เมนูชำระเงินด้วย · ใบเสร็จที่ออกจริงจะไม่ Hard Delete แต่ใช้ยกเลิกเอกสารและเก็บ Audit ไว้</p>
           {history.receipts.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีใบเสร็จจากรายการรับเงินจริง</p> :
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[980px] text-left text-sm">
@@ -955,7 +955,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     <button type="button" disabled={busyId===row.id} onClick={()=>void editReceiptRecord(row)}
                       className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">แก้ไขหมายเหตุ</button>
                     <button type="button" disabled={busyId===row.id || row.voided} onClick={()=>void voidReceiptRecord(row)}
-                      className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-40">ยกเลิกเอกสาร</button>
+                      className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-40">ลบ / ยกเลิกเอกสาร</button>
                   </div></td>
                 </tr>)}</tbody>
               </table>
