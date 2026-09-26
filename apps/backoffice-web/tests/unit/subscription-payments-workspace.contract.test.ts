@@ -28,12 +28,11 @@ describe("subscription payments IT workspace", () => {
     expect(api).toContain("has_paid_cycle");
     expect(api).toContain('Number(cycle.amount_paid) >= Number(cycle.amount_due)');
   });
-  it("does not issue false receipts or claim a real email was sent", () => {
+  it("keeps email informational while receipts come only from verified settlements", () => {
     expect(ui).toContain("ร่างอีเมลถึงร้าน");
-    expect(ui).toContain("ยังไม่มีรอบบิลที่ชำระครบ");
-    expect(ui).toContain("รอบบิลบันทึกว่าชำระครบ — ยังไม่ได้ออกใบเสร็จ");
     expect(ui).toContain("ไม่ใช่หลักฐานรับชำระเงินหรือใบเสร็จรับเงิน");
-    expect(ui).toContain("ส่งอีเมลอัตโนมัติจะเปิดใช้หลังเชื่อมระบบรับเงิน");
+    expect(ui).toContain("ใบเสร็จจะออกอัตโนมัติเมื่อ IT ยืนยันเงินเข้าจากรายการธนาคาร");
+    expect(ui).toContain("ใบเสร็จ {row.receipt.number}");
   });
   it("supports changing both addresses but keeps credentials out of the settings table", () => {
     expect(navigation).toContain("/it-admin/subscription-payments");
@@ -61,33 +60,53 @@ describe("subscription payments IT workspace", () => {
     expect(identityMigration).toContain("revoke all on public.it_communication_settings from anon, authenticated");
   });
 
-  it("shows historical requests and cycles without leaking slip URLs or claiming receipts", () => {
+  it("shows historical requests, paid cycles and immutable receipts without leaking storage paths", () => {
     const historyApi = src("src/app/api/it-admin/v1/subscription-payments/history/[tenantId]/route.ts");
     const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
     expect(historyApi).toContain("requireItAdmin()");
     expect(historyApi).toContain('from("tenant_subscription_payment_requests")');
     expect(historyApi).toContain('from("tenant_billing_cycles")');
     expect(historyApi).toContain('from("tenant_subscription_approval_events")');
+    expect(historyApi).toContain('from("tenant_subscription_receipts")');
     expect(historyApi).toContain("has_evidence: Boolean(evidence_url)");
-    expect(historyUi).toContain("การแจ้งชำระและไฟล์สลิปไม่ใช่หลักฐานว่าธนาคารรับเงินจริงแล้ว");
+    expect(historyUi).toContain("สลิปที่ร้านแนบมาไม่ถือว่าเงินเข้าจริง");
+    expect(historyUi).toContain("ใบเสร็จแพ็กเกจ");
     expect(ui).toContain("ประวัติการชำระ");
   });
 
-  it("keeps private bank-slip evidence and admin review separate from bank receipt", () => {
+  it("settles only reviewed bank-confirmed payments and issues exactly one immutable receipt", () => {
     const evidenceMigration = src("../../supabase/migrations/20260925103100_subscription_evidence_bucket.sql");
     const indexMigration = src("../../supabase/migrations/20260925103000_subscription_open_request_index.sql");
+    const settlementMigration = src("../../supabase/migrations/20260926170000_subscription_settlement_receipts.sql");
     const adminReview = src("src/app/api/it-admin/v1/subscription-payments/review/[requestId]/route.ts");
+    const settleApi = src("src/app/api/it-admin/v1/subscription-payments/settle/[requestId]/route.ts");
     const historyApi = src("src/app/api/it-admin/v1/subscription-payments/history/[tenantId]/route.ts");
     const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
+    const contractApi = src("src/app/api/it-admin/admin/tenants/[tenantId]/contract/route.ts");
     expect(evidenceMigration).toContain("'subscription-payment-evidence'");
     expect(evidenceMigration).toContain("false,5242880");
     expect(indexMigration).toContain("where status in ('pending','under_review')");
     expect(adminReview).toContain("requireItAdmin()");
     expect(adminReview).toContain("rejection_note_required");
     expect(adminReview).not.toContain('"approved"');
+    expect(settleApi).toContain('confirmed_bank_receipt !== true');
+    expect(settleApi).toContain('rpc("settle_subscription_payment"');
+    expect(settleApi).toContain("receipt_number");
+    expect(settlementMigration).toContain("tenant_subscription_settlements");
+    expect(settlementMigration).toContain("tenant_subscription_receipts");
+    expect(settlementMigration).toContain("payment_request_id uuid not null unique");
+    expect(settlementMigration).toContain("billing_cycle_id uuid not null unique");
+    expect(settlementMigration).toContain("bank_reference_already_used");
+    expect(settlementMigration).toContain("interval '1 month'");
+    expect(settlementMigration).toContain("interval '1 year'");
+    expect(settlementMigration).toContain("trg_subscription_receipts_immutable");
+    expect(settlementMigration).toContain("status = 'approved'");
+    expect(settlementMigration).toContain("receipt_number");
     expect(historyApi).toContain("createSignedUrl(evidence_url, 300)");
     expect(historyApi).toContain('evidence_url?.startsWith(tenantId + "/")');
     expect(historyUi).toContain("รับเรื่องตรวจสอบ");
+    expect(historyUi).toContain("ยืนยันเงินเข้า + เปิดแพ็กเกจ + ออกใบเสร็จ");
     expect(historyUi).toContain("ปฏิเสธพร้อมเหตุผล");
+    expect(contractApi).toContain("paid_activation_requires_settlement");
   });
 });
