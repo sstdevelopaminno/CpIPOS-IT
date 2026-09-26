@@ -199,7 +199,7 @@ begin
   if not found then raise exception 'tenant_lifecycle_not_found'; end if;
 
   if v_lifecycle.lifecycle_status = 'sales_demo'
-     or coalesce((v_lifecycle.metadata->>'quota_exempt')::boolean,false) then
+     or coalesce(v_lifecycle.metadata->>'quota_exempt','false') = 'true' then
     raise exception 'internal_demo_not_billable';
   end if;
   if v_lifecycle.data_home <> 'primary' or v_lifecycle.migration_status not in ('idle','complete') then
@@ -317,7 +317,10 @@ begin
         desired_data_home = 'primary',
         first_package_started_at = coalesce(first_package_started_at,v_now),
         current_package_started_at = case
-          when v_contract.id is null or v_contract.package_id <> v_package.id then v_now
+          when v_contract.id is null
+            or v_contract.status <> 'active'
+            or v_contract.package_id <> v_package.id
+            or v_contract.billing_interval <> v_interval then v_now
           else current_package_started_at
         end,
         subscription_expires_at = v_new_expiry,
