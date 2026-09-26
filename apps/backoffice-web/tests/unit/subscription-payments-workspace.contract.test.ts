@@ -60,7 +60,7 @@ describe("subscription payments IT workspace", () => {
     expect(identityMigration).toContain("revoke all on public.it_communication_settings from anon, authenticated");
   });
 
-  it("shows historical requests, paid cycles and immutable receipts without leaking storage paths", () => {
+  it("opens each billing row into a connected review workspace with package prices and totals", () => {
     const historyApi = src("src/app/api/it-admin/v1/subscription-payments/history/[tenantId]/route.ts");
     const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
     expect(historyApi).toContain("requireItAdmin()");
@@ -68,10 +68,20 @@ describe("subscription payments IT workspace", () => {
     expect(historyApi).toContain('from("tenant_billing_cycles")');
     expect(historyApi).toContain('from("tenant_subscription_approval_events")');
     expect(historyApi).toContain('from("tenant_subscription_receipts")');
+    expect(historyApi).toContain('from("subscription_packages")');
+    expect(historyApi).toContain("monthly_paid");
+    expect(historyApi).toContain("yearly_paid");
+    expect(historyApi).toContain("total_paid");
     expect(historyApi).toContain("has_evidence: Boolean(evidence_url)");
-    expect(historyUi).toContain("สลิปที่ร้านแนบมาไม่ถือว่าเงินเข้าจริง");
-    expect(historyUi).toContain("ใบเสร็จแพ็กเกจ");
-    expect(ui).toContain("ประวัติการชำระ");
+    expect(ui).toContain('role="link"');
+    expect(ui).toContain("router.push(detailHref)");
+    expect(ui).toContain("เปิดหน้าตรวจสอบ");
+    expect(historyUi).toContain("ตรวจสอบการชำระและต่อแพ็กเกจ");
+    expect(historyUi).toContain("ราคาแพ็กเกจ");
+    expect(historyUi).toContain("ยอดชำระแบบรายเดือน");
+    expect(historyUi).toContain("ยอดชำระแบบรายปี");
+    expect(historyUi).toContain("ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง");
+    expect(historyUi).toContain("กลับตารางชำระแพ็กเกจ");
   });
 
   it("settles only reviewed bank-confirmed payments and issues exactly one immutable receipt", () => {
@@ -104,11 +114,25 @@ describe("subscription payments IT workspace", () => {
     expect(settlementMigration).toContain("receipt_number");
     expect(historyApi).toContain("createSignedUrl(evidence_url, 300)");
     expect(historyApi).toContain('evidence_url?.startsWith(tenantId + "/")');
-    expect(historyUi).toContain("รับเรื่องตรวจสอบ");
-    expect(historyUi).toContain("ยืนยันเงินเข้า + เปิดแพ็กเกจ + ออกใบเสร็จ");
-    expect(historyUi).toContain("ปฏิเสธพร้อมเหตุผล");
+    expect(historyUi).toContain("รับเรื่องและเริ่มตรวจสอบ");
+    expect(historyUi).toContain("อนุมัติ + ต่อแพ็กเกจ + ออกใบเสร็จ");
+    expect(historyUi).toContain("ไม่อนุมัติ");
     expect(contractApi).toContain("paid_activation_requires_settlement");
   });
+
+  it("lets IT open the exact issued receipt document while POS and IT share the same receipt ledger", () => {
+    const receiptApi = src("src/app/api/it-admin/v1/subscription-payments/receipts/[receiptId]/route.ts");
+    const receiptTemplate = src("src/lib/printing/subscription-receipt-html-template.ts");
+    const historyUi = src("src/components/it-admin/subscription-payment-history.tsx");
+    expect(receiptApi).toContain("requireItAdmin()");
+    expect(receiptApi).toContain('from("tenant_subscription_receipts")');
+    expect(receiptApi).toContain("renderSubscriptionReceiptHtml");
+    expect(historyUi).toContain("/api/it-admin/v1/subscription-payments/receipts/");
+    expect(historyUi).toContain("เปิดใบเสร็จ / พิมพ์ PDF");
+    expect(receiptTemplate).toContain("ใบเสร็จรับเงิน / RECEIPT");
+    expect(receiptTemplate).toContain("พิมพ์ / บันทึกเป็น PDF");
+  });
+
   it("retires legacy paid activation so no first activation can bypass receipt issuance", () => {
     const retirement = src("../../supabase/migrations/20260926173000_retire_legacy_paid_activation.sql");
     expect(retirement).toContain("legacy_paid_activation_disabled_use_settlement");
