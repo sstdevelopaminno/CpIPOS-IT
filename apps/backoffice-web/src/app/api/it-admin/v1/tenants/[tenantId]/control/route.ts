@@ -1,6 +1,6 @@
 import { readBoundedJson } from "@/lib/server/limited-json";
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import {
   applyTenantControlAction,
@@ -46,6 +46,9 @@ export async function POST(req: Request, context: { params: Promise<{ tenantId: 
 
     const body = await readBoundedJson<TenantControlInput | null>(req, 32_768);
     if (!body || typeof body !== "object") return fail("invalid_body", "Request body is required.", 422);
+    if (body.action === "delete_store") {
+      assertItSupportAction(admin, "IT Admin ไม่มีสิทธิ์ลบร้านถาวร; ใช้ IT Support สำหรับรายการนี้");
+    }
 
     const data = await applyTenantControlAction(admin, tenantId, body);
     const response = ok(data);
