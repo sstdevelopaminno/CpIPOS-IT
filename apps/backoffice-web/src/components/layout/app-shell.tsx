@@ -27,12 +27,18 @@ export type AppShellNavIcon =
   | "broadcast"
   | "settings";
 
+export type AppShellNavChild = {
+  href: string;
+  label: string;
+};
+
 export type AppShellNavItem = {
   href?: string;
   label: string;
   group: string;
   icon: AppShellNavIcon;
   disabled?: boolean;
+  children?: AppShellNavChild[];
 };
 
 function NavIcon({ name }: { name: AppShellNavIcon }) {
@@ -250,14 +256,19 @@ export function AppShell({
     return Array.from(ordered.entries());
   }, [nav]);
 
-  const activeItem = useMemo(
-    () =>
-      nav
-        .filter((item): item is AppShellNavItem & { href: string } => Boolean(item.href && !item.disabled))
-        .filter((item) => matchesPath(pathname, item.href))
-        .sort((left, right) => right.href.length - left.href.length)[0] ?? null,
-    [nav, pathname]
-  );
+  const activeItem = useMemo(() => {
+    const candidates = nav.flatMap((item) => {
+      const entries: Array<{ href: string; label: string; parentLabel?: string }> = [];
+      if (item.href && !item.disabled && !(item.children?.length)) entries.push({ href: item.href, label: item.label });
+      for (const child of item.children ?? []) {
+        entries.push({ href: child.href, label: child.label, parentLabel: item.label });
+      }
+      return entries;
+    });
+    return candidates
+      .filter((item) => matchesPath(pathname, item.href))
+      .sort((left, right) => right.href.length - left.href.length)[0] ?? null;
+  }, [nav, pathname]);
 
   const dashboardItem = nav.find((item) => item.href === "/it-admin") ?? null;
 
@@ -335,8 +346,11 @@ export function AppShell({
               <div className={styles.navGroupLabel}>{group}</div>
               <div className={styles.navGroupItems}>
                 {items.map((item) => {
-                  const active = Boolean(item.href && !item.disabled && matchesPath(pathname, item.href));
-                  if (!item.href || item.disabled) {
+                  const childActive = (item.children ?? []).some((child) => matchesPath(pathname, child.href));
+                  const active = Boolean(item.href && !item.disabled && matchesPath(pathname, item.href)) || childActive;
+                  const targetHref = item.href ?? item.children?.[0]?.href;
+
+                  if ((!targetHref && !item.children?.length) || item.disabled) {
                     return (
                       <div
                         key={`${group}-${item.label}`}
@@ -353,18 +367,38 @@ export function AppShell({
                   }
 
                   return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileOpen(false)}
-                      className={`${styles.navItem} ${active ? styles.navItemActive : ""}`}
-                      aria-current={active ? "page" : undefined}
-                      aria-label={sidebarCollapsed ? item.label : undefined}
-                      title={sidebarCollapsed ? item.label : undefined}
-                    >
-                      <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
-                      <span className={styles.navLabel}>{item.label}</span>
-                    </Link>
+                    <div key={`${group}-${item.label}`} className={styles.navTree}>
+                      <Link
+                        href={targetHref!}
+                        onClick={() => setMobileOpen(false)}
+                        className={`${styles.navItem} ${active ? styles.navItemActive : ""}`}
+                        aria-current={active && !childActive ? "page" : undefined}
+                        aria-label={sidebarCollapsed ? item.label : undefined}
+                        title={sidebarCollapsed ? item.label : undefined}
+                      >
+                        <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
+                        <span className={styles.navLabel}>{item.label}</span>
+                      </Link>
+                      {item.children?.length ? (
+                        <div className={styles.subNav} aria-label={`${item.label} submenu`}>
+                          {item.children.map((child) => {
+                            const subActive = matchesPath(pathname, child.href);
+                            return (
+                              <Link
+                                key={child.href}
+                                href={child.href}
+                                onClick={() => setMobileOpen(false)}
+                                className={`${styles.subNavItem} ${subActive ? styles.subNavItemActive : ""}`}
+                                aria-current={subActive ? "page" : undefined}
+                              >
+                                <span className={styles.subNavDot} />
+                                <span>{child.label}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
@@ -406,6 +440,12 @@ export function AppShell({
                 {activeItem && activeItem.href !== dashboardItem?.href ? (
                   <>
                     <span className={styles.breadcrumbSeparator}>/</span>
+                    {activeItem.parentLabel ? (
+                      <>
+                        <span>{activeItem.parentLabel}</span>
+                        <span className={styles.breadcrumbSeparator}>/</span>
+                      </>
+                    ) : null}
                     <span aria-current="page">{activeItem.label}</span>
                   </>
                 ) : null}

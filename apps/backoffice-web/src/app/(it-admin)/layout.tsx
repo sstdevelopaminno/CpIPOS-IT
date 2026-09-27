@@ -36,7 +36,10 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
-      settings: "ตั้งค่า / Security"
+      settings: "ตั้งค่า / Security",
+      settingsUsers: "ตั้งค่า USER ใช้งาน",
+      settingsEmailFooter: "ตั้งค่า ข้อความท้ายอีเมล์",
+      settingsLanguage: "ตั้งค่าภาษา"
     }
   },
   en: {
@@ -69,7 +72,10 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "Emergency Broadcast",
-      settings: "Settings / Security"
+      settings: "Settings / Security",
+      settingsUsers: "User Settings",
+      settingsEmailFooter: "Email Footer Settings",
+      settingsLanguage: "Language Settings"
     }
   }
 } as const;
@@ -82,7 +88,6 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
     { href: "/it-admin/store-provisioning", label: text.items.provisioning, group: text.groups.customer, icon: "provision" },
     { href: "/it-admin/store-registrations", label: text.items.registrations, group: text.groups.customer, icon: "provision" },
     { href: "/it-admin/branches", label: text.items.branches, group: text.groups.customer, icon: "branch" },
-    { href: "/it-admin/platform-users", label: text.items.users, group: text.groups.customer, icon: "users" },
     { href: "/it-admin/devices", label: text.items.devices, group: text.groups.devices, icon: "device" },
     { href: "/it-admin/android", label: text.items.android, group: text.groups.devices, icon: "android" },
     { href: "/it-admin/printer", label: text.items.printer, group: text.groups.devices, icon: "printer" },
@@ -94,7 +99,17 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
-    { href: "/it-admin/settings/language", label: text.items.settings, group: text.groups.system, icon: "settings" }
+    {
+      href: "/it-admin/settings/email-footer",
+      label: text.items.settings,
+      group: text.groups.system,
+      icon: "settings",
+      children: [
+        { href: "/it-admin/settings/users", label: text.items.settingsUsers },
+        { href: "/it-admin/settings/email-footer", label: text.items.settingsEmailFooter },
+        { href: "/it-admin/settings/language", label: text.items.settingsLanguage }
+      ]
+    }
   ];
 }
 
