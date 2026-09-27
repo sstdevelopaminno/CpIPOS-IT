@@ -104,6 +104,7 @@ export async function POST(req: Request) {
       return ok(data);
     }
     if (input.action === "delete") {
+      assertItSupportAction(ctx, "IT Admin ไม่มีสิทธิ์ลบคำขอเปิดร้าน; ใช้ IT Support สำหรับการลบ");
       const prior = await ctx.supabase.from("it_store_provisioning_requests").select("id")
         .eq("request_key", row.provision_request_key).limit(1);
       if (prior.error) throw prior.error;
