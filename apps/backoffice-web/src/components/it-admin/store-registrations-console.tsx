@@ -84,8 +84,25 @@ export function StoreRegistrationsConsole() {
     try {
       const body = action === "edit" ? { action, id: selected.id, ...form }
         : { action, id: selected.id, owner_code: ownerCode, owner_pin: pin };
-      const result = await api<{ id: string; status: string; result?: { store_code: string } }>(body);
-      setSuccess(action === "activate" ? `เปิดร้านสำเร็จ · Store Code ${result.result?.store_code ?? "—"} · ทดลองใช้ 7 วัน` : "บันทึกข้อมูลคำขอแล้ว");
+      const result = await api<{
+        id: string;
+        status: string;
+        result?: { store_code: string };
+        email_delivery?: { status?: string; message?: string };
+      }>(body);
+      if (action === "activate") {
+        const base = `เปิดร้านสำเร็จ · Store Code ${result.result?.store_code ?? "—"} · ทดลองใช้ 7 วัน`;
+        const mail = result.email_delivery;
+        if (mail?.status === "sent") setSuccess(base + " · ส่งอีเมลเปิดระบบแล้ว");
+        else if (mail?.status === "already_sent") setSuccess(base + " · อีเมลเปิดระบบเคยส่งแล้ว");
+        else if (mail?.status === "automatic_disabled") setSuccess(base + " · ปิดการส่งอีเมลอัตโนมัติ");
+        else {
+          setSuccess(base);
+          if (mail?.message) setError("ร้านเปิดใช้งานสำเร็จ แต่อีเมลยังไม่ส่ง: " + mail.message);
+        }
+      } else {
+        setSuccess("บันทึกข้อมูลคำขอแล้ว");
+      }
       setSelected(null); setForm(null); setIntent(null); setPin("");
       await reload();
     } catch (e) { setError(e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ"); }
