@@ -88,7 +88,6 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
     { href: "/it-admin/store-provisioning", label: text.items.provisioning, group: text.groups.customer, icon: "provision" },
     { href: "/it-admin/store-registrations", label: text.items.registrations, group: text.groups.customer, icon: "provision" },
     { href: "/it-admin/branches", label: text.items.branches, group: text.groups.customer, icon: "branch" },
-    { href: "/it-admin/platform-users", label: text.items.users, group: text.groups.customer, icon: "users" },
     { href: "/it-admin/devices", label: text.items.devices, group: text.groups.devices, icon: "device" },
     { href: "/it-admin/android", label: text.items.android, group: text.groups.devices, icon: "android" },
     { href: "/it-admin/printer", label: text.items.printer, group: text.groups.devices, icon: "printer" },
