@@ -21,13 +21,22 @@ type Row = {
     amount: number; currency: string } | null;
 };
 type Envelope = { data?: { rows: Row[]; generated_at: string }; error?: { message?: string } };
-type ContactSettings = { billing_email: string; support_email: string; billing_sender_name: string; support_sender_name: string };
+type ContactSettings = {
+  billing_email: string;
+  support_email: string;
+  billing_sender_name: string;
+  support_sender_name: string;
+  auto_send_store_activation: boolean;
+  auto_send_payment_confirmation: boolean;
+};
 type SettingsEnvelope = { data?: { settings: ContactSettings }; error?: { message?: string } };
 const defaultContacts: ContactSettings = {
   billing_email: "cuttingpointtech@gmail.com",
   support_email: "cuttingpointtech.support@gmail.com",
   billing_sender_name: "CUTTING POINTTECH",
-  support_sender_name: "Cutting Point Tech Support"
+  support_sender_name: "Cutting Point Tech Support",
+  auto_send_store_activation: true,
+  auto_send_payment_confirmation: true
 };
 
 const statusText: Record<string, string> = {
@@ -156,7 +165,7 @@ export function SubscriptionPaymentsConsole() {
       {notice ? <p role="status" className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">{notice}</p> : null}
       {contactsOpen ? <div className="rounded-xl border border-blue-200 bg-white p-5 shadow-sm">
         <h2 className="font-bold text-slate-900">ช่องทางอีเมล (แก้ไขได้เมื่อบริษัทเปลี่ยนอีเมล)</h2>
-        <p className="my-2 text-sm text-slate-600">ช่องนี้เป็นข้อมูลติดต่อและ Reply-To ไม่เปลี่ยนบัญชี Gmail ที่อนุญาตให้ส่งจริงโดยอัตโนมัติ</p>
+        <p className="my-2 text-sm text-slate-600">ข้อมูลติดต่อใช้เป็น Reply-To ส่วนการส่งจริงใช้ Gmail / Apps Script bridge ที่ตั้งค่าเป็น Secret ฝั่งเซิร์ฟเวอร์</p>
         <div className="grid gap-3 md:grid-cols-2">
           {([
             ["billing_email", "อีเมลฝ่ายบัญชี / บริษัท"],
@@ -168,6 +177,21 @@ export function SubscriptionPaymentsConsole() {
             onChange={(event) => setContacts((current) => ({ ...current, [key]: event.target.value }))}
             className="rounded-lg border border-slate-300 px-3 py-2 font-normal" /></label>)}
         </div>
+        <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+          <label className="flex items-start gap-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={contacts.auto_send_store_activation}
+              onChange={(event) => setContacts((current) => ({ ...current, auto_send_store_activation: event.target.checked }))}
+              className="mt-1" />
+            <span>ส่งอัตโนมัติเมื่อเปิดรหัสร้าน<small className="mt-1 block font-normal text-slate-500">หนึ่งครั้งต่อคำขอเปิดร้าน · ระบบกันส่งซ้ำ</small></span>
+          </label>
+          <label className="flex items-start gap-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={contacts.auto_send_payment_confirmation}
+              onChange={(event) => setContacts((current) => ({ ...current, auto_send_payment_confirmation: event.target.checked }))}
+              className="mt-1" />
+            <span>ส่งอัตโนมัติเมื่อยืนยันรับชำระแพ็กเกจ<small className="mt-1 block font-normal text-slate-500">ส่งหลัง Settlement และออกใบเสร็จจริงแล้วเท่านั้น</small></span>
+          </label>
+        </div>
+        <p className="mt-3 text-xs text-slate-500">ถ้าปิดอัตโนมัติ ยังสามารถกด “ส่งอีเมลเปิดระบบ” หรือ “ส่งอีเมลยืนยันชำระ” จากหน้ารายการได้เอง</p>
         <button type="button" onClick={() => void saveContacts()} disabled={saving}
           className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
           {saving ? "กำลังบันทึก..." : "บันทึกการตั้งค่า"}</button>
@@ -275,7 +299,7 @@ export function SubscriptionPaymentsConsole() {
         <p className="border-t border-slate-100 p-3 text-xs text-slate-500">
           {updatedAt ? `อัปเดต: ${date(updatedAt)} · ` : ""}
           ตารางนี้อ่านข้อมูลจริงจาก CpiPOS-001 เท่านั้น ใบเสร็จจะออกอัตโนมัติเมื่อ IT ยืนยันเงินเข้าจากรายการธนาคาร
-          ส่วนการส่งอีเมลอัตโนมัติยังรอช่องทางส่งที่ได้รับอนุญาต
+          และระบบอีเมลใช้ Event ID เดียวกันเพื่อป้องกันการส่งซ้ำ ทั้งแบบอัตโนมัติและกดส่งเอง
         </p>
       </div>
     </section>
