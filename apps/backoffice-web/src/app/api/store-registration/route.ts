@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
+import { customerEmailProblem } from "@/lib/services/it-admin/customer-email-service";
 
 export const dynamic = "force-dynamic";
 const json = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -64,6 +65,8 @@ export async function POST(req: Request) {
       !/^[+0-9 ()-]{8,40}$/.test(ownerPhone) || !keys.some((key) => modes[key])) {
     return json({ error: "กรุณากรอกชื่อร้าน ประเภทร้าน เจ้าของร้าน อีเมล เบอร์โทร แพ็กเกจ และโหมดขายให้ครบ" }, 422);
   }
+  const emailIssue = customerEmailProblem(ownerEmail);
+  if (emailIssue) return json({ error: emailIssue }, 422);
   try {
     const db = getPrimarySupabaseServiceClient();
     const { data: previous, error: existingError } = await db.from("store_registration_requests")
