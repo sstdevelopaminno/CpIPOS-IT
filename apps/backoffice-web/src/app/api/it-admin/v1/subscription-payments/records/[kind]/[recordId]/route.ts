@@ -1,6 +1,6 @@
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
 
 export const dynamic="force-dynamic";
 
@@ -118,7 +118,7 @@ export async function PATCH(request:Request,{params}:Params){
 
 export async function DELETE(request:Request,{params}:Params){
   try{
-    const {auth,supabase,requestMeta}=await requireItAdmin();
+    const context=await requireItAdmin();\n    assertItSupportAction(context, "IT Admin ไม่มีสิทธิ์ลบหรือ VOID รายการชำระเงิน; ใช้ IT Support สำหรับรายการนี้");\n    const {auth,supabase,requestMeta}=context;
     const {kind,recordId}=await params;
     if(!UUID.test(recordId)) throw new ItAdminGuardError("record_invalid","Invalid record ID.",422);
     const body=await request.json().catch(()=>null) as {reason?:unknown}|null;
