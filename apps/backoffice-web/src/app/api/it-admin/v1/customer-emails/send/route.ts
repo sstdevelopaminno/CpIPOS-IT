@@ -71,11 +71,17 @@ export async function POST(request: Request) {
       if (!store) return fail("store_not_found", "ไม่พบร้านค้า", 404);
 
       let ownerCode: string | null = null;
+      let ownerEmail = registration.data.owner_email;
       if (store.primary_owner_user_id) {
-        const owner = await ctx.supabase.from("pos_user_profiles").select("employee_code")
-          .eq("tenant_id", registration.data.tenant_id)
-          .eq("user_id", store.primary_owner_user_id).maybeSingle<{ employee_code: string }>();
-        if (!owner.error) ownerCode = owner.data?.employee_code ?? null;
+        const [ownerPos, ownerProfile] = await Promise.all([
+          ctx.supabase.from("pos_user_profiles").select("employee_code")
+            .eq("tenant_id", registration.data.tenant_id)
+            .eq("user_id", store.primary_owner_user_id).maybeSingle<{ employee_code: string }>(),
+          ctx.supabase.from("users_profiles").select("email")
+            .eq("id", store.primary_owner_user_id).maybeSingle<{ email: string | null }>()
+        ]);
+        if (!ownerPos.error) ownerCode = ownerPos.data?.employee_code ?? null;
+        if (!ownerProfile.error && ownerProfile.data?.email) ownerEmail = ownerProfile.data.email;
       }
 
       const message = buildStoreActivationEmail({
@@ -91,7 +97,7 @@ export async function POST(request: Request) {
         eventType: "store_activation",
         sourceId: registration.data.id,
         tenantId: registration.data.tenant_id,
-        to: registration.data.owner_email,
+        to: ownerEmail,
         message,
         triggerMode: "manual",
         actorUserId: ctx.auth.userId
@@ -120,8 +126,15 @@ export async function POST(request: Request) {
 
     const customer = obj(receipt.data.customer_snapshot);
     const pkg = obj(receipt.data.package_snapshot);
-    const to = typeof customer.email === "string" ? customer.email : "";
-    if (!to) return fail("customer_email_missing", "ใบเสร็จนี้ไม่มีอีเมลลูกค้า กรุณาแก้ข้อมูล Owner ก่อน", 422);
+    let to = typeof customer.email === "string" ? customer.email : "";
+    const tenant = await ctx.supabase.from("tenants").select("primary_owner_user_id")
+      .eq("id", receipt.data.tenant_id).maybeSingle<{ primary_owner_user_id: string | null }>();
+    if (!tenant.error && tenant.data?.primary_owner_user_id) {
+      const currentOwner = await ctx.supabase.from("users_profiles").select("email")
+        .eq("id", tenant.data.primary_owner_user_id).maybeSingle<{ email: string | null }>();
+      if (!currentOwner.error && currentOwner.data?.email) to = currentOwner.data.email;
+    }
+    if (!to) return fail("customer_email_missing", "ไม่พบอีเมล Owner ปัจจุบัน กรุณาแก้ข้อมูล Owner ก่อนส่ง", 422);
 
     const message = buildPaymentConfirmationEmail({
       storeName: String(customer.store_name || "ร้านค้า"),
