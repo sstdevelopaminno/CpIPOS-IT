@@ -106,7 +106,12 @@ describe("IT Admin Store Control Center contract", () => {
     expect(controlCenter).toContain("canEditBillingCycle");
     expect(controlCenter).toContain("เหตุผลการแก้ไขโดย IT (Audit)");
     expect(controlCenter).toContain("บันทึกการแก้ไขสัญญา");
-    expect(controlCenter).toContain("วันที่เปิดสัญญา วันหมดอายุ และ Auto renew สามารถแก้และบันทึกได้");
+    expect(controlCenter).toContain("แก้ไขสัญญา");
+    expect(controlCenter).toContain("ยกเลิกการแก้ไข");
+    expect(controlCenter).toContain("ระบบใส่เหตุผลเริ่มต้นไว้ให้แล้ว");
+    expect(controlCenter).toContain("วันที่เปิดสัญญา วันหมดอายุ และ Auto renew แก้ได้หลังจากกด");
+    expect(controlCenter).toContain("setContractEditing(true)");
+    expect(controlCenter).toContain("setContractEditing(false)");
     expect(service).toContain("tenant_paid_contract_admin_corrected");
     expect(service).toContain("settlement_rows_unchanged");
     expect(service).toContain("receipt_rows_unchanged");
