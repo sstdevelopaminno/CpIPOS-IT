@@ -3,12 +3,22 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LanguageSwitcher } from "@/components/language/language-switcher";
 import type { Language } from "@/lib/i18n";
 import styles from "./app-shell.module.css";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "cpipos-it-sidebar-collapsed";
+
+export type ItAccessRole = "it_admin" | "it_support";
+const ItAccessContext = createContext<{ role: ItAccessRole; canDelete: boolean }>({
+  role: "it_admin",
+  canDelete: false
+});
+
+export function useItAccess() {
+  return useContext(ItAccessContext);
+}
 
 export type AppShellNavIcon =
   | "dashboard"
@@ -221,6 +231,7 @@ export function AppShell({
   englishLabel,
   roleLabel,
   unavailableLabel,
+  accessRole,
   restrictToNavigation = false,
   children
 }: {
@@ -233,6 +244,7 @@ export function AppShell({
   englishLabel: string;
   roleLabel: string;
   unavailableLabel: string;
+  accessRole: ItAccessRole;
   restrictToNavigation?: boolean;
   children: ReactNode;
 }) {
@@ -304,7 +316,8 @@ export function AppShell({
   };
 
   return (
-    <div className={`${styles.shell} ${sidebarCollapsed ? styles.shellCollapsed : ""}`}>
+    <ItAccessContext.Provider value={{ role: accessRole, canDelete: accessRole === "it_support" }}>
+      <div className={`${styles.shell} ${sidebarCollapsed ? styles.shellCollapsed : ""}`}>
       <button
         type="button"
         className={`${styles.backdrop} ${mobileOpen ? styles.backdropVisible : ""}`}
@@ -521,5 +534,6 @@ export function AppShell({
         </main>
       </div>
     </div>
+    </ItAccessContext.Provider>
   );
 }
