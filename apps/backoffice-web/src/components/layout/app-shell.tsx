@@ -259,7 +259,7 @@ export function AppShell({
   const activeItem = useMemo(() => {
     const candidates = nav.flatMap((item) => {
       const entries: Array<{ href: string; label: string; parentLabel?: string }> = [];
-      if (item.href && !item.disabled) entries.push({ href: item.href, label: item.label });
+      if (item.href && !item.disabled && !(item.children?.length)) entries.push({ href: item.href, label: item.label });
       for (const child of item.children ?? []) {
         entries.push({ href: child.href, label: child.label, parentLabel: item.label });
       }
