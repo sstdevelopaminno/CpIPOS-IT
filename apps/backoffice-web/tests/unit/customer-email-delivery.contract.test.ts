@@ -47,7 +47,7 @@ describe("transactional customer email delivery", () => {
   it("appends the company signature used by real customer emails", () => {
     expect(service).toContain("บริษัท คัตติ้งพอยท์ เทค จำกัด");
     expect(service).toContain("Cutting Point Tech Co., Ltd.");
-    expect(service).toContain("cuttingpointtech.vercel.app");
+    expect(service).toContain("cuttingpointinnovation.vercel.app");
     expect(service).toContain("098-5460-355");
     expect(service).toContain("companySignatureHtml");
     expect(service).toContain("companySignatureText");
