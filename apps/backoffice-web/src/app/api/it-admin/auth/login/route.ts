@@ -45,7 +45,10 @@ export async function POST(request: Request) {
     return json({ ok: false, code: "auth_profile_lookup_failed" }, 503);
   }
 
-  if (!profile?.is_active || profile.platform_role !== "it_admin") {
+  if (
+    !profile?.is_active ||
+    (profile.platform_role !== "it_admin" && profile.platform_role !== "it_support")
+  ) {
     await supabase.auth.signOut();
     return json({ ok: false, code: "not_authorized" }, 403);
   }
