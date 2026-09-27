@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useItAccess } from "@/components/layout/app-shell";
 import styles from "./platform-users-console.module.css";
 
 type PlatformRole = "it_admin" | "it_support" | "tenant_user";
@@ -108,7 +109,7 @@ function formFromUser(user: UserRow): FormState {
     user_id: user.id,
     full_name: user.full_name,
     email: user.email,
-    platform_role: (user.platform_role === "it_admin" || user.platform_role === "it_support" || user.platform_role === "tenant_user" ? user.platform_role : "tenant_user") as PlatformRole,
+    platform_role: "tenant_user",
     is_active: user.is_active,
     tenant_id: primary?.tenant_id ?? "",
     branch_id: primary?.branch_id ?? "",
@@ -120,6 +121,7 @@ function formFromUser(user: UserRow): FormState {
 }
 
 export function PlatformUsersConsole() {
+  const { canDelete } = useItAccess();
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -295,7 +297,7 @@ export function PlatformUsersConsole() {
           <div className={styles.formGrid}>
             <label>ชื่อผู้ใช้<input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} /></label>
             <label>อีเมล Login<input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-            <label>Platform Role<select value={form.platform_role} onChange={(event) => setForm({ ...form, platform_role: event.target.value as PlatformRole })}><option value="tenant_user">Tenant User</option><option value="it_support">IT Support</option><option value="it_admin">IT Admin</option></select></label>
+            <label>ประเภทผู้ใช้<input value="ผู้ใช้งาน POS / Tenant User" disabled /></label>
             <label>สถานะ<select value={form.is_active ? "active" : "inactive"} onChange={(event) => setForm({ ...form, is_active: event.target.value === "active" })}><option value="active">เปิดใช้งาน</option><option value="inactive">ปิดใช้งาน</option></select></label>
             <label>ร้าน<select value={form.tenant_id} onChange={(event) => setForm({ ...form, tenant_id: event.target.value, branch_id: "" })}><option value="">ไม่ผูกร้าน</option>{data?.tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name || tenant.code || tenant.id}</option>)}</select></label>
             <label>สาขา<select value={form.branch_id} onChange={(event) => setForm({ ...form, branch_id: event.target.value })}><option value="">ไม่ผูกสาขา</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name || branch.code || branch.id}</option>)}</select></label>
@@ -340,8 +342,8 @@ export function PlatformUsersConsole() {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <div><span>IDENTITY & ACCESS</span><h2>ผู้ใช้ / บทบาท / สิทธิ์</h2><p>จัดการบัญชีผู้ใช้ บทบาท สิทธิ์หน้าร้าน สาขา เครื่องที่ใช้งาน และการรีเซ็ตรหัสผ่านจาก Control Plane เดียว</p></div>
-        <button type="button" className={styles.primary} onClick={openCreate}>เพิ่มผู้ใช้</button>
+        <div><span>POS IDENTITY & ACCESS</span><h2>ผู้ใช้งาน / สิทธิ์ POS</h2><p>จัดการเฉพาะผู้ใช้งานร้านค้าและ POS: Owner / Manager / Staff, สาขา, สิทธิ์, PIN, รหัสพนักงาน และ Login เท่านั้น — ไม่แสดงบัญชี IT Admin หรือ IT Support</p></div>
+        <button type="button" className={styles.primary} onClick={openCreate}>เพิ่มผู้ใช้ POS</button>
       </header>
 
       <section className={styles.summaryGrid}>
