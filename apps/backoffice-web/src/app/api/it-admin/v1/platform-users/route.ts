@@ -125,6 +125,63 @@ async function syncAuthUser(admin: any, userId: string, patch: { email?: string;
   return { ok: true as const };
 }
 
+async function countUserHistory(supabase: any, userId: string) {
+  const queries = await Promise.all([
+    supabase.from("audit_logs").select("id", { count: "exact", head: true }).or(`actor_user_id.eq.${userId},target_user_id.eq.${userId},user_id.eq.${userId},override_by_user_id.eq.${userId}`),
+    supabase.from("pos_sessions").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    supabase.from("orders").select("id", { count: "exact", head: true }).or(`created_by.eq.${userId},cashier_user_id.eq.${userId},cancelled_by.eq.${userId},payment_completed_by.eq.${userId}`),
+    supabase.from("payments").select("id", { count: "exact", head: true }).eq("received_by", userId),
+    supabase.from("shifts").select("id", { count: "exact", head: true }).or(`opened_by.eq.${userId},closed_by.eq.${userId}`),
+    supabase.from("native_desktop_device_tokens").select("id", { count: "exact", head: true }).eq("issued_to_user_id", userId)
+  ]);
+
+  const labels = ["audit_logs", "pos_sessions", "orders", "payments", "shifts", "desktop_tokens"];
+  const details: Record<string, number> = {};
+  let total = 0;
+  queries.forEach((result, index) => {
+    if (result.error && !/does not exist|schema cache|relation/i.test(String(result.error.message ?? ""))) {
+      throw new Error(result.error.message);
+    }
+    const count = Number(result.count ?? 0);
+    details[labels[index]] = count;
+    total += count;
+  });
+
+  return { total, details };
+}
+
+async function archivePosUser(context: Awaited<ReturnType<typeof requireItAdmin>>, userId: string, current: ProfileRow, history: { total: number; details: Record<string, number> }) {
+  const now = new Date().toISOString();
+  await context.supabase.from("pos_sessions").update({ status: "revoked", revoked_at: now }).eq("user_id", userId).eq("status", "active");
+  await context.supabase.from("user_branch_roles").delete().eq("user_id", userId);
+  await syncAuthUser(context.supabase.auth.admin, userId, { isActive: false, platformRole: "tenant_user" });
+
+  const updated = await context.supabase.from("users_profiles")
+    .update({ is_active: false, updated_at: now })
+    .eq("id", userId)
+    .eq("platform_role", "tenant_user")
+    .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+    .single();
+
+  if (updated.error) throw new Error(updated.error.message);
+
+  await appendAuditLog({
+    actorUserId: context.auth.userId,
+    actorRole: context.auth.platformRole,
+    action: "platform_user_archived",
+    targetTable: "users_profiles",
+    targetId: userId,
+    targetUserId: userId,
+    module: "it_admin",
+    beforeData: current,
+    afterData: { ...updated.data, history },
+    ipAddress: context.requestMeta.ipAddress ?? undefined,
+    userAgent: context.requestMeta.userAgent ?? undefined
+  });
+
+  return updated.data;
+}
+
 async function bindUserToBranch(supabase: any, input: { userId: string; tenantId: string; branchId: string; role: BranchRole; isDefault: boolean; employeeCode?: string; positionTitle?: string; permissionRole?: string }) {
   const roleResult = await supabase
     .from("user_branch_roles")
@@ -441,42 +498,63 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url);
     const userId = text(searchParams.get("user_id"), 80);
     if (!userId) return fail("user_id_required", "user_id is required.", 422);
-    if (userId === context.auth.userId) return fail("cannot_delete_self", "You cannot delete your own IT admin user.", 409);
+    if (userId === context.auth.userId) return fail("cannot_delete_self", "ไม่สามารถลบบัญชีที่กำลัง Login อยู่", 409);
 
     const currentResult = await context.supabase.from("users_profiles")
       .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
       .eq("id", userId)
       .eq("platform_role", "tenant_user")
-      .maybeSingle();
+      .maybeSingle<ProfileRow>();
     if (currentResult.error) throw new Error(currentResult.error.message);
-    if (!currentResult.data) return fail("user_not_found", "User profile was not found.", 404);
+    if (!currentResult.data) return fail("user_not_found", "ไม่พบผู้ใช้งาน POS", 404);
 
-    await context.supabase.from("pos_sessions").update({ status: "revoked", revoked_at: new Date().toISOString() }).eq("user_id", userId).eq("status", "active");
+    const history = await countUserHistory(context.supabase, userId);
+
+    // Business-history rows must retain their user reference for audit/accounting
+    // integrity. In that case "delete" becomes a safe archive: revoke login and
+    // sessions, remove live branch access, and hide the user from the active list.
+    if (history.total > 0) {
+      const archived = await archivePosUser(context, userId, currentResult.data, history);
+      return ok({
+        deleted: false,
+        archived: true,
+        user_id: userId,
+        history,
+        user: archived,
+        message: "ผู้ใช้นี้มีประวัติธุรกรรม/ตรวจสอบ จึงเก็บถาวรและยกเลิกสิทธิ์แทนการลบข้อมูลย้อนหลัง"
+      });
+    }
+
+    await context.supabase.from("pos_user_approval_permissions").delete().eq("user_id", userId);
+    await context.supabase.from("pos_user_device_scopes").delete().eq("user_id", userId);
+    await context.supabase.from("pos_staff_cards").delete().eq("user_id", userId);
     await context.supabase.from("user_branch_roles").delete().eq("user_id", userId);
     await context.supabase.from("pos_user_profiles").delete().eq("user_id", userId);
     await context.supabase.from("users_profiles").delete().eq("id", userId);
+
     const authDelete = await context.supabase.auth.admin.deleteUser(userId);
     if (authDelete.error && !/not found|does not exist/i.test(authDelete.error.message ?? "")) {
       throw new ItAdminGuardError("auth_user_delete_failed", authDelete.error.message || "Unable to delete authentication user.", 409);
     }
 
+    // Do not set targetUserId here: the profile has intentionally been deleted,
+    // and audit_logs.target_user_id has a foreign key to users_profiles.
     await appendAuditLog({
       actorUserId: context.auth.userId,
       actorRole: context.auth.platformRole,
-      action: "platform_user_deleted",
+      action: "platform_user_hard_deleted",
       targetTable: "users_profiles",
       targetId: userId,
-      targetUserId: userId,
       module: "it_admin",
       beforeData: currentResult.data,
+      afterData: { hard_deleted: true },
       ipAddress: context.requestMeta.ipAddress ?? undefined,
       userAgent: context.requestMeta.userAgent ?? undefined
     });
 
-    return ok({ deleted: true, user_id: userId });
+    return ok({ deleted: true, archived: false, user_id: userId, history });
   } catch (error) {
     return guardItAdminError(error);
   }
 }
-
 
