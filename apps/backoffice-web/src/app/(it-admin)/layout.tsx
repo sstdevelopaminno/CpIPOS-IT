@@ -36,7 +36,10 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
-      settings: "ตั้งค่า / Security"
+      settings: "ตั้งค่า / Security",
+      settingsUsers: "ตั้งค่า USER ใช้งาน",
+      settingsEmailFooter: "ตั้งค่า ข้อความท้ายอีเมล์",
+      settingsLanguage: "ตั้งค่าภาษา"
     }
   },
   en: {
@@ -69,7 +72,10 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "Emergency Broadcast",
-      settings: "Settings / Security"
+      settings: "Settings / Security",
+      settingsUsers: "User Settings",
+      settingsEmailFooter: "Email Footer Settings",
+      settingsLanguage: "Language Settings"
     }
   }
 } as const;
@@ -94,7 +100,17 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
-    { href: "/it-admin/settings/language", label: text.items.settings, group: text.groups.system, icon: "settings" }
+    {
+      href: "/it-admin/settings/email-footer",
+      label: text.items.settings,
+      group: text.groups.system,
+      icon: "settings",
+      children: [
+        { href: "/it-admin/settings/users", label: text.items.settingsUsers },
+        { href: "/it-admin/settings/email-footer", label: text.items.settingsEmailFooter },
+        { href: "/it-admin/settings/language", label: text.items.settingsLanguage }
+      ]
+    }
   ];
 }
 
