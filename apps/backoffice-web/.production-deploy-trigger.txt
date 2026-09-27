@@ -1,8 +1,8 @@
 CpIPOS-IT production deployment request
 requested_at: 2026-09-27
-purpose: publish Settings / Security submenus and Style-B transactional email branding
+purpose: publish IT Admin / IT Support role separation and IT-only user settings
 source_repository: sstdevelopaminno/CpIPOS-IT
 source_branch: main
-requested_from_commit: 9afdd5e3cede460cbbbd52355826d4158c0366cd
-database: existing Supabase CpiPOS-001 migration already applied
-note: retry Vercel production after previous build-rate-limit; deploy trigger only; no application logic or environment changes; verify production SHA
+requested_from_commit: 19c48d0e9678a26a9aad850fbeba70f3c82054bd
+database: existing Supabase CpiPOS-001 (no schema migration required)
+note: retry Vercel production after previous build-rate-limit; deploy trigger only; verify production SHA
