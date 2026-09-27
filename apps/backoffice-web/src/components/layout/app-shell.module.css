@@ -187,6 +187,52 @@
   gap: 5px;
 }
 
+.navTree {
+  display: grid;
+  gap: 5px;
+}
+
+.subNav {
+  display: grid;
+  gap: 3px;
+  margin: 1px 0 4px 42px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.subNavItem {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  color: #91a4bd;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.subNavItem:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.subNavItemActive {
+  color: #ffffff;
+  background: rgba(47, 109, 246, 0.18);
+}
+
+.subNavDot {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.85;
+}
+
 .navItem {
   min-height: 48px;
   display: grid;
@@ -269,7 +315,8 @@
 .sidebarCollapsed .navGroupLabel,
 .sidebarCollapsed .navLabel,
 .sidebarCollapsed .soonBadge,
-.sidebarCollapsed .sidebarFooter {
+.sidebarCollapsed .sidebarFooter,
+.sidebarCollapsed .subNav {
   display: none;
 }
 
@@ -539,6 +586,10 @@
   .sidebarCollapsed .soonBadge,
   .sidebarCollapsed .sidebarFooter {
     display: initial;
+  }
+
+  .sidebarCollapsed .subNav {
+    display: grid;
   }
 
   .sidebarCollapsed .brandLogoFull {
