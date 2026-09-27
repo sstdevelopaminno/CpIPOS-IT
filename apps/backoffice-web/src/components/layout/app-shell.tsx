@@ -221,6 +221,7 @@ export function AppShell({
   englishLabel,
   roleLabel,
   unavailableLabel,
+  restrictToNavigation = false,
   children
 }: {
   title: string;
@@ -232,11 +233,13 @@ export function AppShell({
   englishLabel: string;
   roleLabel: string;
   unavailableLabel: string;
+  restrictToNavigation?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [expandedTrees, setExpandedTrees] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     try {
@@ -271,6 +274,22 @@ export function AppShell({
   }, [nav, pathname]);
 
   const dashboardItem = nav.find((item) => item.href === "/it-admin") ?? null;
+
+  useEffect(() => {
+    setExpandedTrees((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const item of nav) {
+        if (item.children?.some((child) => matchesPath(pathname, child.href)) && current[item.label] === undefined) {
+          next[item.label] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [nav, pathname]);
+
+  const navigationRestricted = restrictToNavigation && pathname !== "/it-admin" && !activeItem;
 
   const toggleSidebar = () => {
     setSidebarCollapsed((current) => {
@@ -366,22 +385,40 @@ export function AppShell({
                     );
                   }
 
+                  const hasChildren = Boolean(item.children?.length);
+                  const treeOpen = hasChildren ? (expandedTrees[item.label] ?? childActive) : false;
+
                   return (
                     <div key={`${group}-${item.label}`} className={styles.navTree}>
-                      <Link
-                        href={targetHref!}
-                        onClick={() => setMobileOpen(false)}
-                        className={`${styles.navItem} ${active ? styles.navItemActive : ""}`}
-                        aria-current={active && !childActive ? "page" : undefined}
-                        aria-label={sidebarCollapsed ? item.label : undefined}
-                        title={sidebarCollapsed ? item.label : undefined}
-                      >
-                        <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
-                        <span className={styles.navLabel}>{item.label}</span>
-                      </Link>
-                      {item.children?.length ? (
+                      {hasChildren ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedTrees((current) => ({ ...current, [item.label]: !treeOpen }))}
+                          className={`${styles.navItem} ${styles.navTreeToggle} ${active ? styles.navItemActive : ""}`}
+                          aria-expanded={treeOpen}
+                          aria-label={sidebarCollapsed ? item.label : undefined}
+                          title={sidebarCollapsed ? item.label : undefined}
+                        >
+                          <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
+                          <span className={styles.navLabel}>{item.label}</span>
+                          <span className={`${styles.navCaret} ${treeOpen ? styles.navCaretOpen : ""}`} aria-hidden="true">⌄</span>
+                        </button>
+                      ) : (
+                        <Link
+                          href={targetHref!}
+                          onClick={() => setMobileOpen(false)}
+                          className={`${styles.navItem} ${active ? styles.navItemActive : ""}`}
+                          aria-current={active ? "page" : undefined}
+                          aria-label={sidebarCollapsed ? item.label : undefined}
+                          title={sidebarCollapsed ? item.label : undefined}
+                        >
+                          <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
+                          <span className={styles.navLabel}>{item.label}</span>
+                        </Link>
+                      )}
+                      {hasChildren && treeOpen ? (
                         <div className={styles.subNav} aria-label={`${item.label} submenu`}>
-                          {item.children.map((child) => {
+                          {item.children!.map((child) => {
                             const subActive = matchesPath(pathname, child.href);
                             return (
                               <Link
@@ -472,7 +509,16 @@ export function AppShell({
           </div>
         </header>
 
-        <main className={styles.content}>{children}</main>
+        <main className={styles.content}>
+          {navigationRestricted ? (
+            <section className={styles.accessDenied}>
+              <span>ACCESS RESTRICTED</span>
+              <h2>เมนูนี้ไม่อยู่ในสิทธิ์ของ IT Admin</h2>
+              <p>IT Admin เห็นเฉพาะเมนูงานหลักที่ได้รับอนุญาต หากต้องดำเนินการส่วนนี้ให้ใช้บัญชี IT Support</p>
+              <Link href="/it-admin/tenants">กลับไป Tenants / Stores</Link>
+            </section>
+          ) : children}
+        </main>
       </div>
     </div>
   );
