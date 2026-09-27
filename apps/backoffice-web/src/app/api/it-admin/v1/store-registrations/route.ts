@@ -5,7 +5,7 @@ import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { provisionStore, StoreProvisioningError } from "@/lib/services/it-admin/store-provisioning-service";
 import { appendAuditLog } from "@/lib/audit-log";
 import { normalizePosSalesModes, type PosSalesModeMap } from "@/lib/pos-sales-modes";
-import { buildStoreActivationEmail, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
+import { buildStoreActivationEmail, customerEmailProblem, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,8 @@ function validateEdit(input: RecordInput) {
       !uuid(row.package_id) || !Object.values(row.sales_modes).some(Boolean)) {
     throw new ItAdminGuardError("invalid_registration", "ตรวจสอบชื่อร้าน ประเภทร้าน ข้อมูลติดต่อ แพ็กเกจ และโหมดขาย", 422);
   }
+  const emailIssue = customerEmailProblem(row.owner_email);
+  if (emailIssue) throw new ItAdminGuardError("invalid_owner_email", emailIssue, 422);
   return { ...row, package_id: row.package_id as string };
 }
 function safely(error: unknown) {
@@ -120,6 +122,8 @@ export async function POST(req: Request) {
     if (!/^\d{6}$/.test(ownerCode) || !/^\d{6}$/.test(pin)) {
       return fail("invalid_owner_credentials", "รหัสเจ้าของร้านและ PIN ต้องเป็นตัวเลข 6 หลัก", 422);
     }
+    const ownerEmailIssue = customerEmailProblem(row.owner_email);
+    if (ownerEmailIssue) return fail("invalid_owner_email", ownerEmailIssue, 422);
     const pkg = await ctx.supabase.from("subscription_packages")
       .select("id,is_active,status,quota_mode,monthly_price,max_devices")
       .eq("id", row.package_id).maybeSingle();
