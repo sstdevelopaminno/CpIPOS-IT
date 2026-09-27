@@ -9,13 +9,17 @@ type ContactSettings = {
   support_email: string;
   billing_sender_name: string;
   support_sender_name: string;
+  auto_send_store_activation: boolean;
+  auto_send_payment_confirmation: boolean;
 };
-const SELECT = "billing_email,support_email,billing_sender_name,support_sender_name";
+const SELECT = "billing_email,support_email,billing_sender_name,support_sender_name,auto_send_store_activation,auto_send_payment_confirmation";
 const DEFAULTS: ContactSettings = {
   billing_email: "cuttingpointtech@gmail.com",
   support_email: "cuttingpointtech.support@gmail.com",
   billing_sender_name: "CUTTING POINTTECH",
-  support_sender_name: "Cutting Point Tech Support"
+  support_sender_name: "Cutting Point Tech Support",
+  auto_send_store_activation: true,
+  auto_send_payment_confirmation: true
 };
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function read(value: unknown, max: number) {
@@ -45,7 +49,9 @@ export async function PATCH(request: Request) {
       billing_email: read(body.billing_email, 320).toLowerCase(),
       support_email: read(body.support_email, 320).toLowerCase(),
       billing_sender_name: read(body.billing_sender_name, 120),
-      support_sender_name: read(body.support_sender_name, 120)
+      support_sender_name: read(body.support_sender_name, 120),
+      auto_send_store_activation: body.auto_send_store_activation !== false,
+      auto_send_payment_confirmation: body.auto_send_payment_confirmation !== false
     };
     if (!EMAIL.test(patch.billing_email) || !EMAIL.test(patch.support_email)
       || !patch.billing_sender_name || !patch.support_sender_name) {
