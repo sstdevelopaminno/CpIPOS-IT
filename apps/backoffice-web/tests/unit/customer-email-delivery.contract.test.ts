@@ -44,13 +44,19 @@ describe("transactional customer email delivery", () => {
     expect(service).toContain("ระบบจะไม่ส่ง PIN หรือรหัสลับทางอีเมล");
   });
 
-  it("appends the company signature used by real customer emails", () => {
-    expect(service).toContain("บริษัท คัตติ้งพอยท์ เทค จำกัด");
-    expect(service).toContain("Cutting Point Tech Co., Ltd.");
-    expect(service).toContain("cuttingpointinnovation.vercel.app");
-    expect(service).toContain("098-5460-355");
+  it("renders style-B HTML with an IT-configurable company footer", () => {
+    expect(service).toContain("brandMessage");
     expect(service).toContain("companySignatureHtml");
     expect(service).toContain("companySignatureText");
+    expect(service).toContain("company_thai_name");
+    expect(service).toContain("company_english_name");
+    expect(service).toContain("contact_phone");
+    expect(service).toContain("website_url");
+    expect(service).toContain("email_footer_note");
+    expect(service).toContain("ยืนยันการรับชำระเงินเรียบร้อย");
+    expect(service).toContain("เปิดใช้งานระบบสำเร็จแล้ว");
+    expect(settings).toContain("company_thai_name");
+    expect(settings).toContain("email_footer_note");
   });
 
   it("requires an authorized server-side bridge", () => {
