@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useItAccess } from "@/components/layout/app-shell";
 
 type PackagePrice = {
   id: string;
@@ -211,6 +212,7 @@ function amountDifference(row: PaymentRequest) {
 }
 
 export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
+  const { canDelete } = useItAccess();
   const [history, setHistory] = useState<History | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -876,11 +878,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                         className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700 disabled:opacity-40">
                         แก้ไขรายการ
                       </button>
-                      <button type="button" disabled={Boolean(busyId)}
+                      {canDelete ? <button type="button" disabled={Boolean(busyId)}
                         onClick={()=>void deleteRequestRecord(row)}
                         className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 disabled:opacity-40">
                         ลบรายการ
-                      </button>
+                      </button> : null}
                     </div>
                   </div>
 
@@ -996,8 +998,8 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                       className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 disabled:opacity-40">ส่งอีเมลยืนยันชำระ</button>
                     <button type="button" disabled={busyId===row.id} onClick={()=>void editReceiptRecord(row)}
                       className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">แก้ไขหมายเหตุ</button>
-                    <button type="button" disabled={busyId===row.id || row.voided} onClick={()=>void voidReceiptRecord(row)}
-                      className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-40">ลบ / ยกเลิกเอกสาร</button>
+                    {canDelete ? <button type="button" disabled={busyId===row.id || row.voided} onClick={()=>void voidReceiptRecord(row)}
+                      className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-40">ลบ / ยกเลิกเอกสาร</button> : null}
                   </div></td>
                 </tr>)}</tbody>
               </table>
@@ -1023,9 +1025,9 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                   <button type="button" disabled={busyId===row.id || row.status==="paid" || Number(row.amount_paid)>0}
                     onClick={()=>void editCycleRecord(row)}
                     className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 disabled:opacity-35">แก้ไข</button>
-                  <button type="button" disabled={busyId===row.id || row.status==="paid" || Number(row.amount_paid)>0}
+                  {canDelete ? <button type="button" disabled={busyId===row.id || row.status==="paid" || Number(row.amount_paid)>0}
                     onClick={()=>void deleteCycleRecord(row)}
-                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-35">ลบ</button>
+                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-35">ลบ</button> : null}
                 </div></td>
               </tr>)}</tbody>
             </table></div>}
@@ -1055,9 +1057,9 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     <button type="button" disabled={busyId===row.id || row.status==="approved"}
                       onClick={()=>void editRequestRecord(row)}
                       className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 disabled:opacity-35">แก้ไข</button>
-                    <button type="button" disabled={busyId===row.id || row.status==="approved"}
+                    {canDelete ? <button type="button" disabled={busyId===row.id || row.status==="approved"}
                       onClick={()=>void deleteRequestRecord(row)}
-                      className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-35">ลบ</button>
+                      className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 disabled:opacity-35">ลบ</button> : null}
                   </div></td>
                 </tr>;
               })}</tbody>

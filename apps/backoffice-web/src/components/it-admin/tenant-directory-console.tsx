@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useItAccess } from "@/components/layout/app-shell";
 import { TenantControlCenter } from "./tenant-control-center";
 import styles from "./tenant-directory-console.module.css";
 
@@ -68,6 +69,7 @@ function contractLabel(status?: string) {
 }
 
 export function TenantDirectoryConsole() {
+  const { canDelete } = useItAccess();
   const [data, setData] = useState<TenantPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -252,7 +254,7 @@ export function TenantDirectoryConsole() {
         </footer>
       </section>
 
-      {pendingCleanups.length > 0 ? (
+      {canDelete && pendingCleanups.length > 0 ? (
         <section className={styles.panel} aria-label="Pending permanent store media cleanup">
           <header className={styles.header}>
             <div>

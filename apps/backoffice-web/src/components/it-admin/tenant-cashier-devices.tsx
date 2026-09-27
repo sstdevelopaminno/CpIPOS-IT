@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useItAccess } from "@/components/layout/app-shell";
 import styles from "./tenant-cashier-devices.module.css";
 
 type Cashier = {
@@ -44,6 +45,7 @@ export function TenantCashierDevices({
   confirmAction: (action: string, store: string) => Promise<boolean>;
   onChanged: () => void;
 }) {
+  const { canDelete } = useItAccess();
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -270,8 +272,8 @@ export function TenantCashierDevices({
                 })}>แก้ไข</button>
                 <button type="button" disabled={busy} onClick={() => void toggle(device)}>
                   {device.enabled ? "ปิดเครื่อง" : "เปิดเครื่อง"}</button>
-                <button type="button" className={styles.danger} disabled={busy}
-                  onClick={() => void remove(device)}>ลบ</button>
+                {canDelete ? <button type="button" className={styles.danger} disabled={busy}
+                  onClick={() => void remove(device)}>ลบ</button> : null}
               </div>
             </article>
           ))}</div>}

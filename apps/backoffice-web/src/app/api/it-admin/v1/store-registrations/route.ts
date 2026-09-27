@@ -1,6 +1,6 @@
 import { readBoundedJson } from "@/lib/server/limited-json";
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { provisionStore, StoreProvisioningError } from "@/lib/services/it-admin/store-provisioning-service";
 import { appendAuditLog } from "@/lib/audit-log";
@@ -104,6 +104,7 @@ export async function POST(req: Request) {
       return ok(data);
     }
     if (input.action === "delete") {
+      assertItSupportAction(ctx, "IT Admin ไม่มีสิทธิ์ลบคำขอเปิดร้าน; ใช้ IT Support สำหรับการลบ");
       const prior = await ctx.supabase.from("it_store_provisioning_requests").select("id")
         .eq("request_key", row.provision_request_key).limit(1);
       if (prior.error) throw prior.error;

@@ -8,7 +8,7 @@ import { useAppLanguage, type AppLanguage } from "@/lib/app-language-client";
 function getCopy(lang: AppLanguage) {
   if (lang === "en") {
     return {
-      subtitle: "IT Admin sign in",
+      subtitle: "IT Control Plane sign in",
       emailLabel: "Email",
       emailPlaceholder: "Enter email",
       emailPreviewLabel: "Entered email",
@@ -19,13 +19,13 @@ function getCopy(lang: AppLanguage) {
       submitting: "Signing in...",
       requiredError: "Please enter email and password.",
       invalidCredentialsError: "Invalid email or password.",
-      notAuthorizedError: "This account does not have IT admin access.",
+      notAuthorizedError: "This account does not have IT Admin or IT Support access.",
       defaultError: "Unable to sign in right now."
     };
   }
 
   return {
-    subtitle: "เข้าสู่ระบบ IT Admin",
+    subtitle: "เข้าสู่ระบบ IT Control Plane",
     emailLabel: "อีเมล",
     emailPlaceholder: "กรอกอีเมล",
     emailPreviewLabel: "อีเมลที่กรอก",
@@ -36,7 +36,7 @@ function getCopy(lang: AppLanguage) {
     submitting: "กำลังเข้าสู่ระบบ...",
     requiredError: "กรุณากรอกอีเมลและรหัสผ่าน",
     invalidCredentialsError: "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
-    notAuthorizedError: "บัญชีนี้ไม่มีสิทธิ์เข้าถึงระบบ IT Admin",
+    notAuthorizedError: "บัญชีนี้ไม่มีสิทธิ์ IT Admin หรือ IT Support",
     defaultError: "ไม่สามารถเข้าสู่ระบบได้ในขณะนี้"
   };
 }

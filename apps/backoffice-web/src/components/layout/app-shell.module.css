@@ -192,6 +192,28 @@
   gap: 5px;
 }
 
+.navTreeToggle {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  background: transparent;
+}
+
+.navCaret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  transform: rotate(-90deg);
+  transition: transform 160ms ease;
+}
+
+.navCaretOpen {
+  transform: rotate(0deg);
+}
+
 .subNav {
   display: grid;
   gap: 3px;
@@ -511,6 +533,50 @@
   max-width: 1640px;
   margin: 0 auto;
   padding: 26px;
+}
+
+.accessDenied {
+  max-width: 720px;
+  margin: 54px auto;
+  padding: 28px;
+  border: 1px solid #dbe5f3;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(15, 39, 71, 0.06);
+}
+
+.accessDenied > span {
+  display: block;
+  color: #c2410c;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.accessDenied h2 {
+  margin: 8px 0 0;
+  color: #172033;
+  font-size: 24px;
+  font-weight: 850;
+}
+
+.accessDenied p {
+  margin: 10px 0 18px;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.accessDenied a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  color: #ffffff;
+  background: #2563eb;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .backdrop {

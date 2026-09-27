@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useItAccess } from "@/components/layout/app-shell";
 import { POS_SALES_MODE_KEYS, type PosSalesModeKey, type PosSalesModeView } from "@/lib/pos-sales-modes";
 import { useTenantActionConfirm } from "./tenant-action-confirm";
 import { TenantPrimaryOwnerCard } from "./tenant-primary-owner-card";
@@ -221,6 +222,7 @@ async function parse<T>(response: Response): Promise<T> {
 }
 
 export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged, onDeleted }: Props) {
+  const { canDelete } = useItAccess();
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<ControlData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -818,7 +820,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                     </div>
                   </section>
 
-                  <section className={`${styles.controlSection} ${styles.dangerSection}`}>
+                  {canDelete ? <section className={`${styles.controlSection} ${styles.dangerSection}`}>
                     <div className={styles.controlSectionHeader}><div><span>PERMANENT DELETE</span><h4>ลบร้านค้าและข้อมูลทั้งหมด</h4></div><strong>ถาวร</strong></div>
                     <div className={styles.dangerWarning}><strong>คำเตือน · ลบถาวรและย้อนกลับไม่ได้</strong><p>ลบข้อมูลร้าน สาขา เมนู สต๊อก ยอดขาย บิล การชำระเงิน กะ อุปกรณ์ และสิทธิ์ผู้ใช้ของร้านนี้ รวมถึงบัญชีเข้าสู่ระบบที่ใช้เฉพาะร้านนี้ โดยไม่กระทบผู้ใช้ร่วมร้านอื่นหรือผู้ดูแล IT · ต้องปิดร้านและไม่มีอุปกรณ์ออนไลน์ใน 5 นาทีล่าสุด (Trial จะสิ้นสุดพร้อมร้าน ไม่ต้องยกเลิกแยก)</p></div>
                     <div className={styles.formGrid}>
@@ -826,7 +828,10 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                       <label><span>เหตุผลการลบถาวร</span><input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} placeholder="อย่างน้อย 8 ตัวอักษร" /></label>
                     </div>
                     <div className={styles.sectionActions}><button type="button" className={styles.dangerButton} disabled={busy || data.tenant.is_active || deleteConfirm !== (data.tenant.store_code ?? data.tenant.tenant_code) || deleteReason.trim().length < 8} onClick={() => void mutate({ action: "delete_store", confirmation_code: deleteConfirm, admin_reason: deleteReason }, "ลบร้านถาวรแล้ว", true)}>ลบร้านถาวร</button></div>
-                  </section>
+                  </section> : <section className={styles.controlSection}>
+                    <div className={styles.controlSectionHeader}><div><span>DELETE PERMISSION</span><h4>การลบร้านถาวร</h4></div><strong>IT Support เท่านั้น</strong></div>
+                    <p className={styles.sectionCopy}>บัญชี IT Admin สามารถแก้ไข เพิ่ม บันทึก และเปิด/ปิดการใช้งานได้ แต่ไม่มีสิทธิ์ลบร้านถาวร</p>
+                  </section>}
                 </div>
               ) : null}
             </div>

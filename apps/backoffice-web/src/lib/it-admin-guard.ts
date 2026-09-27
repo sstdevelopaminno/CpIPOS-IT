@@ -48,8 +48,8 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
     throw error;
   }
 
-  if (auth.platformRole !== "it_admin") {
-    throw new ItAdminGuardError("forbidden", "Only platform admin can access this endpoint.", 403);
+  if (auth.platformRole !== "it_admin" && auth.platformRole !== "it_support") {
+    throw new ItAdminGuardError("forbidden", "Only IT staff can access this endpoint.", 403);
   }
 
   // JWT app_metadata can outlive privilege revocation and account deactivation.
@@ -61,8 +61,11 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
   if (profileLookup.error) {
     throw new ItAdminGuardError("admin_profile_unavailable", "Unable to verify current IT admin privileges.", 503);
   }
-  if (profileLookup.data?.is_active !== true || profileLookup.data.platform_role !== "it_admin") {
-    throw new ItAdminGuardError("forbidden", "IT admin account is inactive or its privileges were revoked.", 403);
+  if (
+    profileLookup.data?.is_active !== true ||
+    (profileLookup.data.platform_role !== "it_admin" && profileLookup.data.platform_role !== "it_support")
+  ) {
+    throw new ItAdminGuardError("forbidden", "IT account is inactive or its privileges were revoked.", 403);
   }
 
   const headerStore = await headers();
@@ -84,6 +87,24 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
     },
     requestMeta
   };
+}
+
+export async function requireItSupport(): Promise<ItAdminContext> {
+  const context = await requireItAdmin();
+  if (context.auth.platformRole !== "it_support") {
+    throw new ItAdminGuardError(
+      "it_support_required",
+      "รายการนี้อนุญาตเฉพาะ IT Support ซึ่งมีสิทธิ์เต็มเท่านั้น",
+      403
+    );
+  }
+  return context;
+}
+
+export function assertItSupportAction(context: ItAdminContext, message = "รายการนี้อนุญาตเฉพาะ IT Support ซึ่งมีสิทธิ์เต็มเท่านั้น") {
+  if (context.auth.platformRole !== "it_support") {
+    throw new ItAdminGuardError("it_support_required", message, 403);
+  }
 }
 
 export function parseTenantParam(raw: string | undefined): string {

@@ -1,7 +1,7 @@
 import { appendAuditLog } from "@/lib/audit-log";
 import { enforceQuota, getTenantLimits } from "@/lib/feature-gate";
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, ItAdminGuardError, parseTenantParam, requireItAdmin, type ItAdminContext } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, ItAdminGuardError, parseTenantParam, requireItAdmin, type ItAdminContext } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -243,6 +243,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ tenan
 export async function DELETE(request: Request, context: { params: Promise<{ tenantId: string }> }) {
   try {
     const admin = await requireItAdmin();
+    assertItSupportAction(admin, "IT Admin ไม่มีสิทธิ์ลบเครื่องแคชเชียร์; ใช้ IT Support สำหรับรายการนี้");
     await checkRate(admin);
     const tenantId = parseTenantParam((await context.params).tenantId);
     const body = await request.json().catch(() => null) as Payload | null;

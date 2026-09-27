@@ -1,5 +1,5 @@
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
 import { getTenantDetail, setTenantOperationalState, updateTenant } from "@/lib/services/it-admin/tenant-admin-service";
 
 function parseError(error: unknown) {
@@ -55,6 +55,7 @@ export async function DELETE(req: Request, context: { params: Promise<{ tenantId
 
   try {
     const adminContext = await requireItAdmin();
+    assertItSupportAction(adminContext, "IT Admin ไม่มีสิทธิ์ลบร้านหรือเปลี่ยนร้านเป็นสถานะลบ; ใช้ IT Support สำหรับรายการนี้");
     const { tenantId: tenantIdParam } = await context.params;
     const tenantId = parseTenantParam(tenantIdParam);
     const body = await req.json().catch(() => ({})) as { confirm_code?: string; reason?: string | null };
