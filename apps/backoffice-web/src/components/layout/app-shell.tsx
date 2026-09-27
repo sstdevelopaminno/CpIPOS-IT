@@ -252,6 +252,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedTrees, setExpandedTrees] = useState<Record<string, boolean>>({});
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     try {
@@ -313,6 +314,20 @@ export function AppShell({
       }
       return next;
     });
+  };
+
+  const logout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch("/api/it-admin/auth/logout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store"
+      });
+    } finally {
+      window.location.assign("/it-admin/login");
+    }
   };
 
   return (
@@ -455,6 +470,19 @@ export function AppShell({
             </div>
           ))}
         </nav>
+
+        <div className={styles.sidebarUtility}>
+          <button
+            type="button"
+            className={styles.logoutButton}
+            onClick={() => void logout()}
+            disabled={loggingOut}
+            title={language === "th" ? "ออกจากระบบ" : "Log out"}
+          >
+            <span className={styles.logoutIcon} aria-hidden="true">↪</span>
+            <span className={styles.logoutLabel}>{loggingOut ? (language === "th" ? "กำลังออก..." : "Signing out...") : (language === "th" ? "ออกจากระบบ" : "Log out")}</span>
+          </button>
+        </div>
 
         <div className={styles.sidebarFooter}>
           <div className={styles.internalBadge}>
