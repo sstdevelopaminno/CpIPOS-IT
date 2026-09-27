@@ -377,7 +377,7 @@ export function PlatformUsersConsole() {
                   <td>{user.tenant_count} ร้าน / {user.branch_count} สาขา</td>
                   <td>{user.active_session_count ? `${user.active_session_count} session` : "-"}</td>
                   <td>{formatDate(user.updated_at)}</td>
-                  <td className={styles.rowActions} onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => openUser(user, "edit")}>แก้ไข</button><button type="button" onClick={() => disableUser(user)} disabled={!user.is_active}>ปิดใช้</button><button type="button" className={styles.deleteBtn} onClick={() => deleteUser(user)}>ลบ</button></td>
+                  <td className={styles.rowActions} onClick={(event) => event.stopPropagation()}><button type="button" onClick={() => openUser(user, "edit")}>แก้ไข</button><button type="button" onClick={() => disableUser(user)} disabled={!user.is_active}>ปิดใช้</button>{canDelete ? <button type="button" className={styles.deleteBtn} onClick={() => deleteUser(user)}>ลบ</button> : null}</td>
                 </tr>
               ))}
             </tbody>
