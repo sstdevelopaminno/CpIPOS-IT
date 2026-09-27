@@ -111,7 +111,13 @@ type History = {
   };
 };
 type Envelope = { data?: History; error?: { message?: string } };
-type SettleEnvelope = { data?: { settlement?: { receipt_number?: string } }; error?: { message?: string } };
+type SettleEnvelope = {
+  data?: {
+    settlement?: { receipt_number?: string };
+    email_delivery?: { status?: string; message?: string };
+  };
+  error?: { message?: string };
+};
 type SettlementDraft = {
   bank_transaction_reference: string;
   bank_received_at: string;
@@ -567,9 +573,17 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       }
       await reload();
       const receiptNo = json.data.settlement.receipt_number || "";
-      setNotice(receiptNo
+      const baseNotice = receiptNo
         ? "อนุมัติแล้ว · ต่อแพ็กเกจและออกใบเสร็จ " + receiptNo + " สำเร็จ"
-        : "อนุมัติแล้ว · ต่อแพ็กเกจและออกใบเสร็จสำเร็จ");
+        : "อนุมัติแล้ว · ต่อแพ็กเกจและออกใบเสร็จสำเร็จ";
+      const mail = json.data.email_delivery;
+      if (mail?.status === "sent") setNotice(baseNotice + " · ส่งอีเมลยืนยันให้ลูกค้าแล้ว");
+      else if (mail?.status === "already_sent") setNotice(baseNotice + " · อีเมลยืนยันรายการนี้เคยส่งแล้ว");
+      else if (mail?.status === "automatic_disabled") setNotice(baseNotice + " · ปิดการส่งอีเมลอัตโนมัติ");
+      else {
+        setNotice(baseNotice);
+        if (mail?.message) setError("รับชำระและออกใบเสร็จสำเร็จ แต่อีเมลยังไม่ส่ง: " + mail.message);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ยืนยันรายการไม่สำเร็จ");
     } finally {
