@@ -101,6 +101,30 @@ export function StoreRegistrationsConsole() {
     } catch (e) { setError(e instanceof Error ? e.message : "ลบไม่สำเร็จ"); }
     finally { setBusy(false); }
   }
+  async function sendActivationEmail(row: Row) {
+    if (busy || row.status !== "activated") return;
+    setBusy(true); setError(""); setSuccess("");
+    try {
+      const response = await fetch("/api/it-admin/v1/customer-emails/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ event_type: "store_activation", source_id: row.id })
+      });
+      const json = await response.json().catch(() => null) as {
+        data?: { delivery?: { status?: string; message?: string } };
+        error?: { message?: string };
+      } | null;
+      if (!response.ok || !json?.data?.delivery) {
+        throw new Error(json?.error?.message || "ส่งอีเมลเปิดระบบไม่สำเร็จ");
+      }
+      const delivery = json.data.delivery;
+      if (delivery.status === "sent") setSuccess("ส่งอีเมลเปิดระบบให้ลูกค้าแล้ว");
+      else if (delivery.status === "already_sent") setSuccess("อีเมลเปิดระบบของร้านนี้เคยส่งสำเร็จแล้ว ระบบจึงไม่ส่งซ้ำ");
+      else setError(delivery.message || "ระบบยังไม่สามารถส่งอีเมลเปิดระบบได้");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ส่งอีเมลเปิดระบบไม่สำเร็จ");
+    } finally { setBusy(false); }
+  }
   const rows = (data?.requests ?? []).filter((r) => filter === "all" || r.status === filter);
   const pending = data?.requests.filter((r) => r.status === "pending").length ?? 0;
   return <div className={styles.shell}>
@@ -136,7 +160,10 @@ export function StoreRegistrationsConsole() {
           pending:"รอเปิดร้าน",processing:"กำลังเปิดร้าน",failed:"ต้องตรวจสอบ",activated:"เปิดใช้งาน"
         }[r.status]}</span>{r.last_error ? <small title={r.last_error}>{r.last_error}</small> : null}</td>
         <td><div className={styles.actions}>
-          {r.status === "activated" && r.tenant_id ? <Link href="/it-admin/tenants">ดูร้าน →</Link> : null}
+          {r.status === "activated" && r.tenant_id ? <>
+            <Link href="/it-admin/tenants">ดูร้าน →</Link>
+            <button disabled={busy} onClick={() => void sendActivationEmail(r)}>ส่งอีเมลเปิดระบบ</button>
+          </> : null}
           {r.status === "pending" || r.status === "failed" ? <>
             <button disabled={busy} onClick={() => open(r,"edit")}>แก้ไข</button>
             <button disabled={busy} className={styles.primary} onClick={() => open(r,"activate")}>เปิดใช้งาน</button>
