@@ -94,6 +94,40 @@ function money(amount: number, currency = "THB") {
   }).format(amount);
 }
 
+const COMPANY_SIGNATURE = {
+  thaiName: "บริษัท คัตติ้งพอยท์ เทค จำกัด",
+  englishName: "Cutting Point Tech Co., Ltd.",
+  phone: "098-5460-355",
+  website: "https://cuttingpointtech.vercel.app/"
+};
+
+function companySignatureText(supportEmail: string) {
+  return [
+    "",
+    "",
+    COMPANY_SIGNATURE.thaiName,
+    COMPANY_SIGNATURE.englishName,
+    "",
+    `อีเมล: ${text(supportEmail, 254)}`,
+    `โทรศัพท์: ${COMPANY_SIGNATURE.phone}`,
+    `เว็บไซต์: ${COMPANY_SIGNATURE.website}`
+  ].join("\n");
+}
+
+function companySignatureHtml(supportEmail: string) {
+  const email = escapeHtml(supportEmail);
+  return [
+    '<div style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e7eb;font-family:Arial,\'Noto Sans Thai\',sans-serif;font-size:13px;line-height:1.65;color:#374151">',
+    `<div style="font-weight:700;color:#111827">${escapeHtml(COMPANY_SIGNATURE.thaiName)}</div>`,
+    `<div>${escapeHtml(COMPANY_SIGNATURE.englishName)}</div>`,
+    '<div style="height:10px"></div>',
+    `<div>อีเมล: <a href="mailto:${email}" style="color:#2563eb;text-decoration:underline">${email}</a></div>`,
+    `<div>โทรศัพท์: <a href="tel:0985460355" style="color:#2563eb;text-decoration:underline">${escapeHtml(COMPANY_SIGNATURE.phone)}</a></div>`,
+    `<div>เว็บไซต์: <a href="${COMPANY_SIGNATURE.website}" style="color:#2563eb;text-decoration:underline">${escapeHtml(COMPANY_SIGNATURE.website)}</a></div>`,
+    "</div>"
+  ].join("");
+}
+
 export function customerEmailProblem(value: string) {
   const normalized = value.trim().toLowerCase();
   if (!EMAIL.test(normalized)) return "รูปแบบอีเมลผู้รับไม่ถูกต้อง";
@@ -175,6 +209,7 @@ export function buildStoreActivationEmail(input: {
     "เพื่อความปลอดภัย ระบบจะไม่ส่ง PIN หรือรหัสลับทางอีเมล",
     `หากต้องการความช่วยเหลือ ติดต่อ Support: ${text(input.supportEmail, 254)}`
   ].filter(Boolean);
+  lines.push(companySignatureText(input.supportEmail));
   const html = [
     `<p>เรียน <strong>${escapeHtml(input.ownerName || input.storeName)}</strong></p>`,
     "<p>ระบบ <strong>CpIPOS</strong> ของร้านได้รับการเปิดใช้งานแล้ว</p>",
@@ -185,7 +220,8 @@ export function buildStoreActivationEmail(input: {
     `<li>สิ้นสุดช่วงทดลองใช้: ${escapeHtml(thaiDate(input.trialExpiresAt))}</li>`,
     "</ul>",
     "<p><strong>เพื่อความปลอดภัย ระบบจะไม่ส่ง PIN หรือรหัสลับทางอีเมล</strong></p>",
-    `<p>ติดต่อ Support: ${escapeHtml(input.supportEmail)}</p>`
+    `<p>ติดต่อ Support: ${escapeHtml(input.supportEmail)}</p>`,
+    companySignatureHtml(input.supportEmail)
   ].filter(Boolean).join("");
   return { subject, textBody: lines.join("\n"), htmlBody: html };
 }
@@ -215,7 +251,8 @@ export function buildPaymentConfirmationEmail(input: {
     "",
     "ใบเสร็จฉบับจริงสามารถเปิดดูได้จากเมนูแพ็กเกจและการชำระเงินใน CpIPOS",
     `ติดต่อฝ่ายบัญชี: ${text(input.billingEmail, 254)}`,
-    `ติดต่อ Support: ${text(input.supportEmail, 254)}`
+    `ติดต่อ Support: ${text(input.supportEmail, 254)}`,
+    companySignatureText(input.supportEmail)
   ];
   const html = [
     `<p>เรียน <strong>${escapeHtml(input.ownerName || input.storeName)}</strong></p>`,
@@ -228,7 +265,8 @@ export function buildPaymentConfirmationEmail(input: {
     `<li>รอบบริการ: ${escapeHtml(thaiDate(input.periodStart))} - ${escapeHtml(thaiDate(input.periodEnd))}</li>`,
     "</ul>",
     "<p>ใบเสร็จฉบับจริงสามารถเปิดดูได้จากเมนูแพ็กเกจและการชำระเงินใน CpIPOS</p>",
-    `<p>ฝ่ายบัญชี: ${escapeHtml(input.billingEmail)}<br/>Support: ${escapeHtml(input.supportEmail)}</p>`
+    `<p>ฝ่ายบัญชี: ${escapeHtml(input.billingEmail)}<br/>Support: ${escapeHtml(input.supportEmail)}</p>`,
+    companySignatureHtml(input.supportEmail)
   ].join("");
   return { subject, textBody: lines.join("\n"), htmlBody: html };
 }
