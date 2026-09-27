@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useItAccess } from "@/components/layout/app-shell";
 import styles from "./store-registrations-console.module.css";
 
 type Modes = { takeaway: boolean; dine_in: boolean; buffet_table: boolean; delivery: boolean; general_sale: boolean };
@@ -44,6 +45,7 @@ function draft(r: Row): Form {
   };
 }
 export function StoreRegistrationsConsole() {
+  const { canDelete } = useItAccess();
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -184,7 +186,7 @@ export function StoreRegistrationsConsole() {
           {r.status === "pending" || r.status === "failed" ? <>
             <button disabled={busy} onClick={() => open(r,"edit")}>แก้ไข</button>
             <button disabled={busy} className={styles.primary} onClick={() => open(r,"activate")}>เปิดใช้งาน</button>
-            <button disabled={busy} className={styles.danger} onClick={() => void remove(r)}>ลบ</button>
+            {canDelete ? <button disabled={busy} className={styles.danger} onClick={() => void remove(r)}>ลบ</button> : null}
           </> : null}
         </div></td></tr>)}
         {!rows.length ? <tr><td colSpan={7} className={styles.empty}>{loading ? "กำลังโหลด…" : "ยังไม่มีคำขอในสถานะนี้"}</td></tr> : null}
