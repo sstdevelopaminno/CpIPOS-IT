@@ -60,11 +60,9 @@ export async function POST(request: Request) {
         return fail("activation_email_not_ready", "ส่งอีเมลเปิดระบบได้เฉพาะร้านที่เปิดใช้งานแล้ว", 409);
       }
 
-      const [tenant, owner, lifecycle] = await Promise.all([
+      const [tenant, lifecycle] = await Promise.all([
         ctx.supabase.from("tenants").select("id,code,name,display_name,primary_owner_user_id")
           .eq("id", registration.data.tenant_id).maybeSingle(),
-        ctx.supabase.from("pos_user_profiles").select("employee_code")
-          .eq("tenant_id", registration.data.tenant_id).eq("role", "owner").limit(1).maybeSingle(),
         ctx.supabase.from("tenant_data_lifecycle").select("trial_expires_at")
           .eq("tenant_id", registration.data.tenant_id).maybeSingle()
       ]);
@@ -72,11 +70,19 @@ export async function POST(request: Request) {
       const store = tenant.data;
       if (!store) return fail("store_not_found", "ไม่พบร้านค้า", 404);
 
+      let ownerCode: string | null = null;
+      if (store.primary_owner_user_id) {
+        const owner = await ctx.supabase.from("pos_user_profiles").select("employee_code")
+          .eq("tenant_id", registration.data.tenant_id)
+          .eq("user_id", store.primary_owner_user_id).maybeSingle<{ employee_code: string }>();
+        if (!owner.error) ownerCode = owner.data?.employee_code ?? null;
+      }
+
       const message = buildStoreActivationEmail({
         storeName: store.display_name || store.name || registration.data.store_name,
         storeCode: store.code || "—",
         ownerName: registration.data.owner_name,
-        ownerCode: owner.data?.employee_code ?? null,
+        ownerCode,
         trialExpiresAt: lifecycle.data?.trial_expires_at ?? null,
         supportEmail: settings.support_email
       });
