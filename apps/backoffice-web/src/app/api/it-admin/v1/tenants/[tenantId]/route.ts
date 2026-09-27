@@ -34,6 +34,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
 
   try {
     const adminContext = await requireItAdmin();
+    assertItSupportAction(adminContext, "IT Admin ไม่มีสิทธิ์ลบร้านหรือเปลี่ยนร้านเป็นสถานะลบ; ใช้ IT Support สำหรับรายการนี้");
     const { tenantId: tenantIdParam } = await context.params;
     const tenantId = parseTenantParam(tenantIdParam);
     const body = await req.json().catch(() => ({}));
