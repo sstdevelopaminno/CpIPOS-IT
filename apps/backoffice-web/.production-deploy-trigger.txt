@@ -1,8 +1,9 @@
 CpIPOS-IT production deployment request
 requested_at: 2026-09-27
-purpose: publish main logout and POS-user permissions for IT Admin
+purpose: retry production after successful CI for POS-user access and logout
 source_repository: sstdevelopaminno/CpIPOS-IT
 source_branch: main
 source_feature_commit: b224315120cb465e41fa4fe5c525218994092674
+previous_trigger_commit: 0ecbbc5e25a7e0834c1c9ffcb5668a332f334292
 database: existing Supabase CpiPOS-001 (no schema migration required)
-note: fresh Vercel production retry after PR CI passed; deploy trigger only; verify production status
+note: CI passed typecheck/lint/tests/production build; retry Vercel production after build-rate-limit window
