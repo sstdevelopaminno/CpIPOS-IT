@@ -46,13 +46,22 @@ Separate company's billing mailbox and Support mailbox sender configuration.
 Email ingestion of bank alerts is a notification/reconciliation signal, not
 sufficient independent confirmation for auto-activation.
 
-## Next slices (not yet live)
-1. Payment order / billing cycle issuance with unique store reference and
-   snapshot of package/price/term; never generate duplicate renewal.
-2. Confirm bank transaction via trusted statement/provider, reject duplicate
-   bank reference/amount mismatch; leave ambiguous email/slip cases for IT.
-3. Atomic paid ledger -> subscription extension + existing IT override support,
-   without interfering with the POS cashier receipt/sales ledger.
-4. Receipt PDF download and secure email delivery from an authorized
-   mail identity; audit every dispatch.
-5. Only after checks above, automatic renewal/unlock and scheduled notices.
+## Transactional email delivery (implemented 2026-09-27)
+The IT control plane now supports both manual and automatic customer email for:
+- Store activation: sent after the store/Owner/branch are successfully created.
+- Verified package payment: sent only after Settlement atomically opens/renews the package and issues a real receipt.
+
+Delivery is fail-soft: email failure never rolls back a successful store activation or verified financial settlement.
+The `customer_email_deliveries` ledger uses a unique event key per registration/receipt, so automatic and manual actions converge on the same record and a successful event is not sent twice. Failed network attempts are throttled for five minutes. Common mistyped domains (for example `amil.com`) are blocked for IT correction rather than auto-corrected.
+
+Automatic delivery can be enabled/disabled independently in IT email settings. Manual buttons remain available for activated stores and issued receipts. Manual retry resolves the current primary Owner email, so an address corrected after the original event can be used safely.
+
+Actual dispatch is server-side through the authorized Google Apps Script MailApp bridge in `tools/customer-mail-bridge`. Required deployment secrets:
+- `CPIPOS_MAIL_BRIDGE_URL`
+- `CPIPOS_MAIL_BRIDGE_SECRET`
+
+PINs are never included in customer email.
+
+## Remaining follow-up
+1. Monitor Gmail quota and delivery failures from the email ledger.
+2. Add scheduled pre-expiry reminders only after a separate reminder cadence and opt-out policy are approved; do not reuse transactional event keys for marketing/reminder traffic.

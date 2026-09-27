@@ -5,6 +5,7 @@ import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { provisionStore, StoreProvisioningError } from "@/lib/services/it-admin/store-provisioning-service";
 import { appendAuditLog } from "@/lib/audit-log";
 import { normalizePosSalesModes, type PosSalesModeMap } from "@/lib/pos-sales-modes";
+import { buildStoreActivationEmail, customerEmailProblem, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,8 @@ function validateEdit(input: RecordInput) {
       !uuid(row.package_id) || !Object.values(row.sales_modes).some(Boolean)) {
     throw new ItAdminGuardError("invalid_registration", "ตรวจสอบชื่อร้าน ประเภทร้าน ข้อมูลติดต่อ แพ็กเกจ และโหมดขาย", 422);
   }
+  const emailIssue = customerEmailProblem(row.owner_email);
+  if (emailIssue) throw new ItAdminGuardError("invalid_owner_email", emailIssue, 422);
   return { ...row, package_id: row.package_id as string };
 }
 function safely(error: unknown) {
@@ -119,6 +122,8 @@ export async function POST(req: Request) {
     if (!/^\d{6}$/.test(ownerCode) || !/^\d{6}$/.test(pin)) {
       return fail("invalid_owner_credentials", "รหัสเจ้าของร้านและ PIN ต้องเป็นตัวเลข 6 หลัก", 422);
     }
+    const ownerEmailIssue = customerEmailProblem(row.owner_email);
+    if (ownerEmailIssue) return fail("invalid_owner_email", ownerEmailIssue, 422);
     const pkg = await ctx.supabase.from("subscription_packages")
       .select("id,is_active,status,quota_mode,monthly_price,max_devices")
       .eq("id", row.package_id).maybeSingle();
@@ -162,7 +167,51 @@ export async function POST(req: Request) {
         targetId: row.id, module: "it_admin", metadata: {
           store_code: result.store_code, trial_days: 7, package_id: row.package_id, owner_code: ownerCode,
           device_setup: "requires_real_device_pairing" } });
-      return ok({ id: row.id, status: "activated", result });
+
+      let emailDelivery: { status: string; delivery_id?: string; message?: string } = {
+        status: "failed",
+        message: "ยังไม่ได้ส่งอีเมลเปิดระบบ"
+      };
+      try {
+        const settings = await ctx.supabase.from("it_communication_settings")
+          .select("support_email").eq("id", "default").maybeSingle<{ support_email: string }>();
+        const message = buildStoreActivationEmail({
+          storeName: result.tenant.name || row.store_name,
+          storeCode: result.store_code,
+          ownerName: row.owner_name,
+          ownerCode,
+          trialExpiresAt: result.lifecycle.trial_expires_at,
+          supportEmail: settings.data?.support_email || "cuttingpointtech.support@gmail.com"
+        });
+        emailDelivery = await deliverCustomerEmail({
+          db: ctx.supabase,
+          eventType: "store_activation",
+          sourceId: row.id,
+          tenantId: result.tenant.id,
+          to: row.owner_email,
+          message,
+          triggerMode: "automatic",
+          actorUserId: ctx.auth.userId
+        });
+        await appendAuditLog({
+          tenantId: result.tenant.id,
+          branchId: result.branch.id,
+          actorUserId: ctx.auth.userId,
+          actorRole: "it_admin",
+          action: "customer_activation_email_auto_attempt",
+          targetTable: "customer_email_deliveries",
+          targetId: emailDelivery.delivery_id,
+          module: "it_admin",
+          metadata: { registration_id: row.id, delivery_status: emailDelivery.status },
+          ipAddress: ctx.requestMeta.ipAddress ?? undefined,
+          userAgent: ctx.requestMeta.userAgent ?? undefined
+        });
+      } catch (emailError) {
+        console.error("[it-mail] activation email failed without rolling back store activation",
+          emailError instanceof Error ? emailError.message : emailError);
+      }
+
+      return ok({ id: row.id, status: "activated", result, email_delivery: emailDelivery });
     } catch (error) {
       const errorCode = error instanceof StoreProvisioningError ? error.code : "registration_activation_incomplete";
       await ctx.supabase.from("store_registration_requests")

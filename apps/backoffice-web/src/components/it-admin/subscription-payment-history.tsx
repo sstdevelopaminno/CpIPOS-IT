@@ -111,7 +111,13 @@ type History = {
   };
 };
 type Envelope = { data?: History; error?: { message?: string } };
-type SettleEnvelope = { data?: { settlement?: { receipt_number?: string } }; error?: { message?: string } };
+type SettleEnvelope = {
+  data?: {
+    settlement?: { receipt_number?: string };
+    email_delivery?: { status?: string; message?: string };
+  };
+  error?: { message?: string };
+};
 type SettlementDraft = {
   bank_transaction_reference: string;
   bank_received_at: string;
@@ -456,6 +462,32 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     await mutateAdminRecord("receipt",row.id,"DELETE",{reason},
       "ยกเลิกใบเสร็จแล้ว โดยเก็บต้นฉบับและ Audit ไว้");
   }
+  async function sendPaymentEmail(row:Receipt) {
+    if (row.voided) { setError("ใบเสร็จนี้ถูกยกเลิกเอกสารแล้ว จึงไม่ส่งอีเมลยืนยันการชำระ"); return; }
+    setBusyId(row.id); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/it-admin/v1/customer-emails/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ event_type: "payment_confirmation", source_id: row.id })
+      });
+      const json = await response.json().catch(() => null) as {
+        data?: { delivery?: { status?: string; message?: string } };
+        error?: { message?: string };
+      } | null;
+      if (!response.ok || !json?.data?.delivery) {
+        throw new Error(json?.error?.message || "ส่งอีเมลยืนยันการชำระไม่สำเร็จ");
+      }
+      const delivery = json.data.delivery;
+      if (delivery.status === "sent") setNotice("ส่งอีเมลยืนยันการชำระให้ลูกค้าแล้ว");
+      else if (delivery.status === "already_sent") setNotice("อีเมลยืนยันรายการนี้เคยส่งสำเร็จแล้ว ระบบจึงไม่ส่งซ้ำ");
+      else setError(delivery.message || "ระบบยังไม่สามารถส่งอีเมลยืนยันการชำระได้");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ส่งอีเมลยืนยันการชำระไม่สำเร็จ");
+    } finally {
+      setBusyId("");
+    }
+  }
 
   async function createFirstPaymentRequest() {
     if (!history || !canCreatePaymentRequest || !firstPackage) {
@@ -541,9 +573,17 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       }
       await reload();
       const receiptNo = json.data.settlement.receipt_number || "";
-      setNotice(receiptNo
+      const baseNotice = receiptNo
         ? "อนุมัติแล้ว · ต่อแพ็กเกจและออกใบเสร็จ " + receiptNo + " สำเร็จ"
-        : "อนุมัติแล้ว · ต่อแพ็กเกจและออกใบเสร็จสำเร็จ");
+        : "อนุมัติแล้ว · ต่อแพ็กเกจและออกใบเสร็จสำเร็จ";
+      const mail = json.data.email_delivery;
+      if (mail?.status === "sent") setNotice(baseNotice + " · ส่งอีเมลยืนยันให้ลูกค้าแล้ว");
+      else if (mail?.status === "already_sent") setNotice(baseNotice + " · อีเมลยืนยันรายการนี้เคยส่งแล้ว");
+      else if (mail?.status === "automatic_disabled") setNotice(baseNotice + " · ปิดการส่งอีเมลอัตโนมัติ");
+      else {
+        setNotice(baseNotice);
+        if (mail?.message) setError("รับชำระและออกใบเสร็จสำเร็จ แต่อีเมลยังไม่ส่ง: " + mail.message);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ยืนยันรายการไม่สำเร็จ");
     } finally {
@@ -952,6 +992,8 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     {row.correction_note ? <p className="mt-1 max-w-[220px] text-xs text-slate-500">{row.correction_note}</p> : null}
                   </td>
                   <td className="p-3"><div className="flex flex-wrap gap-1">
+                    <button type="button" disabled={busyId===row.id || row.voided} onClick={()=>void sendPaymentEmail(row)}
+                      className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 disabled:opacity-40">ส่งอีเมลยืนยันชำระ</button>
                     <button type="button" disabled={busyId===row.id} onClick={()=>void editReceiptRecord(row)}
                       className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">แก้ไขหมายเหตุ</button>
                     <button type="button" disabled={busyId===row.id || row.voided} onClick={()=>void voidReceiptRecord(row)}
