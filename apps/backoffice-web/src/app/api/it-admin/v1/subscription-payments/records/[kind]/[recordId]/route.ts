@@ -118,7 +118,9 @@ export async function PATCH(request:Request,{params}:Params){
 
 export async function DELETE(request:Request,{params}:Params){
   try{
-    const context=await requireItAdmin();\n    assertItSupportAction(context, "IT Admin ไม่มีสิทธิ์ลบหรือ VOID รายการชำระเงิน; ใช้ IT Support สำหรับรายการนี้");\n    const {auth,supabase,requestMeta}=context;
+    const context=await requireItAdmin();
+    assertItSupportAction(context, "IT Admin ไม่มีสิทธิ์ลบหรือ VOID รายการชำระเงิน; ใช้ IT Support สำหรับรายการนี้");
+    const {auth,supabase,requestMeta}=context;
     const {kind,recordId}=await params;
     if(!UUID.test(recordId)) throw new ItAdminGuardError("record_invalid","Invalid record ID.",422);
     const body=await request.json().catch(()=>null) as {reason?:unknown}|null;
