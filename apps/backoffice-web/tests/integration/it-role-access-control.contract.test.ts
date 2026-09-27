@@ -26,6 +26,7 @@ describe("IT role access controls", () => {
       "/it-admin/store-provisioning",
       "/it-admin/store-registrations",
       "/it-admin/branches",
+      "/it-admin/pos-users",
       "/it-admin/subscription-payments",
       "/it-admin/license-issuer",
       "/it-admin/settings/email-footer",

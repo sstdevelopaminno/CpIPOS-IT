@@ -2,7 +2,7 @@
 import bcrypt from "bcryptjs";
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,6 @@ type PosProfileRow = { tenant_id: string; user_id: string; employee_code: string
 type SessionRow = { id: string; tenant_id: string; branch_id: string; user_id: string; device_code: string | null; status: string | null; issued_at: string | null; expires_at: string | null };
 type DeviceRow = { id: string; tenant_id: string; branch_id: string; device_code: string | null; device_name: string | null; status: string | null; last_seen_at: string | null };
 
-const PLATFORM_ROLES: PlatformRole[] = ["it_admin", "it_support", "tenant_user"];
 const BRANCH_ROLES: BranchRole[] = ["owner", "manager", "staff"];
 const PIN_PATTERN = /^\d{4,8}$/;
 const PASSWORD_PATTERN = /^.{8,128}$/;
@@ -166,6 +165,7 @@ export async function GET(request: Request) {
     let profileQuery = supabase
       .from("users_profiles")
       .select("id,email,full_name,platform_role,is_active,created_at,updated_at", { count: "exact" })
+      .eq("platform_role", "tenant_user")
       .order("updated_at", { ascending: false });
 
     if (status === "active") profileQuery = profileQuery.eq("is_active", true);
@@ -276,7 +276,7 @@ export async function POST(request: Request) {
     if (!body) return fail("invalid_body", "Request body is required.", 422);
     const fullName = text(body.full_name, 160);
     const normalizedEmail = email(body.email);
-    const platformRole = parseRole(body.platform_role, PLATFORM_ROLES, "tenant_user");
+    const platformRole: PlatformRole = "tenant_user";
     const password = text(body.password, 128) || createPassword();
     const generatedPassword = !text(body.password, 128);
     const tenantId = text(body.tenant_id, 80);
@@ -347,13 +347,17 @@ export async function PATCH(request: Request) {
     const userId = text(body.user_id, 80);
     if (!userId) return fail("user_id_required", "user_id is required.", 422);
 
-    const currentResult = await context.supabase.from("users_profiles").select("id,email,full_name,platform_role,is_active,created_at,updated_at").eq("id", userId).maybeSingle();
+    const currentResult = await context.supabase.from("users_profiles")
+      .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+      .eq("id", userId)
+      .eq("platform_role", "tenant_user")
+      .maybeSingle();
     if (currentResult.error) throw new Error(currentResult.error.message);
     if (!currentResult.data) return fail("user_not_found", "User profile was not found.", 404);
 
     const fullName = text(body.full_name, 160);
     const normalizedEmail = email(body.email);
-    const platformRole = parseRole(body.platform_role, PLATFORM_ROLES, (currentResult.data.platform_role as PlatformRole) || "tenant_user");
+    const platformRole: PlatformRole = "tenant_user";
     const nextActive = parseBool(body.is_active, Boolean(currentResult.data.is_active));
     const password = text(body.password, 128);
     const posPin = text(body.pos_pin, 12);
@@ -433,12 +437,17 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const context = await requireItAdmin();
+    assertItSupportAction(context, "IT Admin แก้ไขและเพิ่มผู้ใช้งาน POS ได้ แต่สิทธิ์ลบสงวนไว้สำหรับ IT Support");
     const { searchParams } = new URL(request.url);
     const userId = text(searchParams.get("user_id"), 80);
     if (!userId) return fail("user_id_required", "user_id is required.", 422);
     if (userId === context.auth.userId) return fail("cannot_delete_self", "You cannot delete your own IT admin user.", 409);
 
-    const currentResult = await context.supabase.from("users_profiles").select("id,email,full_name,platform_role,is_active,created_at,updated_at").eq("id", userId).maybeSingle();
+    const currentResult = await context.supabase.from("users_profiles")
+      .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+      .eq("id", userId)
+      .eq("platform_role", "tenant_user")
+      .maybeSingle();
     if (currentResult.error) throw new Error(currentResult.error.message);
     if (!currentResult.data) return fail("user_not_found", "User profile was not found.", 404);
 
