@@ -1,6 +1,6 @@
 import { readBoundedJson } from "@/lib/server/limited-json";
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { provisionStore, StoreProvisioningError } from "@/lib/services/it-admin/store-provisioning-service";
 import { appendAuditLog } from "@/lib/audit-log";
