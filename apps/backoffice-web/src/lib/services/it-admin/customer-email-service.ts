@@ -94,7 +94,7 @@ function money(amount: number, currency = "THB") {
   }).format(amount);
 }
 
-function emailProblem(value: string) {
+export function customerEmailProblem(value: string) {
   const normalized = value.trim().toLowerCase();
   if (!EMAIL.test(normalized)) return "รูปแบบอีเมลผู้รับไม่ถูกต้อง";
   const domain = normalized.split("@")[1] ?? "";
@@ -252,7 +252,7 @@ export async function deliverCustomerEmail(input: {
   }
 
   const to = input.to.trim().toLowerCase();
-  const problem = emailProblem(to);
+  const problem = customerEmailProblem(to);
   const delivery = await getOrCreateDelivery({
     db: input.db,
     eventType: input.eventType,
@@ -273,7 +273,7 @@ export async function deliverCustomerEmail(input: {
   if (delivery.status === "sending" && lastAttempt && now - lastAttempt < STALE_SENDING_MS) {
     return { status: "suppressed", delivery_id: delivery.id, message: "อีเมลกำลังถูกส่งจากคำสั่งก่อนหน้า" };
   }
-  if ((delivery.status === "failed" || delivery.status === "blocked") && lastAttempt && now - lastAttempt < RETRY_COOLDOWN_MS) {
+  if (delivery.status === "failed" && lastAttempt && now - lastAttempt < RETRY_COOLDOWN_MS) {
     return { status: "suppressed", delivery_id: delivery.id, message: "ป้องกันการส่งซ้ำ กรุณารออย่างน้อย 5 นาทีก่อนลองใหม่" };
   }
 
@@ -298,6 +298,15 @@ export async function deliverCustomerEmail(input: {
     return { status: "blocked", delivery_id: delivery.id, message };
   }
 
+  let claimStatus = delivery.status;
+  if (delivery.status === "sending" && lastAttempt && now - lastAttempt >= STALE_SENDING_MS) {
+    await updateDelivery(input.db, delivery.id, {
+      status: "failed",
+      last_error: "stale_sending_recovered"
+    });
+    claimStatus = "failed";
+  }
+
   const claimed = await input.db.from("customer_email_deliveries").update({
     status: "sending",
     trigger_mode: input.triggerMode,
@@ -307,7 +316,7 @@ export async function deliverCustomerEmail(input: {
     last_attempt_at: new Date().toISOString(),
     last_error: null,
     updated_at: new Date().toISOString()
-  }).eq("id", delivery.id).neq("status", "sent")
+  }).eq("id", delivery.id).eq("status", claimStatus)
     .select("id").maybeSingle<{ id: string }>();
 
   if (claimed.error) throw new Error("customer_email_delivery_claim_failed");
