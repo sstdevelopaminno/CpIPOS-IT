@@ -338,8 +338,18 @@
 .sidebarCollapsed .navLabel,
 .sidebarCollapsed .soonBadge,
 .sidebarCollapsed .sidebarFooter,
+.sidebarCollapsed .logoutLabel,
 .sidebarCollapsed .subNav {
   display: none;
+}
+
+.sidebarCollapsed .sidebarUtility {
+  padding-inline: 8px;
+}
+
+.sidebarCollapsed .logoutButton {
+  justify-content: center;
+  padding-inline: 8px;
 }
 
 .sidebarCollapsed .navItem {
@@ -355,6 +365,51 @@
 
 .sidebarCollapsed .navItemActive {
   box-shadow: inset 3px 0 0 #5d8cff;
+}
+
+.sidebarUtility {
+  padding: 10px 14px 0;
+}
+
+.logoutButton {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(248, 113, 113, 0.22);
+  border-radius: 11px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.16);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.logoutButton:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(185, 28, 28, 0.28);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.logoutButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.logoutIcon {
+  width: 20px;
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.logoutLabel {
+  min-width: 0;
 }
 
 .sidebarFooter {
@@ -650,8 +705,18 @@
   .sidebarCollapsed .navGroupLabel,
   .sidebarCollapsed .navLabel,
   .sidebarCollapsed .soonBadge,
-  .sidebarCollapsed .sidebarFooter {
+  .sidebarCollapsed .sidebarFooter,
+  .sidebarCollapsed .logoutLabel {
     display: initial;
+  }
+
+  .sidebarCollapsed .sidebarUtility {
+    padding: 10px 14px 0;
+  }
+
+  .sidebarCollapsed .logoutButton {
+    justify-content: flex-start;
+    padding: 10px 14px;
   }
 
   .sidebarCollapsed .subNav {
