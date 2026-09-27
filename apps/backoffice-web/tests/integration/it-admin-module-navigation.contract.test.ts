@@ -28,6 +28,17 @@ describe("IT Admin connected module navigation", () => {
     expect(layout).not.toContain("disabled: true");
   });
 
+  it("groups the first three Security settings under one submenu", () => {
+    expect(layout).toContain('label: text.items.settings');
+    expect(layout).toContain('/it-admin/settings/users');
+    expect(layout).toContain('/it-admin/settings/email-footer');
+    expect(layout).toContain('/it-admin/settings/language');
+    expect(layout).toContain('settingsUsers: "ตั้งค่า USER ใช้งาน"');
+    expect(layout).toContain('settingsEmailFooter: "ตั้งค่า ข้อความท้ายอีเมล์"');
+    expect(layout).toContain('settingsLanguage: "ตั้งค่าภาษา"');
+    expect(layout).not.toContain('{ href: "/it-admin/platform-users", label: text.items.users');
+  });
+
   it("loads module data through authenticated Control Plane bridges", () => {
     expect(moduleRoute).toContain("requireItAdmin()");
     expect(moduleRoute).toContain("getVerifiedSupabaseAccessToken(context.auth.userId)");
