@@ -1,6 +1,7 @@
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
+import { buildPaymentConfirmationEmail, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,11 @@ type SettlementResult = {
   period_end?: string;
   new_expiry?: string;
 };
+
+function obj(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+}
 
 function friendlySettlementError(message: string) {
   const map: Record<string, [string, number]> = {
@@ -112,7 +118,73 @@ export async function POST(request: Request, { params }: Params) {
       userAgent: requestMeta.userAgent ?? undefined
     });
 
-    const response = ok({ settlement });
+    let emailDelivery: { status: string; delivery_id?: string; message?: string } = {
+      status: "failed",
+      message: "ยังไม่ได้ส่งอีเมลยืนยันการชำระ"
+    };
+    try {
+      const [receiptResult, settingsResult] = await Promise.all([
+        supabase.from("tenant_subscription_receipts")
+          .select("id,tenant_id,receipt_number,amount,currency,customer_snapshot,package_snapshot")
+          .eq("id", settlement.receipt_id).maybeSingle(),
+        supabase.from("it_communication_settings")
+          .select("billing_email,support_email").eq("id", "default").maybeSingle()
+      ]);
+      if (receiptResult.error) throw receiptResult.error;
+      if (!receiptResult.data) throw new Error("settlement_receipt_not_found_for_email");
+
+      const customer = obj(receiptResult.data.customer_snapshot);
+      const pkg = obj(receiptResult.data.package_snapshot);
+      const recipient = typeof customer.email === "string" ? customer.email : "";
+      if (!recipient) {
+        emailDelivery = { status: "blocked", message: "ไม่พบอีเมล Owner ในข้อมูลใบเสร็จ กรุณาแก้ข้อมูลลูกค้าก่อนส่ง" };
+      } else {
+        const message = buildPaymentConfirmationEmail({
+          storeName: String(customer.store_name || "ร้านค้า"),
+          ownerName: typeof customer.owner_name === "string" ? customer.owner_name : null,
+          packageName: String(pkg.package_name || "CpIPOS"),
+          receiptNumber: receiptResult.data.receipt_number,
+          amount: Number(receiptResult.data.amount),
+          currency: receiptResult.data.currency,
+          periodStart: typeof pkg.period_start === "string" ? pkg.period_start : settlement.period_start ?? null,
+          periodEnd: typeof pkg.period_end === "string" ? pkg.period_end : settlement.period_end ?? null,
+          billingEmail: settingsResult.data?.billing_email || "cuttingpointtech@gmail.com",
+          supportEmail: settingsResult.data?.support_email || "cuttingpointtech.support@gmail.com"
+        });
+        emailDelivery = await deliverCustomerEmail({
+          db: supabase,
+          eventType: "payment_confirmation",
+          sourceId: receiptResult.data.id,
+          tenantId: receiptResult.data.tenant_id,
+          to: recipient,
+          message,
+          triggerMode: "automatic",
+          actorUserId: auth.userId
+        });
+      }
+
+      await appendAuditLog({
+        tenantId: receiptResult.data.tenant_id,
+        actorUserId: auth.userId,
+        actorRole: "it_admin",
+        action: "customer_payment_email_auto_attempt",
+        targetTable: "customer_email_deliveries",
+        targetId: emailDelivery.delivery_id,
+        module: "it_admin",
+        metadata: {
+          receipt_id: receiptResult.data.id,
+          receipt_number: receiptResult.data.receipt_number,
+          delivery_status: emailDelivery.status
+        },
+        ipAddress: requestMeta.ipAddress ?? undefined,
+        userAgent: requestMeta.userAgent ?? undefined
+      });
+    } catch (emailError) {
+      console.error("[it-mail] payment confirmation email failed without rolling back settlement",
+        emailError instanceof Error ? emailError.message : emailError);
+    }
+
+    const response = ok({ settlement, email_delivery: emailDelivery });
     response.headers.set("cache-control", "private, no-store");
     return response;
   } catch (error) {
