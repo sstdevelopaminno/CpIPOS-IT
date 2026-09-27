@@ -1,6 +1,6 @@
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +34,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const admin = await requireItAdmin();
+    assertItSupportAction(admin, "IT Admin ไม่มีสิทธิ์ลบไฟล์ค้างของร้าน; ใช้ IT Support สำหรับรายการนี้");
     const rate = await enforceRateLimit({
       namespace: "it_tenant_storage_cleanup", key: admin.auth.userId,
       max: 10, windowMs: 60_000
