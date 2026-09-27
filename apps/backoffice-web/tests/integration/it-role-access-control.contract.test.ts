@@ -19,6 +19,19 @@ describe("IT role access controls", () => {
     expect(login).toContain('profile.platform_role !== "it_admin" && profile.platform_role !== "it_support"');
   });
 
+  it("allows IT Support through Supabase control-plane bridge functions", () => {
+    for (const path of [
+      "../../supabase/control-plane-functions/cpipos-it-dashboard-primary/index.ts",
+      "../../supabase/control-plane-functions/cpipos-it-module-primary/index.ts",
+      "../../supabase/control-plane-functions/cpipos-it-dashboard-operational/index.ts",
+      "../../supabase/control-plane-functions/cpipos-it-module-operational/index.ts"
+    ]) {
+      const bridge = src(path);
+      expect(bridge).toContain('"it_support"');
+      expect(bridge).toContain('"it_admin"');
+    }
+  });
+
   it("shows IT Admin only the approved core menus and hides IT-user administration", () => {
     expect(layout).toContain('if (role === "it_admin")');
     for (const href of [
