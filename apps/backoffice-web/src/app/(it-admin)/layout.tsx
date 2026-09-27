@@ -154,6 +154,7 @@ export default async function ItAdminLayout({ children }: { children: ReactNode 
       englishLabel={t(lang, "english")}
       roleLabel={auth.platformRole === "it_support" ? text.roleSupport : text.roleAdmin}
       unavailableLabel={text.unavailable}
+      accessRole={auth.platformRole}
       restrictToNavigation={auth.platformRole === "it_admin"}
     >
       {children}
