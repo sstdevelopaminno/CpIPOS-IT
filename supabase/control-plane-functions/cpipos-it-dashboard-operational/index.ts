@@ -50,7 +50,7 @@ async function authorizePrimaryItAdmin(token: string) {
     .eq("id", userResult.user.id)
     .maybeSingle();
   if (profileError) return false;
-  return Boolean(profile?.is_active && profile.platform_role === "it_admin");
+  return Boolean(profile?.is_active && ["it_admin", "it_support"].includes(String(profile.platform_role ?? "")));
 }
 
 Deno.serve(async (req) => {
