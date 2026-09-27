@@ -1,8 +1,9 @@
 CpIPOS-IT production deployment request
 requested_at: 2026-09-27
-purpose: publish logout and POS-user permissions after production verification
+purpose: publish safe POS-user cleanup and IT Support bridge access
 source_repository: sstdevelopaminno/CpIPOS-IT
 source_branch: main
-source_feature_commit: b224315120cb465e41fa4fe5c525218994092674
-previous_successful_production: c8b145abcf8cc6537d498a92b97c250cca714185
-note: user verified production is still on the previous build; retry once after cooldown
+source_feature_commit: 8ae54a4df8e14b5cb861728900095fb001beb975
+database_cleanup: completed
+validation: PR CI passed typecheck/lint/tests/production build
+note: retry Production after previous Vercel build-rate-limit
