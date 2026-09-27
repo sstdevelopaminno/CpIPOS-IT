@@ -35,7 +35,6 @@ type PosProfileRow = { tenant_id: string; user_id: string; employee_code: string
 type SessionRow = { id: string; tenant_id: string; branch_id: string; user_id: string; device_code: string | null; status: string | null; issued_at: string | null; expires_at: string | null };
 type DeviceRow = { id: string; tenant_id: string; branch_id: string; device_code: string | null; device_name: string | null; status: string | null; last_seen_at: string | null };
 
-const PLATFORM_ROLES: PlatformRole[] = ["it_admin", "it_support", "tenant_user"];
 const BRANCH_ROLES: BranchRole[] = ["owner", "manager", "staff"];
 const PIN_PATTERN = /^\d{4,8}$/;
 const PASSWORD_PATTERN = /^.{8,128}$/;
