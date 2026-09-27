@@ -38,4 +38,14 @@ describe("IT auth session and POS-user separation", () => {
     expect(posUi).toContain("canDelete");
     expect(posUi).toContain("เพิ่มผู้ใช้ POS");
   });
+
+  it("hard-deletes only users without business history and safely archives referenced users", () => {
+    expect(posApi).toContain("countUserHistory");
+    expect(posApi).toContain("platform_user_archived");
+    expect(posApi).toContain("platform_user_hard_deleted");
+    expect(posApi).toContain("history.total > 0");
+    expect(posApi).not.toContain('action: "platform_user_deleted"');
+    expect(posUi).toContain('"active"');
+    expect(posUi).toContain("เก็บผู้ใช้ถาวรแล้ว");
+  });
 });

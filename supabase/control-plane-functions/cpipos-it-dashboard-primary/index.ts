@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
       .eq("id", userResult.user.id)
       .maybeSingle();
     if (profileError) throw new Error(`profile_lookup_failed:${profileError.code ?? "query_failed"}`);
-    if (!profile?.is_active || profile.platform_role !== "it_admin") return json({ error: "forbidden" }, 403);
+    if (!profile?.is_active || !["it_admin", "it_support"].includes(String(profile.platform_role ?? ""))) return json({ error: "forbidden" }, 403);
 
     const perfSince = new Date(Date.now() - 60 * 60_000).toISOString();
     const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MINUTES * 60_000).toISOString();

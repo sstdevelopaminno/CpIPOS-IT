@@ -49,7 +49,7 @@ async function authorizePrimaryItAdmin(token: string) {
     .select("platform_role,is_active")
     .eq("id", userResult.user.id)
     .maybeSingle();
-  return !profileError && Boolean(profile?.is_active && profile.platform_role === "it_admin");
+  return !profileError && Boolean(profile?.is_active && ["it_admin", "it_support"].includes(String(profile.platform_role ?? "")));
 }
 
 function moduleResponse(module: string, summary: Record<string, number | string>, rows: unknown[], note?: string) {

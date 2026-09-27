@@ -48,7 +48,7 @@ async function authorizeItAdmin(admin: ReturnType<typeof createClient>, token: s
     .select("id,platform_role,is_active")
     .eq("id", userResult.user.id)
     .maybeSingle();
-  if (profileError || !profile?.is_active || profile.platform_role !== "it_admin") return null;
+  if (profileError || !profile?.is_active || !["it_admin", "it_support"].includes(String(profile.platform_role ?? ""))) return null;
   return userResult.user.id;
 }
 

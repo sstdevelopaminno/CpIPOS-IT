@@ -72,12 +72,14 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
     }
 
     expect(primaryDashboardBridge).toContain("userClient.auth.getUser(token)");
-    expect(primaryDashboardBridge).toContain('profile.platform_role !== "it_admin"');
+    expect(primaryDashboardBridge).toContain('"it_admin"');
+    expect(primaryDashboardBridge).toContain('"it_support"');
     expect(primaryDashboardBridge).toContain('from("branch_devices")');
     expect(primaryDashboardBridge).toContain('from("pos_device_health_latest")');
     expect(primaryDashboardBridge).toContain('from("mdm_commands")');
     expect(operationalDashboardBridge).toContain("primary.auth.getUser(token)");
-    expect(operationalDashboardBridge).toContain('profile.platform_role === "it_admin"');
+    expect(operationalDashboardBridge).toContain('"it_admin"');
+    expect(operationalDashboardBridge).toContain('"it_support"');
   });
 
   it("does not eagerly construct both service-role clients before a route uses them", () => {

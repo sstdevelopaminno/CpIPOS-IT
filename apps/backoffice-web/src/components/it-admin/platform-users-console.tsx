@@ -128,7 +128,7 @@ export function PlatformUsersConsole() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
+  const [status, setStatus] = useState<"all" | "active" | "inactive">("active");
   const [modalMode, setModalMode] = useState<ModalMode | null>(null);
   const [selected, setSelected] = useState<UserRow | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -233,12 +233,23 @@ export function PlatformUsersConsole() {
   const deleteUser = (user: UserRow) => {
     setConfirm({
       title: "ลบผู้ใช้นี้?",
-      message: `${user.full_name || user.email} จะถูกลบออกจาก Auth, โปรไฟล์, บทบาท, POS profile และ revoke session ที่ยัง active`,
+      message: `${user.full_name || user.email} — ถ้าไม่มีประวัติธุรกรรมระบบจะลบถาวร แต่ถ้ามีประวัติอ้างอิง ระบบจะปิด Login, revoke session และเก็บถาวรเพื่อไม่ทำลาย Audit/ยอดขายย้อนหลัง`,
       action: async () => {
         const response = await fetch(`/api/it-admin/v1/platform-users?user_id=${encodeURIComponent(user.id)}`, { method: "DELETE", credentials: "include" });
-        const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const body = (await response.json().catch(() => null)) as {
+          data?: { deleted?: boolean; archived?: boolean; message?: string; history?: { total?: number } };
+          error?: { message?: string };
+        } | null;
         if (!response.ok) throw new Error(body?.error?.message ?? "Delete failed.");
-        setNotice({ tone: "success", title: "ลบผู้ใช้สำเร็จ", message: "ลบผู้ใช้และข้อมูลที่ผูกไว้เรียบร้อย" });
+        if (body?.data?.archived) {
+          setNotice({
+            tone: "warning",
+            title: "เก็บผู้ใช้ถาวรแล้ว",
+            message: body.data.message ?? `ผู้ใช้นี้มีประวัติอ้างอิง ${body.data.history?.total ?? 0} รายการ จึงปิด Login และซ่อนจากรายการเปิดใช้งานแทนการลบประวัติ`
+          });
+        } else {
+          setNotice({ tone: "success", title: "ลบผู้ใช้สำเร็จ", message: "ผู้ใช้ที่ไม่มีประวัติอ้างอิงถูกลบออกจาก Auth และฐานข้อมูลแล้ว" });
+        }
         await load();
       }
     });
