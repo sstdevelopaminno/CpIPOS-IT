@@ -1,7 +1,7 @@
 import { appendAuditLog } from "@/lib/audit-log";
 import { enforceQuota, getTenantLimits } from "@/lib/feature-gate";
 import { fail, ok } from "@/lib/http";
-import { guardItAdminError, ItAdminGuardError, parseTenantParam, requireItAdmin, type ItAdminContext } from "@/lib/it-admin-guard";
+import { assertItSupportAction, guardItAdminError, ItAdminGuardError, parseTenantParam, requireItAdmin, type ItAdminContext } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
