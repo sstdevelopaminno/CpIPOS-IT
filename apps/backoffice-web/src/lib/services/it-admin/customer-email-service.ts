@@ -98,7 +98,7 @@ const COMPANY_SIGNATURE = {
   thaiName: "บริษัท คัตติ้งพอยท์ เทค จำกัด",
   englishName: "Cutting Point Tech Co., Ltd.",
   phone: "098-5460-355",
-  website: "https://cuttingpointtech.vercel.app/"
+  website: "https://cuttingpointinnovation.vercel.app/"
 };
 
 function companySignatureText(supportEmail: string) {
