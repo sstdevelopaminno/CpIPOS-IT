@@ -8,7 +8,8 @@ import "./it-admin-scroll.css";
 const copy = {
   th: {
     subtitle: "ระบบหลังบ้านบริษัท",
-    role: "ผู้ดูแล IT",
+    roleAdmin: "IT Admin",
+    roleSupport: "IT Support",
     unavailable: "เร็ว ๆ นี้",
     groups: {
       overview: "ภาพรวม",
@@ -44,7 +45,8 @@ const copy = {
   },
   en: {
     subtitle: "Company backoffice",
-    role: "IT Administrator",
+    roleAdmin: "IT Admin",
+    roleSupport: "IT Support",
     unavailable: "Soon",
     groups: {
       overview: "Overview",
@@ -80,8 +82,40 @@ const copy = {
   }
 } as const;
 
-function buildNavigation(lang: Language): AppShellNavItem[] {
+function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppShellNavItem[] {
   const text = copy[lang];
+
+  const settingsChildren = role === "it_support"
+    ? [
+        { href: "/it-admin/settings/users", label: text.items.settingsUsers },
+        { href: "/it-admin/settings/email-footer", label: text.items.settingsEmailFooter },
+        { href: "/it-admin/settings/language", label: text.items.settingsLanguage }
+      ]
+    : [
+        { href: "/it-admin/settings/email-footer", label: text.items.settingsEmailFooter },
+        { href: "/it-admin/settings/language", label: text.items.settingsLanguage }
+      ];
+
+  const settings: AppShellNavItem = {
+    href: "/it-admin/settings/email-footer",
+    label: text.items.settings,
+    group: text.groups.system,
+    icon: "settings",
+    children: settingsChildren
+  };
+
+  if (role === "it_admin") {
+    return [
+      { href: "/it-admin/tenants", label: text.items.tenants, group: text.groups.customer, icon: "store" },
+      { href: "/it-admin/store-provisioning", label: text.items.provisioning, group: text.groups.customer, icon: "provision" },
+      { href: "/it-admin/store-registrations", label: text.items.registrations, group: text.groups.customer, icon: "provision" },
+      { href: "/it-admin/branches", label: text.items.branches, group: text.groups.customer, icon: "branch" },
+      { href: "/it-admin/subscription-payments", label: text.items.subscriptionPayments, group: text.groups.commercial, icon: "package" },
+      { href: "/it-admin/license-issuer", label: text.items.desktopLicense, group: text.groups.commercial, icon: "entitlement" },
+      settings
+    ];
+  }
+
   return [
     { href: "/it-admin", label: text.items.dashboard, group: text.groups.overview, icon: "dashboard" },
     { href: "/it-admin/tenants", label: text.items.tenants, group: text.groups.customer, icon: "store" },
@@ -99,23 +133,13 @@ function buildNavigation(lang: Language): AppShellNavItem[] {
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
-    {
-      href: "/it-admin/settings/email-footer",
-      label: text.items.settings,
-      group: text.groups.system,
-      icon: "settings",
-      children: [
-        { href: "/it-admin/settings/users", label: text.items.settingsUsers },
-        { href: "/it-admin/settings/email-footer", label: text.items.settingsEmailFooter },
-        { href: "/it-admin/settings/language", label: text.items.settingsLanguage }
-      ]
-    }
+    settings
   ];
 }
 
 export default async function ItAdminLayout({ children }: { children: ReactNode }) {
   const auth = await getAuthContext({ requireBranchScope: false }).catch(() => null);
-  if (!auth || auth.platformRole !== "it_admin") redirect("/it-admin/login");
+  if (!auth || (auth.platformRole !== "it_admin" && auth.platformRole !== "it_support")) redirect("/it-admin/login");
 
   const lang = await getCurrentLanguage();
   const text = copy[lang];
@@ -123,12 +147,12 @@ export default async function ItAdminLayout({ children }: { children: ReactNode 
     <AppShell
       title={t(lang, "it_admin_title")}
       subtitle={text.subtitle}
-      nav={buildNavigation(lang)}
+      nav={buildNavigation(lang, auth.platformRole)}
       language={lang}
       languageLabel={t(lang, "language")}
       thaiLabel={t(lang, "thai")}
       englishLabel={t(lang, "english")}
-      roleLabel={text.role}
+      roleLabel={auth.platformRole === "it_support" ? text.roleSupport : text.roleAdmin}
       unavailableLabel={text.unavailable}
     >
       {children}
