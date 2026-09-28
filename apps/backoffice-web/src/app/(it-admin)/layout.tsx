@@ -40,6 +40,8 @@ const copy = {
       audit: "Audit Logs",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
       supportChat: "Support Chat",
+      supportChatInbox: "กล่องสนทนา",
+      supportHistory: "สมุดบันทึกแชท",
       development: "Development / Source Control",
       settings: "ตั้งค่า / Security",
       settingsUsers: "ตั้งค่า USER ใช้งาน",
@@ -80,6 +82,8 @@ const copy = {
       audit: "Audit Logs",
       emergencyBroadcast: "Emergency Broadcast",
       supportChat: "Support Chat",
+      supportChatInbox: "Inbox",
+      supportHistory: "Chat Notebook",
       development: "Development / Source Control",
       settings: "Settings / Security",
       settingsUsers: "User Settings",
@@ -120,7 +124,11 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
       { href: "/it-admin/pos-users", label: text.items.users, group: text.groups.customer, icon: "users" },
       { href: "/it-admin/subscription-payments", label: text.items.subscriptionPayments, group: text.groups.commercial, icon: "package" },
       { href: "/it-admin/license-issuer", label: text.items.desktopLicense, group: text.groups.commercial, icon: "entitlement" },
-      { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat" },
+      { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat",
+        children: [
+          { href: "/it-admin/support-chat", label: text.items.supportChatInbox },
+          { href: "/it-admin/support-chat/history", label: text.items.supportHistory }
+        ] },
       settings
     ];
   }
@@ -143,7 +151,11 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
-    { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat" },
+    { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat",
+        children: [
+          { href: "/it-admin/support-chat", label: text.items.supportChatInbox },
+          { href: "/it-admin/support-chat/history", label: text.items.supportHistory }
+        ] },
     { href: "/it-admin/development", label: text.items.development, group: text.groups.development, icon: "code" },
     settings
   ];
