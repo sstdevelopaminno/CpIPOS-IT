@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CustomerEmailEventType = "store_activation" | "payment_confirmation";
+export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "sales_retention_export";
 export type CustomerEmailTriggerMode = "automatic" | "manual";
 export type CustomerEmailDeliveryStatus =
   | "sent"
@@ -19,6 +19,7 @@ type CommunicationSettings = {
   support_sender_name: string;
   auto_send_store_activation: boolean;
   auto_send_payment_confirmation: boolean;
+  auto_send_sales_retention_export: boolean;
   company_thai_name: string;
   company_english_name: string;
   contact_phone: string;
@@ -67,6 +68,7 @@ const DEFAULT_SETTINGS: CommunicationSettings = {
   support_sender_name: "Cutting Point Tech Support",
   auto_send_store_activation: true,
   auto_send_payment_confirmation: true,
+  auto_send_sales_retention_export: true,
   company_thai_name: "บริษัท คัตติ้งพอยท์ เทค จำกัด",
   company_english_name: "Cutting Point Tech Co., Ltd.",
   contact_phone: "098-5460-355",
@@ -143,10 +145,14 @@ function brandMessage(
 ): CustomerEmailMessage {
   const title = eventType === "payment_confirmation"
     ? "ยืนยันการรับชำระเงินเรียบร้อย"
-    : "เปิดใช้งานระบบสำเร็จแล้ว";
+    : eventType === "sales_retention_export"
+      ? "ไฟล์ประวัติการขายพร้อมดาวน์โหลด"
+      : "เปิดใช้งานระบบสำเร็จแล้ว";
   const subtitle = eventType === "payment_confirmation"
     ? "บริษัทได้รับและตรวจสอบการชำระเงินเรียบร้อยแล้ว ระบบได้เปิด/ต่ออายุแพ็กเกจ CpIPOS ให้แล้ว"
-    : "ร้านค้าของคุณพร้อมเริ่มใช้งานระบบ CpIPOS แล้ว";
+    : eventType === "sales_retention_export"
+      ? "ระบบได้จัดเก็บประวัติการขายที่พ้นระยะเก็บข้อมูลออนไลน์เป็นไฟล์ส่วนตัวเรียบร้อยแล้ว"
+      : "ร้านค้าของคุณพร้อมเริ่มใช้งานระบบ CpIPOS แล้ว";
   const website = escapeHtml(settings.website_url);
   const footerNote = escapeHtml(settings.email_footer_note);
 
@@ -194,7 +200,7 @@ export function customerEmailProblem(value: string) {
 
 async function loadSettings(db: SupabaseClient): Promise<CommunicationSettings> {
   const result = await db.from("it_communication_settings")
-    .select("billing_email,support_email,billing_sender_name,support_sender_name,auto_send_store_activation,auto_send_payment_confirmation,company_thai_name,company_english_name,contact_phone,website_url,email_footer_note")
+    .select("billing_email,support_email,billing_sender_name,support_sender_name,auto_send_store_activation,auto_send_payment_confirmation,auto_send_sales_retention_export,company_thai_name,company_english_name,contact_phone,website_url,email_footer_note")
     .eq("id", "default").maybeSingle<CommunicationSettings>();
   if (result.error) throw new Error("communication_settings_read_failed");
   return result.data ?? DEFAULT_SETTINGS;
@@ -331,6 +337,68 @@ export function buildPaymentConfirmationEmail(input: {
   return { subject, textBody: lines.join("\n"), htmlBody: html };
 }
 
+export function buildSalesRetentionExportEmail(input: {
+  storeName: string;
+  ownerName?: string | null;
+  packageName?: string | null;
+  retentionMonths: number;
+  rangeStartAt?: string | null;
+  rangeEndAt?: string | null;
+  orderCount: number;
+  itemCount: number;
+  paymentCount: number;
+  grossTotal: number;
+  paidTotal: number;
+  ordersUrl: string;
+  itemsUrl: string;
+  paymentsUrl: string;
+  expiresAtLabel: string;
+}): CustomerEmailMessage {
+  const subject = `ไฟล์ประวัติการขาย CpIPOS | ${text(input.storeName, 100)} | ${input.retentionMonths} เดือน`;
+  const owner = text(input.ownerName, 120) || text(input.storeName, 120);
+  const range = `${thaiDate(input.rangeStartAt)} - ${thaiDate(input.rangeEndAt)}`;
+  const lines = [
+    `เรียน ${owner}`,
+    "",
+    `ระบบได้จัดเก็บประวัติการขายที่เก่ากว่า ${input.retentionMonths} เดือนเป็นไฟล์ส่วนตัวเรียบร้อยแล้ว`,
+    `ร้านค้า: ${text(input.storeName, 180)}`,
+    input.packageName ? `แพ็กเกจ: ${text(input.packageName, 120)}` : "",
+    `ช่วงข้อมูล: ${range}`,
+    `จำนวนบิล: ${input.orderCount.toLocaleString("th-TH")} บิล`,
+    `ยอดขายรวม: ${money(input.grossTotal, "THB")}`,
+    `ยอดรับชำระรวม: ${money(input.paidTotal, "THB")}`,
+    "",
+    `ไฟล์สรุปบิล: ${input.ordersUrl}`,
+    `ไฟล์รายการสินค้าในบิล: ${input.itemsUrl}`,
+    `ไฟล์การชำระเงิน: ${input.paymentsUrl}`,
+    "",
+    `ลิงก์ดาวน์โหลดมีอายุถึง ${input.expiresAtLabel}`,
+    "สินค้า หมวดสินค้า และข้อมูลสต๊อกปัจจุบันไม่ได้ถูกลบจากระบบ",
+    "ระบบจะเก็บไฟล์ Archive ไว้แบบ Private และล้างเฉพาะรายการขายเก่าหลังผ่านช่วงความปลอดภัย"
+  ].filter(Boolean);
+
+  const html = [
+    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">${escapeHtml(owner)}</strong></p>`,
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;border:1px solid #cfe0f5;border-radius:12px;background:#f8fbff;overflow:hidden">',
+    `<tr><td style="padding:13px 16px;border-bottom:1px solid #e3ebf5;font-size:12px;color:#64748b;width:42%">ร้านค้า</td><td style="padding:13px 16px;border-bottom:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.storeName)}</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-bottom:1px solid #e3ebf5;font-size:12px;color:#64748b">ช่วงข้อมูล</td><td style="padding:13px 16px;border-bottom:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(range)}</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-bottom:1px solid #e3ebf5;font-size:12px;color:#64748b">จำนวนบิล</td><td style="padding:13px 16px;border-bottom:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">${input.orderCount.toLocaleString("th-TH")} บิล</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-bottom:1px solid #e3ebf5;font-size:12px;color:#64748b">ยอดขายรวม</td><td style="padding:13px 16px;border-bottom:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#176fe8">${escapeHtml(money(input.grossTotal, "THB"))}</td></tr>`,
+    `<tr><td style="padding:13px 16px;font-size:12px;color:#64748b">ยอดรับชำระรวม</td><td style="padding:13px 16px;font-size:14px;font-weight:800;color:#176fe8">${escapeHtml(money(input.paidTotal, "THB"))}</td></tr>`,
+    '</table>',
+    '<div style="margin-top:20px;padding:16px;border:1px solid #dbeafe;border-radius:12px;background:#ffffff">',
+    '<div style="font-size:13px;font-weight:900;color:#102a50;margin-bottom:12px">ดาวน์โหลดไฟล์ประวัติการขาย</div>',
+    `<div style="margin:8px 0"><a href="${escapeHtml(input.ordersUrl)}" style="color:#176fe8;font-size:13px;font-weight:800;text-decoration:none">1. รายการบิล (orders.csv)</a></div>`,
+    `<div style="margin:8px 0"><a href="${escapeHtml(input.itemsUrl)}" style="color:#176fe8;font-size:13px;font-weight:800;text-decoration:none">2. รายการสินค้าในบิล (items.csv)</a></div>`,
+    `<div style="margin:8px 0"><a href="${escapeHtml(input.paymentsUrl)}" style="color:#176fe8;font-size:13px;font-weight:800;text-decoration:none">3. รายการชำระเงิน (payments.csv)</a></div>`,
+    `<div style="margin-top:12px;font-size:11px;line-height:1.6;color:#64748b">ลิงก์มีอายุถึง ${escapeHtml(input.expiresAtLabel)} หากหมดอายุสามารถติดต่อ Support เพื่อออกลิงก์ใหม่ได้</div>`,
+    '</div>',
+    '<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#ecfdf5;color:#166534;font-size:12px;line-height:1.65"><strong>ข้อมูลที่ไม่ถูกลบ:</strong> สินค้า หมวดสินค้า และข้อมูลสต๊อกปัจจุบันยังอยู่ในระบบตามปกติ</div>'
+  ].join("");
+
+  return { subject, textBody: lines.join("\n"), htmlBody: html };
+}
+
 export async function deliverCustomerEmail(input: {
   db: SupabaseClient;
   eventType: CustomerEmailEventType;
@@ -345,7 +413,9 @@ export async function deliverCustomerEmail(input: {
   const brandedMessage = brandMessage(input.message, settings, input.eventType);
   const automaticEnabled = input.eventType === "store_activation"
     ? settings.auto_send_store_activation
-    : settings.auto_send_payment_confirmation;
+    : input.eventType === "payment_confirmation"
+      ? settings.auto_send_payment_confirmation
+      : settings.auto_send_sales_retention_export;
   if (input.triggerMode === "automatic" && !automaticEnabled) {
     return { status: "automatic_disabled", message: "ปิดการส่งอัตโนมัติไว้ในการตั้งค่า" };
   }
