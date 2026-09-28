@@ -48,6 +48,9 @@ type Package = {
   is_active: boolean;
   monthly_price: number | string | null;
   yearly_price: number | string | null;
+  monthly_discount_percent?: number | string | null;
+  yearly_discount_percent?: number | string | null;
+  quota_mode?: string | null;
   max_branches: number | null;
   max_devices: number | null;
   max_users: number | null;
@@ -105,7 +108,7 @@ type ControlData = {
       has_evidence: boolean;
       submitted_at: string | null;
       reviewed_at: string | null;
-      kind: "payment_notice" | "renewal_intent";
+      kind: "payment_notice" | "renewal_intent" | "custom_quote_request";
       billing_interval: "monthly" | "yearly";
       expected_amount: number | null;
       source: string;
@@ -119,10 +122,36 @@ type ControlData = {
       currency: string;
     } | null;
   };
+  custom_package: {
+    terms: {
+      tenant_id: string;
+      package_id: string;
+      status: "draft" | "approved" | "active" | "retired";
+      monthly_price: number;
+      yearly_price: number;
+      monthly_discount_percent: number;
+      yearly_discount_percent: number;
+      effective_monthly_price: number;
+      effective_yearly_price: number;
+      max_branches: number;
+      max_devices: number;
+      max_users: number;
+      retention_months: number;
+      max_products: number | null;
+      monthly_bill_limit: number | null;
+      storage_limit_gb: number | null;
+      feature_overrides: Record<string, boolean> | null;
+      notes: string | null;
+      version: number;
+      approved_at: string | null;
+    } | null;
+    feature_catalog: Array<{ code: string; name: string; description?: string | null; is_active?: boolean }>;
+    has_open_request: boolean;
+  };
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "salesSummary" | "danger";
+type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "customPackage" | "salesSummary" | "danger";
 type BillingCycle = "monthly" | "yearly";
 
 const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, true])) as Record<PosSalesModeKey, boolean>;
@@ -250,6 +279,22 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const [changeAutoEnd, setChangeAutoEnd] = useState(true);
   const [changeAutoRenew, setChangeAutoRenew] = useState(false);
   const [changeReason, setChangeReason] = useState("");
+  const [customDraft, setCustomDraft] = useState({
+    monthly_price: "0",
+    yearly_price: "0",
+    monthly_discount_percent: "0",
+    yearly_discount_percent: "0",
+    max_branches: "1",
+    max_devices: "1",
+    max_users: "1",
+    retention_months: "6",
+    max_products: "",
+    monthly_bill_limit: "",
+    storage_limit_gb: "",
+    notes: "",
+    feature_overrides: {} as Record<string, boolean>
+  });
+  const [customBillingCycle, setCustomBillingCycle] = useState<BillingCycle>("monthly");
   const [notice, setNotice] = useState({ customer_title: "ระบบถูกระงับชั่วคราว", customer_message: "", admin_reason: "" });
   const [salesModeDrafts, setSalesModeDrafts] = useState<Record<PosSalesModeKey, boolean>>(DEFAULT_SALES_MODE_DRAFTS);
   const [salesModeReason, setSalesModeReason] = useState("");
@@ -286,6 +331,24 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     setChangeEndDate(addBillingDate(changeStart, changeCycle));
     setChangeAutoEnd(true);
     setChangeAutoRenew(Boolean(next.contract?.auto_renew));
+
+    const custom = next.custom_package.terms;
+    setCustomDraft({
+      monthly_price: String(custom?.monthly_price ?? 0),
+      yearly_price: String(custom?.yearly_price ?? 0),
+      monthly_discount_percent: String(custom?.monthly_discount_percent ?? 0),
+      yearly_discount_percent: String(custom?.yearly_discount_percent ?? 0),
+      max_branches: String(custom?.max_branches ?? Math.max(1,next.contract?.max_branches ?? 1)),
+      max_devices: String(custom?.max_devices ?? Math.max(1,next.contract?.max_devices ?? 1)),
+      max_users: String(custom?.max_users ?? Math.max(1,next.contract?.max_users ?? 1)),
+      retention_months: String(custom?.retention_months ?? 6),
+      max_products: custom?.max_products == null ? "" : String(custom.max_products),
+      monthly_bill_limit: custom?.monthly_bill_limit == null ? "" : String(custom.monthly_bill_limit),
+      storage_limit_gb: custom?.storage_limit_gb == null ? "" : String(custom.storage_limit_gb),
+      notes: custom?.notes ?? "",
+      feature_overrides: custom?.feature_overrides ?? {}
+    });
+    setCustomBillingCycle(next.billing.latest_request?.billing_interval === "yearly" ? "yearly" : "monthly");
 
     setNotice({
       customer_title: next.pos_notice?.title ?? "ระบบถูกระงับชั่วคราว",
