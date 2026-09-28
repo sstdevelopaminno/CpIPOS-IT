@@ -12,6 +12,8 @@ const primaryOwnerUi = source("../../src/components/it-admin/tenant-primary-owne
 const primaryBridge = source("../../../../supabase/control-plane-functions/cpipos-it-module-primary/index.ts");
 const tenantControl = source("../../src/lib/services/it-admin/tenant-control-service.ts");
 const cascadeSql = source("../../../../supabase/migrations/20260924193500_it_tenant_cascade_delete.sql");
+const salesSummaryUi = source("../../src/components/it-admin/tenant-sales-summary.tsx");
+const salesSummaryApi = source("../../src/app/api/it-admin/v1/tenants/[tenantId]/sales-summary/route.ts");
 
 describe("IT Admin tenant directory", () => {
   it("uses a dedicated tenant directory UI instead of the generic module table", () => {
@@ -71,6 +73,18 @@ describe("IT Admin tenant directory", () => {
     expect(cascadeSql).toContain("tenant_delete_cross_plane_requires_reconciliation");
     expect(cascadeSql).toContain("grant execute on function public.it_delete_tenant_cascade");
     expect(controlCenter).toContain("storage_cleanup_pending");
+  });
+
+  it("shows authoritative product and seller names in tenant sales receipt drill-down", () => {
+    expect(salesSummaryApi).toContain("created_by");
+    expect(salesSummaryApi).toContain('.from("users_profiles")');
+    expect(salesSummaryApi).toContain("products(name,sku)");
+    expect(salesSummaryApi).toContain("resolveItemName");
+    expect(salesSummaryApi).toContain("seller_name");
+    expect(salesSummaryApi).toContain("sellerName:");
+    expect(salesSummaryUi).toContain("<th>ผู้ขาย</th>");
+    expect(salesSummaryUi).toContain("ผู้ขาย / ผู้เปิดบิล");
+    expect(salesSummaryUi).toContain('receipt.order.seller_name || "ไม่ระบุผู้ขาย"');
   });
 
 });

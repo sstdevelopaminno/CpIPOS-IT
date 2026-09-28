@@ -6,7 +6,7 @@ import styles from "./tenant-sales-summary.module.css";
 type Period = "day" | "month" | "year";
 type Branch = { id: string; code: string; name: string; is_active: boolean };
 type Product = { id: string; branch_id: string | null; branchName: string; sku: string | null; name: string; category: string | null; price: number | string | null; is_active: boolean };
-type Receipt = { id: string; orderNo: string; branchId: string; branchName: string; createdAt: string; status: string; gross: number; net: number; discount: number; methods: string[] };
+type Receipt = { id: string; orderNo: string; branchId: string; branchName: string; createdAt: string; status: string; gross: number; net: number; discount: number; sellerName: string; methods: string[] };
 type Report = {
   tenant: { id: string; name: string; display_name: string | null };
   branches: Branch[]; branchId: string; period: Period; date: string;
@@ -19,7 +19,7 @@ type Report = {
   products: Product[];
 };
 type Detail = {
-  order: { id: string; order_no: string | null; branch_id: string; created_at: string; status: string; gross: number; net: number; discount_amount: number | string | null; tax_total: number | string | null };
+  order: { id: string; order_no: string | null; branch_id: string; created_at: string; created_by: string | null; seller_name: string | null; status: string; gross: number; net: number; discount_amount: number | string | null; tax_total: number | string | null };
   items: Array<{ id: string; name: string | null; quantity: number | string | null; unit_price: number | string | null; line_total: number | string | null }>;
   payments: Array<{ id: string; method: string; status: string; amount: number | string | null }>;
 };
@@ -138,9 +138,9 @@ export function TenantSalesSummary({ tenantId }: { tenantId: string }) {
         <h4>{tab === "receipts" ? "ตรวจสอบรายการขายทีละบิล" : tab === "sold" ? "จำนวนและมูลค่าสินค้าที่ขาย" : "ทะเบียนสินค้าของร้าน / สาขา"}</h4>
         <div className={styles.tableWrap}><table className={styles.table}>
           {tab === "receipts" ? <>
-            <thead><tr><th>เลขที่บิล</th><th>วัน/เวลาขาย</th><th>สาขา</th><th>สถานะ</th><th>ชำระเงิน</th><th className={styles.right}>ยอดสุทธิ</th><th>รายละเอียด</th></tr></thead>
-            <tbody>{(visible as Receipt[]).map((r) => <tr key={r.id}><td><strong>{r.orderNo}</strong></td><td>{time(r.createdAt)}</td><td>{r.branchName}</td><td><span className={styles.pill} data-status={r.status}>{statusLabel(r.status)}</span></td><td>{r.methods.map(paymentLabel).join(" · ") || "—"}</td><td className={styles.right}>{money(r.net)}</td><td><button className={styles.link} onClick={() => void openReceipt(r.id)}>ดูบิล →</button></td></tr>)}
-              {!visible.length ? <tr><td className={styles.empty} colSpan={7}>ยังไม่มีบิลในช่วง/สาขาที่เลือก</td></tr> : null}</tbody>
+            <thead><tr><th>เลขที่บิล</th><th>วัน/เวลาขาย</th><th>สาขา</th><th>ผู้ขาย</th><th>สถานะ</th><th>ชำระเงิน</th><th className={styles.right}>ยอดสุทธิ</th><th>รายละเอียด</th></tr></thead>
+            <tbody>{(visible as Receipt[]).map((r) => <tr key={r.id}><td><strong>{r.orderNo}</strong></td><td>{time(r.createdAt)}</td><td>{r.branchName}</td><td>{r.sellerName || "ไม่ระบุผู้ขาย"}</td><td><span className={styles.pill} data-status={r.status}>{statusLabel(r.status)}</span></td><td>{r.methods.map(paymentLabel).join(" · ") || "—"}</td><td className={styles.right}>{money(r.net)}</td><td><button className={styles.link} onClick={() => void openReceipt(r.id)}>ดูบิล →</button></td></tr>)}
+              {!visible.length ? <tr><td className={styles.empty} colSpan={8}>ยังไม่มีบิลในช่วง/สาขาที่เลือก</td></tr> : null}</tbody>
           </> : tab === "sold" ? <>
             <thead><tr><th>สินค้า</th><th className={styles.right}>จำนวนขาย</th><th className={styles.right}>มูลค่ารายการสินค้า</th></tr></thead>
             <tbody>{(visible as Report["soldProducts"]).map((p) => <tr key={p.key}><td><strong>{p.name}</strong></td><td className={styles.right}>{number(p.quantity)}</td><td className={styles.right}>{money(p.amount)}</td></tr>)}
@@ -159,7 +159,7 @@ export function TenantSalesSummary({ tenantId }: { tenantId: string }) {
       <section className={styles.receiptDialog} role="dialog" aria-modal="true" aria-label="รายละเอียดบิล">
         <header className={styles.receiptHead}><div><span className={styles.eyebrow}>RECEIPT DETAILS</span><h4>รายละเอียดรายการขาย</h4></div><button type="button" className={styles.close} onClick={closeReceipt}>ปิด ×</button></header>
         {receiptLoading ? <p>กำลังโหลดรายละเอียดบิล…</p> : null}{receiptError ? <div className={styles.error}>{receiptError}</div> : null}
-        {receipt ? <><p><strong>บิล {receipt.order.order_no || receipt.order.id.slice(0, 8)}</strong> · {time(receipt.order.created_at)} · {statusLabel(receipt.order.status)}</p>
+        {receipt ? <><p><strong>บิล {receipt.order.order_no || receipt.order.id.slice(0, 8)}</strong> · {time(receipt.order.created_at)} · {statusLabel(receipt.order.status)} · ผู้ขาย / ผู้เปิดบิล <strong>{receipt.order.seller_name || "ไม่ระบุผู้ขาย"}</strong></p>
           <div className={styles.receiptTotals}><span>ยอดก่อนส่วนลด <strong>{money(receipt.order.gross)}</strong></span><span>ส่วนลด <strong>{money(receipt.order.discount_amount)}</strong></span><span>ยอดสุทธิ <strong>{money(receipt.order.net)}</strong></span></div>
           <h4>สินค้าในบิล</h4><div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>รายการ</th><th className={styles.right}>จำนวน</th><th className={styles.right}>ราคา</th><th className={styles.right}>รวม</th></tr></thead><tbody>
             {receipt.items.map((i) => <tr key={i.id}><td>{i.name || "ไม่ระบุชื่อสินค้า"}</td><td className={styles.right}>{number(i.quantity)}</td><td className={styles.right}>{money(i.unit_price)}</td><td className={styles.right}>{money(i.line_total)}</td></tr>)}
