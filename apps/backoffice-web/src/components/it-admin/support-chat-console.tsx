@@ -156,6 +156,16 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported"
   );
 
+  const clearGoneConversation = useCallback((id: string) => {
+    setRows((current) => current.filter((row) => row.conversation_id !== id));
+    setSelectedId((current) => current === id ? "" : current);
+    setConversation((current) => current?.id === id ? null : current);
+    setMessages([]);
+    setNoteDraft("");
+    setRemoteTyping("");
+    headSignalRef.current = "";
+  }, []);
+
   const loadInbox = useCallback(async () => {
     setBusy((current) => current || "list");
     try {
@@ -164,18 +174,21 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "โหลดแชทไม่สำเร็จ");
       setRows(json.data.conversations);
       setActor(json.data.actor);
-      if (!selectedId) {
-        const first = historyOnly
-          ? json.data.conversations.find((row) => row.status === "closed")
-          : json.data.conversations.find((row) => row.status !== "closed") ?? json.data.conversations[0];
+      const first = historyOnly
+        ? json.data.conversations.find((row) => row.status === "closed")
+        : json.data.conversations.find((row) => row.status !== "closed") ?? json.data.conversations[0];
+      if (selectedId && !json.data.conversations.some((row) => row.conversation_id === selectedId)) {
+        clearGoneConversation(selectedId);
         if (first) setSelectedId(first.conversation_id);
+      } else if (!selectedId && first) {
+        setSelectedId(first.conversation_id);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "โหลดแชทไม่สำเร็จ");
     } finally {
       setBusy("");
     }
-  }, [selectedId, historyOnly]);
+  }, [selectedId, historyOnly, clearGoneConversation]);
 
   const loadConversation = useCallback(async (id: string) => {
     if (!id) return;
@@ -184,6 +197,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${id}`, { cache: "no-store" });
       const json = await response.json().catch(() => null) as Envelope<DetailResponse> | null;
+      if (response.status === 404) {
+        clearGoneConversation(id);
+        setError("");
+        return;
+      }
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปิดแชทไม่สำเร็จ");
       setConversation(json.data.conversation);
       setNoteDraft(json.data.conversation.internal_note ?? "");
@@ -193,7 +211,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     } finally {
       setBusy("");
     }
-  }, []);
+  }, [clearGoneConversation]);
 
   useEffect(() => {
     void loadInbox();
@@ -318,6 +336,17 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         })
       });
       const json = await response.json().catch(() => null) as Envelope<{ message: Message; conversation: Conversation; head: Head }> | null;
+      if (response.status === 404) {
+        void typingChannelRef.current?.send({
+          type: "broadcast",
+          event: "message_retract",
+          payload: { actor: "it", client_id: optimisticId }
+        });
+        setMessages((current) => current.filter((item) => item.id !== optimisticId));
+        clearGoneConversation(selectedId);
+        setError("");
+        return;
+      }
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "ส่งข้อความไม่สำเร็จ");
 
       setConversation(json.data.conversation);
@@ -354,6 +383,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         body: JSON.stringify({ action: "set_status", status })
       });
       const json = await response.json().catch(() => null) as Envelope<{ conversation: Conversation }> | null;
+      if (response.status === 404) {
+        clearGoneConversation(selectedId);
+        setError("");
+        return;
+      }
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปลี่ยนสถานะไม่สำเร็จ");
       setConversation(json.data.conversation);
       await loadInbox();
@@ -376,6 +410,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         body: JSON.stringify({ action: "update_note", internal_note: noteDraft })
       });
       const json = await response.json().catch(() => null) as Envelope<{ conversation: Conversation }> | null;
+      if (response.status === 404) {
+        clearGoneConversation(selectedId);
+        setError("");
+        return;
+      }
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "บันทึกโน้ตไม่สำเร็จ");
       setConversation(json.data.conversation);
     } catch (cause) {
