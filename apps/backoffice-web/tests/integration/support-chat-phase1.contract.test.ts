@@ -81,10 +81,12 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(edge).not.toContain("const hydrated = await messagesWithAttachments(db, conversationId)");
   });
 
-  it("auto-claims an unassigned conversation when IT opens it", () => {
-    expect(detail).toContain('!data.conversation.assigned_user_id && data.conversation.status !== "closed"');
-    expect(detail).toContain('"claim_conversation"');
+  it("auto-claims an unassigned conversation in the same message-history request", () => {
+    expect(detail).toContain("auto_claim: true");
+    expect(detail).toContain("data.claimed");
     expect(detail).toContain('action: "support_chat_claimed"');
+    expect(edge).toContain("!conversation.assigned_user_id");
+    expect(edge).toContain("input.auto_claim === true");
   });
 
   it("uses the signed cross-project bridge function", () => {
