@@ -78,19 +78,19 @@ function formatTime(value: string | null) {
 
 function StoreAvatar({ src, name }: { src?: string | null; name: string }) {
   if (src) {
-    return <Image src={src} alt="" width={42} height={42} className="h-10 w-10 rounded-xl border border-slate-200 bg-white object-cover" />;
+    return <span aria-hidden="true" className="h-10 w-10 shrink-0 rounded-xl border border-slate-200 bg-white bg-cover bg-center"
+      style={{ backgroundImage: `url("${src.replace(/["\\]/g, "")}")` }} />;
   }
   return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-xs font-black text-white">{initials(name)}</span>;
 }
 
-function SupportAvatar({ src, name }: { src?: string | null; name: string }) {
-  return <Image
-    src={src || "/brand/cpipos-symbol-sidebar.png"}
-    alt=""
-    width={38}
-    height={38}
-    className="h-9 w-9 rounded-full border border-slate-200 bg-white object-cover"
-  />;
+function SupportAvatar({ src, name: _name }: { src?: string | null; name: string }) {
+  if (src) {
+    return <span aria-hidden="true" className="h-9 w-9 shrink-0 rounded-full border border-slate-200 bg-white bg-cover bg-center"
+      style={{ backgroundImage: `url("${src.replace(/["\\]/g, "")}")` }} />;
+  }
+  return <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={38} height={38}
+    className="h-9 w-9 rounded-full border border-slate-200 bg-white object-contain" />;
 }
 
 export function SupportChatConsole() {
