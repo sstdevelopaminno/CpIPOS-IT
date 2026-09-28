@@ -1,6 +1,6 @@
 name: Development Workspace
 
-run-name: "Workspace · ${{ inputs.repository }} · ${{ inputs.task }} · ${{ inputs.request_id }}"
+run-name: "Workspace · ${{ inputs.repository }} · ${{ inputs.task }} · ${{ inputs.ref }} · ${{ inputs.request_id }}"
 
 on:
   workflow_dispatch:
