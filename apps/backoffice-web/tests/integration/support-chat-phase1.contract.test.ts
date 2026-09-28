@@ -12,8 +12,8 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
   const service = src("src/lib/support-chat/support-chat-service.ts");
   const detail = src("src/app/api/it-admin/v1/support-chat/conversations/[conversationId]/route.ts");
   const users = src("src/app/api/it-admin/v1/it-users/route.ts");
-  const edge = src("../../../../supabase-communications/functions/support-chat-api/index.ts");
-  const phase2 = src("../../../../supabase-communications/migrations/20260928203000_support_chat_phase2_realtime_media.sql");
+  const edge = src("../../supabase-communications/functions/support-chat-api/index.ts");
+  const phase2 = src("../../supabase-communications/migrations/20260928203000_support_chat_phase2_realtime_media.sql");
   const historyPage = src("src/app/(it-admin)/it-admin/support-chat/history/page.tsx");
 
   it("exposes Support Chat to both IT Admin and IT Support navigation", () => {
