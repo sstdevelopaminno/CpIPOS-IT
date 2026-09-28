@@ -462,7 +462,7 @@ async function audit(
 
 export async function loadTenantControlCenter(context: ItAdminContext, tenantId: string) {
   const tenant = await loadTenant(context, tenantId);
-  const [branchesResult, packagesResult, contract, accessCode, lifecycle, paymentRequestResult, receiptResult] = await Promise.all([
+  const [branchesResult, packagesResult, contract, accessCode, lifecycle, paymentRequestResult, receiptResult, customTermsResult, featureCatalogResult] = await Promise.all([
     context.supabase.from("branches").select(BRANCH_SELECT).eq("tenant_id", tenantId).order("created_at", { ascending: true }).returns<BranchDbRow[]>(),
     context.supabase
       .from("subscription_packages")
@@ -487,13 +487,25 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
       .eq("tenant_id", tenantId)
       .order("issued_at", { ascending: false })
       .limit(1)
-      .maybeSingle<ReceiptRow>()
+      .maybeSingle<ReceiptRow>(),
+    context.supabase
+      .from("tenant_custom_package_terms")
+      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .eq("tenant_id", tenantId)
+      .maybeSingle<CustomTermsRow>(),
+    context.supabase
+      .from("package_feature_catalog")
+      .select("code,name,description,is_active")
+      .eq("is_active", true)
+      .order("name", { ascending: true })
   ]);
 
   if (branchesResult.error) throw new Error(`tenant_branches_query_failed:${branchesResult.error.message}`);
   if (packagesResult.error) throw new Error(`subscription_packages_query_failed:${packagesResult.error.message}`);
   if (paymentRequestResult.error) throw new Error(`subscription_payment_request_query_failed:${paymentRequestResult.error.message}`);
   if (receiptResult.error) throw new Error(`subscription_receipt_query_failed:${receiptResult.error.message}`);
+  if (customTermsResult.error) throw new Error(`custom_package_terms_query_failed:${customTermsResult.error.message}`);
+  if (featureCatalogResult.error) throw new Error(`feature_catalog_query_failed:${featureCatalogResult.error.message}`);
 
   const packages = packagesResult.data ?? [];
   const currentPackageId = contract?.package_id ?? tenant.package_id;
@@ -569,7 +581,11 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
         has_evidence: Boolean(paymentRequestResult.data.evidence_url),
         submitted_at: paymentRequestResult.data.submitted_at,
         reviewed_at: paymentRequestResult.data.reviewed_at,
-        kind: paymentRequestResult.data.metadata?.kind === "payment_notice" ? "payment_notice" : "renewal_intent",
+        kind: paymentRequestResult.data.metadata?.kind === "payment_notice"
+          ? "payment_notice"
+          : paymentRequestResult.data.metadata?.kind === "custom_quote_request"
+            ? "custom_quote_request"
+            : "renewal_intent",
         billing_interval: paymentRequestResult.data.metadata?.billing_interval === "yearly" ? "yearly" : "monthly",
         expected_amount: paymentRequestResult.data.metadata?.expected_amount == null
           ? null
@@ -586,6 +602,26 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
         amount: Number(receiptResult.data.amount),
         currency: receiptResult.data.currency || "THB"
       } : null
+    },
+    custom_package: {
+      terms: customTermsResult.data
+        ? {
+            ...customTermsResult.data,
+            monthly_price: Number(customTermsResult.data.monthly_price),
+            yearly_price: Number(customTermsResult.data.yearly_price),
+            monthly_discount_percent: Number(customTermsResult.data.monthly_discount_percent),
+            yearly_discount_percent: Number(customTermsResult.data.yearly_discount_percent),
+            storage_limit_gb: customTermsResult.data.storage_limit_gb == null ? null : Number(customTermsResult.data.storage_limit_gb),
+            effective_monthly_price: customTermsAmount(customTermsResult.data, "monthly"),
+            effective_yearly_price: customTermsAmount(customTermsResult.data, "yearly")
+          }
+        : null,
+      feature_catalog: featureCatalogResult.data ?? [],
+      has_open_request: Boolean(
+        paymentRequestResult.data &&
+        ["pending","under_review"].includes(paymentRequestResult.data.status) &&
+        paymentRequestResult.data.metadata?.kind === "custom_quote_request"
+      )
     },
     pos_notice: contract
       ? {
