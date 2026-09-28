@@ -30,17 +30,25 @@ export async function GET(
     const { conversationId } = await context.params;
     const bridge = await issueItSupportChatBridge(auth);
 
-    let data = await callSupportChat<{ conversation: Conversation; messages: Array<Record<string, unknown>> }>(
-      bridge, "get_messages", { conversation_id: conversationId }
-    );
+    const data = await callSupportChat<{
+      conversation: Conversation;
+      messages: Array<Record<string, unknown>>;
+      head: SupportChatHead;
+      head_changed?: boolean;
+      claimed?: boolean;
+    }>(bridge, "get_messages", {
+      conversation_id: conversationId,
+      auto_claim: true,
+      mark_read: true
+    });
 
-    if (!data.conversation.assigned_user_id && data.conversation.status !== "closed") {
-      const claimed = await callSupportChat<{ conversation: Conversation; head: SupportChatHead }>(
-        bridge, "claim_conversation", { conversation_id: conversationId }
-      );
-      await mirrorSupportChatHead(claimed.head);
+    if (data.head_changed) {
+      await mirrorSupportChatHead(data.head);
+    }
+
+    if (data.claimed) {
       await appendAuditLog({
-        tenantId: typeof claimed.conversation.tenant_id === "string" ? claimed.conversation.tenant_id : undefined,
+        tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
         actorUserId: auth.auth.userId,
         actorRole: auth.auth.platformRole,
         action: "support_chat_claimed",
@@ -52,19 +60,9 @@ export async function GET(
         ipAddress: auth.requestMeta.ipAddress ?? undefined,
         userAgent: auth.requestMeta.userAgent ?? undefined
       });
-      data = await callSupportChat<{ conversation: Conversation; messages: Array<Record<string, unknown>> }>(
-        bridge, "get_messages", { conversation_id: conversationId }
-      );
     }
 
-    if (Number(data.conversation.unread_it_count ?? 0) > 0) {
-      const read = await callSupportChat<{ conversation: Conversation; head: SupportChatHead }>(
-        bridge, "mark_read", { conversation_id: conversationId }
-      );
-      await mirrorSupportChatHead(read.head);
-      return ok({ ...data, conversation: read.conversation });
-    }
-    return ok(data);
+    return ok({ conversation: data.conversation, messages: data.messages });
   } catch (error) {
     return guardItAdminError(error);
   }

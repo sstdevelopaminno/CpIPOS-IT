@@ -70,6 +70,17 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(notifier).toContain('document.addEventListener("visibilitychange"');
   });
 
+  it("keeps live delivery off the slow unread/list request path", () => {
+    expect(notifier).toContain("notifyUpdate(next)");
+    expect(notifier).toContain("void loadUnreadTotal()");
+    expect(consoleUi).toContain("Optimistic local echo");
+    expect(consoleUi).toContain("preview:");
+    expect(consoleUi).not.toContain("setMessages(json.data.messages);\n      await loadInbox()");
+    expect(edge).toContain("head_changed: headChanged");
+    expect(edge).toContain("const sent = { ...inserted.data, attachments: sentAttachments }");
+    expect(edge).not.toContain("const hydrated = await messagesWithAttachments(db, conversationId)");
+  });
+
   it("auto-claims an unassigned conversation when IT opens it", () => {
     expect(detail).toContain('!data.conversation.assigned_user_id && data.conversation.status !== "closed"');
     expect(detail).toContain('"claim_conversation"');

@@ -18,8 +18,11 @@ async function loadUnreadTotal() {
   return response.ok ? Number(json?.data?.unread_total ?? 0) : 0;
 }
 
-function notifyUnread(total: number, head?: Head) {
+function notifyUnread(total: number) {
   window.dispatchEvent(new CustomEvent("cpipos-support-chat-unread", { detail: { total } }));
+}
+
+function notifyUpdate(head: Head) {
   window.dispatchEvent(new CustomEvent("cpipos-support-chat-update", { detail: { head } }));
 }
 
@@ -42,9 +45,14 @@ export function SupportChatNotifier() {
         { event: "*", schema: "public", table: "support_chat_heads" },
         async (payload) => {
           const next = (payload.new ?? {}) as Head;
-          const totalNext = await loadUnreadTotal().catch(() => 0);
           if (!alive) return;
-          notifyUnread(totalNext, next);
+
+          // Deliver the chat event immediately. Unread totals can refresh in
+          // parallel and must not block the active conversation UI.
+          notifyUpdate(next);
+          void loadUnreadTotal().then((totalNext) => {
+            if (alive) notifyUnread(totalNext);
+          }).catch(() => null);
 
           if (initialized.current && next.latest_sender_type === "store" && Number(next.unread_it_count ?? 0) > 0) {
             const title = next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่";

@@ -263,8 +263,77 @@ Deno.serve(async (request) => {
     if (!canAccessConversation(actor, current.data)) return json(403, { error: { code: "conversation_forbidden" } });
 
     if (action === "get_messages") {
+      let conversation = current.data;
+      let headChanged = false;
+      let claimed = false;
+
+      // Collapse auto-claim + mark-read into this request. The previous web
+      // routes made up to three additional Edge Function round trips before
+      // showing a newly received message.
+      if (
+        actor.actor === "it" &&
+        (actor.role === "it_admin" || actor.role === "it_support") &&
+        !conversation.assigned_user_id &&
+        conversation.status !== "closed" &&
+        input.auto_claim === true
+      ) {
+        const now = new Date().toISOString();
+        const updated = await db.from("support_conversations").update({
+          assigned_role: actor.role,
+          assigned_user_id: actor.uid,
+          assigned_user_name: text(actor.name, 120) || "IT Support",
+          assigned_user_avatar_url: actor.avatar_url,
+          status: "in_progress",
+          unread_it_count: 0,
+          updated_at: now
+        }).eq("id", conversationId).select("*").single();
+        if (updated.error) throw updated.error;
+        conversation = updated.data;
+        headChanged = true;
+        claimed = true;
+
+        const existingParticipant = await db.from("support_participants").select("id")
+          .eq("conversation_id", conversationId).eq("participant_type", "it")
+          .eq("user_id", actor.uid).is("left_at", null).limit(1).maybeSingle();
+        if (!existingParticipant.data) {
+          await db.from("support_participants").insert({
+            conversation_id: conversationId,
+            participant_type: "it",
+            user_id: actor.uid,
+            display_name: text(actor.name, 120) || "IT Support",
+            role: actor.role,
+            avatar_url: actor.avatar_url
+          });
+        }
+        await db.from("support_messages").insert({
+          conversation_id: conversationId,
+          sender_type: "system",
+          sender_name: "CpIPOS Support",
+          sender_role: "system",
+          message_body: (text(actor.name, 120) || "IT Support") + " รับเรื่องแล้ว"
+        });
+      } else if (input.mark_read === true) {
+        const field = actor.actor === "it" ? "unread_it_count" : "unread_store_count";
+        if (Number(conversation[field] ?? 0) > 0) {
+          const updated = await db.from("support_conversations")
+            .update({ [field]: 0, updated_at: new Date().toISOString() })
+            .eq("id", conversationId).select("*").single();
+          if (updated.error) throw updated.error;
+          conversation = updated.data;
+          headChanged = true;
+        }
+      }
+
       const messages = await messagesWithAttachments(db, conversationId);
-      return json(200, { data: { conversation: conversationForActor(current.data, actor), messages } });
+      return json(200, {
+        data: {
+          conversation: conversationForActor(conversation, actor),
+          messages,
+          head: headFromConversation(conversation),
+          head_changed: headChanged,
+          claimed
+        }
+      });
     }
 
     if (action === "send_message") {
@@ -323,9 +392,22 @@ Deno.serve(async (request) => {
         }).select("*").single();
         if (inserted.error) throw inserted.error;
 
+        let sentAttachments: Array<Record<string, unknown>> = [];
         if (attachmentRow) {
           const attachmentInserted = await db.from("support_attachments").insert(attachmentRow).select("*").single();
           if (attachmentInserted.error) throw attachmentInserted.error;
+          const signed = await db.storage
+            .from(String(attachmentInserted.data.storage_bucket || IMAGE_BUCKET))
+            .createSignedUrl(String(attachmentInserted.data.storage_path), 15 * 60);
+          if (!signed.error && signed.data?.signedUrl) {
+            sentAttachments = [{
+              id: attachmentInserted.data.id,
+              original_name: attachmentInserted.data.original_name,
+              mime_type: attachmentInserted.data.mime_type,
+              size_bytes: attachmentInserted.data.size_bytes,
+              url: signed.data.signedUrl
+            }];
+          }
         }
 
         const preview = attachmentRow
@@ -350,8 +432,10 @@ Deno.serve(async (request) => {
           .eq("id", conversationId).select("*").single();
         if (updated.error) throw updated.error;
 
-        const hydrated = await messagesWithAttachments(db, conversationId);
-        const sent = hydrated.find((row) => row.id === messageId) ?? { ...inserted.data, attachments: [] };
+        // Return the row we just inserted. Reloading up to 500 historical
+        // messages and signing every attachment here made each send slower as
+        // the conversation grew.
+        const sent = { ...inserted.data, attachments: sentAttachments };
         return json(201, {
           data: { message: sent, conversation: conversationForActor(updated.data, actor), head: headFromConversation(updated.data) }
         });

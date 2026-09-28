@@ -188,13 +188,12 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       setConversation(json.data.conversation);
       setNoteDraft(json.data.conversation.internal_note ?? "");
       setMessages(json.data.messages);
-      await loadInbox();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
     } finally {
       setBusy("");
     }
-  }, [loadInbox]);
+  }, []);
 
   useEffect(() => {
     void loadInbox();
@@ -207,16 +206,47 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   useEffect(() => {
     const onUpdate = (event: Event) => {
       const head = (event as CustomEvent<{ head?: Head }>).detail?.head;
-      void loadInbox();
-      if (!selectedId || head?.conversation_id !== selectedId) return;
+      if (!head?.conversation_id) return;
+
+      // Realtime already gives us the compact authoritative head. Update the
+      // inbox immediately instead of issuing another list request first.
+      setRows((current) => [head, ...current.filter((row) => row.conversation_id !== head.conversation_id)]);
+
+      if (!selectedId || head.conversation_id !== selectedId) return;
       const signal = [head.latest_message_at ?? "", head.status ?? "", head.assigned_user_id ?? ""].join("|");
       if (signal === headSignalRef.current) return;
       headSignalRef.current = signal;
-      void loadConversation(selectedId);
+
+      // Show the incoming store text immediately from the realtime head while
+      // the canonical history refresh runs in the background.
+      if (head.latest_sender_type === "store" && head.latest_message_at && head.latest_message_preview) {
+        setMessages((current) => {
+          const newest = current[current.length - 1];
+          if (newest && Date.parse(newest.created_at) >= Date.parse(head.latest_message_at!)) return current;
+          return [...current, {
+            id: `preview:${head.conversation_id}:${head.latest_message_at}`,
+            sender_type: "store",
+            sender_name: head.contact_name || head.store_name || "ลูกค้า",
+            sender_role: null,
+            sender_avatar_url: head.store_logo_url,
+            message_body: head.latest_message_preview!,
+            created_at: head.latest_message_at!,
+            attachments: []
+          }];
+        });
+      }
+
+      if (
+        head.latest_sender_type === "store" ||
+        head.status !== conversation?.status ||
+        head.assigned_user_id !== conversation?.assigned_user_id
+      ) {
+        void loadConversation(selectedId);
+      }
     };
     window.addEventListener("cpipos-support-chat-update", onUpdate);
     return () => window.removeEventListener("cpipos-support-chat-update", onUpdate);
-  }, [loadInbox, loadConversation, selectedId]);
+  }, [loadConversation, selectedId, conversation?.status, conversation?.assigned_user_id]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -236,8 +266,29 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   async function sendMessage() {
     const message = draft.trim();
     if (!selectedId || (!message && !attachment)) return;
+
+    const pendingAttachment = attachment;
+    const optimisticId = `optimistic:it:${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: optimisticId,
+      sender_type: "it",
+      sender_name: conversation?.assigned_user_name || "IT Support",
+      sender_role: conversation?.assigned_role || "it_support",
+      sender_avatar_url: conversation?.assigned_user_avatar_url || null,
+      message_body: message || "ส่งรูปภาพ",
+      created_at: new Date().toISOString(),
+      attachments: []
+    };
+
+    // Optimistic local echo: the sender should never wait on cross-project
+    // persistence just to see their own message.
+    setMessages((current) => [...current, optimisticMessage]);
+    setDraft("");
+    setAttachment(null);
     setBusy("send");
     setError("");
+    void typingChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { actor: "it", typing: false } });
+
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
         method: "POST",
@@ -245,18 +296,23 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         body: JSON.stringify({
           action: "send",
           message,
-          attachment: attachment ? await attachmentPayload(attachment) : null
+          attachment: pendingAttachment ? await attachmentPayload(pendingAttachment) : null
         })
       });
-      const json = await response.json().catch(() => null) as Envelope<{ message: Message; conversation: Conversation }> | null;
+      const json = await response.json().catch(() => null) as Envelope<{ message: Message; conversation: Conversation; head: Head }> | null;
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "ส่งข้อความไม่สำเร็จ");
-      setDraft("");
-      setAttachment(null);
-      void typingChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { actor: "it", typing: false } });
+
       setConversation(json.data.conversation);
-      setMessages((current) => [...current, json.data!.message]);
-      await loadInbox();
+      setMessages((current) => {
+        const withoutOptimistic = current.filter((item) => item.id !== optimisticId);
+        if (withoutOptimistic.some((item) => item.id === json.data!.message.id)) return withoutOptimistic;
+        return [...withoutOptimistic, json.data!.message];
+      });
+      setRows((current) => [json.data!.head, ...current.filter((row) => row.conversation_id !== json.data!.head.conversation_id)]);
     } catch (cause) {
+      setMessages((current) => current.filter((item) => item.id !== optimisticId));
+      setDraft((current) => current || message);
+      setAttachment((current) => current ?? pendingAttachment);
       setError(cause instanceof Error ? cause.message : "ส่งข้อความไม่สำเร็จ");
     } finally {
       setBusy("");
