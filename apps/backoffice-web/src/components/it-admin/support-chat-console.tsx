@@ -393,8 +393,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     <main className="grid gap-4">
       <header className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
-          <h2 className="text-2xl font-black text-slate-950">Support Chat</h2>
-          <p className="mt-1 text-xs font-bold text-slate-500">IT Admin · IT Support · ร้านค้า</p>
+          <h2 className="text-2xl font-black text-slate-950">{historyOnly ? "สมุดบันทึกแชท" : "Support Chat"}</h2>
+          <p className="mt-1 text-xs font-bold text-slate-500">{historyOnly ? "ประวัติที่จบแล้ว · โน้ตภายใน · รูปภาพถูกลบเมื่อจบแชท" : "IT Admin · IT Support · ร้านค้า"}</p>
         </div>
         <button type="button" onClick={() => void enableNotifications()}
           className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700">
@@ -414,7 +414,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
             <input value={search} onChange={(event) => setSearch(event.target.value)}
               placeholder="ค้นหาร้าน / เรื่อง / ผู้ติดต่อ"
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            {!historyOnly ? <div className="mt-2 flex flex-wrap gap-1.5">
               {([
                 ["all", "ทั้งหมด"],
                 ["new", "ใหม่"],
@@ -428,7 +428,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                   {label}
                 </button>
               ))}
-            </div>
+            </div> : <div className="mt-2 text-[11px] font-bold text-slate-500">แสดงเฉพาะการสนทนาที่จบแล้ว</div>}
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -442,7 +442,10 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                     <strong className="min-w-0 flex-1 truncate text-sm text-slate-900">{row.store_name}</strong>
                     {row.unread_it_count > 0 ? <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">{row.unread_it_count}</span> : null}
                   </div>
-                  <div className="mt-0.5 truncate text-xs font-bold text-slate-700">{row.subject}</div>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-700">{row.subject}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black text-slate-500">{statusLabel(row.status)}</span>
+                  </div>
                   <div className="mt-1 truncate text-[11px] text-slate-500">{row.latest_message_preview || "เริ่มการสนทนา"}</div>
                   <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
                     <span>{row.store_code}</span>
@@ -470,8 +473,17 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                     <div className="text-[10px] text-slate-500">{conversation.assigned_role === "it_admin" ? "IT Admin" : "IT Support"}</div>
                   </div>
                 </div>
-                {conversation.status !== "closed" ? <button type="button" onClick={() => void closeConversation()}
-                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-700">ปิดแชท</button> : null}
+                {conversation.status !== "closed" ? <select value={conversation.status} disabled={busy === "status"}
+                  onChange={(event) => void setConversationStatus(event.target.value)}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">
+                  <option value="in_progress">กำลังดูแล</option>
+                  <option value="waiting_store">รอลูกค้า</option>
+                  <option value="waiting_it">รอ IT</option>
+                  <option value="closed">จบการสนทนา</option>
+                </select> : <span className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-500">จบแล้ว</span>}
+                {canDelete && conversation.status === "closed" ? <button type="button" onClick={() => void deleteConversation()}
+                  disabled={busy === "delete"}
+                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-700">ลบถาวร</button> : null}
               </header>
 
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f7faff] p-4">
@@ -485,6 +497,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                     {!mine ? <StoreAvatar src={conversation.store_logo_url} name={conversation.store_name} /> : null}
                     <div className={"max-w-[76%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm " +
                       (mine ? "rounded-br-md bg-blue-600 text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800")}>
+                      {message.attachments?.map((item) => <a key={item.id} href={item.url} target="_blank" rel="noreferrer"
+                        className="mb-2 block overflow-hidden rounded-xl border border-white/30 bg-white/10">
+                        <span className="block h-48 w-64 max-w-full bg-contain bg-center bg-no-repeat"
+                          style={{ backgroundImage: `url("${item.url.replace(/["\\]/g, "")}")` }} />
+                      </a>)}
                       <div className="whitespace-pre-wrap break-words">{message.message_body}</div>
                       <div className={"mt-1 text-[10px] " + (mine ? "text-blue-100" : "text-slate-400")}>{formatTime(message.created_at)}</div>
                     </div>
@@ -493,23 +510,49 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 })}
               </div>
 
+              <div className="border-t border-slate-200 bg-white px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <input value={noteDraft} onChange={(event) => setNoteDraft(event.target.value.slice(0,3000))}
+                    placeholder="โน้ตภายใน IT (ลูกค้าไม่เห็น)"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
+                  <button type="button" onClick={() => void saveNote()} disabled={busy === "note"}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">บันทึกโน้ต</button>
+                </div>
+              </div>
               {conversation.status === "closed" ? (
-                <div className="border-t border-slate-200 bg-slate-50 px-4 py-4 text-center text-xs font-black text-slate-500">ปิดการสนทนาแล้ว</div>
+                <div className="border-t border-slate-200 bg-slate-50 px-4 py-4 text-center text-xs font-black text-slate-500">
+                  จบการสนทนาแล้ว · เก็บข้อความไว้ในสมุดบันทึก · รูปภาพถูกลบออกจากระบบ
+                </div>
               ) : (
-                <div className="flex gap-2 border-t border-slate-200 p-3">
-                  <textarea value={draft} onChange={(event) => setDraft(event.target.value.slice(0,4000))}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void sendMessage();
-                      }
-                    }}
-                    rows={2} placeholder="พิมพ์ข้อความถึงร้านค้า..."
-                    className="min-h-[50px] flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
-                  <button type="button" onClick={() => void sendMessage()} disabled={busy === "send" || !draft.trim()}
-                    className="rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-40">
-                    {busy === "send" ? "..." : "ส่ง"}
-                  </button>
+                <div className="border-t border-slate-200 bg-white p-3">
+                  {remoteTyping ? <div className="mb-2 text-[11px] font-bold text-slate-500">{remoteTyping} กำลังพิมพ์…</div> : null}
+                  {attachment ? <div className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                    <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+                    <button type="button" onClick={() => setAttachment(null)} className="font-black">ลบ</button>
+                  </div> : null}
+                  <div className="flex gap-2">
+                    <label className="grid h-[50px] w-[50px] shrink-0 cursor-pointer place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-600" title="แนบรูปภาพ">
+                      📎
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                        onChange={(event) => setAttachment(event.target.files?.[0] ?? null)} />
+                    </label>
+                    <textarea value={draft}
+                      onChange={(event) => { const value = event.target.value.slice(0,4000); setDraft(value); announceTyping(Boolean(value.trim())); }}
+                      onBlur={() => announceTyping(false)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void sendMessage();
+                        }
+                      }}
+                      rows={2} placeholder="พิมพ์ข้อความถึงร้านค้า..."
+                      className="min-h-[50px] flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
+                    <button type="button" onClick={() => void sendMessage()} disabled={busy === "send" || (!draft.trim() && !attachment)}
+                      className="rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-40">
+                      {busy === "send" ? "..." : "ส่ง"}
+                    </button>
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-400">รูปภาพ JPG/PNG/WEBP ไม่เกิน 2 MB · รูปจะถูกลบเมื่อจบการสนทนา</div>
                 </div>
               )}
             </>
