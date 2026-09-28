@@ -18,6 +18,7 @@ type Conversation = Record<string, unknown> & {
   tenant_id?: string;
   assigned_user_id?: string | null;
   status?: string;
+  unread_it_count?: number;
 };
 
 export async function GET(
@@ -56,11 +57,14 @@ export async function GET(
       );
     }
 
-    const read = await callSupportChat<{ conversation: Conversation; head: SupportChatHead }>(
-      bridge, "mark_read", { conversation_id: conversationId }
-    );
-    await mirrorSupportChatHead(read.head);
-    return ok({ ...data, conversation: read.conversation });
+    if (Number(data.conversation.unread_it_count ?? 0) > 0) {
+      const read = await callSupportChat<{ conversation: Conversation; head: SupportChatHead }>(
+        bridge, "mark_read", { conversation_id: conversationId }
+      );
+      await mirrorSupportChatHead(read.head);
+      return ok({ ...data, conversation: read.conversation });
+    }
+    return ok(data);
   } catch (error) {
     return guardItAdminError(error);
   }
