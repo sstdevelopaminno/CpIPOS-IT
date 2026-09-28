@@ -56,6 +56,9 @@ type PackageRow = {
   is_active: boolean;
   monthly_price: number | string | null;
   yearly_price: number | string | null;
+  monthly_discount_percent: number | string | null;
+  yearly_discount_percent: number | string | null;
+  quota_mode: string | null;
   max_branches: number | null;
   max_devices: number | null;
   max_users: number | null;
@@ -85,6 +88,30 @@ type ContractDbRow = {
   started_at: string;
   ended_at: string | null;
   metadata: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
+type CustomTermsRow = {
+  tenant_id: string;
+  package_id: string;
+  status: "draft" | "approved" | "active" | "retired";
+  monthly_price: number | string;
+  yearly_price: number | string;
+  monthly_discount_percent: number | string;
+  yearly_discount_percent: number | string;
+  max_branches: number;
+  max_devices: number;
+  max_users: number;
+  retention_months: number;
+  max_products: number | null;
+  monthly_bill_limit: number | null;
+  storage_limit_gb: number | string | null;
+  feature_overrides: Record<string, boolean> | null;
+  notes: string | null;
+  version: number;
+  approved_by: string | null;
+  approved_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -132,6 +159,8 @@ export type TenantControlAction =
   | "create_branch"
   | "update_branch"
   | "update_contract"
+  | "update_custom_package_terms"
+  | "approve_custom_package_request"
   | "prepare_paid_package"
   | "change_package"
   | "update_sales_modes"
@@ -156,6 +185,19 @@ export type TenantControlInput = {
   branch_active?: boolean;
   package_id?: string;
   billing_cycle?: string;
+  custom_monthly_price?: number;
+  custom_yearly_price?: number | null;
+  custom_monthly_discount_percent?: number;
+  custom_yearly_discount_percent?: number;
+  custom_max_branches?: number;
+  custom_max_devices?: number;
+  custom_max_users?: number;
+  custom_retention_months?: number;
+  custom_max_products?: number | null;
+  custom_monthly_bill_limit?: number | null;
+  custom_storage_limit_gb?: number | null;
+  custom_feature_overrides?: Record<string, boolean>;
+  custom_notes?: string;
   start_date?: string;
   end_date?: string;
   auto_calculate_end?: boolean;
@@ -169,7 +211,7 @@ export type TenantControlInput = {
 
 const TENANT_SELECT = "id,code,name,display_name,owner_name,owner_phone,contact_phone,package_id,is_active,logo_url,company_address,created_at,updated_at";
 const BRANCH_SELECT = "id,tenant_id,code,name,address,is_active,created_at,updated_at";
-const PACKAGE_SELECT = "id,code,name,status,is_active,monthly_price,yearly_price,max_branches,max_devices,max_users,max_products,monthly_bill_limit,storage_limit_gb,retention_months,metadata";
+const PACKAGE_SELECT = "id,code,name,status,is_active,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,quota_mode,max_branches,max_devices,max_users,max_products,monthly_bill_limit,storage_limit_gb,retention_months,metadata";
 const CONTRACT_SELECT = "id,tenant_id,package_id,contract_type,billing_interval,deployment_mode,status,branch_limit,terminal_limit_per_branch,max_branches,max_devices,max_users,amount_per_cycle,currency,auto_renew,started_at,ended_at,metadata,created_at,updated_at";
 const LIFECYCLE_SELECT = "tenant_id,lifecycle_status,trial_started_at,trial_expires_at,first_package_started_at,current_package_started_at,subscription_expires_at,access_locked,lock_reason,metadata";
 
@@ -193,6 +235,8 @@ function requireAction(raw: unknown): TenantControlAction {
     "create_branch",
     "update_branch",
     "update_contract",
+    "update_custom_package_terms",
+    "approve_custom_package_request",
     "prepare_paid_package",
     "change_package",
     "update_sales_modes",
@@ -259,10 +303,42 @@ function validateContractWindow(startIso: string, endIso: string) {
   }
 }
 
+function discountedAmount(base: unknown, discount: unknown): number {
+  const amount = Number(base ?? 0);
+  const percent = Number(discount ?? 0);
+  if (!Number.isFinite(amount) || amount < 0) return 0;
+  const normalizedDiscount = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+  return Number((amount * (1 - normalizedDiscount / 100)).toFixed(2));
+}
+
 function packageAmount(pkg: PackageRow, billingCycle: "monthly" | "yearly"): number {
-  const raw = billingCycle === "yearly" ? pkg.yearly_price : pkg.monthly_price;
-  const amount = Number(raw ?? 0);
-  return Number.isFinite(amount) && amount >= 0 ? amount : 0;
+  return billingCycle === "yearly"
+    ? discountedAmount(pkg.yearly_price, pkg.yearly_discount_percent)
+    : discountedAmount(pkg.monthly_price, pkg.monthly_discount_percent);
+}
+
+function customTermsAmount(terms: CustomTermsRow, billingCycle: "monthly" | "yearly"): number {
+  return billingCycle === "yearly"
+    ? discountedAmount(terms.yearly_price, terms.yearly_discount_percent)
+    : discountedAmount(terms.monthly_price, terms.monthly_discount_percent);
+}
+
+function customTermsSnapshot(terms: CustomTermsRow) {
+  return {
+    terms_version: terms.version,
+    monthly_price: Number(terms.monthly_price),
+    yearly_price: Number(terms.yearly_price),
+    monthly_discount_percent: Number(terms.monthly_discount_percent),
+    yearly_discount_percent: Number(terms.yearly_discount_percent),
+    max_branches: terms.max_branches,
+    max_devices: terms.max_devices,
+    max_users: terms.max_users,
+    retention_months: terms.retention_months,
+    max_products: terms.max_products,
+    monthly_bill_limit: terms.monthly_bill_limit,
+    storage_limit_gb: terms.storage_limit_gb == null ? null : Number(terms.storage_limit_gb),
+    feature_overrides: terms.feature_overrides ?? {}
+  };
 }
 
 function effectiveContractStatus(contract: ContractDbRow | null) {
