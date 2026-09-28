@@ -7,10 +7,10 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    await requireItAdmin();
+    const auth = await requireItAdmin();
     const conversations = await listItSupportChatHeads();
     const unread_total = conversations.reduce((sum, row) => sum + Number(row.unread_it_count || 0), 0);
-    return ok({ conversations, unread_total });
+    return ok({ conversations, unread_total, actor: { user_id: auth.auth.userId, role: auth.auth.platformRole } });
   } catch (error) {
     return guardItAdminError(error);
   }
