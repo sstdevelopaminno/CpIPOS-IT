@@ -786,6 +786,208 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     );
   }
 
+  if (action === "update_custom_package_terms") {
+    const customPackage = await context.supabase.from("subscription_packages")
+      .select(PACKAGE_SELECT)
+      .eq("code","custom").eq("is_active",true).eq("status","active")
+      .maybeSingle<PackageRow>();
+    if (customPackage.error) throw new Error(`custom_package_query_failed:${customPackage.error.message}`);
+    if (!customPackage.data) throw new ItAdminGuardError("custom_package_not_available","ไม่พบแพ็กเกจ CUSTOM ที่เปิดใช้งาน",409);
+
+    const currentResult = await context.supabase.from("tenant_custom_package_terms")
+      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .eq("tenant_id",tenantId).maybeSingle<CustomTermsRow>();
+    if (currentResult.error) throw new Error(`custom_terms_query_failed:${currentResult.error.message}`);
+    const current = currentResult.data;
+
+    const readNumber = (value: unknown, fallback: number, min: number, max: number, label: string) => {
+      const parsed = Number(value ?? fallback);
+      if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+        throw new ItAdminGuardError("custom_terms_invalid", `${label} ไม่ถูกต้อง`, 422);
+      }
+      return parsed;
+    };
+    const monthlyPrice = readNumber(input.custom_monthly_price, Number(current?.monthly_price ?? 0), 0, 10_000_000, "ราคารายเดือน");
+    const yearlyPrice = readNumber(input.custom_yearly_price, Number(current?.yearly_price ?? 0), 0, 100_000_000, "ราคารายปี");
+    const monthlyDiscount = readNumber(input.custom_monthly_discount_percent, Number(current?.monthly_discount_percent ?? 0), 0, 100, "ส่วนลดรายเดือน");
+    const yearlyDiscount = readNumber(input.custom_yearly_discount_percent, Number(current?.yearly_discount_percent ?? 0), 0, 100, "ส่วนลดรายปี");
+    const maxBranches = Math.trunc(readNumber(input.custom_max_branches, current?.max_branches ?? 1, 1, 10000, "จำนวนสาขา"));
+    const maxDevices = Math.trunc(readNumber(input.custom_max_devices, current?.max_devices ?? 1, 1, 10000, "จำนวนเครื่องขาย"));
+    const maxUsers = Math.trunc(readNumber(input.custom_max_users, current?.max_users ?? 1, 1, 100000, "จำนวนผู้ใช้งาน"));
+    const retentionMonths = Math.trunc(readNumber(input.custom_retention_months, current?.retention_months ?? 6, 1, 120, "ระยะเก็บข้อมูล"));
+
+    const nullablePositiveInt = (value: unknown, fallback: number | null, max: number) => {
+      if (value === null) return null;
+      if (value === undefined) return fallback;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > max) {
+        throw new ItAdminGuardError("custom_terms_invalid","โควตาเพิ่มเติมไม่ถูกต้อง",422);
+      }
+      return Math.trunc(parsed);
+    };
+    const nullablePositive = (value: unknown, fallback: number | null, max: number) => {
+      if (value === null) return null;
+      if (value === undefined) return fallback;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > max) {
+        throw new ItAdminGuardError("custom_terms_invalid","Storage ไม่ถูกต้อง",422);
+      }
+      return Number(parsed.toFixed(2));
+    };
+
+    const activeBranches = await context.supabase.from("branches")
+      .select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("is_active",true);
+    const activeDevices = await context.supabase.from("branch_devices")
+      .select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("is_active",true).eq("status","active");
+    const roleUsers = await context.supabase.from("user_branch_roles").select("user_id").eq("tenant_id",tenantId);
+    if (activeBranches.error || activeDevices.error || roleUsers.error) throw new Error("custom_terms_usage_check_failed");
+    const userCount = new Set((roleUsers.data ?? []).map((row) => String(row.user_id))).size;
+    if (maxBranches < Number(activeBranches.count ?? 0) || maxDevices < Number(activeDevices.count ?? 0) || maxUsers < userCount) {
+      throw new ItAdminGuardError("custom_terms_below_usage","โควตาใหม่ต้องไม่น้อยกว่าจำนวนที่ร้านใช้งานอยู่",409);
+    }
+
+    const catalog = await context.supabase.from("package_feature_catalog")
+      .select("code").eq("is_active",true).returns<Array<{code:string}>>();
+    if (catalog.error) throw new Error(`feature_catalog_query_failed:${catalog.error.message}`);
+    const allowedCodes = new Set((catalog.data ?? []).map((row)=>row.code));
+    const featureOverrides: Record<string,boolean> = {};
+    for (const [code,enabled] of Object.entries(input.custom_feature_overrides ?? current?.feature_overrides ?? {})) {
+      if (allowedCodes.has(code) && typeof enabled === "boolean") featureOverrides[code]=enabled;
+    }
+
+    const payload = {
+      tenant_id: tenantId,
+      package_id: customPackage.data.id,
+      status: "draft",
+      monthly_price: Number(monthlyPrice.toFixed(2)),
+      yearly_price: Number(yearlyPrice.toFixed(2)),
+      monthly_discount_percent: Number(monthlyDiscount.toFixed(2)),
+      yearly_discount_percent: Number(yearlyDiscount.toFixed(2)),
+      max_branches: maxBranches,
+      max_devices: maxDevices,
+      max_users: maxUsers,
+      retention_months: retentionMonths,
+      max_products: nullablePositiveInt(input.custom_max_products,current?.max_products ?? null,10_000_000),
+      monthly_bill_limit: nullablePositiveInt(input.custom_monthly_bill_limit,current?.monthly_bill_limit ?? null,100_000_000),
+      storage_limit_gb: nullablePositive(input.custom_storage_limit_gb,current?.storage_limit_gb == null ? null : Number(current.storage_limit_gb),1_000_000),
+      feature_overrides: featureOverrides,
+      notes: optionalText(input.custom_notes,1000),
+      approved_by: null,
+      approved_at: null,
+      updated_at: now
+    };
+    const saved = await context.supabase.from("tenant_custom_package_terms")
+      .upsert(payload,{onConflict:"tenant_id"})
+      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .single<CustomTermsRow>();
+    if (saved.error) throw new Error(`custom_terms_save_failed:${saved.error.message}`);
+
+    await audit(context,tenantId,"custom_package_terms_draft_saved","tenant_custom_package_terms",tenantId,
+      current ? asRecord(current) : {}, asRecord(saved.data), { package_id: customPackage.data.id });
+  }
+
+  if (action === "approve_custom_package_request") {
+    const billingCycle = requireBillingCycle(input.billing_cycle);
+    const customPackage = await context.supabase.from("subscription_packages")
+      .select(PACKAGE_SELECT).eq("code","custom").eq("is_active",true).eq("status","active")
+      .maybeSingle<PackageRow>();
+    if (customPackage.error) throw new Error(`custom_package_query_failed:${customPackage.error.message}`);
+    if (!customPackage.data) throw new ItAdminGuardError("custom_package_not_available","ไม่พบแพ็กเกจ CUSTOM ที่เปิดใช้งาน",409);
+
+    const termsResult = await context.supabase.from("tenant_custom_package_terms")
+      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .eq("tenant_id",tenantId).eq("package_id",customPackage.data.id).maybeSingle<CustomTermsRow>();
+    if (termsResult.error) throw new Error(`custom_terms_query_failed:${termsResult.error.message}`);
+    if (!termsResult.data) throw new ItAdminGuardError("custom_terms_required","กรุณากำหนดรายละเอียด CUSTOM ก่อนอนุมัติ",422);
+    const terms = termsResult.data;
+    const expectedAmount = customTermsAmount(terms,billingCycle);
+    if (expectedAmount <= 0) {
+      throw new ItAdminGuardError("custom_price_required",
+        billingCycle === "yearly" ? "กรุณาตั้งราคารายปีของ CUSTOM ก่อนอนุมัติ" : "กรุณาตั้งราคารายเดือนของ CUSTOM ก่อนอนุมัติ",422);
+    }
+
+    const requestResult = await context.supabase.from("tenant_subscription_payment_requests")
+      .select("id,status,requested_package_id,metadata,amount_reported,evidence_url")
+      .eq("tenant_id",tenantId).eq("requested_package_id",customPackage.data.id)
+      .in("status",["pending","under_review"]).order("created_at",{ascending:false}).limit(1)
+      .maybeSingle<{id:string;status:string;requested_package_id:string|null;metadata:Record<string,unknown>|null;amount_reported:number|null;evidence_url:string|null}>();
+    if (requestResult.error) throw new Error(`custom_request_query_failed:${requestResult.error.message}`);
+    if (!requestResult.data || requestResult.data.metadata?.kind !== "custom_quote_request") {
+      throw new ItAdminGuardError("custom_request_not_found","ไม่พบคำขอเปลี่ยนเป็น CUSTOM ที่รอการตกลง",409);
+    }
+    if (requestResult.data.evidence_url) {
+      throw new ItAdminGuardError("custom_request_already_paid","คำขอนี้มีหลักฐานการชำระแล้ว ไม่สามารถแก้เงื่อนไขก่อน Settlement ได้",409);
+    }
+
+    const snapshot = customTermsSnapshot(terms);
+    const requestMetadata = {
+      ...(requestResult.data.metadata ?? {}),
+      kind: "payment_notice",
+      source: "it_custom_agreement",
+      billing_interval: billingCycle,
+      expected_amount: expectedAmount,
+      custom_terms_snapshot: snapshot,
+      custom_terms_version: terms.version,
+      custom_agreed_at: now,
+      custom_agreed_by: context.auth.userId,
+      note: optionalText(input.admin_reason,600) ?? (requestResult.data.metadata?.note ?? "")
+    };
+    const requestUpdate = await context.supabase.from("tenant_subscription_payment_requests")
+      .update({
+        status:"pending",
+        amount_reported:null,
+        evidence_url:null,
+        reviewed_at:null,
+        reviewed_by:null,
+        review_note:null,
+        metadata:requestMetadata,
+        updated_at:now
+      }).eq("id",requestResult.data.id).eq("tenant_id",tenantId);
+    if (requestUpdate.error) throw new Error(`custom_request_approval_failed:${requestUpdate.error.message}`);
+
+    const termsUpdate = await context.supabase.from("tenant_custom_package_terms")
+      .update({status:"approved",approved_by:context.auth.userId,approved_at:now,updated_at:now})
+      .eq("tenant_id",tenantId).eq("package_id",customPackage.data.id);
+    if (termsUpdate.error) throw new Error(`custom_terms_approval_failed:${termsUpdate.error.message}`);
+
+    const lifecycle = await loadLifecycle(context,tenantId);
+    if (lifecycle) {
+      const lifecycleMetadata = asRecord(lifecycle.metadata);
+      await updateLifecycle(context,tenantId,{
+        metadata:{...lifecycleMetadata,sales_retention_months:terms.retention_months,custom_terms_version:terms.version}
+      });
+    }
+
+    const overrides = terms.feature_overrides ?? {};
+    const existingFeatures = await context.supabase.from("tenant_feature_subscriptions")
+      .select("id,feature_code,source").eq("tenant_id",tenantId).is("branch_id",null)
+      .returns<Array<{id:string;feature_code:string;source:string}>>();
+    if (existingFeatures.error) throw new Error(`custom_feature_query_failed:${existingFeatures.error.message}`);
+    const existingByCode = new Map((existingFeatures.data ?? []).map((row)=>[row.feature_code,row]));
+    for (const row of existingFeatures.data ?? []) {
+      if (row.source === "custom_contract" && !Object.prototype.hasOwnProperty.call(overrides,row.feature_code)) {
+        const removed = await context.supabase.from("tenant_feature_subscriptions").delete().eq("id",row.id);
+        if (removed.error) throw new Error(`custom_feature_remove_failed:${removed.error.message}`);
+      }
+    }
+    for (const [featureCode,isEnabled] of Object.entries(overrides)) {
+      if (typeof isEnabled !== "boolean") continue;
+      const existing = existingByCode.get(featureCode);
+      const result = existing
+        ? await context.supabase.from("tenant_feature_subscriptions")
+            .update({is_enabled:isEnabled,source:"custom_contract",updated_at:now}).eq("id",existing.id)
+        : await context.supabase.from("tenant_feature_subscriptions")
+            .insert({tenant_id:tenantId,branch_id:null,feature_code:featureCode,is_enabled:isEnabled,source:"custom_contract"});
+      if (result.error) throw new Error(`custom_feature_save_failed:${result.error.message}`);
+    }
+
+    invalidateTenantFeatureGateCache(tenantId);
+    await audit(context,tenantId,"custom_package_request_agreed","tenant_subscription_payment_requests",requestResult.data.id,
+      asRecord(requestResult.data),{status:"pending",metadata:requestMetadata},{
+        expected_amount:expectedAmount,billing_interval:billingCycle,custom_terms_version:terms.version
+      });
+  }
+
   if (action === "change_package") {
     throw new ItAdminGuardError(
       "paid_activation_requires_settlement",
