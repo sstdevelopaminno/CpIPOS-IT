@@ -180,7 +180,8 @@ export function getDevelopmentConnectionStatus() {
     vercel_configured: Boolean(vercelToken()),
     vercel_team_configured: Boolean(vercelTeamId()),
     direct_main_write: false,
-    polling_enabled: false
+    polling_enabled: false,
+    isolated_workspace_configured: Boolean(githubToken())
   };
 }
 
@@ -589,4 +590,204 @@ export async function triggerVercelDeployment(input: {
 
 export function isDevelopmentBranch(ref: string) {
   return ref.startsWith(DEV_BRANCH_PREFIX);
+}
+
+
+type DevelopmentWorkspaceTask = "verify" | "build" | "test";
+
+const DEVELOPMENT_WORKSPACE_WORKFLOW = "development-workspace.yml";
+const DEVELOPMENT_CONTROLLER_REPO = "CpIPOS-IT";
+
+function safeWorkspaceTask(value: unknown): DevelopmentWorkspaceTask {
+  if (value === "verify" || value === "build" || value === "test") return value;
+  throw new ItAdminGuardError("development_workspace_task_invalid", "งาน Build/Run ไม่ถูกต้อง", 422);
+}
+
+function safeRunId(value: unknown): number {
+  const runId = Number(value);
+  if (!Number.isSafeInteger(runId) || runId <= 0) {
+    throw new ItAdminGuardError("development_workspace_run_invalid", "Run ID ไม่ถูกต้อง", 422);
+  }
+  return runId;
+}
+
+function controllerRepoName() {
+  return cleanEnv("CPIPOS_DEVELOPMENT_CONTROLLER_REPO") ?? DEVELOPMENT_CONTROLLER_REPO;
+}
+
+function parseWorkspaceTitle(title: string | null | undefined) {
+  const parts = String(title ?? "").split(" · ").map((part) => part.trim());
+  if (parts[0] !== "Workspace") return null;
+  return {
+    repository: parts[1] ?? null,
+    task: parts[2] ?? null,
+    ref: parts[3] ?? null,
+    request_id: parts[4] ?? null
+  };
+}
+
+export async function dispatchDevelopmentWorkspace(input: {
+  repo: unknown;
+  ref: unknown;
+  task: unknown;
+}) {
+  const repo = safeRepoName(input.repo);
+  const ref = safeRef(input.ref);
+  const task = safeWorkspaceTask(input.task);
+  const owner = githubOwner();
+  const controllerRepo = controllerRepoName();
+  const requestId = crypto.randomUUID();
+
+  await githubJson(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(controllerRepo)}/actions/workflows/${DEVELOPMENT_WORKSPACE_WORKFLOW}/dispatches`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ref: "main",
+        inputs: {
+          repository: `${owner}/${repo}`,
+          ref,
+          task,
+          request_id: requestId
+        }
+      })
+    },
+    true
+  );
+
+  return {
+    request_id: requestId,
+    repository: `${owner}/${repo}`,
+    ref,
+    task,
+    status: "queued"
+  };
+}
+
+export async function listDevelopmentWorkspaceRuns(limitInput: unknown = 12) {
+  const limit = Math.min(Math.max(Number(limitInput) || 12, 1), 30);
+  const owner = githubOwner();
+  const controllerRepo = controllerRepoName();
+
+  const payload = await githubJson<{
+    workflow_runs?: Array<{
+      id?: number;
+      name?: string;
+      display_title?: string;
+      status?: string;
+      conclusion?: string | null;
+      html_url?: string;
+      created_at?: string;
+      updated_at?: string;
+      run_number?: number;
+      actor?: { login?: string };
+    }>;
+  }>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(controllerRepo)}/actions/workflows/${DEVELOPMENT_WORKSPACE_WORKFLOW}/runs?event=workflow_dispatch&per_page=${limit}`
+  );
+
+  return (payload.workflow_runs ?? []).map((run) => {
+    const parsed = parseWorkspaceTitle(run.display_title);
+    return {
+      id: run.id ?? null,
+      run_number: run.run_number ?? null,
+      status: run.status ?? "unknown",
+      conclusion: run.conclusion ?? null,
+      url: run.html_url ?? null,
+      created_at: run.created_at ?? null,
+      updated_at: run.updated_at ?? null,
+      actor: run.actor?.login ?? null,
+      repository: parsed?.repository ?? null,
+      task: parsed?.task ?? null,
+      ref: parsed?.ref ?? null,
+      request_id: parsed?.request_id ?? null
+    };
+  });
+}
+
+export async function getDevelopmentWorkspaceRun(runIdInput: unknown) {
+  const runId = safeRunId(runIdInput);
+  const owner = githubOwner();
+  const controllerRepo = controllerRepoName();
+
+  const [run, jobs] = await Promise.all([
+    githubJson<{
+      id?: number;
+      display_title?: string;
+      status?: string;
+      conclusion?: string | null;
+      html_url?: string;
+      created_at?: string;
+      updated_at?: string;
+    }>(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(controllerRepo)}/actions/runs/${runId}`
+    ),
+    githubJson<{
+      jobs?: Array<{
+        id?: number;
+        name?: string;
+        status?: string;
+        conclusion?: string | null;
+        html_url?: string;
+        started_at?: string;
+        completed_at?: string | null;
+        steps?: Array<{
+          name?: string;
+          status?: string;
+          conclusion?: string | null;
+          number?: number;
+          started_at?: string | null;
+          completed_at?: string | null;
+        }>;
+      }>;
+    }>(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(controllerRepo)}/actions/runs/${runId}/jobs?per_page=20`
+    )
+  ]);
+
+  const parsed = parseWorkspaceTitle(run.display_title);
+  return {
+    id: run.id ?? runId,
+    status: run.status ?? "unknown",
+    conclusion: run.conclusion ?? null,
+    url: run.html_url ?? null,
+    created_at: run.created_at ?? null,
+    updated_at: run.updated_at ?? null,
+    repository: parsed?.repository ?? null,
+    task: parsed?.task ?? null,
+    ref: parsed?.ref ?? null,
+    request_id: parsed?.request_id ?? null,
+    jobs: (jobs.jobs ?? []).map((job) => ({
+      id: job.id ?? null,
+      name: job.name ?? "Workspace",
+      status: job.status ?? "unknown",
+      conclusion: job.conclusion ?? null,
+      url: job.html_url ?? null,
+      started_at: job.started_at ?? null,
+      completed_at: job.completed_at ?? null,
+      steps: (job.steps ?? []).map((step) => ({
+        number: step.number ?? null,
+        name: step.name ?? "Step",
+        status: step.status ?? "unknown",
+        conclusion: step.conclusion ?? null,
+        started_at: step.started_at ?? null,
+        completed_at: step.completed_at ?? null
+      }))
+    }))
+  };
+}
+
+export async function cancelDevelopmentWorkspaceRun(runIdInput: unknown) {
+  const runId = safeRunId(runIdInput);
+  const owner = githubOwner();
+  const controllerRepo = controllerRepoName();
+
+  await githubJson(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(controllerRepo)}/actions/runs/${runId}/cancel`,
+    { method: "POST" },
+    true
+  );
+
+  return { run_id: runId, cancelled: true };
 }
