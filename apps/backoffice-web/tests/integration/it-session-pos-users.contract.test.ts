@@ -11,6 +11,8 @@ describe("IT auth session and POS-user separation", () => {
   const posApi = src("src/app/api/it-admin/v1/platform-users/route.ts");
   const posUi = src("src/components/it-admin/platform-users-console.tsx");
   const posPage = src("src/app/(it-admin)/it-admin/pos-users/page.tsx");
+  const itUsersApi = src("src/app/api/it-admin/v1/it-users/route.ts");
+  const itUsersUi = src("src/components/it-admin/it-system-users-console.tsx");
 
   it("adds a main logout action backed by Supabase signOut", () => {
     expect(shell).toContain('/api/it-admin/auth/logout');
@@ -47,5 +49,22 @@ describe("IT auth session and POS-user separation", () => {
     expect(posApi).not.toContain('action: "platform_user_deleted"');
     expect(posUi).toContain('"active"');
     expect(posUi).toContain("เก็บผู้ใช้ถาวรแล้ว");
+  });
+
+  it("soft-deletes IT identities that are referenced by audit history", () => {
+    expect(itUsersApi).toContain('.is("archived_at", null)');
+    expect(itUsersApi).toContain('action: "it_system_user_archived"');
+    expect(itUsersApi).toContain("auth_login_revoked: true");
+    expect(itUsersApi).toContain("await syncAuthUser(context.supabase.auth.admin, userId, { isActive: false })");
+    expect(itUsersApi).toContain("archived_at: archivedAt");
+    expect(itUsersUi).toContain('useState<"all" | "active" | "inactive">("active")');
+  });
+
+  it("reports password resets explicitly and requires a fresh login when changing the current IT password", () => {
+    expect(itUsersApi).toContain("password_changed: Boolean(password)");
+    expect(itUsersApi).toContain("reauth_required");
+    expect(itUsersUi).toContain("เปลี่ยนรหัสผ่านผู้ใช้ระบบ IT เรียบร้อยแล้ว");
+    expect(itUsersUi).toContain('/api/it-admin/auth/logout');
+    expect(itUsersUi).toContain('window.location.assign("/it-admin/login")');
   });
 });

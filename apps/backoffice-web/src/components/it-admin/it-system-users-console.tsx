@@ -66,7 +66,7 @@ function generatePassword() {
 export function ItSystemUsersConsole() {
   const [data, setData] = useState<Payload | null>(null);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
+  const [status, setStatus] = useState<"all" | "active" | "inactive">("active");
   const [role, setRole] = useState<"all" | ItRole>("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -120,13 +120,31 @@ export function ItSystemUsersConsole() {
         body: JSON.stringify(form)
       });
       const json = await response.json().catch(() => null) as {
-        data?: { temporary_password?: string | null };
+        data?: {
+          temporary_password?: string | null;
+          password_changed?: boolean;
+          reauth_required?: boolean;
+        };
         error?: { message?: string };
       } | null;
       if (!response.ok) throw new Error(json?.error?.message || "บันทึกไม่สำเร็จ");
       if (json?.data?.temporary_password) setTemporaryPassword(json.data.temporary_password);
+
+      if (json?.data?.reauth_required) {
+        setForm(null);
+        await fetch("/api/it-admin/auth/logout", { method: "POST" }).catch(() => null);
+        window.location.assign("/it-admin/login");
+        return;
+      }
+
       setForm(null);
-      setNotice(isCreate ? "เพิ่มผู้ใช้ระบบ IT เรียบร้อยแล้ว" : "บันทึกผู้ใช้ระบบ IT เรียบร้อยแล้ว");
+      setNotice(
+        isCreate
+          ? "เพิ่มผู้ใช้ระบบ IT เรียบร้อยแล้ว"
+          : json?.data?.password_changed
+            ? "เปลี่ยนรหัสผ่านผู้ใช้ระบบ IT เรียบร้อยแล้ว"
+            : "บันทึกผู้ใช้ระบบ IT เรียบร้อยแล้ว"
+      );
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "บันทึกไม่สำเร็จ");
@@ -161,9 +179,16 @@ export function ItSystemUsersConsole() {
     setError("");
     try {
       const response = await fetch(`/api/it-admin/v1/it-users?user_id=${encodeURIComponent(user.id)}`, { method: "DELETE" });
-      const json = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      const json = await response.json().catch(() => null) as {
+        data?: { archived?: boolean; message?: string };
+        error?: { message?: string };
+      } | null;
       if (!response.ok) throw new Error(json?.error?.message || "ลบบัญชีไม่สำเร็จ");
-      setNotice("ลบบัญชีผู้ใช้ระบบ IT เรียบร้อยแล้ว");
+      setNotice(
+        json?.data?.archived
+          ? json.data.message || "นำบัญชีออกจากระบบ IT แล้ว และเก็บประวัติ Audit เดิมไว้"
+          : "ลบบัญชีผู้ใช้ระบบ IT เรียบร้อยแล้ว"
+      );
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ลบบัญชีไม่สำเร็จ");
@@ -181,6 +206,7 @@ export function ItSystemUsersConsole() {
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             หน้านี้จัดการเฉพาะบัญชีที่ใช้ Login เข้าระบบ IT Control Plane เท่านั้น
             <strong className="ml-1 text-red-600">ไม่แสดงและไม่แก้ไขผู้ใช้งาน POS ของร้านค้า</strong>
+            <span className="ml-1">การลบบัญชีจะปิดสิทธิ์ Login และเก็บ Audit ย้อนหลังไว้โดยไม่ทำลายประวัติระบบ</span>
           </p>
         </div>
         <button
