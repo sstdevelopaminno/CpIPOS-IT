@@ -1,0 +1,184 @@
+name: Development Workspace
+
+run-name: "Workspace · ${{ inputs.repository }} · ${{ inputs.task }} · ${{ inputs.request_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Repository in owner/name form"
+        required: true
+        type: string
+      ref:
+        description: "Git branch/ref to validate"
+        required: true
+        type: string
+      task:
+        description: "Allowed isolated task"
+        required: true
+        type: choice
+        options:
+          - verify
+          - build
+          - test
+      request_id:
+        description: "Audit correlation id"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-workspace-${{ inputs.repository }}-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  workspace:
+    name: Isolated ${{ inputs.task }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Validate request
+        shell: bash
+        env:
+          TARGET_REPOSITORY: ${{ inputs.repository }}
+          TARGET_REF: ${{ inputs.ref }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_REPOSITORY" =~ ^sstdevelopaminno/[A-Za-z0-9_.-]{1,100}$ ]] || {
+            echo "Repository is outside the approved owner or has an invalid name." >&2
+            exit 2
+          }
+          [[ "$TARGET_REF" =~ ^[A-Za-z0-9._/-]{1,180}$ ]] || {
+            echo "Invalid ref." >&2
+            exit 2
+          }
+          [[ "$TARGET_REF" != *".."* ]] || {
+            echo "Invalid ref traversal." >&2
+            exit 2
+          }
+          [[ "$REQUEST_ID" =~ ^[A-Za-z0-9-]{8,80}$ ]] || {
+            echo "Invalid request id." >&2
+            exit 2
+          }
+
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.CPIPOS_GITHUB_TOKEN || github.token }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Prepare Node.js
+        if: ${{ hashFiles('**/package.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install JavaScript dependencies
+        if: ${{ hashFiles('**/package.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f pnpm-lock.yaml ]]; then
+            corepack enable
+            corepack prepare pnpm@10.33.4 --activate
+            pnpm install --frozen-lockfile
+          elif [[ -f package-lock.json ]]; then
+            npm ci
+          elif [[ -f yarn.lock ]]; then
+            corepack enable
+            yarn install --immutable || yarn install --frozen-lockfile
+          else
+            npm install
+          fi
+
+      - name: Run isolated JavaScript task
+        if: ${{ hashFiles('**/package.json') != '' }}
+        shell: bash
+        env:
+          WORKSPACE_TASK: ${{ inputs.task }}
+        run: |
+          set -euo pipefail
+          run_script() {
+            local script="$1"
+            node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts['$script'] ? 0 : 1)" || return 0
+            if [[ -f pnpm-lock.yaml ]]; then
+              pnpm run "$script"
+            elif [[ -f yarn.lock ]]; then
+              yarn "$script"
+            else
+              npm run "$script"
+            fi
+          }
+
+          case "$WORKSPACE_TASK" in
+            verify)
+              run_script typecheck
+              run_script lint
+              run_script test
+              run_script build
+              ;;
+            build)
+              run_script build
+              ;;
+            test)
+              run_script test
+              ;;
+            *)
+              echo "Unsupported workspace task." >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Prepare Rust
+        if: ${{ hashFiles('**/Cargo.toml') != '' }}
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run isolated Rust task
+        if: ${{ hashFiles('**/Cargo.toml') != '' }}
+        shell: bash
+        env:
+          WORKSPACE_TASK: ${{ inputs.task }}
+        run: |
+          set -euo pipefail
+          manifest="$(find . -maxdepth 4 -name Cargo.toml -not -path './node_modules/*' | head -n 1)"
+          if [[ -z "$manifest" ]]; then
+            exit 0
+          fi
+          case "$WORKSPACE_TASK" in
+            verify)
+              cargo check --manifest-path "$manifest"
+              ;;
+            build)
+              cargo build --manifest-path "$manifest"
+              ;;
+            test)
+              cargo test --manifest-path "$manifest"
+              ;;
+          esac
+
+      - name: Write workspace summary
+        if: always()
+        shell: bash
+        env:
+          TARGET_REPOSITORY: ${{ inputs.repository }}
+          TARGET_REF: ${{ inputs.ref }}
+          WORKSPACE_TASK: ${{ inputs.task }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          {
+            echo "### CpIPOS Isolated Workspace"
+            echo ""
+            echo "- Repository: `$TARGET_REPOSITORY`"
+            echo "- Ref: `$TARGET_REF`"
+            echo "- Task: `$WORKSPACE_TASK`"
+            echo "- Request ID: `$REQUEST_ID`"
+            echo "- Runner: ephemeral GitHub-hosted Ubuntu"
+            echo "- Production/Vercel secrets: not injected"
+          } >> "$GITHUB_STEP_SUMMARY"
