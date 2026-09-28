@@ -92,13 +92,26 @@ describe("IT Admin Store Control Center contract", () => {
     expect(service).toContain('status: "pending"');
     expect(service).toContain('action === "change_package"');
     expect(service).toContain("paid_activation_requires_settlement");
-    expect(service).toContain("paid_contract_cycle_managed_by_settlement");
+    expect(service).toContain("billing_interval_unchanged_for_paid_contract");
     expect(service).toContain("paid_contract_correction_reason_required");
     expect(controlCenter).toContain("ลำดับที่ถูกต้อง:");
     expect(controlCenter).toContain("เปิดตรวจสอบการชำระ");
     expect(controlCenter).toContain('action: "prepare_paid_package"');
     expect(controlCenter).not.toContain('action: "change_package", package_id');
     expect(actionConfirm).toContain("ขั้นตอนนี้ยังไม่เปิดแพ็กเกจและยังไม่ออกใบเสร็จ");
+  });
+
+  it("offers trial 7-day, monthly and yearly contract periods without rewriting paid settlement history", () => {
+    expect(controlCenter).toContain('<option value="trial_7d">ทดลอง 7 วัน</option>');
+    expect(controlCenter).toContain('<option value="monthly">รายเดือน</option>');
+    expect(controlCenter).toContain('<option value="yearly"');
+    expect(controlCenter).toContain('contract_period: contractCycle');
+    expect(controlCenter).toContain("แก้รอบสัญญาได้โดยไม่แก้ Settlement/ใบเสร็จเดิม");
+    expect(service).toContain('CONTRACT_PERIODS = new Set(["trial_7d", "monthly", "yearly"])');
+    expect(service).toContain("addContractPeriod");
+    expect(service).toContain("admin_contract_period");
+    expect(service).toContain("settlement_rows_unchanged: true");
+    expect(service).toContain("receipt_rows_unchanged: true");
   });
 
   it("allows IT to correct active paid contract dates with audit without mutating settlement rows", () => {
@@ -109,7 +122,7 @@ describe("IT Admin Store Control Center contract", () => {
     expect(controlCenter).toContain("แก้ไขสัญญา");
     expect(controlCenter).toContain("ยกเลิกการแก้ไข");
     expect(controlCenter).toContain("ระบบใส่เหตุผลเริ่มต้นไว้ให้แล้ว");
-    expect(controlCenter).toContain("วันที่เปิดสัญญา วันหมดอายุ และ Auto renew แก้ได้หลังจากกด");
+    expect(controlCenter).toContain("ทดลอง 7 วัน / รายเดือน / รายปี");
     expect(controlCenter).toContain("setContractEditing(true)");
     expect(controlCenter).toContain("setContractEditing(false)");
     expect(service).toContain("tenant_paid_contract_admin_corrected");
