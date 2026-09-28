@@ -17,6 +17,7 @@ const copy = {
       devices: "อุปกรณ์และแอป",
       commercial: "แพ็กเกจและสิทธิ์",
       operations: "ปฏิบัติการ",
+      development: "การพัฒนา",
       system: "ระบบ"
     },
     items: {
@@ -37,6 +38,7 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
+      development: "Development / Source Control",
       settings: "ตั้งค่า / Security",
       settingsUsers: "ตั้งค่า USER ใช้งาน",
       settingsEmailFooter: "ตั้งค่า ข้อความท้ายอีเมล์",
@@ -54,6 +56,7 @@ const copy = {
       devices: "Devices & Apps",
       commercial: "Plans & Access",
       operations: "Operations",
+      development: "Development",
       system: "System"
     },
     items: {
@@ -74,6 +77,7 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "Emergency Broadcast",
+      development: "Development / Source Control",
       settings: "Settings / Security",
       settingsUsers: "User Settings",
       settingsEmailFooter: "Email Footer Settings",
@@ -135,6 +139,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
+    { href: "/it-admin/development", label: text.items.development, group: text.groups.development, icon: "code" },
     settings
   ];
 }
