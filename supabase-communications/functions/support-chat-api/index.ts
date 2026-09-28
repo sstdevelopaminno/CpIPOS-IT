@@ -141,8 +141,8 @@ Deno.serve(async (request) => {
           contact_name: contactName,
           status: "new",
           last_message_at: now,
-          last_message_preview: "เริ่มการสนทนา",
-          last_sender_type: "system",
+          last_message_preview: `เริ่มแชท: ${subject}`,
+          last_sender_type: "store",
           unread_it_count: 1,
           unread_store_count: 0,
           updated_at: now
