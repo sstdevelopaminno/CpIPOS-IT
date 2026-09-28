@@ -324,26 +324,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     }
   }
 
-  async function closeConversation() {
-    if (!selectedId || !window.confirm("ยืนยันปิดการสนทนานี้?")) return;
-    setBusy("close");
-    setError("");
-    try {
-      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "close" })
-      });
-      const json = await response.json().catch(() => null) as Envelope<{ conversation: Conversation }> | null;
-      if (!response.ok || !json?.data) throw new Error(json?.error?.message || "ปิดแชทไม่สำเร็จ");
-      setConversation(json.data.conversation);
-      await loadInbox();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "ปิดแชทไม่สำเร็จ");
-    } finally {
-      setBusy("");
-    }
-  }
 
   useEffect(() => {
     if (!selectedId || conversation?.status === "closed") {
