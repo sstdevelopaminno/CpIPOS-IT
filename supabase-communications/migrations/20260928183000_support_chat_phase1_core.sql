@@ -59,6 +59,9 @@ create index if not exists support_conversations_status_latest_idx
   on public.support_conversations (status, last_message_at desc nulls last);
 create index if not exists support_conversations_assigned_latest_idx
   on public.support_conversations (assigned_user_id, last_message_at desc nulls last);
+create unique index if not exists support_conversations_one_open_per_tenant_idx
+  on public.support_conversations (tenant_id)
+  where status <> 'closed';
 create index if not exists support_messages_conversation_created_idx
   on public.support_messages (conversation_id, created_at asc);
 create index if not exists support_participants_conversation_idx
