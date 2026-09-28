@@ -458,6 +458,9 @@ export function AppShell({
                         >
                           <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
                           <span className={styles.navLabel}>{item.label}</span>
+                          {targetHref === "/it-admin/support-chat" && supportUnread > 0 ? (
+                            <span className={styles.supportBadge}>{supportUnread > 99 ? "99+" : supportUnread}</span>
+                          ) : null}
                           <span className={`${styles.navCaret} ${treeOpen ? styles.navCaretOpen : ""}`} aria-hidden="true">⌄</span>
                         </button>
                       ) : (

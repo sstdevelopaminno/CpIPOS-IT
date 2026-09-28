@@ -1,7 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useItAccess } from "@/components/layout/app-shell";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 type Head = {
   conversation_id: string;
@@ -38,8 +41,17 @@ type Conversation = {
   assigned_user_id: string | null;
   assigned_user_name: string | null;
   assigned_user_avatar_url: string | null;
+  internal_note?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type Attachment = {
+  id: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  url: string;
 };
 
 type Message = {
@@ -50,6 +62,7 @@ type Message = {
   sender_avatar_url: string | null;
   message_body: string;
   created_at: string;
+  attachments?: Attachment[];
 };
 
 type InboxResponse = {
@@ -93,7 +106,35 @@ function SupportAvatar({ src, name: _name }: { src?: string | null; name: string
     className="h-9 w-9 rounded-full border border-slate-200 bg-white object-contain" />;
 }
 
-export function SupportChatConsole() {
+function statusLabel(status: string) {
+  if (status === "new" || status === "unassigned") return "ใหม่";
+  if (status === "in_progress") return "กำลังดูแล";
+  if (status === "waiting_store") return "รอลูกค้า";
+  if (status === "waiting_it") return "รอ IT";
+  if (status === "closed") return "จบแล้ว";
+  return status;
+}
+
+async function attachmentPayload(file: File) {
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowed.includes(file.type)) throw new Error("รองรับเฉพาะ JPG, PNG และ WEBP");
+  if (file.size > 2 * 1024 * 1024) throw new Error("รูปภาพต้องมีขนาดไม่เกิน 2 MB");
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("อ่านไฟล์รูปภาพไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+  return {
+    name: file.name.slice(0, 180),
+    mime_type: file.type,
+    size_bytes: file.size,
+    data_base64: dataUrl.includes(",") ? dataUrl.slice(dataUrl.indexOf(",") + 1) : dataUrl
+  };
+}
+
+export function SupportChatConsole({ historyOnly = false }: { historyOnly?: boolean }) {
+  const { canDelete } = useItAccess();
   const [rows, setRows] = useState<Head[]>([]);
   const [actor, setActor] = useState<InboxResponse["actor"] | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -102,6 +143,13 @@ export function SupportChatConsole() {
   const [filter, setFilter] = useState<"all" | "new" | "mine" | "active" | "closed">("all");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [remoteTyping, setRemoteTyping] = useState("");
+  const typingChannelRef = useRef<RealtimeChannel | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
+  const typingSentAtRef = useRef(0);
+  const headSignalRef = useRef("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notificationState, setNotificationState] = useState<NotificationPermission | "unsupported">(
@@ -117,7 +165,9 @@ export function SupportChatConsole() {
       setRows(json.data.conversations);
       setActor(json.data.actor);
       if (!selectedId) {
-        const first = json.data.conversations.find((row) => row.status !== "closed") ?? json.data.conversations[0];
+        const first = historyOnly
+          ? json.data.conversations.find((row) => row.status === "closed")
+          : json.data.conversations.find((row) => row.status !== "closed") ?? json.data.conversations[0];
         if (first) setSelectedId(first.conversation_id);
       }
     } catch (cause) {
@@ -125,7 +175,7 @@ export function SupportChatConsole() {
     } finally {
       setBusy("");
     }
-  }, [selectedId]);
+  }, [selectedId, historyOnly]);
 
   const loadConversation = useCallback(async (id: string) => {
     if (!id) return;
@@ -136,6 +186,7 @@ export function SupportChatConsole() {
       const json = await response.json().catch(() => null) as Envelope<DetailResponse> | null;
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปิดแชทไม่สำเร็จ");
       setConversation(json.data.conversation);
+      setNoteDraft(json.data.conversation.internal_note ?? "");
       setMessages(json.data.messages);
       await loadInbox();
     } catch (cause) {
@@ -154,15 +205,24 @@ export function SupportChatConsole() {
   }, [selectedId, loadConversation]);
 
   useEffect(() => {
-    const onUpdate = () => void loadInbox();
+    const onUpdate = (event: Event) => {
+      const head = (event as CustomEvent<{ head?: Head }>).detail?.head;
+      void loadInbox();
+      if (!selectedId || head?.conversation_id !== selectedId) return;
+      const signal = [head.latest_message_at ?? "", head.status ?? "", head.assigned_user_id ?? ""].join("|");
+      if (signal === headSignalRef.current) return;
+      headSignalRef.current = signal;
+      void loadConversation(selectedId);
+    };
     window.addEventListener("cpipos-support-chat-update", onUpdate);
     return () => window.removeEventListener("cpipos-support-chat-update", onUpdate);
-  }, [loadInbox]);
+  }, [loadInbox, loadConversation, selectedId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((row) => {
-      if (filter === "new" && !["new", "unassigned"].includes(row.status)) return false;
+      if (historyOnly && row.status !== "closed") return false;
+      if (!historyOnly && filter === "new" && !["new", "unassigned"].includes(row.status)) return false;
       if (filter === "mine" && row.assigned_user_id !== actor?.user_id) return false;
       if (filter === "active" && !["in_progress", "waiting_store", "waiting_it"].includes(row.status)) return false;
       if (filter === "closed" && row.status !== "closed") return false;
@@ -171,22 +231,28 @@ export function SupportChatConsole() {
       return [row.store_code, row.store_name, row.subject, row.contact_name, row.latest_message_preview]
         .some((value) => String(value ?? "").toLowerCase().includes(q));
     });
-  }, [rows, filter, search, actor?.user_id]);
+  }, [rows, filter, search, actor?.user_id, historyOnly]);
 
   async function sendMessage() {
     const message = draft.trim();
-    if (!selectedId || !message) return;
+    if (!selectedId || (!message && !attachment)) return;
     setBusy("send");
     setError("");
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "send", message })
+        body: JSON.stringify({
+          action: "send",
+          message,
+          attachment: attachment ? await attachmentPayload(attachment) : null
+        })
       });
       const json = await response.json().catch(() => null) as Envelope<{ message: Message; conversation: Conversation }> | null;
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "ส่งข้อความไม่สำเร็จ");
       setDraft("");
+      setAttachment(null);
+      void typingChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { actor: "it", typing: false } });
       setConversation(json.data.conversation);
       setMessages((current) => [...current, json.data!.message]);
       await loadInbox();
@@ -197,26 +263,109 @@ export function SupportChatConsole() {
     }
   }
 
-  async function closeConversation() {
-    if (!selectedId || !window.confirm("ยืนยันปิดการสนทนานี้?")) return;
-    setBusy("close");
+  async function setConversationStatus(status: string) {
+    if (!selectedId || status === conversation?.status) return;
+    if (status === "closed" && !window.confirm("จบการสนทนานี้? รูปภาพแนบจะถูกลบทันที แต่ข้อความจะเก็บไว้")) return;
+    setBusy("status");
     setError("");
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "close" })
+        body: JSON.stringify({ action: "set_status", status })
       });
       const json = await response.json().catch(() => null) as Envelope<{ conversation: Conversation }> | null;
-      if (!response.ok || !json?.data) throw new Error(json?.error?.message || "ปิดแชทไม่สำเร็จ");
+      if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปลี่ยนสถานะไม่สำเร็จ");
       setConversation(json.data.conversation);
       await loadInbox();
+      await loadConversation(selectedId);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "ปิดแชทไม่สำเร็จ");
+      setError(cause instanceof Error ? cause.message : "เปลี่ยนสถานะไม่สำเร็จ");
     } finally {
       setBusy("");
     }
   }
+
+  async function saveNote() {
+    if (!selectedId) return;
+    setBusy("note");
+    setError("");
+    try {
+      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "update_note", internal_note: noteDraft })
+      });
+      const json = await response.json().catch(() => null) as Envelope<{ conversation: Conversation }> | null;
+      if (!response.ok || !json?.data) throw new Error(json?.error?.message || "บันทึกโน้ตไม่สำเร็จ");
+      setConversation(json.data.conversation);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "บันทึกโน้ตไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function deleteConversation() {
+    if (!selectedId || !canDelete || conversation?.status !== "closed") return;
+    if (!window.confirm("ลบประวัติแชทนี้ถาวร? การลบย้อนกลับไม่ได้")) return;
+    setBusy("delete");
+    setError("");
+    try {
+      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "delete" })
+      });
+      const json = await response.json().catch(() => null) as Envelope<{ deleted: true }> | null;
+      if (!response.ok || !json?.data?.deleted) throw new Error(json?.error?.message || "ลบแชทไม่สำเร็จ");
+      setSelectedId("");
+      setConversation(null);
+      setMessages([]);
+      setNoteDraft("");
+      await loadInbox();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ลบแชทไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
+
+  useEffect(() => {
+    if (!selectedId || conversation?.status === "closed") {
+      setRemoteTyping("");
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
+    const channel = supabase.channel(`support-chat-typing:${selectedId}`)
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        const event = payload as { actor?: string; typing?: boolean; name?: string };
+        if (event.actor !== "store") return;
+        if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+        setRemoteTyping(event.typing ? (event.name || "ลูกค้า") : "");
+        if (event.typing) typingTimerRef.current = window.setTimeout(() => setRemoteTyping(""), 2600);
+      })
+      .subscribe();
+    typingChannelRef.current = channel;
+    return () => {
+      if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+      setRemoteTyping("");
+      typingChannelRef.current = null;
+      void supabase.removeChannel(channel);
+    };
+  }, [selectedId, conversation?.status]);
+
+  const announceTyping = useCallback((typing: boolean) => {
+    const now = Date.now();
+    if (typing && now - typingSentAtRef.current < 700) return;
+    typingSentAtRef.current = now;
+    void typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { actor: "it", typing, name: "IT Support" }
+    });
+  }, []);
 
   async function enableNotifications() {
     if (!("Notification" in window)) {
@@ -231,8 +380,8 @@ export function SupportChatConsole() {
     <main className="grid gap-4">
       <header className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
-          <h2 className="text-2xl font-black text-slate-950">Support Chat</h2>
-          <p className="mt-1 text-xs font-bold text-slate-500">IT Admin · IT Support · ร้านค้า</p>
+          <h2 className="text-2xl font-black text-slate-950">{historyOnly ? "สมุดบันทึกแชท" : "Support Chat"}</h2>
+          <p className="mt-1 text-xs font-bold text-slate-500">{historyOnly ? "ประวัติที่จบแล้ว · โน้ตภายใน · รูปภาพถูกลบเมื่อจบแชท" : "IT Admin · IT Support · ร้านค้า"}</p>
         </div>
         <button type="button" onClick={() => void enableNotifications()}
           className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700">
@@ -252,7 +401,7 @@ export function SupportChatConsole() {
             <input value={search} onChange={(event) => setSearch(event.target.value)}
               placeholder="ค้นหาร้าน / เรื่อง / ผู้ติดต่อ"
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            {!historyOnly ? <div className="mt-2 flex flex-wrap gap-1.5">
               {([
                 ["all", "ทั้งหมด"],
                 ["new", "ใหม่"],
@@ -266,7 +415,7 @@ export function SupportChatConsole() {
                   {label}
                 </button>
               ))}
-            </div>
+            </div> : <div className="mt-2 text-[11px] font-bold text-slate-500">แสดงเฉพาะการสนทนาที่จบแล้ว</div>}
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -280,7 +429,10 @@ export function SupportChatConsole() {
                     <strong className="min-w-0 flex-1 truncate text-sm text-slate-900">{row.store_name}</strong>
                     {row.unread_it_count > 0 ? <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">{row.unread_it_count}</span> : null}
                   </div>
-                  <div className="mt-0.5 truncate text-xs font-bold text-slate-700">{row.subject}</div>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-700">{row.subject}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black text-slate-500">{statusLabel(row.status)}</span>
+                  </div>
                   <div className="mt-1 truncate text-[11px] text-slate-500">{row.latest_message_preview || "เริ่มการสนทนา"}</div>
                   <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
                     <span>{row.store_code}</span>
@@ -308,8 +460,17 @@ export function SupportChatConsole() {
                     <div className="text-[10px] text-slate-500">{conversation.assigned_role === "it_admin" ? "IT Admin" : "IT Support"}</div>
                   </div>
                 </div>
-                {conversation.status !== "closed" ? <button type="button" onClick={() => void closeConversation()}
-                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-700">ปิดแชท</button> : null}
+                {conversation.status !== "closed" ? <select value={conversation.status} disabled={busy === "status"}
+                  onChange={(event) => void setConversationStatus(event.target.value)}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">
+                  <option value="in_progress">กำลังดูแล</option>
+                  <option value="waiting_store">รอลูกค้า</option>
+                  <option value="waiting_it">รอ IT</option>
+                  <option value="closed">จบการสนทนา</option>
+                </select> : <span className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-500">จบแล้ว</span>}
+                {canDelete && conversation.status === "closed" ? <button type="button" onClick={() => void deleteConversation()}
+                  disabled={busy === "delete"}
+                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-700">ลบถาวร</button> : null}
               </header>
 
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f7faff] p-4">
@@ -323,6 +484,11 @@ export function SupportChatConsole() {
                     {!mine ? <StoreAvatar src={conversation.store_logo_url} name={conversation.store_name} /> : null}
                     <div className={"max-w-[76%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm " +
                       (mine ? "rounded-br-md bg-blue-600 text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800")}>
+                      {message.attachments?.map((item) => <a key={item.id} href={item.url} target="_blank" rel="noreferrer"
+                        className="mb-2 block overflow-hidden rounded-xl border border-white/30 bg-white/10">
+                        <span className="block h-48 w-64 max-w-full bg-contain bg-center bg-no-repeat"
+                          style={{ backgroundImage: `url("${item.url.replace(/["\\]/g, "")}")` }} />
+                      </a>)}
                       <div className="whitespace-pre-wrap break-words">{message.message_body}</div>
                       <div className={"mt-1 text-[10px] " + (mine ? "text-blue-100" : "text-slate-400")}>{formatTime(message.created_at)}</div>
                     </div>
@@ -331,23 +497,49 @@ export function SupportChatConsole() {
                 })}
               </div>
 
+              <div className="border-t border-slate-200 bg-white px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <input value={noteDraft} onChange={(event) => setNoteDraft(event.target.value.slice(0,3000))}
+                    placeholder="โน้ตภายใน IT (ลูกค้าไม่เห็น)"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
+                  <button type="button" onClick={() => void saveNote()} disabled={busy === "note"}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">บันทึกโน้ต</button>
+                </div>
+              </div>
               {conversation.status === "closed" ? (
-                <div className="border-t border-slate-200 bg-slate-50 px-4 py-4 text-center text-xs font-black text-slate-500">ปิดการสนทนาแล้ว</div>
+                <div className="border-t border-slate-200 bg-slate-50 px-4 py-4 text-center text-xs font-black text-slate-500">
+                  จบการสนทนาแล้ว · เก็บข้อความไว้ในสมุดบันทึก · รูปภาพถูกลบออกจากระบบ
+                </div>
               ) : (
-                <div className="flex gap-2 border-t border-slate-200 p-3">
-                  <textarea value={draft} onChange={(event) => setDraft(event.target.value.slice(0,4000))}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void sendMessage();
-                      }
-                    }}
-                    rows={2} placeholder="พิมพ์ข้อความถึงร้านค้า..."
-                    className="min-h-[50px] flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
-                  <button type="button" onClick={() => void sendMessage()} disabled={busy === "send" || !draft.trim()}
-                    className="rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-40">
-                    {busy === "send" ? "..." : "ส่ง"}
-                  </button>
+                <div className="border-t border-slate-200 bg-white p-3">
+                  {remoteTyping ? <div className="mb-2 text-[11px] font-bold text-slate-500">{remoteTyping} กำลังพิมพ์…</div> : null}
+                  {attachment ? <div className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                    <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+                    <button type="button" onClick={() => setAttachment(null)} className="font-black">ลบ</button>
+                  </div> : null}
+                  <div className="flex gap-2">
+                    <label className="grid h-[50px] w-[50px] shrink-0 cursor-pointer place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-600" title="แนบรูปภาพ">
+                      📎
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                        onChange={(event) => setAttachment(event.target.files?.[0] ?? null)} />
+                    </label>
+                    <textarea value={draft}
+                      onChange={(event) => { const value = event.target.value.slice(0,4000); setDraft(value); announceTyping(Boolean(value.trim())); }}
+                      onBlur={() => announceTyping(false)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void sendMessage();
+                        }
+                      }}
+                      rows={2} placeholder="พิมพ์ข้อความถึงร้านค้า..."
+                      className="min-h-[50px] flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
+                    <button type="button" onClick={() => void sendMessage()} disabled={busy === "send" || (!draft.trim() && !attachment)}
+                      className="rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-40">
+                      {busy === "send" ? "..." : "ส่ง"}
+                    </button>
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-400">รูปภาพ JPG/PNG/WEBP ไม่เกิน 2 MB · รูปจะถูกลบเมื่อจบการสนทนา</div>
                 </div>
               )}
             </>
