@@ -535,12 +535,19 @@ export async function triggerVercelDeployment(input: {
   const repo = safeRepoName(input.repo);
   const ref = safeRef(input.ref);
   const target = input.target === "production" ? "production" : "preview";
-  if (target === "production" && ref !== "main") {
-    throw new ItAdminGuardError(
-      "development_production_ref_blocked",
-      "Production Deploy อนุญาตเฉพาะ main หลัง Merge แล้วเท่านั้น",
-      409
+  if (target === "production") {
+    const owner = githubOwner();
+    const repository = await githubJson<GithubRepo>(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
     );
+    const defaultBranch = repository.default_branch || "main";
+    if (ref !== defaultBranch) {
+      throw new ItAdminGuardError(
+        "development_production_ref_blocked",
+        `Production Deploy อนุญาตเฉพาะ Branch หลัก ${defaultBranch} หลัง Merge แล้วเท่านั้น`,
+        409
+      );
+    }
   }
   const project = await findVercelProject(repo);
   if (!project?.name) {
