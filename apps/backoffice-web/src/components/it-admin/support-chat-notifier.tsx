@@ -18,9 +18,9 @@ async function loadUnreadTotal() {
   return response.ok ? Number(json?.data?.unread_total ?? 0) : 0;
 }
 
-function notifyUnread(total: number) {
+function notifyUnread(total: number, head?: Head) {
   window.dispatchEvent(new CustomEvent("cpipos-support-chat-unread", { detail: { total } }));
-  window.dispatchEvent(new CustomEvent("cpipos-support-chat-update"));
+  window.dispatchEvent(new CustomEvent("cpipos-support-chat-update", { detail: { head } }));
 }
 
 export function SupportChatNotifier() {
@@ -44,7 +44,7 @@ export function SupportChatNotifier() {
           const next = (payload.new ?? {}) as Head;
           const totalNext = await loadUnreadTotal().catch(() => 0);
           if (!alive) return;
-          notifyUnread(totalNext);
+          notifyUnread(totalNext, next);
 
           if (initialized.current && next.latest_sender_type === "store" && Number(next.unread_it_count ?? 0) > 0) {
             const title = next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่";
@@ -80,8 +80,21 @@ export function SupportChatNotifier() {
         initialized.current = true;
       });
 
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "hidden") return;
+      void loadUnreadTotal().then((total) => {
+        if (alive) notifyUnread(total);
+      }).catch(() => null);
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    window.addEventListener("online", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+
     return () => {
       alive = false;
+      window.removeEventListener("focus", refreshOnFocus);
+      window.removeEventListener("online", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
       void supabase.removeChannel(channel);
     };
   }, []);
