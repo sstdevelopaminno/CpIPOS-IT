@@ -164,7 +164,9 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       setRows(json.data.conversations);
       setActor(json.data.actor);
       if (!selectedId) {
-        const first = json.data.conversations.find((row) => row.status !== "closed") ?? json.data.conversations[0];
+        const first = historyOnly
+          ? json.data.conversations.find((row) => row.status === "closed")
+          : json.data.conversations.find((row) => row.status !== "closed") ?? json.data.conversations[0];
         if (first) setSelectedId(first.conversation_id);
       }
     } catch (cause) {
@@ -172,7 +174,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     } finally {
       setBusy("");
     }
-  }, [selectedId]);
+  }, [selectedId, historyOnly]);
 
   const loadConversation = useCallback(async (id: string) => {
     if (!id) return;
