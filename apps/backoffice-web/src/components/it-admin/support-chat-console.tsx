@@ -1,7 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useItAccess } from "@/components/layout/app-shell";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 type Head = {
   conversation_id: string;
@@ -38,8 +41,17 @@ type Conversation = {
   assigned_user_id: string | null;
   assigned_user_name: string | null;
   assigned_user_avatar_url: string | null;
+  internal_note?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type Attachment = {
+  id: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  url: string;
 };
 
 type Message = {
@@ -50,6 +62,7 @@ type Message = {
   sender_avatar_url: string | null;
   message_body: string;
   created_at: string;
+  attachments?: Attachment[];
 };
 
 type InboxResponse = {
@@ -93,7 +106,35 @@ function SupportAvatar({ src, name: _name }: { src?: string | null; name: string
     className="h-9 w-9 rounded-full border border-slate-200 bg-white object-contain" />;
 }
 
-export function SupportChatConsole() {
+function statusLabel(status: string) {
+  if (status === "new" || status === "unassigned") return "ใหม่";
+  if (status === "in_progress") return "กำลังดูแล";
+  if (status === "waiting_store") return "รอลูกค้า";
+  if (status === "waiting_it") return "รอ IT";
+  if (status === "closed") return "จบแล้ว";
+  return status;
+}
+
+async function attachmentPayload(file: File) {
+  const allowed = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowed.includes(file.type)) throw new Error("รองรับเฉพาะ JPG, PNG และ WEBP");
+  if (file.size > 2 * 1024 * 1024) throw new Error("รูปภาพต้องมีขนาดไม่เกิน 2 MB");
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("อ่านไฟล์รูปภาพไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+  return {
+    name: file.name.slice(0, 180),
+    mime_type: file.type,
+    size_bytes: file.size,
+    data_base64: dataUrl.includes(",") ? dataUrl.slice(dataUrl.indexOf(",") + 1) : dataUrl
+  };
+}
+
+export function SupportChatConsole({ historyOnly = false }: { historyOnly?: boolean }) {
+  const { canDelete } = useItAccess();
   const [rows, setRows] = useState<Head[]>([]);
   const [actor, setActor] = useState<InboxResponse["actor"] | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -102,6 +143,12 @@ export function SupportChatConsole() {
   const [filter, setFilter] = useState<"all" | "new" | "mine" | "active" | "closed">("all");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [remoteTyping, setRemoteTyping] = useState("");
+  const typingChannelRef = useRef<RealtimeChannel | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
+  const typingSentAtRef = useRef(0);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notificationState, setNotificationState] = useState<NotificationPermission | "unsupported">(
@@ -136,6 +183,7 @@ export function SupportChatConsole() {
       const json = await response.json().catch(() => null) as Envelope<DetailResponse> | null;
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปิดแชทไม่สำเร็จ");
       setConversation(json.data.conversation);
+      setNoteDraft(json.data.conversation.internal_note ?? "");
       setMessages(json.data.messages);
       await loadInbox();
     } catch (cause) {
@@ -154,7 +202,11 @@ export function SupportChatConsole() {
   }, [selectedId, loadConversation]);
 
   useEffect(() => {
-    const onUpdate = () => void loadInbox();
+    const onUpdate = (event: Event) => {
+      const head = (event as CustomEvent<{ head?: Head }>).detail?.head;
+      void loadInbox();
+      if (selectedId && head?.conversation_id === selectedId) void loadConversation(selectedId);
+    };
     window.addEventListener("cpipos-support-chat-update", onUpdate);
     return () => window.removeEventListener("cpipos-support-chat-update", onUpdate);
   }, [loadInbox]);
@@ -162,7 +214,8 @@ export function SupportChatConsole() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((row) => {
-      if (filter === "new" && !["new", "unassigned"].includes(row.status)) return false;
+      if (historyOnly && row.status !== "closed") return false;
+      if (!historyOnly && filter === "new" && !["new", "unassigned"].includes(row.status)) return false;
       if (filter === "mine" && row.assigned_user_id !== actor?.user_id) return false;
       if (filter === "active" && !["in_progress", "waiting_store", "waiting_it"].includes(row.status)) return false;
       if (filter === "closed" && row.status !== "closed") return false;
@@ -171,27 +224,101 @@ export function SupportChatConsole() {
       return [row.store_code, row.store_name, row.subject, row.contact_name, row.latest_message_preview]
         .some((value) => String(value ?? "").toLowerCase().includes(q));
     });
-  }, [rows, filter, search, actor?.user_id]);
+  }, [rows, filter, search, actor?.user_id, historyOnly]);
 
   async function sendMessage() {
     const message = draft.trim();
-    if (!selectedId || !message) return;
+    if (!selectedId || (!message && !attachment)) return;
     setBusy("send");
     setError("");
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "send", message })
+        body: JSON.stringify({
+          action: "send",
+          message,
+          attachment: attachment ? await attachmentPayload(attachment) : null
+        })
       });
       const json = await response.json().catch(() => null) as Envelope<{ message: Message; conversation: Conversation }> | null;
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "ส่งข้อความไม่สำเร็จ");
       setDraft("");
+      setAttachment(null);
+      void typingChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { actor: "it", typing: false } });
       setConversation(json.data.conversation);
       setMessages((current) => [...current, json.data!.message]);
       await loadInbox();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ส่งข้อความไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function setConversationStatus(status: string) {
+    if (!selectedId || status === conversation?.status) return;
+    if (status === "closed" && !window.confirm("จบการสนทนานี้? รูปภาพแนบจะถูกลบทันที แต่ข้อความจะเก็บไว้")) return;
+    setBusy("status");
+    setError("");
+    try {
+      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "set_status", status })
+      });
+      const json = await response.json().catch(() => null) as Envelope<{ conversation: Conversation }> | null;
+      if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปลี่ยนสถานะไม่สำเร็จ");
+      setConversation(json.data.conversation);
+      await loadInbox();
+      await loadConversation(selectedId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "เปลี่ยนสถานะไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveNote() {
+    if (!selectedId) return;
+    setBusy("note");
+    setError("");
+    try {
+      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "update_note", internal_note: noteDraft })
+      });
+      const json = await response.json().catch(() => null) as Envelope<{ conversation: Conversation }> | null;
+      if (!response.ok || !json?.data) throw new Error(json?.error?.message || "บันทึกโน้ตไม่สำเร็จ");
+      setConversation(json.data.conversation);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "บันทึกโน้ตไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function deleteConversation() {
+    if (!selectedId || !canDelete || conversation?.status !== "closed") return;
+    if (!window.confirm("ลบประวัติแชทนี้ถาวร? การลบย้อนกลับไม่ได้")) return;
+    setBusy("delete");
+    setError("");
+    try {
+      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "delete" })
+      });
+      const json = await response.json().catch(() => null) as Envelope<{ deleted: true }> | null;
+      if (!response.ok || !json?.data?.deleted) throw new Error(json?.error?.message || "ลบแชทไม่สำเร็จ");
+      setSelectedId("");
+      setConversation(null);
+      setMessages([]);
+      setNoteDraft("");
+      await loadInbox();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ลบแชทไม่สำเร็จ");
     } finally {
       setBusy("");
     }
@@ -217,6 +344,41 @@ export function SupportChatConsole() {
       setBusy("");
     }
   }
+
+  useEffect(() => {
+    if (!selectedId || conversation?.status === "closed") {
+      setRemoteTyping("");
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
+    const channel = supabase.channel(`support-chat-typing:${selectedId}`)
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        const event = payload as { actor?: string; typing?: boolean; name?: string };
+        if (event.actor !== "store") return;
+        if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+        setRemoteTyping(event.typing ? (event.name || "ลูกค้า") : "");
+        if (event.typing) typingTimerRef.current = window.setTimeout(() => setRemoteTyping(""), 2600);
+      })
+      .subscribe();
+    typingChannelRef.current = channel;
+    return () => {
+      if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+      setRemoteTyping("");
+      typingChannelRef.current = null;
+      void supabase.removeChannel(channel);
+    };
+  }, [selectedId, conversation?.status]);
+
+  const announceTyping = useCallback((typing: boolean) => {
+    const now = Date.now();
+    if (typing && now - typingSentAtRef.current < 700) return;
+    typingSentAtRef.current = now;
+    void typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { actor: "it", typing, name: "IT Support" }
+    });
+  }, []);
 
   async function enableNotifications() {
     if (!("Notification" in window)) {
