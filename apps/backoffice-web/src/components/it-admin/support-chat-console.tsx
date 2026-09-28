@@ -211,7 +211,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     };
     window.addEventListener("cpipos-support-chat-update", onUpdate);
     return () => window.removeEventListener("cpipos-support-chat-update", onUpdate);
-  }, [loadInbox]);
+  }, [loadInbox, loadConversation, selectedId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
