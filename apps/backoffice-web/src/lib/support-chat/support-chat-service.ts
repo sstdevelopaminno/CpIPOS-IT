@@ -87,6 +87,12 @@ export async function mirrorSupportChatHead(head: SupportChatHead | null | undef
   if (result.error) throw new Error("Unable to update support chat notification state.");
 }
 
+export async function deleteSupportChatHead(conversationId: string) {
+  const db = getSupabaseServiceClient();
+  const result = await db.from("support_chat_heads").delete().eq("conversation_id", conversationId);
+  if (result.error) throw new Error("Unable to remove support chat notification state.");
+}
+
 export async function listItSupportChatHeads() {
   const db = getSupabaseServiceClient();
   const result = await db.from("support_chat_heads")
