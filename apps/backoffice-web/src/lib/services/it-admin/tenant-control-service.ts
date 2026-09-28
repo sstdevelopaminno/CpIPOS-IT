@@ -1010,13 +1010,26 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (packageResult.error) throw new Error(`package_query_failed:${packageResult.error.message}`);
     if (!packageResult.data) throw new ItAdminGuardError("package_not_available", "Selected package is not available.", 409);
 
-    const expectedAmount = packageAmount(packageResult.data, billingCycle);
+    let customTermsForPayment: CustomTermsRow | null = null;
+    let expectedAmount = packageAmount(packageResult.data, billingCycle);
+    if (packageResult.data.quota_mode === "custom" || packageResult.data.code === "custom") {
+      const customTerms = await context.supabase.from("tenant_custom_package_terms")
+        .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+        .eq("tenant_id",tenantId).eq("package_id",packageId)
+        .in("status",["approved","active"]).maybeSingle<CustomTermsRow>();
+      if (customTerms.error) throw new Error(`custom_terms_query_failed:${customTerms.error.message}`);
+      if (!customTerms.data) {
+        throw new ItAdminGuardError("custom_terms_required","กรุณากำหนดและอนุมัติรายละเอียด CUSTOM ของร้านก่อนสร้างรายการชำระ",422);
+      }
+      customTermsForPayment = customTerms.data;
+      expectedAmount = customTermsAmount(customTerms.data,billingCycle);
+    }
     if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
       throw new ItAdminGuardError(
         billingCycle === "yearly" ? "yearly_price_not_configured" : "package_price_not_configured",
         billingCycle === "yearly"
           ? "แพ็กเกจนี้ยังไม่มีราคารายปี กรุณาตั้งราคาในระบบ IT ก่อนสร้างรายการชำระ"
-          : "แพ็กเกจนี้ไม่มีราคากลาง กรุณาใช้สัญญา CUSTOM ที่กำหนดราคาเฉพาะร้าน",
+          : "แพ็กเกจนี้ยังไม่มีราคาที่พร้อมเรียกเก็บ",
         422
       );
     }
@@ -1052,7 +1065,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       kind: "payment_notice",
       billing_interval: billingCycle,
       expected_amount: expectedAmount,
-      source: "it_tenant_control",
+      source: customTermsForPayment ? "it_custom_agreement" : "it_tenant_control",
       created_by_it: context.auth.userId,
       payer_name: "",
       transfer_reference: "",
@@ -1060,7 +1073,11 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       note: reason ?? "",
       requested_start_date: cleanText(input.start_date, 10) || null,
       auto_renew_requested: typeof input.auto_renew === "boolean" ? input.auto_renew : false,
-      receipt_policy: "issue_only_after_verified_settlement"
+      receipt_policy: "issue_only_after_verified_settlement",
+      ...(customTermsForPayment ? {
+        custom_terms_snapshot: customTermsSnapshot(customTermsForPayment),
+        custom_terms_version: customTermsForPayment.version
+      } : {})
     };
 
     const inserted = await context.supabase
