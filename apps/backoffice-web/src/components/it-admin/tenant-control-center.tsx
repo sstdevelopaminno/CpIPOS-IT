@@ -771,6 +771,99 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   </section>
                 </div>
               ) : null}
+              {tab === "customPackage" ? (
+                <div className={styles.controlStack}>
+                  <section className={styles.packageHero}>
+                    <div>
+                      <span>CUSTOM · PER STORE</span>
+                      <h4>{customRelevant ? "รายละเอียดเฉพาะร้าน" : "ยังไม่ได้เลือก CUSTOM"}</h4>
+                      <p>{customRequestOpen ? "ลูกค้าส่งคำขอแล้ว · รอ IT กำหนดและตกลง" : customTerms ? `สถานะ ${customTerms.status} · เวอร์ชัน ${customTerms.version}` : "ใช้เมื่อลูกค้าเลือก CUSTOM เท่านั้น"}</p>
+                    </div>
+                    <div className={styles.packageMetrics}>
+                      <span>สาขา {customTerms?.max_branches ?? "—"}</span>
+                      <span>เครื่อง {customTerms?.max_devices ?? "—"}</span>
+                      <span>ผู้ใช้ {customTerms?.max_users ?? "—"}</span>
+                    </div>
+                  </section>
+
+                  {!customRelevant ? <div className={styles.securityNote}>
+                    ร้านนี้ยังใช้แพ็กเกจมาตรฐานและไม่มีคำขอ CUSTOM จึงยังไม่เปิดการบันทึกเงื่อนไขเฉพาะร้าน
+                  </div> : null}
+
+                  {customRelevant ? <section className={styles.controlSection}>
+                    <div className={styles.controlSectionHeader}>
+                      <div><span>COMMERCIAL TERMS</span><h4>ราคาและอายุข้อมูล</h4></div>
+                      <small>Sales Retention ของแพ็กเกจมาตรฐานล็อก 6 เดือน · CUSTOM กำหนดแยกร้าน</small>
+                    </div>
+                    <div className={styles.formGrid}>
+                      <label><span>ราคารายเดือน</span><input type="number" min="0" step="0.01" value={customDraft.monthly_price} onChange={(e)=>setCustomDraft((v)=>({...v,monthly_price:e.target.value}))}/></label>
+                      <label><span>ส่วนลดรายเดือน %</span><input type="number" min="0" max="100" step="0.01" value={customDraft.monthly_discount_percent} onChange={(e)=>setCustomDraft((v)=>({...v,monthly_discount_percent:e.target.value}))}/></label>
+                      <label><span>ราคารายปี</span><input type="number" min="0" step="0.01" value={customDraft.yearly_price} onChange={(e)=>setCustomDraft((v)=>({...v,yearly_price:e.target.value}))}/></label>
+                      <label><span>ส่วนลดรายปี %</span><input type="number" min="0" max="100" step="0.01" value={customDraft.yearly_discount_percent} onChange={(e)=>setCustomDraft((v)=>({...v,yearly_discount_percent:e.target.value}))}/></label>
+                      <label><span>เก็บยอดขาย</span><select value={customDraft.retention_months} onChange={(e)=>setCustomDraft((v)=>({...v,retention_months:e.target.value}))}><option value="6">6 เดือน</option><option value="12">12 เดือน</option><option value="18">18 เดือน</option><option value="24">24 เดือน</option><option value="36">36 เดือน</option></select></label>
+                      <label><span>รอบที่จะเสนอ</span><select value={customBillingCycle} onChange={(e)=>setCustomBillingCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly">รายปี</option></select></label>
+                    </div>
+                  </section> : null}
+
+                  {customRelevant ? <section className={styles.controlSection}>
+                    <div className={styles.controlSectionHeader}><div><span>QUOTAS</span><h4>โควตาการใช้งาน</h4></div></div>
+                    <div className={styles.formGrid}>
+                      <label><span>สาขา</span><input type="number" min="1" value={customDraft.max_branches} onChange={(e)=>setCustomDraft((v)=>({...v,max_branches:e.target.value}))}/></label>
+                      <label><span>เครื่องขาย</span><input type="number" min="1" value={customDraft.max_devices} onChange={(e)=>setCustomDraft((v)=>({...v,max_devices:e.target.value}))}/></label>
+                      <label><span>ผู้ใช้งาน</span><input type="number" min="1" value={customDraft.max_users} onChange={(e)=>setCustomDraft((v)=>({...v,max_users:e.target.value}))}/></label>
+                      <label><span>สินค้า</span><input type="number" min="1" placeholder="ไม่กำหนด" value={customDraft.max_products} onChange={(e)=>setCustomDraft((v)=>({...v,max_products:e.target.value}))}/></label>
+                      <label><span>บิล / เดือน</span><input type="number" min="1" placeholder="ไม่กำหนด" value={customDraft.monthly_bill_limit} onChange={(e)=>setCustomDraft((v)=>({...v,monthly_bill_limit:e.target.value}))}/></label>
+                      <label><span>Storage GB</span><input type="number" min="0.01" step="0.01" placeholder="ไม่กำหนด" value={customDraft.storage_limit_gb} onChange={(e)=>setCustomDraft((v)=>({...v,storage_limit_gb:e.target.value}))}/></label>
+                      <label className={styles.span2}><span>หมายเหตุ</span><textarea rows={2} value={customDraft.notes} onChange={(e)=>setCustomDraft((v)=>({...v,notes:e.target.value}))} placeholder="รายละเอียดที่ตกลงกับลูกค้า"/></label>
+                    </div>
+
+                    <details style={{ marginTop: 12 }}>
+                      <summary style={{ cursor:"pointer",fontWeight:800,fontSize:13,color:"#31547e" }}>สิทธิ์เพิ่มเติม ({Object.keys(customDraft.feature_overrides).length})</summary>
+                      <div className={dashboardStyles.salesModeGrid} style={{ marginTop: 10 }}>
+                        {data.custom_package.feature_catalog.map((feature) => {
+                          const checked = customDraft.feature_overrides[feature.code];
+                          return <label className={dashboardStyles.salesModeCard} key={feature.code}>
+                            <input type="checkbox" checked={checked === true}
+                              onChange={(e)=>setCustomDraft((v)=>({...v,feature_overrides:{...v.feature_overrides,[feature.code]:e.target.checked}}))}/>
+                            <span className={dashboardStyles.salesModeToggle} aria-hidden="true"/>
+                            <span className={dashboardStyles.salesModeCopy}><strong>{feature.name}</strong><small>{feature.code}</small></span>
+                            <em>{checked === true ? "เปิด" : "ค่าเดิม"}</em>
+                          </label>;
+                        })}
+                      </div>
+                    </details>
+
+                    <div className={styles.sectionActions}>
+                      <button className={styles.secondaryButton} type="button" disabled={busy}
+                        onClick={() => void mutate({
+                          action:"update_custom_package_terms",
+                          custom_monthly_price:Number(customDraft.monthly_price || 0),
+                          custom_yearly_price:Number(customDraft.yearly_price || 0),
+                          custom_monthly_discount_percent:Number(customDraft.monthly_discount_percent || 0),
+                          custom_yearly_discount_percent:Number(customDraft.yearly_discount_percent || 0),
+                          custom_max_branches:Number(customDraft.max_branches || 1),
+                          custom_max_devices:Number(customDraft.max_devices || 1),
+                          custom_max_users:Number(customDraft.max_users || 1),
+                          custom_retention_months:Number(customDraft.retention_months || 6),
+                          custom_max_products:customDraft.max_products ? Number(customDraft.max_products) : null,
+                          custom_monthly_bill_limit:customDraft.monthly_bill_limit ? Number(customDraft.monthly_bill_limit) : null,
+                          custom_storage_limit_gb:customDraft.storage_limit_gb ? Number(customDraft.storage_limit_gb) : null,
+                          custom_feature_overrides:customDraft.feature_overrides,
+                          custom_notes:customDraft.notes
+                        },"บันทึกร่าง CUSTOM แล้ว",true)}>บันทึกร่าง</button>
+                      {customRequestOpen ? <button className={styles.primaryButton} type="button" disabled={busy || !customTerms}
+                        onClick={() => void mutate({
+                          action:"approve_custom_package_request",
+                          billing_cycle:customBillingCycle,
+                          admin_reason:customDraft.notes
+                        },"อนุมัติ CUSTOM แล้ว · POS พร้อมรับรายการชำระ",true)}>อนุมัติและส่งยอดให้ POS</button> : null}
+                    </div>
+                    {customRequestOpen ? <div className={styles.securityNote}>หลังอนุมัติ ลูกค้าจะเห็นยอดที่ตกลงในเมนูชำระเงิน และยังต้องผ่านการตรวจเงินเข้า/Settlement ก่อนเปลี่ยนแพ็กเกจจริง</div> :
+                      customTerms?.status === "draft" ? <div className={styles.securityNote}>ร่างนี้จะใช้เมื่อมีคำขอ CUSTOM และ IT กดอนุมัติรอบถัดไป</div> : null}
+                  </section> : null}
+                </div>
+              ) : null}
+
               {tab === "package" ? (
                 <div className={styles.controlStack}>
                   <section className={styles.packageHero}>
