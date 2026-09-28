@@ -87,6 +87,75 @@ export async function mirrorSupportChatHead(head: SupportChatHead | null | undef
   if (result.error) throw new Error("Unable to update support chat notification state.");
 }
 
+export type OptimisticSupportChatHeadToken = {
+  previous: SupportChatHead;
+  optimisticUpdatedAt: string;
+};
+
+export async function publishOptimisticSupportChatHead(
+  conversationId: string,
+  senderType: "store" | "it",
+  preview: string
+): Promise<OptimisticSupportChatHeadToken | null> {
+  const db = getSupabaseServiceClient();
+  const current = await db.from("support_chat_heads")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .maybeSingle<SupportChatHead>();
+  if (current.error) throw new Error("Unable to read support chat realtime state.");
+  if (!current.data || current.data.status === "closed") return null;
+
+  const now = new Date().toISOString();
+  const patch = {
+    latest_message_at: now,
+    latest_message_preview: preview.slice(0, 180),
+    latest_sender_type: senderType,
+    status: senderType === "it" ? "waiting_store" : "waiting_it",
+    unread_it_count: senderType === "store" ? Number(current.data.unread_it_count || 0) + 1 : 0,
+    unread_store_count: senderType === "it" ? Number(current.data.unread_store_count || 0) + 1 : 0,
+    updated_at: now
+  };
+
+  const updated = await db.from("support_chat_heads")
+    .update(patch)
+    .eq("conversation_id", conversationId)
+    .neq("status", "closed")
+    .select("*")
+    .maybeSingle<SupportChatHead>();
+  if (updated.error || !updated.data) throw new Error("Unable to publish support chat realtime preview.");
+
+  return { previous: current.data, optimisticUpdatedAt: now };
+}
+
+export async function rollbackOptimisticSupportChatHead(token: OptimisticSupportChatHeadToken | null) {
+  if (!token) return;
+  const db = getSupabaseServiceClient();
+  const previous = token.previous;
+  await db.from("support_chat_heads")
+    .update({
+      tenant_id: previous.tenant_id,
+      store_code: previous.store_code,
+      store_name: previous.store_name,
+      store_logo_url: previous.store_logo_url,
+      subject: previous.subject,
+      contact_name: previous.contact_name,
+      status: previous.status,
+      assigned_role: previous.assigned_role,
+      assigned_user_id: previous.assigned_user_id,
+      assigned_user_name: previous.assigned_user_name,
+      assigned_user_avatar_url: previous.assigned_user_avatar_url,
+      latest_message_at: previous.latest_message_at,
+      latest_message_preview: previous.latest_message_preview,
+      latest_sender_type: previous.latest_sender_type,
+      unread_it_count: previous.unread_it_count,
+      unread_store_count: previous.unread_store_count,
+      created_at: previous.created_at,
+      updated_at: previous.updated_at
+    })
+    .eq("conversation_id", previous.conversation_id)
+    .eq("updated_at", token.optimisticUpdatedAt);
+}
+
 export async function deleteSupportChatHead(conversationId: string) {
   const db = getSupabaseServiceClient();
   const result = await db.from("support_chat_heads").delete().eq("conversation_id", conversationId);

@@ -70,6 +70,14 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(notifier).toContain('document.addEventListener("visibilitychange"');
   });
 
+  it("publishes a secure realtime head preview before cross-project persistence", () => {
+    expect(service).toContain("publishOptimisticSupportChatHead");
+    expect(service).toContain("rollbackOptimisticSupportChatHead");
+    expect(detail).toContain('publishOptimisticSupportChatHead(conversationId, "it", preview)');
+    expect(detail).toContain("const bridgePromise = issueItSupportChatBridge(auth)");
+    expect(detail.indexOf("publishOptimisticSupportChatHead")).toBeLessThan(detail.indexOf('callSupportChat<{\n          message: Record<string, unknown>'));
+  });
+
   it("keeps live delivery off the slow unread/list request path", () => {
     expect(notifier).toContain("notifyUpdate(next)");
     expect(notifier).toContain("void loadUnreadTotal()");

@@ -5,6 +5,8 @@ import {
   callSupportChat,
   issueItSupportChatBridge,
   mirrorSupportChatHead,
+  publishOptimisticSupportChatHead,
+  rollbackOptimisticSupportChatHead,
   deleteSupportChatHead,
   type SupportChatHead
 } from "@/lib/support-chat/support-chat-service";
@@ -83,7 +85,7 @@ export async function POST(
       attachment?: { name?: string; mime_type?: string; size_bytes?: number; data_base64?: string };
     } | null;
     const action = String(body?.action ?? "").trim();
-    const bridge = await issueItSupportChatBridge(auth);
+    const bridgePromise = issueItSupportChatBridge(auth);
 
     if (action === "send") {
       const message = String(body?.message ?? "").trim().slice(0, 4000);
@@ -97,32 +99,45 @@ export async function POST(
       });
       if (!rate.ok) return fail("support_chat_rate_limited", "ส่งข้อความถี่เกินไป กรุณารอสักครู่", 429);
 
-      const data = await callSupportChat<{
-        message: Record<string, unknown>;
-        conversation: Conversation;
-        head: SupportChatHead;
-      }>(bridge, "send_message", {
-        conversation_id: conversationId,
-        message,
-        attachment: body?.attachment ?? null
-      });
-      await mirrorSupportChatHead(data.head);
-      await appendAuditLog({
-        tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
-        actorUserId: auth.auth.userId,
-        actorRole: auth.auth.platformRole,
-        action: "support_chat_message_sent",
-        targetTable: "support_chat_heads",
-        targetId: conversationId,
-        module: "support_chat",
-        entityType: "support_conversation",
-        entityId: conversationId,
-        metadata: { message_length: message.length },
-        ipAddress: auth.requestMeta.ipAddress ?? undefined,
-        userAgent: auth.requestMeta.userAgent ?? undefined
-      });
-      return ok(data);
+      const preview = body?.attachment
+        ? (message ? `[รูปภาพ] ${message}` : "[รูปภาพ]")
+        : message;
+      const optimistic = await publishOptimisticSupportChatHead(conversationId, "it", preview);
+
+      try {
+        const bridge = await bridgePromise;
+        const data = await callSupportChat<{
+          message: Record<string, unknown>;
+          conversation: Conversation;
+          head: SupportChatHead;
+        }>(bridge, "send_message", {
+          conversation_id: conversationId,
+          message,
+          attachment: body?.attachment ?? null
+        });
+        await mirrorSupportChatHead(data.head);
+        await appendAuditLog({
+          tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
+          actorUserId: auth.auth.userId,
+          actorRole: auth.auth.platformRole,
+          action: "support_chat_message_sent",
+          targetTable: "support_chat_heads",
+          targetId: conversationId,
+          module: "support_chat",
+          entityType: "support_conversation",
+          entityId: conversationId,
+          metadata: { message_length: message.length },
+          ipAddress: auth.requestMeta.ipAddress ?? undefined,
+          userAgent: auth.requestMeta.userAgent ?? undefined
+        });
+        return ok(data);
+      } catch (error) {
+        await rollbackOptimisticSupportChatHead(optimistic).catch(() => null);
+        throw error;
+      }
     }
+
+    const bridge = await bridgePromise;
 
     if (action === "claim") {
       const data = await callSupportChat<{ conversation: Conversation; head: SupportChatHead }>(
