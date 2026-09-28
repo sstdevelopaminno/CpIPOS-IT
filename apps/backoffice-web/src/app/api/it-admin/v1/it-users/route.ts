@@ -84,6 +84,7 @@ export async function GET(request: Request) {
       .from("users_profiles")
       .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
       .in("platform_role", IT_ROLES)
+      .is("archived_at", null)
       .order("updated_at", { ascending: false });
 
     if (status === "active") query = query.eq("is_active", true);
@@ -194,6 +195,7 @@ export async function PATCH(request: Request) {
       .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
       .eq("id", userId)
       .in("platform_role", IT_ROLES)
+      .is("archived_at", null)
       .maybeSingle<ItUserRow>();
 
     if (current.error) throw new Error(current.error.message);
@@ -224,6 +226,7 @@ export async function PATCH(request: Request) {
       .update(patch)
       .eq("id", userId)
       .in("platform_role", IT_ROLES)
+      .is("archived_at", null)
       .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
       .single();
 
@@ -251,7 +254,11 @@ export async function PATCH(request: Request) {
       userAgent: context.requestMeta.userAgent ?? undefined
     });
 
-    return ok({ user: updated.data });
+    return ok({
+      user: updated.data,
+      password_changed: Boolean(password),
+      reauth_required: Boolean(password && userId === context.auth.userId)
+    });
   } catch (error) {
     return guardItAdminError(error);
   }
@@ -269,33 +276,57 @@ export async function DELETE(request: Request) {
       .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
       .eq("id", userId)
       .in("platform_role", IT_ROLES)
+      .is("archived_at", null)
       .maybeSingle<ItUserRow>();
 
     if (current.error) throw new Error(current.error.message);
     if (!current.data) return fail("it_user_not_found", "ไม่พบบัญชีผู้ใช้ระบบ IT", 404);
 
-    const authDelete = await context.supabase.auth.admin.deleteUser(userId);
-    if (authDelete.error && !/not found|does not exist/i.test(authDelete.error.message ?? "")) {
-      throw new ItAdminGuardError("auth_user_delete_failed", authDelete.error.message || "ลบ Auth Login ไม่สำเร็จ", 409);
-    }
+    // IT identities are referenced by immutable audit/history rows. Deleting the
+    // Auth user would cascade into users_profiles and can violate those foreign
+    // keys. "Delete" therefore removes live access while retaining the identity
+    // row required by historical audit records.
+    const archivedAt = new Date().toISOString();
+    await syncAuthUser(context.supabase.auth.admin, userId, { isActive: false });
 
-    const profileDelete = await context.supabase.from("users_profiles").delete().eq("id", userId).in("platform_role", IT_ROLES);
-    if (profileDelete.error) throw new Error(profileDelete.error.message);
+    const archived = await context.supabase.from("users_profiles")
+      .update({
+        is_active: false,
+        archived_at: archivedAt,
+        updated_at: archivedAt
+      })
+      .eq("id", userId)
+      .in("platform_role", IT_ROLES)
+      .is("archived_at", null)
+      .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+      .single();
+
+    if (archived.error) throw new Error(archived.error.message);
 
     await appendAuditLog({
       actorUserId: context.auth.userId,
       actorRole: context.auth.platformRole,
-      action: "it_system_user_deleted",
+      action: "it_system_user_archived",
       targetTable: "users_profiles",
       targetId: userId,
       targetUserId: userId,
       module: "it_admin",
       beforeData: current.data,
+      afterData: {
+        ...archived.data,
+        archived_at: archivedAt,
+        auth_login_revoked: true
+      },
       ipAddress: context.requestMeta.ipAddress ?? undefined,
       userAgent: context.requestMeta.userAgent ?? undefined
     });
 
-    return ok({ deleted: true, user_id: userId });
+    return ok({
+      deleted: true,
+      archived: true,
+      user_id: userId,
+      message: "นำบัญชีออกจากระบบ IT แล้ว ปิดสิทธิ์ Login และเก็บประวัติ Audit เดิมไว้"
+    });
   } catch (error) {
     return guardItAdminError(error);
   }
