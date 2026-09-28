@@ -221,6 +221,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       // the canonical history refresh runs in the background.
       if (head.latest_sender_type === "store" && head.latest_message_at && head.latest_message_preview) {
         setMessages((current) => {
+          if (current.some((item) =>
+            item.id.startsWith("broadcast:") &&
+            item.sender_type === "store" &&
+            item.message_body === head.latest_message_preview
+          )) return current;
           const newest = current[current.length - 1];
           if (newest && Date.parse(newest.created_at) >= Date.parse(head.latest_message_at!)) return current;
           return [...current, {
@@ -288,6 +293,19 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     setBusy("send");
     setError("");
     void typingChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { actor: "it", typing: false } });
+    void typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "message_preview",
+      payload: {
+        actor: "it",
+        client_id: optimisticId,
+        message: optimisticMessage.message_body,
+        created_at: optimisticMessage.created_at,
+        name: optimisticMessage.sender_name,
+        role: optimisticMessage.sender_role,
+        avatar_url: optimisticMessage.sender_avatar_url
+      }
+    });
 
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
@@ -310,6 +328,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       });
       setRows((current) => [json.data!.head, ...current.filter((row) => row.conversation_id !== json.data!.head.conversation_id)]);
     } catch (cause) {
+      void typingChannelRef.current?.send({
+        type: "broadcast",
+        event: "message_retract",
+        payload: { actor: "it", client_id: optimisticId }
+      });
       setMessages((current) => current.filter((item) => item.id !== optimisticId));
       setDraft((current) => current || message);
       setAttachment((current) => current ?? pendingAttachment);
@@ -401,6 +424,31 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
         setRemoteTyping(event.typing ? (event.name || "ลูกค้า") : "");
         if (event.typing) typingTimerRef.current = window.setTimeout(() => setRemoteTyping(""), 2600);
+      })
+      .on("broadcast", { event: "message_preview" }, ({ payload }) => {
+        const event = payload as {
+          actor?: string; client_id?: string; message?: string; created_at?: string;
+          name?: string; role?: string | null; avatar_url?: string | null;
+        };
+        if (event.actor !== "store" || !event.client_id || !event.message || !event.created_at) return;
+        const id = `broadcast:${event.client_id}`;
+        setRemoteTyping("");
+        setMessages((current) => current.some((item) => item.id === id) ? current : [...current, {
+          id,
+          sender_type: "store",
+          sender_name: event.name || conversation?.contact_name || conversation?.store_name || "ลูกค้า",
+          sender_role: event.role || null,
+          sender_avatar_url: event.avatar_url || conversation?.store_logo_url || null,
+          message_body: event.message!,
+          created_at: event.created_at!,
+          attachments: []
+        }]);
+      })
+      .on("broadcast", { event: "message_retract" }, ({ payload }) => {
+        const event = payload as { actor?: string; client_id?: string };
+        if (event.actor !== "store" || !event.client_id) return;
+        const id = `broadcast:${event.client_id}`;
+        setMessages((current) => current.filter((item) => item.id !== id));
       })
       .subscribe();
     typingChannelRef.current = channel;
