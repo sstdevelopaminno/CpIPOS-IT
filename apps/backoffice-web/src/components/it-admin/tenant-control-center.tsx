@@ -444,12 +444,32 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const isPaidActiveContract = currentStatus === "active" && Number(data?.contract?.amount ?? 0) > 0;
   const canEditBillingCycle = canEditContract && !isPaidActiveContract;
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
-  const selectedPackageYearlyAvailable = packageAllowsYearly(selectedPackage);
   const latestBillingRequest = data?.billing.latest_request ?? null;
   const latestReceipt = data?.billing.latest_receipt ?? null;
+  const customPackageDefinition = data?.packages.find((pkg) => pkg.code === "custom") ?? null;
+  const customTerms = data?.custom_package.terms ?? null;
+  const customRequestOpen = Boolean(
+    latestBillingRequest &&
+    latestBillingRequest.kind === "custom_quote_request" &&
+    ["pending","under_review"].includes(latestBillingRequest.status)
+  );
+  const customRelevant = Boolean(
+    data?.current_package?.code === "custom" ||
+    latestBillingRequest?.requested_package_id === customPackageDefinition?.id ||
+    customRequestOpen
+  );
+  const selectedPackageYearlyAvailable = selectedPackage?.code === "custom"
+    ? Number(customTerms?.effective_yearly_price ?? 0) > 0
+    : packageAllowsYearly(selectedPackage);
   const hasOpenBillingRequest = Boolean(latestBillingRequest && ["pending", "under_review"].includes(latestBillingRequest.status));
   const selectedPackageAmount = selectedPackage
-    ? Number(billingCycle === "yearly" ? selectedPackage.yearly_price ?? 0 : selectedPackage.monthly_price ?? 0)
+    ? selectedPackage.code === "custom"
+      ? Number(billingCycle === "yearly" ? customTerms?.effective_yearly_price ?? 0 : customTerms?.effective_monthly_price ?? 0)
+      : (() => {
+          const base = Number(billingCycle === "yearly" ? selectedPackage.yearly_price ?? 0 : selectedPackage.monthly_price ?? 0);
+          const discount = Number(billingCycle === "yearly" ? selectedPackage.yearly_discount_percent ?? 0 : selectedPackage.monthly_discount_percent ?? 0);
+          return Number.isFinite(base) ? Number((base * (1 - Math.max(0,Math.min(100,Number.isFinite(discount) ? discount : 0))/100)).toFixed(2)) : 0;
+        })()
     : 0;
   const salesModeEnabledCount = data?.sales_modes.filter((mode) => mode.enabled).length ?? 0;
   const salesModeTotal = data?.sales_modes.length || POS_SALES_MODE_KEYS.length;
@@ -510,7 +530,9 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
       : tab === "salesModes"
         ? { eyebrow: "POS SALES MODES", title: "โหมดขาย", description: "เปิดหรือปิดโหมดหน้าขาย POS ของร้านนี้" }
         : tab === "package"
-          ? { eyebrow: "PACKAGE & CONTRACT", title: "แพ็กเกจและสิทธิ์", description: "ตั้งค่าแพ็กเกจและส่งรายการชำระไปตรวจสอบ โดยการเปิดสิทธิ์แบบชำระเงินจริงต้องผ่าน Settlement และใบเสร็จ" }
+          ? { eyebrow: "PACKAGE & CONTRACT", title: "แพ็กเกจและสิทธิ์", description: "สัญญา รอบบิล และรายการชำระ" }
+          : tab === "customPackage"
+            ? { eyebrow: "CUSTOM CONTRACT", title: "กำหนดรายละเอียดแพ็กเกจ", description: "ราคา · โควตา · อายุข้อมูล · สิทธิ์รายร้าน" }
           : tab === "danger"
             ? { eyebrow: "STORE SECURITY", title: "พื้นที่อันตราย", description: "ปิดร้านชั่วคราวหรือดำเนินการลบร้านแบบถาวร" }
           : null;
@@ -586,6 +608,12 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>แพ็ก</div><span className={dashboardStyles.cardBadge}>{contractLabel(currentStatus)}</span></div>
                   <div className={dashboardStyles.cardText}><span>PACKAGE & CONTRACT</span><strong>แพ็กเกจและสิทธิ์</strong><small>สัญญา รอบบิล การระงับ และสิทธิ์การใช้งาน</small></div>
                   <div className={dashboardStyles.cardBottom}><span>{data.current_package?.name ?? "ยังไม่กำหนดแพ็กเกจ"}</span><strong>เปิดแพ็กเกจ →</strong></div>
+                </button>
+
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("customPackage")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>C</div><span className={dashboardStyles.cardBadge}>{customRelevant ? (customTerms?.status ?? "รอกำหนด") : "CUSTOM"}</span></div>
+                  <div className={dashboardStyles.cardText}><span>CUSTOM PACKAGE</span><strong>กำหนดรายละเอียดแพ็กเกจ</strong><small>ราคา โควตา อายุข้อมูล และสิทธิ์เฉพาะร้าน</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>{customRequestOpen ? "มีคำขอรอตกลง" : customRelevant ? "กำหนดรายร้าน" : "ใช้เมื่อเลือกรูปแบบ CUSTOM"}</span><strong>เปิดตั้งค่า →</strong></div>
                 </button>
 
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("salesModes")}>
