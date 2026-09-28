@@ -60,6 +60,7 @@ type Contract = {
   id: string;
   package_id: string | null;
   billing_cycle: string;
+  contract_period?: "trial_7d" | "monthly" | "yearly";
   amount: number | string | null;
   currency: string;
   status: string;
@@ -153,6 +154,7 @@ type ControlData = {
 
 type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "customPackage" | "salesSummary" | "danger";
 type BillingCycle = "monthly" | "yearly";
+type ContractPeriod = "trial_7d" | "monthly" | "yearly";
 
 const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, true])) as Record<PosSalesModeKey, boolean>;
 
@@ -237,6 +239,19 @@ function addBillingDate(dateValue: string, cycle: BillingCycle) {
   return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10);
 }
 
+function addContractDate(dateValue: string, period: ContractPeriod) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return "";
+  if (period !== "trial_7d") return addBillingDate(dateValue, period);
+  const source = new Date(`${dateValue}T00:00:00.000Z`);
+  if (Number.isNaN(source.getTime())) return "";
+  return new Date(source.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
+}
+
+function contractPeriodLabel(period: ContractPeriod) {
+  if (period === "trial_7d") return "ทดลอง 7 วัน";
+  return period === "yearly" ? "รายปี" : "รายเดือน";
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
@@ -264,7 +279,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const [newBranch, setNewBranch] = useState({ branch_code: "", branch_name: "", branch_address: "" });
   const [branchDrafts, setBranchDrafts] = useState<Record<string, { branch_name: string; branch_address: string; branch_active: boolean }>>({});
 
-  const [contractCycle, setContractCycle] = useState<BillingCycle>("monthly");
+  const [contractCycle, setContractCycle] = useState<ContractPeriod>("monthly");
   const [contractStartDate, setContractStartDate] = useState("");
   const [contractEndDate, setContractEndDate] = useState("");
   const [contractAutoEnd, setContractAutoEnd] = useState(true);
@@ -312,9 +327,10 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     });
     setPackageId(next.current_package?.id ?? next.packages[0]?.id ?? "");
 
-    const cycle = next.contract?.billing_cycle === "yearly" ? "yearly" : "monthly";
+    const cycle: ContractPeriod = next.contract?.contract_period
+      ?? (next.contract?.status === "trial" ? "trial_7d" : next.contract?.billing_cycle === "yearly" ? "yearly" : "monthly");
     const start = dateOnly(next.contract?.start_at) || todayLocal();
-    const end = dateOnly(next.contract?.end_at) || addBillingDate(start, cycle);
+    const end = dateOnly(next.contract?.end_at) || addContractDate(start, cycle);
     setContractCycle(cycle);
     setContractStartDate(start);
     setContractEndDate(end);
@@ -325,7 +341,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     setContractEditing(false);
 
     const changeStart = todayLocal();
-    const changeCycle: BillingCycle = cycle === "yearly" && !packageAllowsYearly(next.current_package) ? "monthly" : cycle;
+    const changeCycle: BillingCycle = next.contract?.billing_cycle === "yearly" && packageAllowsYearly(next.current_package) ? "yearly" : "monthly";
     setBillingCycle(changeCycle);
     setChangeStartDate(changeStart);
     setChangeEndDate(addBillingDate(changeStart, changeCycle));
@@ -442,7 +458,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const canEditContract = Boolean(data?.contract) &&
     !["cancelled", "expired"].includes(currentStatus) && !isPrepaidPendingTrial;
   const isPaidActiveContract = currentStatus === "active" && Number(data?.contract?.amount ?? 0) > 0;
-  const canEditBillingCycle = canEditContract && !isPaidActiveContract;
+  const canEditBillingCycle = canEditContract;
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
   const latestBillingRequest = data?.billing.latest_request ?? null;
   const latestReceipt = data?.billing.latest_receipt ?? null;
@@ -475,21 +491,23 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const salesModeTotal = data?.sales_modes.length || POS_SALES_MODE_KEYS.length;
   const hasSalesModeEnabled = Object.values(salesModeDrafts).some(Boolean);
 
-  const changeContractCycle = (cycle: BillingCycle) => {
+  const changeContractCycle = (cycle: ContractPeriod) => {
     if (!canEditBillingCycle) return;
     if (cycle === "yearly" && !currentPackageYearlyAvailable) return;
     setContractCycle(cycle);
-    if (contractAutoEnd && contractStartDate) setContractEndDate(addBillingDate(contractStartDate, cycle));
+    if (cycle === "trial_7d") setContractAutoRenew(false);
+    if (contractAutoEnd && contractStartDate) setContractEndDate(addContractDate(contractStartDate, cycle));
   };
   const changeContractStart = (value: string) => {
     setContractStartDate(value);
-    if (contractAutoEnd) setContractEndDate(addBillingDate(value, contractCycle));
+    if (contractAutoEnd) setContractEndDate(addContractDate(value, contractCycle));
   };
   const resetContractDraft = () => {
     if (!data?.contract) return;
-    const cycle: BillingCycle = data.contract.billing_cycle === "yearly" ? "yearly" : "monthly";
+    const cycle: ContractPeriod = data.contract.contract_period
+      ?? (data.contract.status === "trial" ? "trial_7d" : data.contract.billing_cycle === "yearly" ? "yearly" : "monthly");
     const start = dateOnly(data.contract.start_at) || todayLocal();
-    const end = dateOnly(data.contract.end_at) || addBillingDate(start, cycle);
+    const end = dateOnly(data.contract.end_at) || addContractDate(start, cycle);
     setContractCycle(cycle);
     setContractStartDate(start);
     setContractEndDate(end);
@@ -894,24 +912,22 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   {data.contract ? (
                     <section className={styles.controlSection}>
                       <div className={styles.controlSectionHeader}><div><span>CONTRACT PERIOD</span><h4>วันที่สัญญาและรอบบิล</h4></div><div className={styles.sectionActions}><span className={`${styles.controlPill} ${statusClass(currentStatus)}`}>{contractLabel(currentStatus)}</span>{canEditContract && !contractEditing ? <button type="button" className={styles.secondaryButton} onClick={() => { setContractEditing(true); setError(null); }}>แก้ไขสัญญา</button> : null}</div></div>
-                      <p className={styles.sectionCopy}>{isPaidActiveContract
-                        ? "IT แก้วันที่เปิดสัญญา วันหมดอายุ และ Auto renew ได้จากหน้านี้ พร้อม Audit Log โดยไม่แก้ Settlement หรือใบเสร็จเดิม"
-                        : canEditContract
-                          ? "กด “แก้ไขสัญญา” ก่อนปรับวันที่ รอบสัญญา หรือ Auto renew แล้วกดบันทึก"
-                          : "สัญญานี้ยังไม่อยู่ในสถานะที่แก้ไขได้"}</p>
+                      <p className={styles.sectionCopy}>{canEditContract
+                        ? "กด “แก้ไขสัญญา” แล้วเลือก ทดลอง 7 วัน / รายเดือน / รายปี พร้อมวันที่และ Auto renew"
+                        : "สัญญานี้ยังไม่อยู่ในสถานะที่แก้ไขได้"}</p>
                       <div className={styles.formGrid}>
                         <label><span>วันที่เปิดสัญญา</span><input type="date" value={contractStartDate} onChange={(e) => changeContractStart(e.target.value)} disabled={!canEditContract || !contractEditing} /></label>
-                        <label><span>รอบสัญญา</span><select value={contractCycle} onChange={(e) => changeContractCycle(e.target.value as BillingCycle)} disabled={!canEditBillingCycle || !contractEditing}><option value="monthly">รายเดือน</option><option value="yearly" disabled={!currentPackageYearlyAvailable}>รายปี{!currentPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select><small>{isPaidActiveContract ? "รอบบิลของสัญญาชำระเงินจริงเปลี่ยนผ่านตารางชำระแพ็กเกจเท่านั้น" : "แก้ไขรอบสัญญาได้"}</small></label>
+                        <label><span>รอบสัญญา</span><select value={contractCycle} onChange={(e) => changeContractCycle(e.target.value as ContractPeriod)} disabled={!canEditBillingCycle || !contractEditing}><option value="trial_7d">ทดลอง 7 วัน</option><option value="monthly">รายเดือน</option><option value="yearly" disabled={!currentPackageYearlyAvailable}>รายปี{!currentPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select><small>แก้รอบสัญญาได้โดยไม่แก้ Settlement/ใบเสร็จเดิม</small></label>
                         <label><span>วันหมดอายุ</span><input type="date" value={contractEndDate} onChange={(e) => setContractEndDate(e.target.value)} disabled={!canEditContract || !contractEditing || contractAutoEnd} /></label>
-                        <label className={styles.switchLabel}><input type="checkbox" checked={contractAutoEnd} disabled={!canEditContract || !contractEditing} onChange={(e) => { const checked = e.target.checked; setContractAutoEnd(checked); if (checked) setContractEndDate(addBillingDate(contractStartDate, contractCycle)); }} /><span>คำนวณวันหมดอายุอัตโนมัติ</span></label>
+                        <label className={styles.switchLabel}><input type="checkbox" checked={contractAutoEnd} disabled={!canEditContract || !contractEditing} onChange={(e) => { const checked = e.target.checked; setContractAutoEnd(checked); if (checked) setContractEndDate(addContractDate(contractStartDate, contractCycle)); }} /><span>คำนวณวันหมดอายุอัตโนมัติ</span></label>
                         <label className={styles.switchLabel}><input type="checkbox" checked={contractAutoRenew} disabled={!canEditContract || !contractEditing} onChange={(e) => setContractAutoRenew(e.target.checked)} /><span>ต่ออายุอัตโนมัติ</span></label>
                         {isPaidActiveContract ? <label className={styles.span2}><span>เหตุผลการแก้ไขโดย IT (Audit)</span><textarea rows={2} value={contractEditReason} disabled={!contractEditing} onChange={(e) => setContractEditReason(e.target.value)} placeholder="เช่น แก้วันเริ่ม/วันหมดอายุที่บันทึกผิด หรือปรับตามสัญญาที่อนุมัติแล้ว" /><small>ระบบใส่เหตุผลเริ่มต้นไว้ให้แล้ว สามารถแก้ข้อความได้ก่อนบันทึก</small></label> : null}
                       </div>
                       {isPrepaidPendingTrial ? <div className={styles.securityNote}>แพ็กเกจชำระล่วงหน้ารอเริ่มหลังครบ Trial ระบบปิดการแก้วันสัญญาชั่วคราวเพื่อไม่ให้สิทธิ์ลูกค้าหาย</div> : null}
                       {!currentPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจนี้ยังไม่ได้กำหนดราคารายปีใน Package / Subscription จึงไม่เปิดให้เปลี่ยนเป็นรายปี เพื่อป้องกันสัญญาราคา 0 บาทโดยไม่ตั้งใจ</div> : null}
-                      {isPaidActiveContract ? <div className={styles.securityNote}><strong>แก้ไขได้สำหรับ IT:</strong> วันที่เปิดสัญญา วันหมดอายุ และ Auto renew แก้ได้หลังจากกด “แก้ไขสัญญา” ส่วนการเปลี่ยนรอบรายเดือน/รายปียังต้องผ่านตารางชำระแพ็กเกจ</div> : null}
-                      <div className={styles.packagePreview}><strong>{contractCycle === "yearly" ? "สัญญารายปี" : "สัญญารายเดือน"}</strong><span>{contractStartDate || "—"} → {contractEndDate || "—"}</span></div>
-                      {contractEditing ? <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy} onClick={resetContractDraft}>ยกเลิกการแก้ไข</button><button className={styles.primaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate || (contractCycle === "yearly" && !currentPackageYearlyAvailable)} onClick={async () => { if (isPaidActiveContract && contractEditReason.trim().length < 4) { setError("กรุณาระบุเหตุผลการแก้ไขสัญญาอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit"); return; } await mutate({ action: "update_contract", billing_cycle: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew, admin_reason: contractEditReason }, "อัปเดตวันที่สัญญาและสิทธิ์เรียบร้อย", true); }}>บันทึกการแก้ไขสัญญา</button></div> : null}
+                      {isPaidActiveContract ? <div className={styles.securityNote}><strong>สัญญาชำระเงินจริง:</strong> เปลี่ยนระยะสัญญาได้ แต่ประวัติ Settlement และใบเสร็จเดิมจะไม่ถูกแก้ไข</div> : null}
+                      <div className={styles.packagePreview}><strong>{contractPeriodLabel(contractCycle)}</strong><span>{contractStartDate || "—"} → {contractEndDate || "—"}</span></div>
+                      {contractEditing ? <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy} onClick={resetContractDraft}>ยกเลิกการแก้ไข</button><button className={styles.primaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate || (contractCycle === "yearly" && !currentPackageYearlyAvailable)} onClick={async () => { if (isPaidActiveContract && contractEditReason.trim().length < 4) { setError("กรุณาระบุเหตุผลการแก้ไขสัญญาอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit"); return; } await mutate({ action: "update_contract", contract_period: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew, admin_reason: contractEditReason }, "อัปเดตรอบสัญญาและสิทธิ์เรียบร้อย", true); }}>บันทึกการแก้ไขสัญญา</button></div> : null}
                     </section>
                   ) : null}
 

@@ -8,6 +8,7 @@ import { ItAdminGuardError, type ItAdminContext } from "@/lib/it-admin-guard";
 
 const ACTIVE_CONTRACT_STATUSES = ["trial", "active", "suspended"] as const;
 const BILLING_CYCLES = new Set(["monthly", "yearly"]);
+const CONTRACT_PERIODS = new Set(["trial_7d", "monthly", "yearly"]);
 const CONTRACT_STATUSES = new Set(["trial", "active", "suspended", "expired", "cancelled"]);
 const DAY_MS = 86_400_000;
 
@@ -185,6 +186,7 @@ export type TenantControlInput = {
   branch_active?: boolean;
   package_id?: string;
   billing_cycle?: string;
+  contract_period?: string;
   custom_monthly_price?: number;
   custom_yearly_price?: number | null;
   custom_monthly_discount_percent?: number;
@@ -261,6 +263,14 @@ function requireBillingCycle(value: unknown, fallback = "monthly") {
   return cycle as "monthly" | "yearly";
 }
 
+function requireContractPeriod(value: unknown, fallback: "trial_7d" | "monthly" | "yearly") {
+  const period = cleanText(value, 20) || fallback;
+  if (!CONTRACT_PERIODS.has(period)) {
+    throw new ItAdminGuardError("invalid_contract_period", "Contract period must be trial_7d, monthly or yearly.", 422);
+  }
+  return period as "trial_7d" | "monthly" | "yearly";
+}
+
 function parseContractDate(value: unknown, field: string): string {
   const date = cleanText(value, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -295,6 +305,14 @@ function addBillingPeriod(startIso: string, billingCycle: "monthly" | "yearly"):
       source.getUTCMilliseconds()
     )
   ).toISOString();
+}
+
+function addContractPeriod(startIso: string, period: "trial_7d" | "monthly" | "yearly"): string {
+  if (period === "trial_7d") {
+    const source = new Date(startIso);
+    return new Date(source.getTime() + 7 * DAY_MS).toISOString();
+  }
+  return addBillingPeriod(startIso, period);
 }
 
 function validateContractWindow(startIso: string, endIso: string) {
@@ -354,6 +372,12 @@ function normalizeContract(contract: ContractDbRow | null, lifecycle: LifecycleR
   if (!contract) return null;
   const metadata = asRecord(contract.metadata);
   const effectiveStatus = effectiveContractStatus(contract);
+  const storedPeriod = cleanText(metadata.admin_contract_period, 20);
+  const contractPeriod = CONTRACT_PERIODS.has(storedPeriod)
+    ? storedPeriod as "trial_7d" | "monthly" | "yearly"
+    : contract.status === "trial"
+      ? "trial_7d"
+      : contract.billing_interval === "yearly" ? "yearly" : "monthly";
   const trialEndsAt = contract.status === "trial" ? lifecycle?.trial_expires_at ?? contract.ended_at : null;
   const displayedEndAt = contract.status === "trial" ? trialEndsAt : contract.ended_at;
   return {
@@ -363,6 +387,7 @@ function normalizeContract(contract: ContractDbRow | null, lifecycle: LifecycleR
     contract_type: contract.contract_type,
     billing_cycle: contract.billing_interval,
     billing_interval: contract.billing_interval,
+    contract_period: contractPeriod,
     amount: contract.amount_per_cycle,
     amount_per_cycle: contract.amount_per_cycle,
     currency: contract.currency,
@@ -700,16 +725,21 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (contract.status === "cancelled" || contract.status === "expired") {
       throw new ItAdminGuardError("subscription_closed", "Closed contracts cannot be edited. Activate a package to create a new contract.", 409);
     }
+
     const paidActiveContract = contract.status === "active" && Number(contract.amount_per_cycle ?? 0) > 0;
     const currentBillingCycle: "monthly" | "yearly" = contract.billing_interval === "yearly" ? "yearly" : "monthly";
-    const requestedBillingCycle = requireBillingCycle(input.billing_cycle, currentBillingCycle);
-    if (paidActiveContract && requestedBillingCycle !== currentBillingCycle) {
-      throw new ItAdminGuardError(
-        "paid_contract_cycle_managed_by_settlement",
-        "แพ็กเกจที่ชำระเงินจริงเปลี่ยนรอบรายเดือน/รายปีได้ผ่านตารางชำระแพ็กเกจเท่านั้น เพื่อให้ Settlement และใบเสร็จตรงกัน",
-        409
-      );
-    }
+    const contractMetadata = asRecord(contract.metadata);
+    const storedPeriod = cleanText(contractMetadata.admin_contract_period, 20);
+    const currentPeriod = CONTRACT_PERIODS.has(storedPeriod)
+      ? storedPeriod as "trial_7d" | "monthly" | "yearly"
+      : contract.status === "trial"
+        ? "trial_7d"
+        : currentBillingCycle;
+    const requestedPeriod = requireContractPeriod(
+      input.contract_period ?? input.billing_cycle,
+      currentPeriod
+    );
+
     const correctionReason = optionalText(input.admin_reason, 600);
     if (paidActiveContract && (!correctionReason || correctionReason.length < 4)) {
       throw new ItAdminGuardError(
@@ -718,18 +748,29 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
         422
       );
     }
-    const billingCycle = paidActiveContract ? currentBillingCycle : requestedBillingCycle;
+
+    // Contract period is an IT service-window setting. For an already-settled
+    // paid contract it must not rewrite billing_interval, settlement or receipt
+    // history. Monthly/yearly billing changes continue through the payment flow.
+    const billingCycle = paidActiveContract
+      ? currentBillingCycle
+      : requestedPeriod === "yearly"
+        ? "yearly"
+        : requestedPeriod === "monthly"
+          ? "monthly"
+          : currentBillingCycle;
+
     const startIso = input.start_date ? parseContractDate(input.start_date, "start_date") : contract.started_at;
     const endIso = input.auto_calculate_end === false && input.end_date
       ? parseContractDate(input.end_date, "end_date")
       : input.end_date
         ? parseContractDate(input.end_date, "end_date")
-        : addBillingPeriod(startIso, billingCycle);
+        : addContractPeriod(startIso, requestedPeriod);
     validateContractWindow(startIso, endIso);
 
     const packageResult = await context.supabase.from("subscription_packages").select(PACKAGE_SELECT).eq("id", contract.package_id).maybeSingle<PackageRow>();
     if (packageResult.error) throw new Error(`package_query_failed:${packageResult.error.message}`);
-    const contractMetadata = asRecord(contract.metadata);
+
     const changes: JsonRecord = {
       billing_interval: billingCycle,
       amount_per_cycle: paidActiveContract
@@ -738,15 +779,15 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       auto_renew: typeof input.auto_renew === "boolean" ? input.auto_renew : contract.auto_renew,
       started_at: startIso,
       ended_at: endIso,
-      updated_at: now
-    };
-    if (paidActiveContract) {
-      changes.metadata = {
+      metadata: {
         ...contractMetadata,
+        admin_contract_period: requestedPeriod,
         last_admin_contract_correction: {
-          reason: correctionReason,
+          reason: correctionReason ?? "แก้ไขรอบสัญญาจากเมนู Tenants / Stores",
           corrected_at: now,
           corrected_by: context.auth.userId,
+          previous_contract_period: currentPeriod,
+          new_contract_period: requestedPeriod,
           previous_started_at: contract.started_at,
           previous_ended_at: contract.ended_at,
           new_started_at: startIso,
@@ -754,16 +795,24 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
           settlement_rows_unchanged: true,
           receipt_rows_unchanged: true
         }
-      };
-    }
-    const { error } = await context.supabase.from("tenant_subscription_contracts").update(changes).eq("id", contract.id).eq("tenant_id", tenantId);
+      },
+      updated_at: now
+    };
+
+    const { error } = await context.supabase.from("tenant_subscription_contracts")
+      .update(changes).eq("id", contract.id).eq("tenant_id", tenantId);
     if (error) throw new Error(`contract_update_failed:${error.message}`);
 
     const lifecycle = await loadLifecycle(context, tenantId);
     if (lifecycle) {
       const expiresInPast = Date.parse(endIso) <= Date.now();
       const lifecyclePatch: JsonRecord = contract.status === "trial"
-        ? { trial_started_at: startIso, trial_expires_at: endIso, access_locked: expiresInPast, lock_reason: expiresInPast ? "trial_expired" : null }
+        ? {
+            trial_started_at: startIso,
+            trial_expires_at: endIso,
+            access_locked: expiresInPast,
+            lock_reason: expiresInPast ? "trial_expired" : null
+          }
         : {
             current_package_started_at: startIso,
             subscription_expires_at: endIso,
@@ -773,6 +822,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
           };
       await updateLifecycle(context, tenantId, lifecyclePatch);
     }
+
     invalidateTenantFeatureGateCache(tenantId);
     await audit(
       context,
@@ -782,7 +832,13 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       contract.id,
       asRecord(contract),
       asRecord(changes),
-      paidActiveContract ? { admin_reason: correctionReason, settlement_rows_unchanged: true, receipt_rows_unchanged: true } : {}
+      {
+        admin_reason: correctionReason,
+        contract_period: requestedPeriod,
+        billing_interval_unchanged_for_paid_contract: paidActiveContract,
+        settlement_rows_unchanged: true,
+        receipt_rows_unchanged: true
+      }
     );
   }
 
