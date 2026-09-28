@@ -149,6 +149,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
+  const headSignalRef = useRef("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notificationState, setNotificationState] = useState<NotificationPermission | "unsupported">(
@@ -207,7 +208,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     const onUpdate = (event: Event) => {
       const head = (event as CustomEvent<{ head?: Head }>).detail?.head;
       void loadInbox();
-      if (selectedId && head?.conversation_id === selectedId) void loadConversation(selectedId);
+      if (!selectedId || head?.conversation_id !== selectedId) return;
+      const signal = [head.latest_message_at ?? "", head.status ?? "", head.assigned_user_id ?? ""].join("|");
+      if (signal === headSignalRef.current) return;
+      headSignalRef.current = signal;
+      void loadConversation(selectedId);
     };
     window.addEventListener("cpipos-support-chat-update", onUpdate);
     return () => window.removeEventListener("cpipos-support-chat-update", onUpdate);
