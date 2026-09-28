@@ -76,8 +76,22 @@ export function SupportChatNotifier() {
           initialized.current = true;
         }
       )
-      .subscribe(() => {
-        initialized.current = true;
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          initialized.current = true;
+          void loadUnreadTotal().then((total) => {
+            if (alive) notifyUnread(total);
+          }).catch(() => null);
+          return;
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          initialized.current = false;
+          window.setTimeout(() => {
+            void loadUnreadTotal().then((total) => {
+              if (alive) notifyUnread(total);
+            }).catch(() => null);
+          }, 1200);
+        }
       });
 
     const refreshOnFocus = () => {
