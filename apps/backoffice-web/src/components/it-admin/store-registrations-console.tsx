@@ -191,6 +191,8 @@ export function StoreRegistrationsConsole() {
   }
   const rows = (data?.requests ?? []).filter((r) => filter === "all" || r.status === filter);
   const pending = data?.requests.filter((r) => r.status === "pending").length ?? 0;
+  const dialogPackage = data?.packages.find((pkg)=>pkg.id===form?.package_id) ?? null;
+  const dialogCustom = dialogPackage?.quota_mode === "custom" || dialogPackage?.code === "custom";
   return <div className={styles.shell}>
     <header className={styles.hero}>
       <div><span className={styles.eyebrow}>WEBSITE → CPIPOS-001 → IT APPROVAL</span>
@@ -218,7 +220,7 @@ export function StoreRegistrationsConsole() {
         <td><strong>{r.store_name}</strong><small>{r.business_type}</small></td>
         <td><strong>{r.owner_name}</strong><small>{r.owner_phone}</small><small>{r.owner_email}</small></td>
         <td>{data?.packages.find((p) => p.id === r.package_id)?.name ?? "แพ็กเกจเดิม"}
-          <small>{r.status === "activated" ? "เปิดทดลองใช้ 7 วันแล้ว" : "ทดลองใช้ 7 วัน เมื่ออนุมัติ"}</small></td>
+          <small>{r.custom_requirements ? "CUSTOM · มีรายละเอียดรอตกลง" : r.status === "activated" ? "เปิดทดลองใช้ 7 วันแล้ว" : "ทดลองใช้ 7 วัน เมื่ออนุมัติ"}</small></td>
         <td>{modes.filter((m) => r.sales_modes?.[m.key]).map((m) => m.label).join(" / ") || "—"}</td>
         <td><span className={styles.pill} data-status={r.status}>{{
           pending:"รอเปิดร้าน",processing:"กำลังเปิดร้าน",failed:"ต้องตรวจสอบ",activated:"เปิดใช้งาน"
@@ -248,12 +250,29 @@ export function StoreRegistrationsConsole() {
             <label>เบอร์ติดต่อ<input required value={form.owner_phone} onChange={(e) => update("owner_phone", e.target.value)} /></label>
             <label>อีเมล Owner<input required type="email" value={form.owner_email} onChange={(e) => update("owner_email", e.target.value)} /></label>
             <label>แพ็กเกจ<select value={form.package_id} onChange={(e) => update("package_id", e.target.value)}>{data?.packages.map((p) =>
-              <option key={p.id} value={p.id}>{p.name} · {p.max_branches} สาขา / {p.max_devices} เครื่อง</option>)}</select></label>
+              <option key={p.id} value={p.id}>{p.quota_mode === "custom" || p.code === "custom" ? `${p.name} · IT กำหนดรายร้าน` : `${p.name} · ${p.max_branches} สาขา / ${p.max_devices} เครื่อง`}</option>)}</select></label>
+            {dialogCustom ? <label className={styles.span2}>ความต้องการ CUSTOM<textarea rows={3} value={form.custom_requirements ?? ""} onChange={(e)=>update("custom_requirements",e.target.value)} placeholder="รายละเอียดที่ลูกค้าต้องการ"/></label> : null}
             </div> : <div className={styles.summary}>
               <strong>{selected.store_name}</strong><span>{selected.business_type} · {selected.owner_name}</span>
               <span>{selected.owner_email} · {selected.owner_phone}</span>
               <span>แพ็กเกจ: {data?.packages.find((p) => p.id === selected.package_id)?.name ?? "—"} · 7 วันนับจากอนุมัติ</span>
-              <span>สร้างรหัสร้านโดยระบบ · สาขาแรก “สาขาหลัก” · เครื่องขาย 1 (รอจับคู่กับอุปกรณ์จริง)</span>
+              {dialogCustom ? <>
+                <div className={styles.customRequestBox}><strong>ความต้องการจากลูกค้า</strong><span>{selected.custom_requirements || "ไม่ได้ระบุรายละเอียด"}</span></div>
+                <div className={styles.formGrid}>
+                  <label>รายเดือน<input type="number" min="0" value={customTerms.monthly_price} onChange={(e)=>setCustomTerms(v=>({...v,monthly_price:e.target.value}))}/></label>
+                  <label>ส่วนลด %<input type="number" min="0" max="100" value={customTerms.monthly_discount_percent} onChange={(e)=>setCustomTerms(v=>({...v,monthly_discount_percent:e.target.value}))}/></label>
+                  <label>รายปี<input type="number" min="0" value={customTerms.yearly_price} onChange={(e)=>setCustomTerms(v=>({...v,yearly_price:e.target.value}))}/></label>
+                  <label>ส่วนลดรายปี %<input type="number" min="0" max="100" value={customTerms.yearly_discount_percent} onChange={(e)=>setCustomTerms(v=>({...v,yearly_discount_percent:e.target.value}))}/></label>
+                  <label>สาขา<input type="number" min="1" value={customTerms.max_branches} onChange={(e)=>setCustomTerms(v=>({...v,max_branches:e.target.value}))}/></label>
+                  <label>เครื่องขาย<input type="number" min="1" value={customTerms.max_devices} onChange={(e)=>setCustomTerms(v=>({...v,max_devices:e.target.value}))}/></label>
+                  <label>ผู้ใช้งาน<input type="number" min="1" value={customTerms.max_users} onChange={(e)=>setCustomTerms(v=>({...v,max_users:e.target.value}))}/></label>
+                  <label>เก็บยอดขาย<select value={customTerms.retention_months} onChange={(e)=>setCustomTerms(v=>({...v,retention_months:e.target.value}))}><option value="6">6 เดือน</option><option value="12">12 เดือน</option><option value="24">24 เดือน</option><option value="36">36 เดือน</option></select></label>
+                  <label>สินค้า<input type="number" min="1" placeholder="ไม่กำหนด" value={customTerms.max_products} onChange={(e)=>setCustomTerms(v=>({...v,max_products:e.target.value}))}/></label>
+                  <label>บิล / เดือน<input type="number" min="1" placeholder="ไม่กำหนด" value={customTerms.monthly_bill_limit} onChange={(e)=>setCustomTerms(v=>({...v,monthly_bill_limit:e.target.value}))}/></label>
+                  <label>Storage GB<input type="number" min="0.01" step="0.01" placeholder="ไม่กำหนด" value={customTerms.storage_limit_gb} onChange={(e)=>setCustomTerms(v=>({...v,storage_limit_gb:e.target.value}))}/></label>
+                  <label>หมายเหตุ<input value={customTerms.notes} onChange={(e)=>setCustomTerms(v=>({...v,notes:e.target.value}))}/></label>
+                </div>
+              </> : <span>สร้างรหัสร้านโดยระบบ · สาขาแรก “สาขาหลัก” · เครื่องขาย 1 (รอจับคู่กับอุปกรณ์จริง)</span>}
               <label>รหัสเจ้าของร้าน (6 หลัก)<input inputMode="numeric" maxLength={6} value={ownerCode}
                 onChange={(e) => setOwnerCode(e.target.value.replace(/\D/g,"").slice(0,6))} /></label>
               <label>PIN เจ้าของร้าน (6 หลัก)<input type="password" autoComplete="new-password"
