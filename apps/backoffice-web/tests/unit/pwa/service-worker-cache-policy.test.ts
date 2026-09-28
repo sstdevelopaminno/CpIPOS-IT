@@ -6,7 +6,11 @@ const serviceWorker = readFileSync(new URL("../../../public/sw.js", import.meta.
 describe("PWA service worker cache policy", () => {
   it("does not precache authenticated documents or the dynamic manifest route", () => {
     expect(serviceWorker).toContain("const ASSETS_TO_CACHE = [");
-    expect(serviceWorker).not.toContain('"/",');
+    const assetsBlock = serviceWorker.slice(
+      serviceWorker.indexOf("const ASSETS_TO_CACHE = ["),
+      serviceWorker.indexOf("];", serviceWorker.indexOf("const ASSETS_TO_CACHE = [")) + 2
+    );
+    expect(assetsBlock).not.toContain('"/",');
     expect(serviceWorker).not.toContain('"/manifest.webmanifest"');
   });
 
