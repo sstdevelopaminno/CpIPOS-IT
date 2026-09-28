@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, ItAdminGuardError, requireItSupport } from "@/lib/it-admin-guard";
@@ -19,6 +20,7 @@ type ItUserRow = {
 
 const IT_ROLES: ItRole[] = ["it_admin", "it_support"];
 const PASSWORD_PATTERN = /^.{8,128}$/;
+const SECURITY_PIN_PATTERN = /^\d{4,12}$/;
 
 function text(value: unknown, max = 180) {
   const next = typeof value === "string" ? value.trim() : "";
@@ -129,10 +131,13 @@ export async function POST(request: Request) {
     const platformRole = parseRole(body.platform_role, "it_admin");
     const suppliedPassword = text(body.password, 128);
     const password = suppliedPassword || createPassword();
+    const securityPin = text(body.security_pin, 12);
 
     if (fullName.length < 2) return fail("user_name_required", "กรุณาระบุชื่อผู้ใช้", 422);
     if (!validEmail(normalizedEmail)) return fail("user_email_invalid", "อีเมล Login ไม่ถูกต้อง", 422);
     if (!PASSWORD_PATTERN.test(password)) return fail("user_password_invalid", "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", 422);
+    if (securityPin && !SECURITY_PIN_PATTERN.test(securityPin)) return fail("security_pin_invalid", "Security PIN ต้องเป็นตัวเลข 4–12 หลัก", 422);
+    const pinHash = securityPin ? await bcrypt.hash(securityPin, 12) : null;
 
     const created = await context.supabase.auth.admin.createUser({
       email: normalizedEmail,
@@ -152,6 +157,7 @@ export async function POST(request: Request) {
       full_name: fullName,
       platform_role: platformRole,
       is_active: true,
+      ...(pinHash ? { pin_hash: pinHash } : {}),
       updated_at: new Date().toISOString()
     }, { onConflict: "id" }).select("id,email,full_name,platform_role,is_active,created_at,updated_at").single();
 
@@ -168,14 +174,15 @@ export async function POST(request: Request) {
       targetId: userId,
       targetUserId: userId,
       module: "it_admin",
-      afterData: { ...profile.data, password_generated: !suppliedPassword },
+      afterData: { ...profile.data, password_generated: !suppliedPassword, security_pin_set: Boolean(pinHash) },
       ipAddress: context.requestMeta.ipAddress ?? undefined,
       userAgent: context.requestMeta.userAgent ?? undefined
     });
 
     return ok({
       user: profile.data,
-      temporary_password: suppliedPassword ? null : password
+      temporary_password: suppliedPassword ? null : password,
+      pin_changed: Boolean(pinHash)
     }, 201);
   } catch (error) {
     return guardItAdminError(error);
@@ -205,11 +212,14 @@ export async function PATCH(request: Request) {
     const normalizedEmail = email(body.email);
     const platformRole = parseRole(body.platform_role, current.data.platform_role === "it_support" ? "it_support" : "it_admin");
     const password = text(body.password, 128);
+    const securityPin = text(body.security_pin, 12);
     const isActive = typeof body.is_active === "boolean" ? body.is_active : current.data.is_active === true;
 
     if (fullName && fullName.length < 2) return fail("user_name_required", "กรุณาระบุชื่อผู้ใช้", 422);
     if (normalizedEmail && !validEmail(normalizedEmail)) return fail("user_email_invalid", "อีเมล Login ไม่ถูกต้อง", 422);
     if (password && !PASSWORD_PATTERN.test(password)) return fail("user_password_invalid", "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", 422);
+    if (securityPin && !SECURITY_PIN_PATTERN.test(securityPin)) return fail("security_pin_invalid", "Security PIN ต้องเป็นตัวเลข 4–12 หลัก", 422);
+    const pinHash = securityPin ? await bcrypt.hash(securityPin, 12) : null;
     if (userId === context.auth.userId && !isActive) {
       return fail("cannot_disable_self", "ไม่สามารถปิดใช้งานบัญชีที่กำลัง Login อยู่", 409);
     }
@@ -219,6 +229,7 @@ export async function PATCH(request: Request) {
       email: normalizedEmail || current.data.email,
       platform_role: platformRole,
       is_active: isActive,
+      ...(pinHash ? { pin_hash: pinHash } : {}),
       updated_at: new Date().toISOString()
     };
 
@@ -249,7 +260,12 @@ export async function PATCH(request: Request) {
       targetUserId: userId,
       module: "it_admin",
       beforeData: current.data,
-      afterData: { ...updated.data, password_reset: Boolean(password), reason: text(body.reason, 240) || null },
+      afterData: {
+        ...updated.data,
+        password_reset: Boolean(password),
+        security_pin_changed: Boolean(pinHash),
+        reason: text(body.reason, 240) || null
+      },
       ipAddress: context.requestMeta.ipAddress ?? undefined,
       userAgent: context.requestMeta.userAgent ?? undefined
     });
@@ -257,6 +273,7 @@ export async function PATCH(request: Request) {
     return ok({
       user: updated.data,
       password_changed: Boolean(password),
+      pin_changed: Boolean(pinHash),
       reauth_required: Boolean(password && userId === context.auth.userId)
     });
   } catch (error) {
