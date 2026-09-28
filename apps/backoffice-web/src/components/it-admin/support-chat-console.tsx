@@ -374,25 +374,63 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   async function setConversationStatus(status: string) {
     if (!selectedId || status === conversation?.status) return;
     if (status === "closed" && !window.confirm("จบการสนทนานี้? รูปภาพแนบจะถูกลบทันที แต่ข้อความจะเก็บไว้")) return;
+
+    const targetId = selectedId;
+    const closing = status === "closed";
+    if (closing) {
+      void typingChannelRef.current?.send({
+        type: "broadcast",
+        event: "conversation_closing",
+        payload: {
+          actor: "it",
+          conversation_id: targetId,
+          name: conversation?.assigned_user_name || "IT Support"
+        }
+      });
+    }
+
     setBusy("status");
     setError("");
     try {
-      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${targetId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "set_status", status })
       });
       const json = await response.json().catch(() => null) as Envelope<{ conversation: Conversation }> | null;
       if (response.status === 404) {
-        clearGoneConversation(selectedId);
+        if (closing) {
+          void typingChannelRef.current?.send({
+            type: "broadcast",
+            event: "conversation_closed",
+            payload: { actor: "it", conversation_id: targetId }
+          });
+        }
+        clearGoneConversation(targetId);
         setError("");
         return;
       }
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปลี่ยนสถานะไม่สำเร็จ");
+
+      if (closing) {
+        void typingChannelRef.current?.send({
+          type: "broadcast",
+          event: "conversation_closed",
+          payload: { actor: "it", conversation_id: targetId }
+        });
+      }
+
       setConversation(json.data.conversation);
       await loadInbox();
-      await loadConversation(selectedId);
+      if (!closing) await loadConversation(targetId);
     } catch (cause) {
+      if (closing) {
+        void typingChannelRef.current?.send({
+          type: "broadcast",
+          event: "conversation_close_cancelled",
+          payload: { actor: "it", conversation_id: targetId }
+        });
+      }
       setError(cause instanceof Error ? cause.message : "เปลี่ยนสถานะไม่สำเร็จ");
     } finally {
       setBusy("");

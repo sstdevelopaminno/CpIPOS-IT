@@ -165,6 +165,17 @@ export async function POST(
         bridge, "set_status", { conversation_id: conversationId, status }
       );
       await mirrorSupportChatHead(data.head);
+      if (status === "closed") {
+        await dispatchSupportPush({
+          audience: "store",
+          tenant_id: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : null,
+          kind: "chat",
+          title: "จบการสนทนาแล้ว",
+          body: "ทีม IT จบการสนทนานี้แล้ว หากต้องการติดต่อเพิ่มเติม กรุณาเริ่มแชทใหม่",
+          url: "/preview/pos/payments/support",
+          tag: `support-chat-closed:${conversationId}`
+        }).catch(() => null);
+      }
       await appendAuditLog({
         tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
         actorUserId: auth.auth.userId,
@@ -235,6 +246,15 @@ export async function POST(
         bridge, "close_conversation", { conversation_id: conversationId }
       );
       await mirrorSupportChatHead(data.head);
+      await dispatchSupportPush({
+        audience: "store",
+        tenant_id: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : null,
+        kind: "chat",
+        title: "จบการสนทนาแล้ว",
+        body: "ทีม IT จบการสนทนานี้แล้ว หากต้องการติดต่อเพิ่มเติม กรุณาเริ่มแชทใหม่",
+        url: "/preview/pos/payments/support",
+        tag: `support-chat-closed:${conversationId}`
+      }).catch(() => null);
       await appendAuditLog({
         tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
         actorUserId: auth.auth.userId,
