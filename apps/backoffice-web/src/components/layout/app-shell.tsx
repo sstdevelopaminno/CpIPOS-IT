@@ -35,6 +35,7 @@ export type AppShellNavIcon =
   | "incident"
   | "audit"
   | "broadcast"
+  | "code"
   | "settings";
 
 export type AppShellNavChild = {
@@ -186,6 +187,14 @@ function NavIcon({ name }: { name: AppShellNavIcon }) {
         <path d="M8 4h8M9 2h6v4H9z" />
         <rect x="5" y="4" width="14" height="17" rx="2" />
         <path d="M8 10h8M8 14h8M8 18h5" />
+      </svg>
+    );
+  }
+
+  if (name === "code") {
+    return (
+      <svg {...common}>
+        <path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 4l-4 16" />
       </svg>
     );
   }
