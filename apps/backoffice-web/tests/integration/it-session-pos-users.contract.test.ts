@@ -55,7 +55,8 @@ describe("IT auth session and POS-user separation", () => {
     expect(itUsersApi).toContain('.is("archived_at", null)');
     expect(itUsersApi).toContain('action: "it_system_user_archived"');
     expect(itUsersApi).toContain("auth_login_revoked: true");
-    expect(itUsersApi).not.toContain("auth.admin.deleteUser(userId)");
+    expect(itUsersApi).toContain("await syncAuthUser(context.supabase.auth.admin, userId, { isActive: false })");
+    expect(itUsersApi).toContain("archived_at: archivedAt");
     expect(itUsersUi).toContain('useState<"all" | "active" | "inactive">("active")');
   });
 
