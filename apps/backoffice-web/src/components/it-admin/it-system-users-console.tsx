@@ -26,6 +26,7 @@ type FormState = {
   platform_role: ItRole;
   is_active: boolean;
   password: string;
+  security_pin: string;
   reason: string;
 };
 
@@ -36,6 +37,7 @@ const emptyForm: FormState = {
   platform_role: "it_admin",
   is_active: true,
   password: "",
+  security_pin: "",
   reason: ""
 };
 
@@ -123,6 +125,7 @@ export function ItSystemUsersConsole() {
         data?: {
           temporary_password?: string | null;
           password_changed?: boolean;
+          pin_changed?: boolean;
           reauth_required?: boolean;
         };
         error?: { message?: string };
@@ -143,7 +146,9 @@ export function ItSystemUsersConsole() {
           ? "เพิ่มผู้ใช้ระบบ IT เรียบร้อยแล้ว"
           : json?.data?.password_changed
             ? "เปลี่ยนรหัสผ่านผู้ใช้ระบบ IT เรียบร้อยแล้ว"
-            : "บันทึกผู้ใช้ระบบ IT เรียบร้อยแล้ว"
+            : json?.data?.pin_changed
+              ? "ตั้งค่า Security PIN ของผู้ใช้ระบบ IT เรียบร้อยแล้ว"
+              : "บันทึกผู้ใช้ระบบ IT เรียบร้อยแล้ว"
       );
       await load();
     } catch (cause) {
@@ -295,6 +300,7 @@ export function ItSystemUsersConsole() {
                         platform_role: user.platform_role,
                         is_active: user.is_active,
                         password: "",
+                        security_pin: "",
                         reason: ""
                       })} className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700">แก้ไข</button>
                       <button type="button" disabled={saving} onClick={() => void setActive(user, !user.is_active)}
@@ -345,6 +351,19 @@ export function ItSystemUsersConsole() {
                   <option value="active">เปิดใช้งาน</option>
                   <option value="inactive">ปิดใช้งาน</option>
                 </select>
+              </label>
+              <label className="grid gap-2 md:col-span-2">
+                <span className="text-sm font-bold text-slate-700">Security PIN สำหรับยืนยันคำสั่ง Development Center</span>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={form.security_pin}
+                  onChange={(event) => setForm({ ...form, security_pin: event.target.value.replace(/\D/g, "").slice(0, 12) })}
+                  placeholder={form.user_id ? "ว่างไว้ถ้าไม่เปลี่ยน PIN · 4–12 หลัก" : "ตั้ง PIN 4–12 หลัก"}
+                  className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+                />
+                <span className="text-xs text-slate-500">ระบบเก็บเป็น bcrypt hash เท่านั้น และจะไม่แสดง PIN กลับมาบนหน้าจอ</span>
               </label>
               <label className="grid gap-2 md:col-span-2">
                 <span className="text-sm font-bold text-slate-700">รหัสผ่าน {form.user_id ? "ใหม่ (ว่างไว้ถ้าไม่เปลี่ยน)" : "(ว่างไว้ให้ระบบสร้างชั่วคราว)"}</span>
