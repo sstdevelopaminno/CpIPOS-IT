@@ -29,63 +29,60 @@ export function SupportChatNotifier() {
 
   useEffect(() => {
     let alive = true;
-    let channel: ReturnType<ReturnType<typeof getSupabaseBrowserClient>["channel"]> | null = null;
+    const supabase = getSupabaseBrowserClient();
 
-    const setup = async () => {
-      const total = await loadUnreadTotal().catch(() => 0);
+    void loadUnreadTotal().then((total) => {
       if (alive) notifyUnread(total);
+    }).catch(() => null);
 
-      const supabase = getSupabaseBrowserClient();
-      channel = supabase
-        .channel("it-support-chat-heads")
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "support_chat_heads" },
-          async (payload) => {
-            const next = (payload.new ?? {}) as Head;
-            const totalNext = await loadUnreadTotal().catch(() => total);
-            if (!alive) return;
-            notifyUnread(totalNext);
+    const channel = supabase
+      .channel("it-support-chat-heads")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "support_chat_heads" },
+        async (payload) => {
+          const next = (payload.new ?? {}) as Head;
+          const totalNext = await loadUnreadTotal().catch(() => 0);
+          if (!alive) return;
+          notifyUnread(totalNext);
 
-            if (initialized.current && next.latest_sender_type === "store" && Number(next.unread_it_count ?? 0) > 0) {
-              const title = next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่";
-              const message = next.latest_message_preview || next.subject || "ลูกค้าส่งข้อความเข้ามา";
-              setToast({ title, message });
-              window.setTimeout(() => setToast(null), 5000);
+          if (initialized.current && next.latest_sender_type === "store" && Number(next.unread_it_count ?? 0) > 0) {
+            const title = next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่";
+            const message = next.latest_message_preview || next.subject || "ลูกค้าส่งข้อความเข้ามา";
+            setToast({ title, message });
+            window.setTimeout(() => setToast(null), 5000);
 
-              try {
-                const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-                if (AudioCtx) {
-                  const ctx = new AudioCtx();
-                  const osc = ctx.createOscillator();
-                  const gain = ctx.createGain();
-                  gain.gain.value = 0.04;
-                  osc.frequency.value = 760;
-                  osc.connect(gain);
-                  gain.connect(ctx.destination);
-                  osc.start();
-                  osc.stop(ctx.currentTime + 0.12);
-                }
-              } catch {
-                // Browser may block audio until the user interacts with the page.
+            try {
+              const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+              if (AudioCtx) {
+                const ctx = new AudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                gain.gain.value = 0.04;
+                osc.frequency.value = 760;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.12);
               }
-
-              if ("Notification" in window && Notification.permission === "granted") {
-                new Notification(title, { body: message, icon: "/brand/cpipos-symbol-sidebar.png", tag: next.conversation_id });
-              }
+            } catch {
+              // Browser may block audio until the user interacts with the page.
             }
-            initialized.current = true;
-          }
-        )
-        .subscribe(() => {
-          initialized.current = true;
-        });
-    };
 
-    void setup();
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification(title, { body: message, icon: "/brand/cpipos-symbol-sidebar.png", tag: next.conversation_id });
+            }
+          }
+          initialized.current = true;
+        }
+      )
+      .subscribe(() => {
+        initialized.current = true;
+      });
+
     return () => {
       alive = false;
-      if (channel) void getSupabaseBrowserClient().removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, []);
 
