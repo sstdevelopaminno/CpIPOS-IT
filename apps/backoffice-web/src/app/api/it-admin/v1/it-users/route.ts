@@ -203,7 +203,7 @@ export async function PATCH(request: Request) {
     if (!userId) return fail("user_id_required", "ไม่พบ user_id", 422);
 
     const current = await context.supabase.from("users_profiles")
-      .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+      .select("id,email,full_name,avatar_url,platform_role,is_active,created_at,updated_at")
       .eq("id", userId)
       .in("platform_role", IT_ROLES)
       .is("archived_at", null)
@@ -244,7 +244,7 @@ export async function PATCH(request: Request) {
       .eq("id", userId)
       .in("platform_role", IT_ROLES)
       .is("archived_at", null)
-      .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+      .select("id,email,full_name,avatar_url,platform_role,is_active,created_at,updated_at")
       .single();
 
     if (updated.error) throw new Error(updated.error.message);
@@ -296,7 +296,7 @@ export async function DELETE(request: Request) {
     if (userId === context.auth.userId) return fail("cannot_delete_self", "ไม่สามารถลบบัญชีที่กำลัง Login อยู่", 409);
 
     const current = await context.supabase.from("users_profiles")
-      .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+      .select("id,email,full_name,avatar_url,platform_role,is_active,created_at,updated_at")
       .eq("id", userId)
       .in("platform_role", IT_ROLES)
       .is("archived_at", null)
@@ -321,7 +321,7 @@ export async function DELETE(request: Request) {
       .eq("id", userId)
       .in("platform_role", IT_ROLES)
       .is("archived_at", null)
-      .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+      .select("id,email,full_name,avatar_url,platform_role,is_active,created_at,updated_at")
       .single();
 
     if (archived.error) throw new Error(archived.error.message);
