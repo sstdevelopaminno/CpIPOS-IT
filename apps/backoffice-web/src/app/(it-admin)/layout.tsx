@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth-context";
 import { getCurrentLanguage, t, type Language } from "@/lib/i18n";
+import { SupportChatNotifier } from "@/components/it-admin/support-chat-notifier";
 import "./it-admin-scroll.css";
 
 const copy = {
@@ -38,6 +39,7 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
+      supportChat: "Support Chat",
       development: "Development / Source Control",
       settings: "ตั้งค่า / Security",
       settingsUsers: "ตั้งค่า USER ใช้งาน",
@@ -77,6 +79,7 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "Emergency Broadcast",
+      supportChat: "Support Chat",
       development: "Development / Source Control",
       settings: "Settings / Security",
       settingsUsers: "User Settings",
@@ -117,6 +120,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
       { href: "/it-admin/pos-users", label: text.items.users, group: text.groups.customer, icon: "users" },
       { href: "/it-admin/subscription-payments", label: text.items.subscriptionPayments, group: text.groups.commercial, icon: "package" },
       { href: "/it-admin/license-issuer", label: text.items.desktopLicense, group: text.groups.commercial, icon: "entitlement" },
+      { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat" },
       settings
     ];
   }
@@ -139,6 +143,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
+    { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat" },
     { href: "/it-admin/development", label: text.items.development, group: text.groups.development, icon: "code" },
     settings
   ];
@@ -164,6 +169,7 @@ export default async function ItAdminLayout({ children }: { children: ReactNode 
       accessRole={auth.platformRole}
       restrictToNavigation={auth.platformRole === "it_admin"}
     >
+      <SupportChatNotifier />
       {children}
     </AppShell>
   );
