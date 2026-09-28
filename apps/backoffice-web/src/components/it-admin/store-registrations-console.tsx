@@ -9,10 +9,11 @@ type Modes = { takeaway: boolean; dine_in: boolean; buffet_table: boolean; deliv
 type Row = {
   id: string; store_name: string; business_type: string; owner_name: string;
   owner_phone: string; owner_email: string; package_id: string; sales_modes: Modes;
+  custom_requirements: string | null; custom_terms: Record<string,unknown> | null;
   trial_days: number; status: "pending" | "processing" | "failed" | "activated";
   tenant_id: string | null; created_at: string; activated_at: string | null; last_error: string | null;
 };
-type Pkg = { id: string; code: string; name: string; monthly_price: number; max_branches: number; max_devices: number };
+type Pkg = { id: string; code: string; name: string; monthly_price: number; max_branches: number; max_devices: number; quota_mode?: string };
 type Payload = { requests: Row[]; packages: Pkg[]; truncated: boolean };
 type Envelope<T> = { data: T | null; error: { message?: string; code?: string } | null };
 const modes: { key: keyof Modes; label: string }[] = [
@@ -33,10 +34,11 @@ async function api<T>(body?: Record<string, unknown>): Promise<T> {
   if (!response.ok || !json?.data) throw new Error(json?.error?.message ?? `HTTP ${response.status}`);
   return json.data;
 }
-type Form = Pick<Row,"store_name"|"business_type"|"owner_name"|"owner_phone"|"owner_email"|"package_id"|"sales_modes">;
+type Form = Pick<Row,"store_name"|"business_type"|"owner_name"|"owner_phone"|"owner_email"|"package_id"|"sales_modes"|"custom_requirements">;
 function draft(r: Row): Form {
   return { store_name: r.store_name, business_type: r.business_type, owner_name: r.owner_name,
     owner_phone: r.owner_phone, owner_email: r.owner_email, package_id: r.package_id,
+    custom_requirements: r.custom_requirements ?? "",
     sales_modes: {
       takeaway: Boolean(r.sales_modes?.takeaway), dine_in: Boolean(r.sales_modes?.dine_in),
       buffet_table: Boolean(r.sales_modes?.buffet_table), delivery: Boolean(r.sales_modes?.delivery),
@@ -56,6 +58,11 @@ export function StoreRegistrationsConsole() {
   const [intent, setIntent] = useState<"edit" | "activate" | null>(null);
   const [ownerCode, setOwnerCode] = useState("100001");
   const [pin, setPin] = useState("");
+  const [customTerms, setCustomTerms] = useState({
+    monthly_price:"0", yearly_price:"0", monthly_discount_percent:"0", yearly_discount_percent:"0",
+    max_branches:"1", max_devices:"1", max_users:"1", retention_months:"6",
+    max_products:"", monthly_bill_limit:"", storage_limit_gb:"", notes:""
+  });
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
@@ -69,6 +76,21 @@ export function StoreRegistrationsConsole() {
   function open(row: Row, mode: "edit" | "activate") {
     setSelected(row); setForm(draft(row)); setIntent(mode); setPin(""); setError(""); setSuccess("");
     setOwnerCode("100001");
+    const t = row.custom_terms ?? {};
+    setCustomTerms({
+      monthly_price:String(t.monthly_price ?? 0),
+      yearly_price:String(t.yearly_price ?? 0),
+      monthly_discount_percent:String(t.monthly_discount_percent ?? 0),
+      yearly_discount_percent:String(t.yearly_discount_percent ?? 0),
+      max_branches:String(t.max_branches ?? 1),
+      max_devices:String(t.max_devices ?? 1),
+      max_users:String(t.max_users ?? 1),
+      retention_months:String(t.retention_months ?? 6),
+      max_products:t.max_products == null ? "" : String(t.max_products),
+      monthly_bill_limit:t.monthly_bill_limit == null ? "" : String(t.monthly_bill_limit),
+      storage_limit_gb:t.storage_limit_gb == null ? "" : String(t.storage_limit_gb),
+      notes:String(t.notes ?? "")
+    });
   }
   function close() { if (!busy) { setSelected(null); setIntent(null); setForm(null); setPin(""); } }
   function update<K extends keyof Form>(key: K, value: Form[K]) {
@@ -81,11 +103,34 @@ export function StoreRegistrationsConsole() {
       setError("รหัสเจ้าของร้านและ PIN ต้องเป็นตัวเลข 6 หลัก"); return;
     }
     const action = intent;
+    const selectedPackage = data?.packages.find((pkg)=>pkg.id===form.package_id) ?? null;
+    const customSelected = selectedPackage?.quota_mode === "custom" || selectedPackage?.code === "custom";
+    if (action === "activate" && customSelected) {
+      if (Number(customTerms.monthly_price) <= 0 || Number(customTerms.max_branches) < 1 ||
+          Number(customTerms.max_devices) < 1 || Number(customTerms.max_users) < 1 ||
+          Number(customTerms.retention_months) < 1) {
+        setError("CUSTOM ต้องกำหนดราคา โควตา และระยะเก็บข้อมูลให้ครบก่อนเปิดร้าน"); return;
+      }
+    }
     if (action === "activate" && !window.confirm(`เปิดร้าน ${selected.store_name} ทดลองใช้ 7 วัน พร้อมสร้าง Owner และสาขาหลักใช่หรือไม่?`)) return;
     setBusy(true); setError("");
     try {
       const body = action === "edit" ? { action, id: selected.id, ...form }
-        : { action, id: selected.id, owner_code: ownerCode, owner_pin: pin };
+        : { action, id: selected.id, owner_code: ownerCode, owner_pin: pin,
+            custom_terms: customSelected ? {
+              monthly_price:Number(customTerms.monthly_price||0),
+              yearly_price:Number(customTerms.yearly_price||0),
+              monthly_discount_percent:Number(customTerms.monthly_discount_percent||0),
+              yearly_discount_percent:Number(customTerms.yearly_discount_percent||0),
+              max_branches:Number(customTerms.max_branches||1),
+              max_devices:Number(customTerms.max_devices||1),
+              max_users:Number(customTerms.max_users||1),
+              retention_months:Number(customTerms.retention_months||6),
+              max_products:customTerms.max_products ? Number(customTerms.max_products) : null,
+              monthly_bill_limit:customTerms.monthly_bill_limit ? Number(customTerms.monthly_bill_limit) : null,
+              storage_limit_gb:customTerms.storage_limit_gb ? Number(customTerms.storage_limit_gb) : null,
+              notes:customTerms.notes
+            } : null };
       const result = await api<{
         id: string;
         status: string;
