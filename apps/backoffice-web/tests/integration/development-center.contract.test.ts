@@ -46,7 +46,8 @@ describe("Development Control Center Phase 1", () => {
 
   it("has no automatic polling loop in the development workspace", () => {
     expect(consoleUi).not.toContain("setInterval(");
-    expect(consoleUi).toContain("ไม่มี polling อัตโนมัติ");
+    expect(consoleUi).not.toContain("setTimeout(");
+    expect(consoleUi).toContain("loadWorkspaceRuns");
   });
 
   it("audits source, PR, PIN and deployment actions", () => {

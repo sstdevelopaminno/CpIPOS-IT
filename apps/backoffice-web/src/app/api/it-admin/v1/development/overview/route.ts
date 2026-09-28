@@ -34,6 +34,7 @@ export async function GET() {
         recent_control_actions_60m: recentActions.count ?? 0,
         pin_attempt_limit_per_minute: 6,
         source_write_limit_per_5_minutes: 12,
+        workspace_run_limit_per_15_minutes: 4,
         deployment_limit_per_10_minutes: 4,
         production_deployment_limit_per_hour: 2,
         polling: false,
