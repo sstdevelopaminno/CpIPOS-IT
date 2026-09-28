@@ -12,6 +12,7 @@ type ItUserRow = {
   id: string;
   email: string | null;
   full_name: string | null;
+  avatar_url: string | null;
   platform_role: string | null;
   is_active: boolean | null;
   created_at: string | null;
@@ -84,7 +85,7 @@ export async function GET(request: Request) {
 
     let query = context.supabase
       .from("users_profiles")
-      .select("id,email,full_name,platform_role,is_active,created_at,updated_at")
+      .select("id,email,full_name,avatar_url,platform_role,is_active,created_at,updated_at")
       .in("platform_role", IT_ROLES)
       .is("archived_at", null)
       .order("updated_at", { ascending: false });
@@ -106,6 +107,7 @@ export async function GET(request: Request) {
         id: row.id,
         email: row.email ?? "",
         full_name: row.full_name ?? "",
+        avatar_url: row.avatar_url ?? "",
         platform_role: row.platform_role as ItRole,
         is_active: row.is_active === true,
         created_at: row.created_at,
@@ -132,6 +134,7 @@ export async function POST(request: Request) {
     const suppliedPassword = text(body.password, 128);
     const password = suppliedPassword || createPassword();
     const securityPin = text(body.security_pin, 12);
+    const avatarUrl = text(body.avatar_url, 1000);
 
     if (fullName.length < 2) return fail("user_name_required", "กรุณาระบุชื่อผู้ใช้", 422);
     if (!validEmail(normalizedEmail)) return fail("user_email_invalid", "อีเมล Login ไม่ถูกต้อง", 422);
@@ -155,11 +158,12 @@ export async function POST(request: Request) {
       id: userId,
       email: normalizedEmail,
       full_name: fullName,
+      avatar_url: avatarUrl || null,
       platform_role: platformRole,
       is_active: true,
       ...(pinHash ? { pin_hash: pinHash } : {}),
       updated_at: new Date().toISOString()
-    }, { onConflict: "id" }).select("id,email,full_name,platform_role,is_active,created_at,updated_at").single();
+    }, { onConflict: "id" }).select("id,email,full_name,avatar_url,platform_role,is_active,created_at,updated_at").single();
 
     if (profile.error) {
       await context.supabase.auth.admin.deleteUser(userId).catch(() => null);
@@ -213,6 +217,7 @@ export async function PATCH(request: Request) {
     const platformRole = parseRole(body.platform_role, current.data.platform_role === "it_support" ? "it_support" : "it_admin");
     const password = text(body.password, 128);
     const securityPin = text(body.security_pin, 12);
+    const avatarUrl = text(body.avatar_url, 1000);
     const isActive = typeof body.is_active === "boolean" ? body.is_active : current.data.is_active === true;
 
     if (fullName && fullName.length < 2) return fail("user_name_required", "กรุณาระบุชื่อผู้ใช้", 422);
@@ -227,6 +232,7 @@ export async function PATCH(request: Request) {
     const patch = {
       full_name: fullName || current.data.full_name,
       email: normalizedEmail || current.data.email,
+      avatar_url: Object.prototype.hasOwnProperty.call(body, "avatar_url") ? (avatarUrl || null) : current.data.avatar_url,
       platform_role: platformRole,
       is_active: isActive,
       ...(pinHash ? { pin_hash: pinHash } : {}),
