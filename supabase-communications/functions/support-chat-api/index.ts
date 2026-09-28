@@ -403,6 +403,9 @@ Deno.serve(async (request) => {
 
     if (action === "mark_read") {
       const field = actor.actor === "it" ? "unread_it_count" : "unread_store_count";
+      if (Number(current.data[field] ?? 0) === 0) {
+        return json(200, { data: { conversation: conversationForActor(current.data, actor), head: headFromConversation(current.data) } });
+      }
       const updated = await db.from("support_conversations")
         .update({ [field]: 0, updated_at: new Date().toISOString() })
         .eq("id", conversationId).select("*").single();
