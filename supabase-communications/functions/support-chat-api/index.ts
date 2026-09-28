@@ -1,17 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-type Bridge = {
-  payload?: Record<string, unknown>;
-  signature?: string;
-};
-
-type RequestBody = {
-  bridge?: Bridge;
-  action?: string;
-  data?: Record<string, unknown>;
-};
-
+type Bridge = { payload?: Record<string, unknown>; signature?: string };
+type RequestBody = { bridge?: Bridge; action?: string; data?: Record<string, unknown> };
 type Actor = {
   v: number;
   uid: string;
@@ -21,16 +12,17 @@ type Actor = {
   role: string | null;
   name: string;
   avatar_url: string | null;
-  exp: number;
 };
+
+const IMAGE_BUCKET = "support-chat-images";
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+const CONVERSATION_STATUSES = new Set(["in_progress", "waiting_store", "waiting_it", "closed"]);
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store"
-    }
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
   });
 
 const text = (value: unknown, max: number) =>
@@ -66,10 +58,102 @@ function headFromConversation(row: Record<string, unknown>) {
 }
 
 function canAccessConversation(actor: Actor, conversation: Record<string, unknown>) {
-  if (actor.actor === "it") {
-    return actor.role === "it_admin" || actor.role === "it_support";
-  }
+  if (actor.actor === "it") return actor.role === "it_admin" || actor.role === "it_support";
   return actor.actor === "store" && actor.tenant_id && actor.tenant_id === conversation.tenant_id;
+}
+
+function conversationForActor(row: Record<string, unknown>, actor: Actor) {
+  if (actor.actor === "it") return row;
+  const safe = { ...row };
+  delete safe.internal_note;
+  return safe;
+}
+
+function extensionForMime(mime: string) {
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  return "jpg";
+}
+
+function decodeBase64(value: unknown) {
+  const source = text(value, Math.ceil(MAX_IMAGE_BYTES * 1.5) + 512);
+  if (!source) return null;
+  const clean = source.includes(",") ? source.slice(source.indexOf(",") + 1) : source;
+  let binary = "";
+  try {
+    binary = atob(clean);
+  } catch {
+    return null;
+  }
+  if (!binary.length || binary.length > MAX_IMAGE_BYTES) return null;
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function cleanupAttachments(db: ReturnType<typeof createClient>, conversationId: string) {
+  const active = await db.from("support_attachments")
+    .select("id,storage_bucket,storage_path")
+    .eq("conversation_id", conversationId)
+    .is("deleted_at", null);
+  if (active.error) throw active.error;
+  const rows = active.data ?? [];
+  const groups = new Map<string, string[]>();
+  for (const row of rows) {
+    const bucket = String(row.storage_bucket || IMAGE_BUCKET);
+    groups.set(bucket, [...(groups.get(bucket) ?? []), String(row.storage_path)]);
+  }
+  for (const [bucket, paths] of groups) {
+    if (!paths.length) continue;
+    const removed = await db.storage.from(bucket).remove(paths);
+    if (removed.error) throw removed.error;
+  }
+  if (rows.length) {
+    const marked = await db.from("support_attachments")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("conversation_id", conversationId)
+      .is("deleted_at", null);
+    if (marked.error) throw marked.error;
+  }
+}
+
+async function messagesWithAttachments(
+  db: ReturnType<typeof createClient>,
+  conversationId: string
+) {
+  const messages = await db.from("support_messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true })
+    .limit(500);
+  if (messages.error) throw messages.error;
+
+  const attachments = await db.from("support_attachments")
+    .select("id,message_id,storage_bucket,storage_path,original_name,mime_type,size_bytes,created_at")
+    .eq("conversation_id", conversationId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+  if (attachments.error) throw attachments.error;
+
+  const grouped = new Map<string, Array<Record<string, unknown>>>();
+  for (const attachment of attachments.data ?? []) {
+    const signed = await db.storage
+      .from(String(attachment.storage_bucket || IMAGE_BUCKET))
+      .createSignedUrl(String(attachment.storage_path), 15 * 60);
+    if (signed.error || !signed.data?.signedUrl) continue;
+    const entry = {
+      id: attachment.id,
+      original_name: attachment.original_name,
+      mime_type: attachment.mime_type,
+      size_bytes: attachment.size_bytes,
+      url: signed.data.signedUrl
+    };
+    const key = String(attachment.message_id);
+    grouped.set(key, [...(grouped.get(key) ?? []), entry]);
+  }
+
+  return (messages.data ?? []).map((message) => ({
+    ...message,
+    attachments: grouped.get(String(message.id)) ?? []
+  }));
 }
 
 Deno.serve(async (request) => {
@@ -84,10 +168,7 @@ Deno.serve(async (request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !serviceKey) return json(503, { error: { code: "service_unavailable" } });
 
-  const db = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-
+  const db = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const verified = await db.rpc("verify_support_chat_bridge_token", {
     p_payload: body.bridge.payload,
     p_signature: body.bridge.signature
@@ -102,9 +183,7 @@ Deno.serve(async (request) => {
 
   try {
     if (action === "create_conversation") {
-      if (actor.actor !== "store" || !actor.tenant_id) {
-        return json(403, { error: { code: "store_required" } });
-      }
+      if (actor.actor !== "store" || !actor.tenant_id) return json(403, { error: { code: "store_required" } });
 
       const subject = text(input.subject, 180);
       const contactName = text(input.contact_name, 120);
@@ -115,41 +194,30 @@ Deno.serve(async (request) => {
         return json(422, { error: { code: "conversation_fields_required", message: "Subject, contact name and store identity are required." } });
       }
 
-      const open = await db
-        .from("support_conversations")
-        .select("*")
-        .eq("tenant_id", actor.tenant_id)
-        .neq("status", "closed")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
+      const open = await db.from("support_conversations").select("*")
+        .eq("tenant_id", actor.tenant_id).neq("status", "closed")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (open.error) throw open.error;
       if (open.data) {
-        return json(200, { data: { conversation: open.data, head: headFromConversation(open.data), already_open: true } });
+        return json(200, { data: { conversation: conversationForActor(open.data, actor), head: headFromConversation(open.data), already_open: true } });
       }
 
       const now = new Date().toISOString();
-      const inserted = await db
-        .from("support_conversations")
-        .insert({
-          tenant_id: actor.tenant_id,
-          store_code: storeCode,
-          store_name: storeName,
-          store_logo_url: storeLogoUrl,
-          subject,
-          contact_name: contactName,
-          status: "new",
-          last_message_at: now,
-          last_message_preview: `เริ่มแชท: ${subject}`,
-          last_sender_type: "store",
-          unread_it_count: 1,
-          unread_store_count: 0,
-          updated_at: now
-        })
-        .select("*")
-        .single();
-
+      const inserted = await db.from("support_conversations").insert({
+        tenant_id: actor.tenant_id,
+        store_code: storeCode,
+        store_name: storeName,
+        store_logo_url: storeLogoUrl,
+        subject,
+        contact_name: contactName,
+        status: "new",
+        last_message_at: now,
+        last_message_preview: `เริ่มแชท: ${subject}`,
+        last_sender_type: "store",
+        unread_it_count: 1,
+        unread_store_count: 0,
+        updated_at: now
+      }).select("*").single();
       if (inserted.error) throw inserted.error;
 
       await db.from("support_participants").insert({
@@ -160,7 +228,6 @@ Deno.serve(async (request) => {
         role: actor.role,
         avatar_url: storeLogoUrl
       });
-
       await db.from("support_messages").insert({
         conversation_id: inserted.data.id,
         sender_type: "system",
@@ -169,11 +236,13 @@ Deno.serve(async (request) => {
         message_body: "เปิดคำขอสนทนา: " + subject
       });
 
-      return json(201, { data: { conversation: inserted.data, head: headFromConversation(inserted.data), already_open: false } });
+      return json(201, {
+        data: { conversation: conversationForActor(inserted.data, actor), head: headFromConversation(inserted.data), already_open: false }
+      });
     }
 
     if (action === "list_conversations") {
-      let query = db.from("support_conversations").select("*").order("last_message_at", { ascending: false }).limit(100);
+      let query = db.from("support_conversations").select("*").order("last_message_at", { ascending: false }).limit(250);
       if (actor.actor === "store") {
         if (!actor.tenant_id) return json(403, { error: { code: "tenant_required" } });
         query = query.eq("tenant_id", actor.tenant_id);
@@ -182,76 +251,121 @@ Deno.serve(async (request) => {
       }
       const result = await query;
       if (result.error) throw result.error;
-      return json(200, { data: { conversations: result.data ?? [] } });
+      return json(200, { data: { conversations: (result.data ?? []).map((row) => conversationForActor(row, actor)) } });
     }
 
     const conversationId = uuid(input.conversation_id);
-    if (!conversationId) {
-      return json(422, { error: { code: "conversation_id_invalid" } });
-    }
+    if (!conversationId) return json(422, { error: { code: "conversation_id_invalid" } });
 
     const current = await db.from("support_conversations").select("*").eq("id", conversationId).maybeSingle();
     if (current.error) throw current.error;
     if (!current.data) return json(404, { error: { code: "conversation_not_found" } });
-    if (!canAccessConversation(actor, current.data)) {
-      return json(403, { error: { code: "conversation_forbidden" } });
-    }
+    if (!canAccessConversation(actor, current.data)) return json(403, { error: { code: "conversation_forbidden" } });
 
     if (action === "get_messages") {
-      const messages = await db
-        .from("support_messages")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true })
-        .limit(500);
-      if (messages.error) throw messages.error;
-      return json(200, { data: { conversation: current.data, messages: messages.data ?? [] } });
+      const messages = await messagesWithAttachments(db, conversationId);
+      return json(200, { data: { conversation: conversationForActor(current.data, actor), messages } });
     }
 
     if (action === "send_message") {
       const message = text(input.message, 4000);
-      if (!message) return json(422, { error: { code: "message_required" } });
+      const attachment = input.attachment && typeof input.attachment === "object"
+        ? input.attachment as Record<string, unknown>
+        : null;
+      if (!message && !attachment) return json(422, { error: { code: "message_required" } });
       if (current.data.status === "closed") return json(409, { error: { code: "conversation_closed" } });
 
       const senderType = actor.actor === "it" ? "it" : "store";
-      const senderName = text(actor.name, 120) || (senderType === "it" ? "IT Support" : current.data.contact_name);
+      const senderName = text(actor.name, 120) || (senderType === "it" ? "IT Support" : String(current.data.contact_name));
       const now = new Date().toISOString();
+      const messageId = crypto.randomUUID();
+      let attachmentRow: Record<string, unknown> | null = null;
+      let uploadedPath: string | null = null;
 
-      const inserted = await db.from("support_messages").insert({
-        conversation_id: conversationId,
-        sender_type: senderType,
-        sender_user_id: actor.uid,
-        sender_name: senderName,
-        sender_role: actor.role,
-        sender_avatar_url: actor.avatar_url,
-        message_body: message
-      }).select("*").single();
-      if (inserted.error) throw inserted.error;
-
-      const update: Record<string, unknown> = {
-        last_message_at: now,
-        last_message_preview: message.slice(0, 180),
-        last_sender_type: senderType,
-        updated_at: now,
-        status: senderType === "it" ? "waiting_store" : "waiting_it"
-      };
-      if (senderType === "it") {
-        update.unread_store_count = Number(current.data.unread_store_count ?? 0) + 1;
-        update.unread_it_count = 0;
-      } else {
-        update.unread_it_count = Number(current.data.unread_it_count ?? 0) + 1;
-        update.unread_store_count = 0;
+      if (attachment) {
+        const mimeType = text(attachment.mime_type, 80);
+        const originalName = text(attachment.name, 180) || "image";
+        const declaredSize = Number(attachment.size_bytes ?? 0);
+        const bytes = decodeBase64(attachment.data_base64);
+        if (!IMAGE_MIME.has(mimeType) || !bytes || declaredSize !== bytes.length || bytes.length > MAX_IMAGE_BYTES) {
+          return json(422, { error: { code: "attachment_invalid", message: "รองรับเฉพาะ JPG/PNG/WEBP ขนาดไม่เกิน 2 MB" } });
+        }
+        const attachmentId = crypto.randomUUID();
+        uploadedPath = `${conversationId}/${attachmentId}.${extensionForMime(mimeType)}`;
+        const uploaded = await db.storage.from(IMAGE_BUCKET).upload(uploadedPath, bytes, {
+          contentType: mimeType,
+          cacheControl: "3600",
+          upsert: false
+        });
+        if (uploaded.error) throw uploaded.error;
+        attachmentRow = {
+          id: attachmentId,
+          conversation_id: conversationId,
+          message_id: messageId,
+          storage_bucket: IMAGE_BUCKET,
+          storage_path: uploadedPath,
+          original_name: originalName,
+          mime_type: mimeType,
+          size_bytes: bytes.length
+        };
       }
 
-      const updated = await db.from("support_conversations").update(update).eq("id", conversationId).select("*").single();
-      if (updated.error) throw updated.error;
-      return json(201, { data: { message: inserted.data, conversation: updated.data, head: headFromConversation(updated.data) } });
+      try {
+        const inserted = await db.from("support_messages").insert({
+          id: messageId,
+          conversation_id: conversationId,
+          sender_type: senderType,
+          sender_user_id: actor.uid,
+          sender_name: senderName,
+          sender_role: actor.role,
+          sender_avatar_url: actor.avatar_url,
+          message_body: message || "ส่งรูปภาพ"
+        }).select("*").single();
+        if (inserted.error) throw inserted.error;
+
+        if (attachmentRow) {
+          const attachmentInserted = await db.from("support_attachments").insert(attachmentRow).select("*").single();
+          if (attachmentInserted.error) throw attachmentInserted.error;
+        }
+
+        const preview = attachmentRow
+          ? message ? `[รูปภาพ] ${message}`.slice(0, 180) : "[รูปภาพ]"
+          : message.slice(0, 180);
+        const update: Record<string, unknown> = {
+          last_message_at: now,
+          last_message_preview: preview,
+          last_sender_type: senderType,
+          updated_at: now,
+          status: senderType === "it" ? "waiting_store" : "waiting_it"
+        };
+        if (senderType === "it") {
+          update.unread_store_count = Number(current.data.unread_store_count ?? 0) + 1;
+          update.unread_it_count = 0;
+        } else {
+          update.unread_it_count = Number(current.data.unread_it_count ?? 0) + 1;
+          update.unread_store_count = 0;
+        }
+
+        const updated = await db.from("support_conversations").update(update)
+          .eq("id", conversationId).select("*").single();
+        if (updated.error) throw updated.error;
+
+        const hydrated = await messagesWithAttachments(db, conversationId);
+        const sent = hydrated.find((row) => row.id === messageId) ?? { ...inserted.data, attachments: [] };
+        return json(201, {
+          data: { message: sent, conversation: conversationForActor(updated.data, actor), head: headFromConversation(updated.data) }
+        });
+      } catch (error) {
+        if (uploadedPath) await db.storage.from(IMAGE_BUCKET).remove([uploadedPath]).catch(() => null);
+        throw error;
+      }
     }
 
     if (action === "claim_conversation") {
       if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
         return json(403, { error: { code: "it_role_required" } });
       }
+      if (current.data.status === "closed") return json(409, { error: { code: "conversation_closed" } });
       const now = new Date().toISOString();
       const updated = await db.from("support_conversations").update({
         assigned_role: actor.role,
@@ -264,10 +378,9 @@ Deno.serve(async (request) => {
       }).eq("id", conversationId).select("*").single();
       if (updated.error) throw updated.error;
 
-      const existingParticipant = await db.from("support_participants")
-        .select("id").eq("conversation_id", conversationId)
-        .eq("participant_type", "it").eq("user_id", actor.uid).is("left_at", null)
-        .limit(1).maybeSingle();
+      const existingParticipant = await db.from("support_participants").select("id")
+        .eq("conversation_id", conversationId).eq("participant_type", "it")
+        .eq("user_id", actor.uid).is("left_at", null).limit(1).maybeSingle();
       if (!existingParticipant.data) {
         await db.from("support_participants").insert({
           conversation_id: conversationId,
@@ -278,7 +391,6 @@ Deno.serve(async (request) => {
           avatar_url: actor.avatar_url
         });
       }
-
       await db.from("support_messages").insert({
         conversation_id: conversationId,
         sender_type: "system",
@@ -286,7 +398,6 @@ Deno.serve(async (request) => {
         sender_role: "system",
         message_body: (text(actor.name, 120) || "IT Support") + " รับเรื่องแล้ว"
       });
-
       return json(200, { data: { conversation: updated.data, head: headFromConversation(updated.data) } });
     }
 
@@ -296,18 +407,57 @@ Deno.serve(async (request) => {
         .update({ [field]: 0, updated_at: new Date().toISOString() })
         .eq("id", conversationId).select("*").single();
       if (updated.error) throw updated.error;
+      return json(200, { data: { conversation: conversationForActor(updated.data, actor), head: headFromConversation(updated.data) } });
+    }
+
+    if (action === "set_status") {
+      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+        return json(403, { error: { code: "it_role_required" } });
+      }
+      const nextStatus = text(input.status, 30);
+      if (!CONVERSATION_STATUSES.has(nextStatus)) return json(422, { error: { code: "status_invalid" } });
+      if (current.data.status === "closed") return json(409, { error: { code: "conversation_closed" } });
+      if (nextStatus === "closed") await cleanupAttachments(db, conversationId);
+      const now = new Date().toISOString();
+      const updated = await db.from("support_conversations").update({
+        status: nextStatus,
+        closed_at: nextStatus === "closed" ? now : null,
+        unread_it_count: nextStatus === "closed" ? 0 : current.data.unread_it_count,
+        updated_at: now
+      }).eq("id", conversationId).select("*").single();
+      if (updated.error) throw updated.error;
+      if (nextStatus === "closed") {
+        await db.from("support_messages").insert({
+          conversation_id: conversationId,
+          sender_type: "system",
+          sender_name: "CpIPOS Support",
+          sender_role: "system",
+          message_body: "ปิดการสนทนาแล้ว · รูปภาพถูกลบออกจากระบบ"
+        });
+      }
+      return json(200, { data: { conversation: updated.data, head: headFromConversation(updated.data) } });
+    }
+
+    if (action === "update_note") {
+      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+        return json(403, { error: { code: "it_role_required" } });
+      }
+      const note = text(input.internal_note, 3000);
+      const updated = await db.from("support_conversations")
+        .update({ internal_note: note || null, updated_at: new Date().toISOString() })
+        .eq("id", conversationId).select("*").single();
+      if (updated.error) throw updated.error;
       return json(200, { data: { conversation: updated.data, head: headFromConversation(updated.data) } });
     }
 
     if (action === "close_conversation") {
-      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
-        return json(403, { error: { code: "it_role_required" } });
-      }
+      await cleanupAttachments(db, conversationId);
       const now = new Date().toISOString();
       const updated = await db.from("support_conversations").update({
         status: "closed",
         closed_at: now,
         unread_it_count: 0,
+        unread_store_count: 0,
         updated_at: now
       }).eq("id", conversationId).select("*").single();
       if (updated.error) throw updated.error;
@@ -316,9 +466,23 @@ Deno.serve(async (request) => {
         sender_type: "system",
         sender_name: "CpIPOS Support",
         sender_role: "system",
-        message_body: "ปิดการสนทนาแล้ว"
+        message_body: "ปิดการสนทนาแล้ว · รูปภาพถูกลบออกจากระบบ"
       });
-      return json(200, { data: { conversation: updated.data, head: headFromConversation(updated.data) } });
+      return json(200, { data: { conversation: conversationForActor(updated.data, actor), head: headFromConversation(updated.data) } });
+    }
+
+    if (action === "delete_conversation") {
+      if (actor.actor !== "it" || actor.role !== "it_support") {
+        return json(403, { error: { code: "it_support_required" } });
+      }
+      if (current.data.status !== "closed") {
+        return json(409, { error: { code: "close_before_delete", message: "กรุณาปิดการสนทนาก่อนลบถาวร" } });
+      }
+      await cleanupAttachments(db, conversationId);
+      const tenantId = current.data.tenant_id;
+      const deleted = await db.from("support_conversations").delete().eq("id", conversationId);
+      if (deleted.error) throw deleted.error;
+      return json(200, { data: { deleted: true, conversation_id: conversationId, tenant_id: tenantId } });
     }
 
     return json(422, { error: { code: "unsupported_action" } });
