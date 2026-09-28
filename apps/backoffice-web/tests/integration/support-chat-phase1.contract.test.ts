@@ -71,7 +71,7 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
   });
 
   it("auto-claims an unassigned conversation when IT opens it", () => {
-    expect(detail).toContain('if (!data.conversation.assigned_user_id)');
+    expect(detail).toContain('!data.conversation.assigned_user_id && data.conversation.status !== "closed"');
     expect(detail).toContain('"claim_conversation"');
     expect(detail).toContain('action: "support_chat_claimed"');
   });
