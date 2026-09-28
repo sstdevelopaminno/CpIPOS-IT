@@ -51,6 +51,13 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(phase2).toContain("2097152");
   });
 
+  it("broadcasts message previews on the same low-latency channel as typing", () => {
+    expect(consoleUi).toContain('event: "message_preview"');
+    expect(consoleUi).toContain('event: "message_retract"');
+    expect(consoleUi).toContain('payload: { actor: "it", client_id: optimisticId }');
+    expect(consoleUi).toContain('id = `broadcast:${event.client_id}`');
+  });
+
   it("adds status controls, IT notes and IT Support-only permanent deletion", () => {
     expect(consoleUi).toContain("กำลังดูแล");
     expect(consoleUi).toContain("รอลูกค้า");
