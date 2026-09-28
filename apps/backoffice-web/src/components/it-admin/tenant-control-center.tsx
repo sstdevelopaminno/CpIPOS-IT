@@ -48,6 +48,9 @@ type Package = {
   is_active: boolean;
   monthly_price: number | string | null;
   yearly_price: number | string | null;
+  monthly_discount_percent?: number | string | null;
+  yearly_discount_percent?: number | string | null;
+  quota_mode?: string | null;
   max_branches: number | null;
   max_devices: number | null;
   max_users: number | null;
@@ -105,7 +108,7 @@ type ControlData = {
       has_evidence: boolean;
       submitted_at: string | null;
       reviewed_at: string | null;
-      kind: "payment_notice" | "renewal_intent";
+      kind: "payment_notice" | "renewal_intent" | "custom_quote_request";
       billing_interval: "monthly" | "yearly";
       expected_amount: number | null;
       source: string;
@@ -119,10 +122,36 @@ type ControlData = {
       currency: string;
     } | null;
   };
+  custom_package: {
+    terms: {
+      tenant_id: string;
+      package_id: string;
+      status: "draft" | "approved" | "active" | "retired";
+      monthly_price: number;
+      yearly_price: number;
+      monthly_discount_percent: number;
+      yearly_discount_percent: number;
+      effective_monthly_price: number;
+      effective_yearly_price: number;
+      max_branches: number;
+      max_devices: number;
+      max_users: number;
+      retention_months: number;
+      max_products: number | null;
+      monthly_bill_limit: number | null;
+      storage_limit_gb: number | null;
+      feature_overrides: Record<string, boolean> | null;
+      notes: string | null;
+      version: number;
+      approved_at: string | null;
+    } | null;
+    feature_catalog: Array<{ code: string; name: string; description?: string | null; is_active?: boolean }>;
+    has_open_request: boolean;
+  };
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "salesSummary" | "danger";
+type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "customPackage" | "salesSummary" | "danger";
 type BillingCycle = "monthly" | "yearly";
 
 const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, true])) as Record<PosSalesModeKey, boolean>;
@@ -250,6 +279,22 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const [changeAutoEnd, setChangeAutoEnd] = useState(true);
   const [changeAutoRenew, setChangeAutoRenew] = useState(false);
   const [changeReason, setChangeReason] = useState("");
+  const [customDraft, setCustomDraft] = useState({
+    monthly_price: "0",
+    yearly_price: "0",
+    monthly_discount_percent: "0",
+    yearly_discount_percent: "0",
+    max_branches: "1",
+    max_devices: "1",
+    max_users: "1",
+    retention_months: "6",
+    max_products: "",
+    monthly_bill_limit: "",
+    storage_limit_gb: "",
+    notes: "",
+    feature_overrides: {} as Record<string, boolean>
+  });
+  const [customBillingCycle, setCustomBillingCycle] = useState<BillingCycle>("monthly");
   const [notice, setNotice] = useState({ customer_title: "ระบบถูกระงับชั่วคราว", customer_message: "", admin_reason: "" });
   const [salesModeDrafts, setSalesModeDrafts] = useState<Record<PosSalesModeKey, boolean>>(DEFAULT_SALES_MODE_DRAFTS);
   const [salesModeReason, setSalesModeReason] = useState("");
@@ -286,6 +331,24 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     setChangeEndDate(addBillingDate(changeStart, changeCycle));
     setChangeAutoEnd(true);
     setChangeAutoRenew(Boolean(next.contract?.auto_renew));
+
+    const custom = next.custom_package.terms;
+    setCustomDraft({
+      monthly_price: String(custom?.monthly_price ?? 0),
+      yearly_price: String(custom?.yearly_price ?? 0),
+      monthly_discount_percent: String(custom?.monthly_discount_percent ?? 0),
+      yearly_discount_percent: String(custom?.yearly_discount_percent ?? 0),
+      max_branches: String(custom?.max_branches ?? Math.max(1,next.contract?.max_branches ?? 1)),
+      max_devices: String(custom?.max_devices ?? Math.max(1,next.contract?.max_devices ?? 1)),
+      max_users: String(custom?.max_users ?? Math.max(1,next.contract?.max_users ?? 1)),
+      retention_months: String(custom?.retention_months ?? 6),
+      max_products: custom?.max_products == null ? "" : String(custom.max_products),
+      monthly_bill_limit: custom?.monthly_bill_limit == null ? "" : String(custom.monthly_bill_limit),
+      storage_limit_gb: custom?.storage_limit_gb == null ? "" : String(custom.storage_limit_gb),
+      notes: custom?.notes ?? "",
+      feature_overrides: custom?.feature_overrides ?? {}
+    });
+    setCustomBillingCycle(next.billing.latest_request?.billing_interval === "yearly" ? "yearly" : "monthly");
 
     setNotice({
       customer_title: next.pos_notice?.title ?? "ระบบถูกระงับชั่วคราว",
@@ -381,12 +444,32 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const isPaidActiveContract = currentStatus === "active" && Number(data?.contract?.amount ?? 0) > 0;
   const canEditBillingCycle = canEditContract && !isPaidActiveContract;
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
-  const selectedPackageYearlyAvailable = packageAllowsYearly(selectedPackage);
   const latestBillingRequest = data?.billing.latest_request ?? null;
   const latestReceipt = data?.billing.latest_receipt ?? null;
+  const customPackageDefinition = data?.packages.find((pkg) => pkg.code === "custom") ?? null;
+  const customTerms = data?.custom_package.terms ?? null;
+  const customRequestOpen = Boolean(
+    latestBillingRequest &&
+    latestBillingRequest.kind === "custom_quote_request" &&
+    ["pending","under_review"].includes(latestBillingRequest.status)
+  );
+  const customRelevant = Boolean(
+    data?.current_package?.code === "custom" ||
+    latestBillingRequest?.requested_package_id === customPackageDefinition?.id ||
+    customRequestOpen
+  );
+  const selectedPackageYearlyAvailable = selectedPackage?.code === "custom"
+    ? Number(customTerms?.effective_yearly_price ?? 0) > 0
+    : packageAllowsYearly(selectedPackage);
   const hasOpenBillingRequest = Boolean(latestBillingRequest && ["pending", "under_review"].includes(latestBillingRequest.status));
   const selectedPackageAmount = selectedPackage
-    ? Number(billingCycle === "yearly" ? selectedPackage.yearly_price ?? 0 : selectedPackage.monthly_price ?? 0)
+    ? selectedPackage.code === "custom"
+      ? Number(billingCycle === "yearly" ? customTerms?.effective_yearly_price ?? 0 : customTerms?.effective_monthly_price ?? 0)
+      : (() => {
+          const base = Number(billingCycle === "yearly" ? selectedPackage.yearly_price ?? 0 : selectedPackage.monthly_price ?? 0);
+          const discount = Number(billingCycle === "yearly" ? selectedPackage.yearly_discount_percent ?? 0 : selectedPackage.monthly_discount_percent ?? 0);
+          return Number.isFinite(base) ? Number((base * (1 - Math.max(0,Math.min(100,Number.isFinite(discount) ? discount : 0))/100)).toFixed(2)) : 0;
+        })()
     : 0;
   const salesModeEnabledCount = data?.sales_modes.filter((mode) => mode.enabled).length ?? 0;
   const salesModeTotal = data?.sales_modes.length || POS_SALES_MODE_KEYS.length;
@@ -447,7 +530,9 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
       : tab === "salesModes"
         ? { eyebrow: "POS SALES MODES", title: "โหมดขาย", description: "เปิดหรือปิดโหมดหน้าขาย POS ของร้านนี้" }
         : tab === "package"
-          ? { eyebrow: "PACKAGE & CONTRACT", title: "แพ็กเกจและสิทธิ์", description: "ตั้งค่าแพ็กเกจและส่งรายการชำระไปตรวจสอบ โดยการเปิดสิทธิ์แบบชำระเงินจริงต้องผ่าน Settlement และใบเสร็จ" }
+          ? { eyebrow: "PACKAGE & CONTRACT", title: "แพ็กเกจและสิทธิ์", description: "สัญญา รอบบิล และรายการชำระ" }
+          : tab === "customPackage"
+            ? { eyebrow: "CUSTOM CONTRACT", title: "กำหนดรายละเอียดแพ็กเกจ", description: "ราคา · โควตา · อายุข้อมูล · สิทธิ์รายร้าน" }
           : tab === "danger"
             ? { eyebrow: "STORE SECURITY", title: "พื้นที่อันตราย", description: "ปิดร้านชั่วคราวหรือดำเนินการลบร้านแบบถาวร" }
           : null;
@@ -523,6 +608,12 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>แพ็ก</div><span className={dashboardStyles.cardBadge}>{contractLabel(currentStatus)}</span></div>
                   <div className={dashboardStyles.cardText}><span>PACKAGE & CONTRACT</span><strong>แพ็กเกจและสิทธิ์</strong><small>สัญญา รอบบิล การระงับ และสิทธิ์การใช้งาน</small></div>
                   <div className={dashboardStyles.cardBottom}><span>{data.current_package?.name ?? "ยังไม่กำหนดแพ็กเกจ"}</span><strong>เปิดแพ็กเกจ →</strong></div>
+                </button>
+
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("customPackage")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>C</div><span className={dashboardStyles.cardBadge}>{customRelevant ? (customTerms?.status ?? "รอกำหนด") : "CUSTOM"}</span></div>
+                  <div className={dashboardStyles.cardText}><span>CUSTOM PACKAGE</span><strong>กำหนดรายละเอียดแพ็กเกจ</strong><small>ราคา โควตา อายุข้อมูล และสิทธิ์เฉพาะร้าน</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>{customRequestOpen ? "มีคำขอรอตกลง" : customRelevant ? "กำหนดรายร้าน" : "ใช้เมื่อเลือกรูปแบบ CUSTOM"}</span><strong>เปิดตั้งค่า →</strong></div>
                 </button>
 
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("salesModes")}>
@@ -680,6 +771,99 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   </section>
                 </div>
               ) : null}
+              {tab === "customPackage" ? (
+                <div className={styles.controlStack}>
+                  <section className={styles.packageHero}>
+                    <div>
+                      <span>CUSTOM · PER STORE</span>
+                      <h4>{customRelevant ? "รายละเอียดเฉพาะร้าน" : "ยังไม่ได้เลือก CUSTOM"}</h4>
+                      <p>{customRequestOpen ? "ลูกค้าส่งคำขอแล้ว · รอ IT กำหนดและตกลง" : customTerms ? `สถานะ ${customTerms.status} · เวอร์ชัน ${customTerms.version}` : "ใช้เมื่อลูกค้าเลือก CUSTOM เท่านั้น"}</p>
+                    </div>
+                    <div className={styles.packageMetrics}>
+                      <span>สาขา {customTerms?.max_branches ?? "—"}</span>
+                      <span>เครื่อง {customTerms?.max_devices ?? "—"}</span>
+                      <span>ผู้ใช้ {customTerms?.max_users ?? "—"}</span>
+                    </div>
+                  </section>
+
+                  {!customRelevant ? <div className={styles.securityNote}>
+                    ร้านนี้ยังใช้แพ็กเกจมาตรฐานและไม่มีคำขอ CUSTOM จึงยังไม่เปิดการบันทึกเงื่อนไขเฉพาะร้าน
+                  </div> : null}
+
+                  {customRelevant ? <section className={styles.controlSection}>
+                    <div className={styles.controlSectionHeader}>
+                      <div><span>COMMERCIAL TERMS</span><h4>ราคาและอายุข้อมูล</h4></div>
+                      <small>Sales Retention ของแพ็กเกจมาตรฐานล็อก 6 เดือน · CUSTOM กำหนดแยกร้าน</small>
+                    </div>
+                    <div className={styles.formGrid}>
+                      <label><span>ราคารายเดือน</span><input type="number" min="0" step="0.01" value={customDraft.monthly_price} onChange={(e)=>setCustomDraft((v)=>({...v,monthly_price:e.target.value}))}/></label>
+                      <label><span>ส่วนลดรายเดือน %</span><input type="number" min="0" max="100" step="0.01" value={customDraft.monthly_discount_percent} onChange={(e)=>setCustomDraft((v)=>({...v,monthly_discount_percent:e.target.value}))}/></label>
+                      <label><span>ราคารายปี</span><input type="number" min="0" step="0.01" value={customDraft.yearly_price} onChange={(e)=>setCustomDraft((v)=>({...v,yearly_price:e.target.value}))}/></label>
+                      <label><span>ส่วนลดรายปี %</span><input type="number" min="0" max="100" step="0.01" value={customDraft.yearly_discount_percent} onChange={(e)=>setCustomDraft((v)=>({...v,yearly_discount_percent:e.target.value}))}/></label>
+                      <label><span>เก็บยอดขาย</span><select value={customDraft.retention_months} onChange={(e)=>setCustomDraft((v)=>({...v,retention_months:e.target.value}))}><option value="6">6 เดือน</option><option value="12">12 เดือน</option><option value="18">18 เดือน</option><option value="24">24 เดือน</option><option value="36">36 เดือน</option></select></label>
+                      <label><span>รอบที่จะเสนอ</span><select value={customBillingCycle} onChange={(e)=>setCustomBillingCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly">รายปี</option></select></label>
+                    </div>
+                  </section> : null}
+
+                  {customRelevant ? <section className={styles.controlSection}>
+                    <div className={styles.controlSectionHeader}><div><span>QUOTAS</span><h4>โควตาการใช้งาน</h4></div></div>
+                    <div className={styles.formGrid}>
+                      <label><span>สาขา</span><input type="number" min="1" value={customDraft.max_branches} onChange={(e)=>setCustomDraft((v)=>({...v,max_branches:e.target.value}))}/></label>
+                      <label><span>เครื่องขาย</span><input type="number" min="1" value={customDraft.max_devices} onChange={(e)=>setCustomDraft((v)=>({...v,max_devices:e.target.value}))}/></label>
+                      <label><span>ผู้ใช้งาน</span><input type="number" min="1" value={customDraft.max_users} onChange={(e)=>setCustomDraft((v)=>({...v,max_users:e.target.value}))}/></label>
+                      <label><span>สินค้า</span><input type="number" min="1" placeholder="ไม่กำหนด" value={customDraft.max_products} onChange={(e)=>setCustomDraft((v)=>({...v,max_products:e.target.value}))}/></label>
+                      <label><span>บิล / เดือน</span><input type="number" min="1" placeholder="ไม่กำหนด" value={customDraft.monthly_bill_limit} onChange={(e)=>setCustomDraft((v)=>({...v,monthly_bill_limit:e.target.value}))}/></label>
+                      <label><span>Storage GB</span><input type="number" min="0.01" step="0.01" placeholder="ไม่กำหนด" value={customDraft.storage_limit_gb} onChange={(e)=>setCustomDraft((v)=>({...v,storage_limit_gb:e.target.value}))}/></label>
+                      <label className={styles.span2}><span>หมายเหตุ</span><textarea rows={2} value={customDraft.notes} onChange={(e)=>setCustomDraft((v)=>({...v,notes:e.target.value}))} placeholder="รายละเอียดที่ตกลงกับลูกค้า"/></label>
+                    </div>
+
+                    <details style={{ marginTop: 12 }}>
+                      <summary style={{ cursor:"pointer",fontWeight:800,fontSize:13,color:"#31547e" }}>สิทธิ์เพิ่มเติม ({Object.keys(customDraft.feature_overrides).length})</summary>
+                      <div className={dashboardStyles.salesModeGrid} style={{ marginTop: 10 }}>
+                        {data.custom_package.feature_catalog.map((feature) => {
+                          const checked = customDraft.feature_overrides[feature.code];
+                          return <label className={dashboardStyles.salesModeCard} key={feature.code}>
+                            <input type="checkbox" checked={checked === true}
+                              onChange={(e)=>setCustomDraft((v)=>({...v,feature_overrides:{...v.feature_overrides,[feature.code]:e.target.checked}}))}/>
+                            <span className={dashboardStyles.salesModeToggle} aria-hidden="true"/>
+                            <span className={dashboardStyles.salesModeCopy}><strong>{feature.name}</strong><small>{feature.code}</small></span>
+                            <em>{checked === true ? "เปิด" : "ค่าเดิม"}</em>
+                          </label>;
+                        })}
+                      </div>
+                    </details>
+
+                    <div className={styles.sectionActions}>
+                      <button className={styles.secondaryButton} type="button" disabled={busy}
+                        onClick={() => void mutate({
+                          action:"update_custom_package_terms",
+                          custom_monthly_price:Number(customDraft.monthly_price || 0),
+                          custom_yearly_price:Number(customDraft.yearly_price || 0),
+                          custom_monthly_discount_percent:Number(customDraft.monthly_discount_percent || 0),
+                          custom_yearly_discount_percent:Number(customDraft.yearly_discount_percent || 0),
+                          custom_max_branches:Number(customDraft.max_branches || 1),
+                          custom_max_devices:Number(customDraft.max_devices || 1),
+                          custom_max_users:Number(customDraft.max_users || 1),
+                          custom_retention_months:Number(customDraft.retention_months || 6),
+                          custom_max_products:customDraft.max_products ? Number(customDraft.max_products) : null,
+                          custom_monthly_bill_limit:customDraft.monthly_bill_limit ? Number(customDraft.monthly_bill_limit) : null,
+                          custom_storage_limit_gb:customDraft.storage_limit_gb ? Number(customDraft.storage_limit_gb) : null,
+                          custom_feature_overrides:customDraft.feature_overrides,
+                          custom_notes:customDraft.notes
+                        },"บันทึกร่าง CUSTOM แล้ว",true)}>บันทึกร่าง</button>
+                      {customRequestOpen ? <button className={styles.primaryButton} type="button" disabled={busy || !customTerms}
+                        onClick={() => void mutate({
+                          action:"approve_custom_package_request",
+                          billing_cycle:customBillingCycle,
+                          admin_reason:customDraft.notes
+                        },"อนุมัติ CUSTOM แล้ว · POS พร้อมรับรายการชำระ",true)}>อนุมัติและส่งยอดให้ POS</button> : null}
+                    </div>
+                    {customRequestOpen ? <div className={styles.securityNote}>หลังอนุมัติ ลูกค้าจะเห็นยอดที่ตกลงในเมนูชำระเงิน และยังต้องผ่านการตรวจเงินเข้า/Settlement ก่อนเปลี่ยนแพ็กเกจจริง</div> :
+                      customTerms?.status === "draft" ? <div className={styles.securityNote}>ร่างนี้จะใช้เมื่อมีคำขอ CUSTOM และ IT กดอนุมัติรอบถัดไป</div> : null}
+                  </section> : null}
+                </div>
+              ) : null}
+
               {tab === "package" ? (
                 <div className={styles.controlStack}>
                   <section className={styles.packageHero}>

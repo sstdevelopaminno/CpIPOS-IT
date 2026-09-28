@@ -15,17 +15,28 @@ type Application = {
   submission_key?: unknown; store_name?: unknown; business_type?: unknown;
   owner_name?: unknown; owner_email?: unknown; owner_phone?: unknown;
   package_id?: unknown; sales_modes?: unknown; started_at?: unknown;
-  website?: unknown; consent?: unknown;
+  custom_requirements?: unknown; website?: unknown; consent?: unknown;
 };
 
 export async function GET() {
   try {
     const { data, error } = await getPrimarySupabaseServiceClient()
-      .from("subscription_packages").select("id,code,name,monthly_price,max_branches,max_devices")
-      .eq("is_active", true).eq("status", "active").eq("quota_mode", "standard")
-      .gt("monthly_price", 0).order("monthly_price").limit(30);
+      .from("subscription_packages")
+      .select("id,code,name,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,quota_mode,metadata")
+      .eq("is_active", true).eq("status", "active")
+      .in("quota_mode", ["standard","custom"])
+      .order("display_order", { ascending: true, nullsFirst: false }).limit(30);
     if (error) throw error;
-    return json({ packages: data ?? [] });
+    const packages = (data ?? []).filter((row) => row.quota_mode === "custom" || Number(row.monthly_price ?? 0) > 0).map((row) => {
+      const discount = Number(row.monthly_discount_percent ?? 0);
+      const effective = Number((Number(row.monthly_price ?? 0) * (1 - Math.max(0,Math.min(100,discount))/100)).toFixed(2));
+      return {
+        ...row,
+        effective_monthly_price: row.quota_mode === "custom" ? null : effective,
+        contact_sales: row.quota_mode === "custom" || row.code === "custom" || row.metadata?.contact_sales === true
+      };
+    });
+    return json({ packages });
   } catch (error) {
     console.error("[public-store-registration] catalog failed", error);
     return json({ error: "รายการแพ็กเกจไม่พร้อมใช้งาน" }, 503);
@@ -51,6 +62,7 @@ export async function POST(req: Request) {
   const storeName = str(body.store_name, 180), businessType = str(body.business_type, 100);
   const ownerName = str(body.owner_name, 180), ownerPhone = str(body.owner_phone, 40);
   const ownerEmail = str(body.owner_email, 254).toLowerCase();
+  const customRequirements = str(body.custom_requirements, 1500);
   const rawModes = body.sales_modes && typeof body.sales_modes === "object" && !Array.isArray(body.sales_modes)
     ? body.sales_modes as Record<string, unknown> : {};
   const keys = ["takeaway", "dine_in", "general_sale"] as const;
@@ -80,15 +92,22 @@ export async function POST(req: Request) {
     if (duplicateError) throw duplicateError;
     if (duplicate?.length) return json({ error: "เบอร์นี้ส่งคำขอไว้แล้ว กรุณารอทีมงานตรวจสอบ" }, 409);
     const { data: pkg, error: packageError } = await db.from("subscription_packages")
-      .select("id").eq("id", body.package_id).eq("is_active", true)
-      .eq("status", "active").eq("quota_mode", "standard").gt("monthly_price", 0).maybeSingle();
+      .select("id,code,quota_mode,monthly_price").eq("id", body.package_id).eq("is_active", true)
+      .eq("status", "active").in("quota_mode", ["standard","custom"]).maybeSingle();
     if (packageError) throw packageError;
-    if (!pkg) return json({ error: "แพ็กเกจนี้ยังไม่เปิดให้สมัคร" }, 422);
+    if (!pkg || (pkg.quota_mode === "standard" && Number(pkg.monthly_price ?? 0) <= 0)) {
+      return json({ error: "แพ็กเกจนี้ยังไม่เปิดให้สมัคร" }, 422);
+    }
+    const isCustom = pkg.quota_mode === "custom" || pkg.code === "custom";
+    if (isCustom && customRequirements.length < 10) {
+      return json({ error: "กรุณาระบุความต้องการสำหรับแพ็กเกจ CUSTOM อย่างน้อย 10 ตัวอักษร" }, 422);
+    }
     const { data, error } = await db.from("store_registration_requests").insert({
       submission_key: body.submission_key, store_name: storeName, business_type: businessType,
       owner_name: ownerName, owner_email: ownerEmail, owner_phone: ownerPhone,
       package_id: pkg.id, sales_modes: modes, trial_days: 7, consent_at: new Date().toISOString(),
-      source: "cpipos_website", status: "pending"
+      custom_requirements: isCustom ? customRequirements : null,
+      source: isCustom ? "cpipos_website_custom" : "cpipos_website", status: "pending"
     }).select("id,status").single();
     if (error?.code === "23505") return json({ message: "ระบบได้รับคำขอนี้แล้ว" });
     if (error || !data) throw error ?? new Error("Insert result empty");

@@ -1,5 +1,5 @@
-import { ItAdminModuleConsole } from "@/components/it-admin/it-admin-module-console";
+import { PackageCatalogManager } from "@/components/it-admin/package-catalog-manager";
 
 export default function PackagesPage() {
-  return <ItAdminModuleConsole module="packages" />;
+  return <PackageCatalogManager />;
 }

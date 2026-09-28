@@ -9,7 +9,7 @@ import { buildStoreActivationEmail, customerEmailProblem, deliverCustomerEmail }
 
 export const dynamic = "force-dynamic";
 
-const fields = "id,submission_key,store_name,business_type,owner_name,owner_email,owner_phone,package_id,sales_modes,trial_days,source,status,tenant_id,created_at,updated_at,activated_at,last_error";
+const fields = "id,submission_key,store_name,business_type,owner_name,owner_email,owner_phone,package_id,sales_modes,custom_requirements,custom_terms,trial_days,source,status,tenant_id,created_at,updated_at,activated_at,last_error";
 type RecordInput = {
   action?: "edit" | "delete" | "activate";
   id?: string;
@@ -20,11 +20,85 @@ type RecordInput = {
   owner_phone?: string;
   package_id?: string;
   sales_modes?: Partial<PosSalesModeMap>;
+  custom_requirements?: string;
+  custom_terms?: {
+    monthly_price?: number;
+    yearly_price?: number;
+    monthly_discount_percent?: number;
+    yearly_discount_percent?: number;
+    max_branches?: number;
+    max_devices?: number;
+    max_users?: number;
+    retention_months?: number;
+    max_products?: number | null;
+    monthly_bill_limit?: number | null;
+    storage_limit_gb?: number | null;
+    notes?: string;
+  } | null;
   owner_code?: string;
   owner_pin?: string;
 };
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(s);
 const clean = (s: unknown, max: number) => typeof s === "string" ? s.trim().slice(0, max) : "";
+
+type ApprovedCustomTerms = {
+  monthly_price: number;
+  yearly_price: number;
+  monthly_discount_percent: number;
+  yearly_discount_percent: number;
+  max_branches: number;
+  max_devices: number;
+  max_users: number;
+  retention_months: number;
+  max_products: number | null;
+  monthly_bill_limit: number | null;
+  storage_limit_gb: number | null;
+  feature_overrides: Record<string, boolean>;
+  notes: string | null;
+};
+
+function finiteNumber(value: unknown, min: number, max: number, label: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw new ItAdminGuardError("invalid_custom_terms", `${label} ไม่ถูกต้อง`, 422);
+  }
+  return parsed;
+}
+
+function optionalPositiveInt(value: unknown, max: number, label: string) {
+  if (value === null || value === undefined || value === "") return null;
+  return Math.trunc(finiteNumber(value, 1, max, label));
+}
+
+function optionalPositive(value: unknown, max: number, label: string) {
+  if (value === null || value === undefined || value === "") return null;
+  return Number(finiteNumber(value, 0.01, max, label).toFixed(2));
+}
+
+function sanitizeCustomTerms(value: RecordInput["custom_terms"]): ApprovedCustomTerms {
+  if (!value || typeof value !== "object") {
+    throw new ItAdminGuardError("custom_terms_required", "กรุณากำหนดรายละเอียด CUSTOM ก่อนเปิดร้าน", 422);
+  }
+  const monthlyPrice = Number(finiteNumber(value.monthly_price, 0, 10_000_000, "ราคารายเดือน").toFixed(2));
+  if (monthlyPrice <= 0) {
+    throw new ItAdminGuardError("custom_monthly_price_required", "CUSTOM ต้องกำหนดราคารายเดือนมากกว่า 0", 422);
+  }
+  return {
+    monthly_price: monthlyPrice,
+    yearly_price: Number(finiteNumber(value.yearly_price ?? 0, 0, 100_000_000, "ราคารายปี").toFixed(2)),
+    monthly_discount_percent: Number(finiteNumber(value.monthly_discount_percent ?? 0, 0, 100, "ส่วนลดรายเดือน").toFixed(2)),
+    yearly_discount_percent: Number(finiteNumber(value.yearly_discount_percent ?? 0, 0, 100, "ส่วนลดรายปี").toFixed(2)),
+    max_branches: Math.trunc(finiteNumber(value.max_branches, 1, 10_000, "จำนวนสาขา")),
+    max_devices: Math.trunc(finiteNumber(value.max_devices, 1, 10_000, "จำนวนเครื่องขาย")),
+    max_users: Math.trunc(finiteNumber(value.max_users, 1, 100_000, "จำนวนผู้ใช้งาน")),
+    retention_months: Math.trunc(finiteNumber(value.retention_months, 1, 120, "ระยะเก็บข้อมูล")),
+    max_products: optionalPositiveInt(value.max_products, 10_000_000, "จำนวนสินค้า"),
+    monthly_bill_limit: optionalPositiveInt(value.monthly_bill_limit, 100_000_000, "จำนวนบิล"),
+    storage_limit_gb: optionalPositive(value.storage_limit_gb, 1_000_000, "Storage"),
+    feature_overrides: {},
+    notes: clean(value.notes, 1000) || null
+  };
+}
 function validateEdit(input: RecordInput) {
   const row = {
     store_name: clean(input.store_name, 180),
@@ -33,7 +107,8 @@ function validateEdit(input: RecordInput) {
     owner_email: clean(input.owner_email, 254).toLowerCase(),
     owner_phone: clean(input.owner_phone, 40),
     package_id: input.package_id,
-    sales_modes: normalizePosSalesModes(input.sales_modes)
+    sales_modes: normalizePosSalesModes(input.sales_modes),
+    custom_requirements: clean(input.custom_requirements, 1500) || null
   };
   if (row.store_name.length < 2 || row.business_type.length < 2 || row.owner_name.length < 2 ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.owner_email) || !/^[+0-9 ()-]{8,40}$/.test(row.owner_phone) ||
@@ -57,8 +132,9 @@ export async function GET() {
         .order("created_at", { ascending: false }).limit(200),
       ctx.supabase.from("subscription_packages")
         .select("id,code,name,status,is_active,quota_mode,monthly_price,max_branches,max_devices,max_users")
-        .eq("is_active", true).eq("status", "active").eq("quota_mode", "standard")
-        .order("name").limit(50)
+        .eq("is_active", true).eq("status", "active")
+        .in("quota_mode", ["standard","custom"])
+        .order("display_order", { ascending: true, nullsFirst: false }).order("name").limit(50)
     ]);
     if (requests.error) throw requests.error;
     if (packages.error) throw packages.error;
@@ -126,13 +202,16 @@ export async function POST(req: Request) {
     const ownerEmailIssue = customerEmailProblem(row.owner_email);
     if (ownerEmailIssue) return fail("invalid_owner_email", ownerEmailIssue, 422);
     const pkg = await ctx.supabase.from("subscription_packages")
-      .select("id,is_active,status,quota_mode,monthly_price,max_devices")
+      .select("id,code,is_active,status,quota_mode,monthly_price,max_devices")
       .eq("id", row.package_id).maybeSingle();
     if (pkg.error) throw pkg.error;
+    const isCustom = pkg.data?.quota_mode === "custom" || pkg.data?.code === "custom";
     if (!pkg.data || !pkg.data.is_active || pkg.data.status !== "active" ||
-        pkg.data.quota_mode !== "standard" || Number(pkg.data.monthly_price) <= 0 || pkg.data.max_devices < 1) {
+        !["standard","custom"].includes(pkg.data.quota_mode) ||
+        (!isCustom && (Number(pkg.data.monthly_price) <= 0 || Number(pkg.data.max_devices ?? 0) < 1))) {
       return fail("package_unavailable", "แพ็กเกจไม่พร้อมเปิดทดลองใช้ กรุณาแก้ไขคำขอ", 409);
     }
+    const approvedCustomTerms = isCustom ? sanitizeCustomTerms(input.custom_terms) : null;
     const claimed = await ctx.supabase.from("store_registration_requests")
       .update({ status: "processing", last_error: null, updated_at: new Date().toISOString() })
       .eq("id", row.id).eq("status", row.status).select("id").maybeSingle();
@@ -154,19 +233,79 @@ export async function POST(req: Request) {
       if (contractRow.error) throw contractRow.error;
       const meta = contractRow.data?.metadata && typeof contractRow.data.metadata === "object" && !Array.isArray(contractRow.data.metadata)
         ? contractRow.data.metadata as Record<string, unknown> : {};
-      const modeSave = await ctx.supabase.from("tenant_subscription_contracts")
-        .update({ metadata: { ...meta, sales_modes: modes, registration_request_id: row.id }, updated_at: new Date().toISOString() })
-        .eq("id", result.contract.id).eq("tenant_id", result.tenant.id);
-      if (modeSave.error) throw modeSave.error;
+      const now = new Date().toISOString();
+
+      if (approvedCustomTerms) {
+        const termsSave = await ctx.supabase.from("tenant_custom_package_terms")
+          .upsert({
+            tenant_id: result.tenant.id,
+            package_id: row.package_id,
+            status: "approved",
+            ...approvedCustomTerms,
+            approved_by: ctx.auth.userId,
+            approved_at: now,
+            updated_at: now
+          }, { onConflict: "tenant_id" })
+          .select("version")
+          .single<{ version: number }>();
+        if (termsSave.error) throw termsSave.error;
+
+        const modeSave = await ctx.supabase.from("tenant_subscription_contracts")
+          .update({
+            max_branches: approvedCustomTerms.max_branches,
+            branch_limit: approvedCustomTerms.max_branches,
+            max_devices: approvedCustomTerms.max_devices,
+            terminal_limit_per_branch: approvedCustomTerms.max_devices,
+            max_users: approvedCustomTerms.max_users,
+            metadata: {
+              ...meta,
+              sales_modes: modes,
+              registration_request_id: row.id,
+              custom_terms_version: termsSave.data.version,
+              custom_registration_approved: true
+            },
+            updated_at: now
+          })
+          .eq("id", result.contract.id).eq("tenant_id", result.tenant.id);
+        if (modeSave.error) throw modeSave.error;
+
+        const branchPolicy = await ctx.supabase.from("branch_login_policies")
+          .update({ max_devices: approvedCustomTerms.max_devices, updated_at: now })
+          .eq("tenant_id", result.tenant.id).eq("branch_id", result.branch.id);
+        if (branchPolicy.error) throw branchPolicy.error;
+
+        const lifecycleResult = await ctx.supabase.from("tenant_data_lifecycle")
+          .select("metadata").eq("tenant_id", result.tenant.id).maybeSingle<{ metadata: Record<string, unknown> | null }>();
+        if (lifecycleResult.error) throw lifecycleResult.error;
+        const lifecycleMeta = lifecycleResult.data?.metadata && typeof lifecycleResult.data.metadata === "object"
+          ? lifecycleResult.data.metadata : {};
+        const lifecycleSave = await ctx.supabase.from("tenant_data_lifecycle")
+          .update({
+            metadata: {
+              ...lifecycleMeta,
+              sales_retention_months: approvedCustomTerms.retention_months,
+              custom_terms_version: termsSave.data.version
+            },
+            updated_at: now
+          }).eq("tenant_id", result.tenant.id);
+        if (lifecycleSave.error) throw lifecycleSave.error;
+      } else {
+        const modeSave = await ctx.supabase.from("tenant_subscription_contracts")
+          .update({ metadata: { ...meta, sales_modes: modes, registration_request_id: row.id }, updated_at: now })
+          .eq("id", result.contract.id).eq("tenant_id", result.tenant.id);
+        if (modeSave.error) throw modeSave.error;
+      }
       const activated = await ctx.supabase.from("store_registration_requests")
         .update({ status: "activated", tenant_id: result.tenant.id, approved_by: ctx.auth.userId,
-          activated_at: new Date().toISOString(), updated_at: new Date().toISOString(), last_error: null })
+          custom_terms: approvedCustomTerms, activated_at: new Date().toISOString(), updated_at: new Date().toISOString(), last_error: null })
         .eq("id", row.id).eq("status", "processing").select("id").maybeSingle();
       if (activated.error || !activated.data) throw new Error("registration_finalize_failed");
       await appendAuditLog({ tenantId: result.tenant.id, branchId: result.branch.id, actorUserId: ctx.auth.userId,
         actorRole: "it_admin", action: "store_registration_activated", targetTable: "store_registration_requests",
         targetId: row.id, module: "it_admin", metadata: {
           store_code: result.store_code, trial_days: 7, package_id: row.package_id, owner_code: ownerCode,
+          package_mode: approvedCustomTerms ? "custom" : "standard",
+          custom_retention_months: approvedCustomTerms?.retention_months ?? null,
           device_setup: "requires_real_device_pairing" } });
 
       let emailDelivery: { status: string; delivery_id?: string; message?: string } = {

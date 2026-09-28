@@ -1,6 +1,6 @@
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
-import { deactivatePackage, updatePackage } from "@/lib/services/it-admin/package-admin-service";
+import { deletePackage, updatePackage } from "@/lib/services/it-admin/package-admin-service";
 
 function parsePackageId(raw: string | undefined) {
   const value = String(raw ?? "").trim();
@@ -44,10 +44,10 @@ export async function DELETE(req: Request, context: { params: Promise<{ packageI
     const { packageId: packageIdParam } = await context.params;
     const packageId = parsePackageId(packageIdParam);
     const body = await req.json().catch(() => ({})) as { reason?: string | null };
-    const updated = await deactivatePackage(adminContext, packageId, body.reason);
+    const updated = await deletePackage(adminContext, packageId, body.reason);
     if (!updated) return fail("package_not_found", "Package was not found.", 404);
 
-    const response = ok({ ...updated, deleted: false, deactivated: true });
+    const response = ok(updated);
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
     return response;
   } catch (error) {

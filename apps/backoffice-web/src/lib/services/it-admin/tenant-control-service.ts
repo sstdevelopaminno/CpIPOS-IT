@@ -56,6 +56,9 @@ type PackageRow = {
   is_active: boolean;
   monthly_price: number | string | null;
   yearly_price: number | string | null;
+  monthly_discount_percent: number | string | null;
+  yearly_discount_percent: number | string | null;
+  quota_mode: string | null;
   max_branches: number | null;
   max_devices: number | null;
   max_users: number | null;
@@ -85,6 +88,30 @@ type ContractDbRow = {
   started_at: string;
   ended_at: string | null;
   metadata: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
+type CustomTermsRow = {
+  tenant_id: string;
+  package_id: string;
+  status: "draft" | "approved" | "active" | "retired";
+  monthly_price: number | string;
+  yearly_price: number | string;
+  monthly_discount_percent: number | string;
+  yearly_discount_percent: number | string;
+  max_branches: number;
+  max_devices: number;
+  max_users: number;
+  retention_months: number;
+  max_products: number | null;
+  monthly_bill_limit: number | null;
+  storage_limit_gb: number | string | null;
+  feature_overrides: Record<string, boolean> | null;
+  notes: string | null;
+  version: number;
+  approved_by: string | null;
+  approved_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -132,6 +159,8 @@ export type TenantControlAction =
   | "create_branch"
   | "update_branch"
   | "update_contract"
+  | "update_custom_package_terms"
+  | "approve_custom_package_request"
   | "prepare_paid_package"
   | "change_package"
   | "update_sales_modes"
@@ -156,6 +185,19 @@ export type TenantControlInput = {
   branch_active?: boolean;
   package_id?: string;
   billing_cycle?: string;
+  custom_monthly_price?: number;
+  custom_yearly_price?: number | null;
+  custom_monthly_discount_percent?: number;
+  custom_yearly_discount_percent?: number;
+  custom_max_branches?: number;
+  custom_max_devices?: number;
+  custom_max_users?: number;
+  custom_retention_months?: number;
+  custom_max_products?: number | null;
+  custom_monthly_bill_limit?: number | null;
+  custom_storage_limit_gb?: number | null;
+  custom_feature_overrides?: Record<string, boolean>;
+  custom_notes?: string;
   start_date?: string;
   end_date?: string;
   auto_calculate_end?: boolean;
@@ -169,7 +211,7 @@ export type TenantControlInput = {
 
 const TENANT_SELECT = "id,code,name,display_name,owner_name,owner_phone,contact_phone,package_id,is_active,logo_url,company_address,created_at,updated_at";
 const BRANCH_SELECT = "id,tenant_id,code,name,address,is_active,created_at,updated_at";
-const PACKAGE_SELECT = "id,code,name,status,is_active,monthly_price,yearly_price,max_branches,max_devices,max_users,max_products,monthly_bill_limit,storage_limit_gb,retention_months,metadata";
+const PACKAGE_SELECT = "id,code,name,status,is_active,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,quota_mode,max_branches,max_devices,max_users,max_products,monthly_bill_limit,storage_limit_gb,retention_months,metadata";
 const CONTRACT_SELECT = "id,tenant_id,package_id,contract_type,billing_interval,deployment_mode,status,branch_limit,terminal_limit_per_branch,max_branches,max_devices,max_users,amount_per_cycle,currency,auto_renew,started_at,ended_at,metadata,created_at,updated_at";
 const LIFECYCLE_SELECT = "tenant_id,lifecycle_status,trial_started_at,trial_expires_at,first_package_started_at,current_package_started_at,subscription_expires_at,access_locked,lock_reason,metadata";
 
@@ -193,6 +235,8 @@ function requireAction(raw: unknown): TenantControlAction {
     "create_branch",
     "update_branch",
     "update_contract",
+    "update_custom_package_terms",
+    "approve_custom_package_request",
     "prepare_paid_package",
     "change_package",
     "update_sales_modes",
@@ -259,10 +303,42 @@ function validateContractWindow(startIso: string, endIso: string) {
   }
 }
 
+function discountedAmount(base: unknown, discount: unknown): number {
+  const amount = Number(base ?? 0);
+  const percent = Number(discount ?? 0);
+  if (!Number.isFinite(amount) || amount < 0) return 0;
+  const normalizedDiscount = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+  return Number((amount * (1 - normalizedDiscount / 100)).toFixed(2));
+}
+
 function packageAmount(pkg: PackageRow, billingCycle: "monthly" | "yearly"): number {
-  const raw = billingCycle === "yearly" ? pkg.yearly_price : pkg.monthly_price;
-  const amount = Number(raw ?? 0);
-  return Number.isFinite(amount) && amount >= 0 ? amount : 0;
+  return billingCycle === "yearly"
+    ? discountedAmount(pkg.yearly_price, pkg.yearly_discount_percent)
+    : discountedAmount(pkg.monthly_price, pkg.monthly_discount_percent);
+}
+
+function customTermsAmount(terms: CustomTermsRow, billingCycle: "monthly" | "yearly"): number {
+  return billingCycle === "yearly"
+    ? discountedAmount(terms.yearly_price, terms.yearly_discount_percent)
+    : discountedAmount(terms.monthly_price, terms.monthly_discount_percent);
+}
+
+function customTermsSnapshot(terms: CustomTermsRow) {
+  return {
+    terms_version: terms.version,
+    monthly_price: Number(terms.monthly_price),
+    yearly_price: Number(terms.yearly_price),
+    monthly_discount_percent: Number(terms.monthly_discount_percent),
+    yearly_discount_percent: Number(terms.yearly_discount_percent),
+    max_branches: terms.max_branches,
+    max_devices: terms.max_devices,
+    max_users: terms.max_users,
+    retention_months: terms.retention_months,
+    max_products: terms.max_products,
+    monthly_bill_limit: terms.monthly_bill_limit,
+    storage_limit_gb: terms.storage_limit_gb == null ? null : Number(terms.storage_limit_gb),
+    feature_overrides: terms.feature_overrides ?? {}
+  };
 }
 
 function effectiveContractStatus(contract: ContractDbRow | null) {
@@ -386,7 +462,7 @@ async function audit(
 
 export async function loadTenantControlCenter(context: ItAdminContext, tenantId: string) {
   const tenant = await loadTenant(context, tenantId);
-  const [branchesResult, packagesResult, contract, accessCode, lifecycle, paymentRequestResult, receiptResult] = await Promise.all([
+  const [branchesResult, packagesResult, contract, accessCode, lifecycle, paymentRequestResult, receiptResult, customTermsResult, featureCatalogResult] = await Promise.all([
     context.supabase.from("branches").select(BRANCH_SELECT).eq("tenant_id", tenantId).order("created_at", { ascending: true }).returns<BranchDbRow[]>(),
     context.supabase
       .from("subscription_packages")
@@ -411,13 +487,25 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
       .eq("tenant_id", tenantId)
       .order("issued_at", { ascending: false })
       .limit(1)
-      .maybeSingle<ReceiptRow>()
+      .maybeSingle<ReceiptRow>(),
+    context.supabase
+      .from("tenant_custom_package_terms")
+      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .eq("tenant_id", tenantId)
+      .maybeSingle<CustomTermsRow>(),
+    context.supabase
+      .from("package_feature_catalog")
+      .select("code,name,description,is_active")
+      .eq("is_active", true)
+      .order("name", { ascending: true })
   ]);
 
   if (branchesResult.error) throw new Error(`tenant_branches_query_failed:${branchesResult.error.message}`);
   if (packagesResult.error) throw new Error(`subscription_packages_query_failed:${packagesResult.error.message}`);
   if (paymentRequestResult.error) throw new Error(`subscription_payment_request_query_failed:${paymentRequestResult.error.message}`);
   if (receiptResult.error) throw new Error(`subscription_receipt_query_failed:${receiptResult.error.message}`);
+  if (customTermsResult.error) throw new Error(`custom_package_terms_query_failed:${customTermsResult.error.message}`);
+  if (featureCatalogResult.error) throw new Error(`feature_catalog_query_failed:${featureCatalogResult.error.message}`);
 
   const packages = packagesResult.data ?? [];
   const currentPackageId = contract?.package_id ?? tenant.package_id;
@@ -493,7 +581,11 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
         has_evidence: Boolean(paymentRequestResult.data.evidence_url),
         submitted_at: paymentRequestResult.data.submitted_at,
         reviewed_at: paymentRequestResult.data.reviewed_at,
-        kind: paymentRequestResult.data.metadata?.kind === "payment_notice" ? "payment_notice" : "renewal_intent",
+        kind: paymentRequestResult.data.metadata?.kind === "payment_notice"
+          ? "payment_notice"
+          : paymentRequestResult.data.metadata?.kind === "custom_quote_request"
+            ? "custom_quote_request"
+            : "renewal_intent",
         billing_interval: paymentRequestResult.data.metadata?.billing_interval === "yearly" ? "yearly" : "monthly",
         expected_amount: paymentRequestResult.data.metadata?.expected_amount == null
           ? null
@@ -510,6 +602,26 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
         amount: Number(receiptResult.data.amount),
         currency: receiptResult.data.currency || "THB"
       } : null
+    },
+    custom_package: {
+      terms: customTermsResult.data
+        ? {
+            ...customTermsResult.data,
+            monthly_price: Number(customTermsResult.data.monthly_price),
+            yearly_price: Number(customTermsResult.data.yearly_price),
+            monthly_discount_percent: Number(customTermsResult.data.monthly_discount_percent),
+            yearly_discount_percent: Number(customTermsResult.data.yearly_discount_percent),
+            storage_limit_gb: customTermsResult.data.storage_limit_gb == null ? null : Number(customTermsResult.data.storage_limit_gb),
+            effective_monthly_price: customTermsAmount(customTermsResult.data, "monthly"),
+            effective_yearly_price: customTermsAmount(customTermsResult.data, "yearly")
+          }
+        : null,
+      feature_catalog: featureCatalogResult.data ?? [],
+      has_open_request: Boolean(
+        paymentRequestResult.data &&
+        ["pending","under_review"].includes(paymentRequestResult.data.status) &&
+        paymentRequestResult.data.metadata?.kind === "custom_quote_request"
+      )
     },
     pos_notice: contract
       ? {
@@ -674,6 +786,208 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     );
   }
 
+  if (action === "update_custom_package_terms") {
+    const customPackage = await context.supabase.from("subscription_packages")
+      .select(PACKAGE_SELECT)
+      .eq("code","custom").eq("is_active",true).eq("status","active")
+      .maybeSingle<PackageRow>();
+    if (customPackage.error) throw new Error(`custom_package_query_failed:${customPackage.error.message}`);
+    if (!customPackage.data) throw new ItAdminGuardError("custom_package_not_available","ไม่พบแพ็กเกจ CUSTOM ที่เปิดใช้งาน",409);
+
+    const currentResult = await context.supabase.from("tenant_custom_package_terms")
+      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .eq("tenant_id",tenantId).maybeSingle<CustomTermsRow>();
+    if (currentResult.error) throw new Error(`custom_terms_query_failed:${currentResult.error.message}`);
+    const current = currentResult.data;
+
+    const readNumber = (value: unknown, fallback: number, min: number, max: number, label: string) => {
+      const parsed = Number(value ?? fallback);
+      if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+        throw new ItAdminGuardError("custom_terms_invalid", `${label} ไม่ถูกต้อง`, 422);
+      }
+      return parsed;
+    };
+    const monthlyPrice = readNumber(input.custom_monthly_price, Number(current?.monthly_price ?? 0), 0, 10_000_000, "ราคารายเดือน");
+    const yearlyPrice = readNumber(input.custom_yearly_price, Number(current?.yearly_price ?? 0), 0, 100_000_000, "ราคารายปี");
+    const monthlyDiscount = readNumber(input.custom_monthly_discount_percent, Number(current?.monthly_discount_percent ?? 0), 0, 100, "ส่วนลดรายเดือน");
+    const yearlyDiscount = readNumber(input.custom_yearly_discount_percent, Number(current?.yearly_discount_percent ?? 0), 0, 100, "ส่วนลดรายปี");
+    const maxBranches = Math.trunc(readNumber(input.custom_max_branches, current?.max_branches ?? 1, 1, 10000, "จำนวนสาขา"));
+    const maxDevices = Math.trunc(readNumber(input.custom_max_devices, current?.max_devices ?? 1, 1, 10000, "จำนวนเครื่องขาย"));
+    const maxUsers = Math.trunc(readNumber(input.custom_max_users, current?.max_users ?? 1, 1, 100000, "จำนวนผู้ใช้งาน"));
+    const retentionMonths = Math.trunc(readNumber(input.custom_retention_months, current?.retention_months ?? 6, 1, 120, "ระยะเก็บข้อมูล"));
+
+    const nullablePositiveInt = (value: unknown, fallback: number | null, max: number) => {
+      if (value === null) return null;
+      if (value === undefined) return fallback;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > max) {
+        throw new ItAdminGuardError("custom_terms_invalid","โควตาเพิ่มเติมไม่ถูกต้อง",422);
+      }
+      return Math.trunc(parsed);
+    };
+    const nullablePositive = (value: unknown, fallback: number | null, max: number) => {
+      if (value === null) return null;
+      if (value === undefined) return fallback;
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > max) {
+        throw new ItAdminGuardError("custom_terms_invalid","Storage ไม่ถูกต้อง",422);
+      }
+      return Number(parsed.toFixed(2));
+    };
+
+    const activeBranches = await context.supabase.from("branches")
+      .select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("is_active",true);
+    const activeDevices = await context.supabase.from("branch_devices")
+      .select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("is_active",true).eq("status","active");
+    const roleUsers = await context.supabase.from("user_branch_roles").select("user_id").eq("tenant_id",tenantId);
+    if (activeBranches.error || activeDevices.error || roleUsers.error) throw new Error("custom_terms_usage_check_failed");
+    const userCount = new Set((roleUsers.data ?? []).map((row) => String(row.user_id))).size;
+    if (maxBranches < Number(activeBranches.count ?? 0) || maxDevices < Number(activeDevices.count ?? 0) || maxUsers < userCount) {
+      throw new ItAdminGuardError("custom_terms_below_usage","โควตาใหม่ต้องไม่น้อยกว่าจำนวนที่ร้านใช้งานอยู่",409);
+    }
+
+    const catalog = await context.supabase.from("package_feature_catalog")
+      .select("code").eq("is_active",true).returns<Array<{code:string}>>();
+    if (catalog.error) throw new Error(`feature_catalog_query_failed:${catalog.error.message}`);
+    const allowedCodes = new Set((catalog.data ?? []).map((row)=>row.code));
+    const featureOverrides: Record<string,boolean> = {};
+    for (const [code,enabled] of Object.entries(input.custom_feature_overrides ?? current?.feature_overrides ?? {})) {
+      if (allowedCodes.has(code) && typeof enabled === "boolean") featureOverrides[code]=enabled;
+    }
+
+    const payload = {
+      tenant_id: tenantId,
+      package_id: customPackage.data.id,
+      status: "draft",
+      monthly_price: Number(monthlyPrice.toFixed(2)),
+      yearly_price: Number(yearlyPrice.toFixed(2)),
+      monthly_discount_percent: Number(monthlyDiscount.toFixed(2)),
+      yearly_discount_percent: Number(yearlyDiscount.toFixed(2)),
+      max_branches: maxBranches,
+      max_devices: maxDevices,
+      max_users: maxUsers,
+      retention_months: retentionMonths,
+      max_products: nullablePositiveInt(input.custom_max_products,current?.max_products ?? null,10_000_000),
+      monthly_bill_limit: nullablePositiveInt(input.custom_monthly_bill_limit,current?.monthly_bill_limit ?? null,100_000_000),
+      storage_limit_gb: nullablePositive(input.custom_storage_limit_gb,current?.storage_limit_gb == null ? null : Number(current.storage_limit_gb),1_000_000),
+      feature_overrides: featureOverrides,
+      notes: optionalText(input.custom_notes,1000),
+      approved_by: null,
+      approved_at: null,
+      updated_at: now
+    };
+    const saved = await context.supabase.from("tenant_custom_package_terms")
+      .upsert(payload,{onConflict:"tenant_id"})
+      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .single<CustomTermsRow>();
+    if (saved.error) throw new Error(`custom_terms_save_failed:${saved.error.message}`);
+
+    await audit(context,tenantId,"custom_package_terms_draft_saved","tenant_custom_package_terms",tenantId,
+      current ? asRecord(current) : {}, asRecord(saved.data), { package_id: customPackage.data.id });
+  }
+
+  if (action === "approve_custom_package_request") {
+    const billingCycle = requireBillingCycle(input.billing_cycle);
+    const customPackage = await context.supabase.from("subscription_packages")
+      .select(PACKAGE_SELECT).eq("code","custom").eq("is_active",true).eq("status","active")
+      .maybeSingle<PackageRow>();
+    if (customPackage.error) throw new Error(`custom_package_query_failed:${customPackage.error.message}`);
+    if (!customPackage.data) throw new ItAdminGuardError("custom_package_not_available","ไม่พบแพ็กเกจ CUSTOM ที่เปิดใช้งาน",409);
+
+    const termsResult = await context.supabase.from("tenant_custom_package_terms")
+      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .eq("tenant_id",tenantId).eq("package_id",customPackage.data.id).maybeSingle<CustomTermsRow>();
+    if (termsResult.error) throw new Error(`custom_terms_query_failed:${termsResult.error.message}`);
+    if (!termsResult.data) throw new ItAdminGuardError("custom_terms_required","กรุณากำหนดรายละเอียด CUSTOM ก่อนอนุมัติ",422);
+    const terms = termsResult.data;
+    const expectedAmount = customTermsAmount(terms,billingCycle);
+    if (expectedAmount <= 0) {
+      throw new ItAdminGuardError("custom_price_required",
+        billingCycle === "yearly" ? "กรุณาตั้งราคารายปีของ CUSTOM ก่อนอนุมัติ" : "กรุณาตั้งราคารายเดือนของ CUSTOM ก่อนอนุมัติ",422);
+    }
+
+    const requestResult = await context.supabase.from("tenant_subscription_payment_requests")
+      .select("id,status,requested_package_id,metadata,amount_reported,evidence_url")
+      .eq("tenant_id",tenantId).eq("requested_package_id",customPackage.data.id)
+      .in("status",["pending","under_review"]).order("created_at",{ascending:false}).limit(1)
+      .maybeSingle<{id:string;status:string;requested_package_id:string|null;metadata:Record<string,unknown>|null;amount_reported:number|null;evidence_url:string|null}>();
+    if (requestResult.error) throw new Error(`custom_request_query_failed:${requestResult.error.message}`);
+    if (!requestResult.data || requestResult.data.metadata?.kind !== "custom_quote_request") {
+      throw new ItAdminGuardError("custom_request_not_found","ไม่พบคำขอเปลี่ยนเป็น CUSTOM ที่รอการตกลง",409);
+    }
+    if (requestResult.data.evidence_url) {
+      throw new ItAdminGuardError("custom_request_already_paid","คำขอนี้มีหลักฐานการชำระแล้ว ไม่สามารถแก้เงื่อนไขก่อน Settlement ได้",409);
+    }
+
+    const snapshot = customTermsSnapshot(terms);
+    const requestMetadata = {
+      ...(requestResult.data.metadata ?? {}),
+      kind: "payment_notice",
+      source: "it_custom_agreement",
+      billing_interval: billingCycle,
+      expected_amount: expectedAmount,
+      custom_terms_snapshot: snapshot,
+      custom_terms_version: terms.version,
+      custom_agreed_at: now,
+      custom_agreed_by: context.auth.userId,
+      note: optionalText(input.admin_reason,600) ?? (requestResult.data.metadata?.note ?? "")
+    };
+    const requestUpdate = await context.supabase.from("tenant_subscription_payment_requests")
+      .update({
+        status:"pending",
+        amount_reported:null,
+        evidence_url:null,
+        reviewed_at:null,
+        reviewed_by:null,
+        review_note:null,
+        metadata:requestMetadata,
+        updated_at:now
+      }).eq("id",requestResult.data.id).eq("tenant_id",tenantId);
+    if (requestUpdate.error) throw new Error(`custom_request_approval_failed:${requestUpdate.error.message}`);
+
+    const termsUpdate = await context.supabase.from("tenant_custom_package_terms")
+      .update({status:"approved",approved_by:context.auth.userId,approved_at:now,updated_at:now})
+      .eq("tenant_id",tenantId).eq("package_id",customPackage.data.id);
+    if (termsUpdate.error) throw new Error(`custom_terms_approval_failed:${termsUpdate.error.message}`);
+
+    const lifecycle = await loadLifecycle(context,tenantId);
+    if (lifecycle) {
+      const lifecycleMetadata = asRecord(lifecycle.metadata);
+      await updateLifecycle(context,tenantId,{
+        metadata:{...lifecycleMetadata,sales_retention_months:terms.retention_months,custom_terms_version:terms.version}
+      });
+    }
+
+    const overrides = terms.feature_overrides ?? {};
+    const existingFeatures = await context.supabase.from("tenant_feature_subscriptions")
+      .select("id,feature_code,source").eq("tenant_id",tenantId).is("branch_id",null)
+      .returns<Array<{id:string;feature_code:string;source:string}>>();
+    if (existingFeatures.error) throw new Error(`custom_feature_query_failed:${existingFeatures.error.message}`);
+    const existingByCode = new Map((existingFeatures.data ?? []).map((row)=>[row.feature_code,row]));
+    for (const row of existingFeatures.data ?? []) {
+      if (row.source === "custom_contract" && !Object.prototype.hasOwnProperty.call(overrides,row.feature_code)) {
+        const removed = await context.supabase.from("tenant_feature_subscriptions").delete().eq("id",row.id);
+        if (removed.error) throw new Error(`custom_feature_remove_failed:${removed.error.message}`);
+      }
+    }
+    for (const [featureCode,isEnabled] of Object.entries(overrides)) {
+      if (typeof isEnabled !== "boolean") continue;
+      const existing = existingByCode.get(featureCode);
+      const result = existing
+        ? await context.supabase.from("tenant_feature_subscriptions")
+            .update({is_enabled:isEnabled,source:"custom_contract",updated_at:now}).eq("id",existing.id)
+        : await context.supabase.from("tenant_feature_subscriptions")
+            .insert({tenant_id:tenantId,branch_id:null,feature_code:featureCode,is_enabled:isEnabled,source:"custom_contract"});
+      if (result.error) throw new Error(`custom_feature_save_failed:${result.error.message}`);
+    }
+
+    invalidateTenantFeatureGateCache(tenantId);
+    await audit(context,tenantId,"custom_package_request_agreed","tenant_subscription_payment_requests",requestResult.data.id,
+      asRecord(requestResult.data),{status:"pending",metadata:requestMetadata},{
+        expected_amount:expectedAmount,billing_interval:billingCycle,custom_terms_version:terms.version
+      });
+  }
+
   if (action === "change_package") {
     throw new ItAdminGuardError(
       "paid_activation_requires_settlement",
@@ -696,13 +1010,26 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (packageResult.error) throw new Error(`package_query_failed:${packageResult.error.message}`);
     if (!packageResult.data) throw new ItAdminGuardError("package_not_available", "Selected package is not available.", 409);
 
-    const expectedAmount = packageAmount(packageResult.data, billingCycle);
+    let customTermsForPayment: CustomTermsRow | null = null;
+    let expectedAmount = packageAmount(packageResult.data, billingCycle);
+    if (packageResult.data.quota_mode === "custom" || packageResult.data.code === "custom") {
+      const customTerms = await context.supabase.from("tenant_custom_package_terms")
+        .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+        .eq("tenant_id",tenantId).eq("package_id",packageId)
+        .in("status",["approved","active"]).maybeSingle<CustomTermsRow>();
+      if (customTerms.error) throw new Error(`custom_terms_query_failed:${customTerms.error.message}`);
+      if (!customTerms.data) {
+        throw new ItAdminGuardError("custom_terms_required","กรุณากำหนดและอนุมัติรายละเอียด CUSTOM ของร้านก่อนสร้างรายการชำระ",422);
+      }
+      customTermsForPayment = customTerms.data;
+      expectedAmount = customTermsAmount(customTerms.data,billingCycle);
+    }
     if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
       throw new ItAdminGuardError(
         billingCycle === "yearly" ? "yearly_price_not_configured" : "package_price_not_configured",
         billingCycle === "yearly"
           ? "แพ็กเกจนี้ยังไม่มีราคารายปี กรุณาตั้งราคาในระบบ IT ก่อนสร้างรายการชำระ"
-          : "แพ็กเกจนี้ไม่มีราคากลาง กรุณาใช้สัญญา CUSTOM ที่กำหนดราคาเฉพาะร้าน",
+          : "แพ็กเกจนี้ยังไม่มีราคาที่พร้อมเรียกเก็บ",
         422
       );
     }
@@ -739,6 +1066,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       billing_interval: billingCycle,
       expected_amount: expectedAmount,
       source: "it_tenant_control",
+      ...(customTermsForPayment ? { source: "it_custom_agreement" } : {}),
       created_by_it: context.auth.userId,
       payer_name: "",
       transfer_reference: "",
@@ -746,7 +1074,11 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       note: reason ?? "",
       requested_start_date: cleanText(input.start_date, 10) || null,
       auto_renew_requested: typeof input.auto_renew === "boolean" ? input.auto_renew : false,
-      receipt_policy: "issue_only_after_verified_settlement"
+      receipt_policy: "issue_only_after_verified_settlement",
+      ...(customTermsForPayment ? {
+        custom_terms_snapshot: customTermsSnapshot(customTermsForPayment),
+        custom_terms_version: customTermsForPayment.version
+      } : {})
     };
 
     const inserted = await context.supabase
