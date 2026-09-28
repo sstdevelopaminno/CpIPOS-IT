@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LanguageSwitcher } from "@/components/language/language-switcher";
+import { ItSupportPushControl } from "@/components/it-admin/support-push-control";
 import type { Language } from "@/lib/i18n";
 import styles from "./app-shell.module.css";
 
@@ -273,6 +274,7 @@ export function AppShell({
   const [expandedTrees, setExpandedTrees] = useState<Record<string, boolean>>({});
   const [loggingOut, setLoggingOut] = useState(false);
   const [supportUnread, setSupportUnread] = useState(0);
+  const [requestUnread, setRequestUnread] = useState(0);
 
   useEffect(() => {
     try {
@@ -287,8 +289,16 @@ export function AppShell({
       const custom = event as CustomEvent<{ total?: number }>;
       setSupportUnread(Math.max(0, Number(custom.detail?.total ?? 0)));
     };
+    const onRequestUnread = (event: Event) => {
+      const custom = event as CustomEvent<{ total?: number }>;
+      setRequestUnread(Math.max(0, Number(custom.detail?.total ?? 0)));
+    };
     window.addEventListener("cpipos-support-chat-unread", onUnread);
-    return () => window.removeEventListener("cpipos-support-chat-unread", onUnread);
+    window.addEventListener("cpipos-support-request-unread", onRequestUnread);
+    return () => {
+      window.removeEventListener("cpipos-support-chat-unread", onUnread);
+      window.removeEventListener("cpipos-support-request-unread", onRequestUnread);
+    };
   }, []);
 
   const groups = useMemo(() => {
@@ -461,6 +471,9 @@ export function AppShell({
                           {targetHref === "/it-admin/support-chat" && supportUnread > 0 ? (
                             <span className={styles.supportBadge}>{supportUnread > 99 ? "99+" : supportUnread}</span>
                           ) : null}
+                          {targetHref === "/it-admin/requests" && requestUnread > 0 ? (
+                            <span className={styles.supportBadge}>{requestUnread > 99 ? "99+" : requestUnread}</span>
+                          ) : null}
                           <span className={`${styles.navCaret} ${treeOpen ? styles.navCaretOpen : ""}`} aria-hidden="true">⌄</span>
                         </button>
                       ) : (
@@ -476,6 +489,9 @@ export function AppShell({
                           <span className={styles.navLabel}>{item.label}</span>
                           {targetHref === "/it-admin/support-chat" && supportUnread > 0 ? (
                             <span className={styles.supportBadge}>{supportUnread > 99 ? "99+" : supportUnread}</span>
+                          ) : null}
+                          {targetHref === "/it-admin/requests" && requestUnread > 0 ? (
+                            <span className={styles.supportBadge}>{requestUnread > 99 ? "99+" : requestUnread}</span>
                           ) : null}
                         </Link>
                       )}
@@ -568,6 +584,7 @@ export function AppShell({
           </div>
 
           <div className={styles.topbarActions}>
+            <ItSupportPushControl />
             <LanguageSwitcher
               currentLanguage={language}
               label={languageLabel}

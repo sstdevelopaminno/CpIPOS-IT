@@ -112,11 +112,21 @@ export function SupportChatNotifier() {
     window.addEventListener("online", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshOnFocus);
 
+    const onPush = (event: Event) => {
+      const payload = (event as CustomEvent<{ title?: string; body?: string; kind?: string }>).detail;
+      if (payload?.kind !== "chat") return;
+      setToast({ title: payload.title || "มีแชทใหม่", message: payload.body || "" });
+      window.setTimeout(() => setToast(null), 5000);
+      void loadUnreadTotal().then((total) => { if (alive) notifyUnread(total); }).catch(() => null);
+    };
+    window.addEventListener("cpipos-it-push-notification", onPush);
+
     return () => {
       alive = false;
       window.removeEventListener("focus", refreshOnFocus);
       window.removeEventListener("online", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshOnFocus);
+      window.removeEventListener("cpipos-it-push-notification", onPush);
       void supabase.removeChannel(channel);
     };
   }, []);

@@ -2,6 +2,7 @@ import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
 import { buildPaymentConfirmationEmail, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
+import { dispatchSupportPush } from "@/lib/support-chat/support-push";
 
 export const dynamic = "force-dynamic";
 
@@ -162,6 +163,16 @@ export async function POST(request: Request, { params }: Params) {
           actorUserId: auth.userId
         });
       }
+
+      await dispatchSupportPush({
+        audience:"store",
+        tenant_id:receiptResult.data.tenant_id,
+        kind:"request",
+        title:"ยืนยันการชำระเงินแล้ว",
+        body:`เลขที่ใบเสร็จ ${receiptResult.data.receipt_number}`,
+        url:"/preview/pos/payments/package",
+        tag:`subscription-request:${requestId}`
+      }).catch(()=>null);
 
       await appendAuditLog({
         tenantId: receiptResult.data.tenant_id,

@@ -11,6 +11,7 @@ import {
   type SupportChatHead
 } from "@/lib/support-chat/support-chat-service";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
+import { dispatchSupportPush } from "@/lib/support-chat/support-push";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -115,7 +116,18 @@ export async function POST(
           message,
           attachment: body?.attachment ?? null
         });
-        await mirrorSupportChatHead(data.head);
+        await Promise.allSettled([
+          mirrorSupportChatHead(data.head),
+          dispatchSupportPush({
+            audience: "store",
+            tenant_id: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : null,
+            kind: "chat",
+            title: "ข้อความใหม่จาก IT Support",
+            body: preview || "มีข้อความใหม่จาก IT Support",
+            url: "/preview/pos/payments/support",
+            tag: `support-chat:${conversationId}`
+          })
+        ]);
         await appendAuditLog({
           tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
           actorUserId: auth.auth.userId,

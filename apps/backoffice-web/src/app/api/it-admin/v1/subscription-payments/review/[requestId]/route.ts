@@ -1,6 +1,7 @@
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
+import { dispatchSupportPush } from "@/lib/support-chat/support-push";
 
 export const dynamic = "force-dynamic";
 type Params = { params: Promise<{requestId:string}> };
@@ -55,6 +56,15 @@ export async function POST(request:Request,{params}:Params) {
       beforeData:{status:previous.status},afterData:{status},
       metadata:{note},ipAddress:requestMeta.ipAddress??undefined,userAgent:requestMeta.userAgent??undefined
     });
+    await dispatchSupportPush({
+      audience:"store",
+      tenant_id:previous.tenant_id,
+      kind:"request",
+      title:action==="reject" ? "คำขอถูกปฏิเสธ" : "IT รับคำขอแล้ว",
+      body:action==="reject" ? (note || "กรุณาตรวจสอบรายละเอียดคำขอ") : "คำขอของคุณอยู่ระหว่างการตรวจสอบ",
+      url:"/preview/pos/payments/package",
+      tag:`subscription-request:${requestId}`
+    }).catch(()=>null);
     const response=ok({request:result.data});
     response.headers.set("cache-control","private, no-store");
     return response;

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth-context";
 import { getCurrentLanguage, t, type Language } from "@/lib/i18n";
 import { SupportChatNotifier } from "@/components/it-admin/support-chat-notifier";
+import { SupportRequestNotifier } from "@/components/it-admin/support-request-notifier";
 import "./it-admin-scroll.css";
 
 const copy = {
@@ -39,7 +40,8 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
-      supportChat: "Support Chat",
+      supportChat: "แชท",
+      customerRequests: "คำขอจากลูกค้า",
       supportChatInbox: "กล่องสนทนา",
       supportHistory: "สมุดบันทึกแชท",
       development: "Development / Source Control",
@@ -81,7 +83,8 @@ const copy = {
       incidents: "Incidents",
       audit: "Audit Logs",
       emergencyBroadcast: "Emergency Broadcast",
-      supportChat: "Support Chat",
+      supportChat: "Chat",
+      customerRequests: "Customer Requests",
       supportChatInbox: "Inbox",
       supportHistory: "Chat Notebook",
       development: "Development / Source Control",
@@ -124,6 +127,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
       { href: "/it-admin/pos-users", label: text.items.users, group: text.groups.customer, icon: "users" },
       { href: "/it-admin/subscription-payments", label: text.items.subscriptionPayments, group: text.groups.commercial, icon: "package" },
       { href: "/it-admin/license-issuer", label: text.items.desktopLicense, group: text.groups.commercial, icon: "entitlement" },
+      { href: "/it-admin/requests", label: text.items.customerRequests, group: text.groups.operations, icon: "audit" },
       { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat",
         children: [
           { href: "/it-admin/support-chat", label: text.items.supportChatInbox },
@@ -151,6 +155,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
+    { href: "/it-admin/requests", label: text.items.customerRequests, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat",
         children: [
           { href: "/it-admin/support-chat", label: text.items.supportChatInbox },
@@ -182,6 +187,7 @@ export default async function ItAdminLayout({ children }: { children: ReactNode 
       restrictToNavigation={auth.platformRole === "it_admin"}
     >
       <SupportChatNotifier />
+      <SupportRequestNotifier />
       {children}
     </AppShell>
   );
