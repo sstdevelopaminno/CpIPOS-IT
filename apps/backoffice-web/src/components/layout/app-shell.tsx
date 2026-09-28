@@ -35,6 +35,7 @@ export type AppShellNavIcon =
   | "incident"
   | "audit"
   | "broadcast"
+  | "chat"
   | "code"
   | "settings";
 
@@ -181,6 +182,15 @@ function NavIcon({ name }: { name: AppShellNavIcon }) {
     );
   }
 
+  if (name === "chat") {
+    return (
+      <svg {...common}>
+        <path d="M21 15a4 4 0 01-4 4H8l-5 3 1.7-5A8 8 0 1121 15z" />
+        <path d="M8 10h8M8 14h5" />
+      </svg>
+    );
+  }
+
   if (name === "audit") {
     return (
       <svg {...common}>
@@ -262,6 +272,7 @@ export function AppShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedTrees, setExpandedTrees] = useState<Record<string, boolean>>({});
   const [loggingOut, setLoggingOut] = useState(false);
+  const [supportUnread, setSupportUnread] = useState(0);
 
   useEffect(() => {
     try {
@@ -269,6 +280,15 @@ export function AppShell({
     } catch {
       // Storage can be unavailable in hardened/private browser contexts.
     }
+  }, []);
+
+  useEffect(() => {
+    const onUnread = (event: Event) => {
+      const custom = event as CustomEvent<{ total?: number }>;
+      setSupportUnread(Math.max(0, Number(custom.detail?.total ?? 0)));
+    };
+    window.addEventListener("cpipos-support-chat-unread", onUnread);
+    return () => window.removeEventListener("cpipos-support-chat-unread", onUnread);
   }, []);
 
   const groups = useMemo(() => {
@@ -451,6 +471,9 @@ export function AppShell({
                         >
                           <span className={styles.navIcon}><NavIcon name={item.icon} /></span>
                           <span className={styles.navLabel}>{item.label}</span>
+                          {targetHref === "/it-admin/support-chat" && supportUnread > 0 ? (
+                            <span className={styles.supportBadge}>{supportUnread > 99 ? "99+" : supportUnread}</span>
+                          ) : null}
                         </Link>
                       )}
                       {hasChildren && treeOpen ? (

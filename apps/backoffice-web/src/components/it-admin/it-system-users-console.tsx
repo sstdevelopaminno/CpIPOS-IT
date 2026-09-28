@@ -8,6 +8,7 @@ type ItUser = {
   id: string;
   email: string;
   full_name: string;
+  avatar_url: string;
   platform_role: ItRole;
   is_active: boolean;
   created_at: string | null;
@@ -27,6 +28,7 @@ type FormState = {
   is_active: boolean;
   password: string;
   security_pin: string;
+  avatar_url: string;
   reason: string;
 };
 
@@ -38,6 +40,7 @@ const emptyForm: FormState = {
   is_active: true,
   password: "",
   security_pin: "",
+  avatar_url: "",
   reason: ""
 };
 
@@ -301,6 +304,7 @@ export function ItSystemUsersConsole() {
                         is_active: user.is_active,
                         password: "",
                         security_pin: "",
+                        avatar_url: user.avatar_url || "",
                         reason: ""
                       })} className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-bold text-blue-700">แก้ไข</button>
                       <button type="button" disabled={saving} onClick={() => void setActive(user, !user.is_active)}
@@ -351,6 +355,17 @@ export function ItSystemUsersConsole() {
                   <option value="active">เปิดใช้งาน</option>
                   <option value="inactive">ปิดใช้งาน</option>
                 </select>
+              </label>
+              <label className="grid gap-2 md:col-span-2">
+                <span className="text-sm font-bold text-slate-700">รูปโปรไฟล์ Support (URL)</span>
+                <input
+                  type="url"
+                  value={form.avatar_url}
+                  onChange={(event) => setForm({ ...form, avatar_url: event.target.value.slice(0, 1000) })}
+                  placeholder="https://...  · ว่างไว้จะใช้โลโก้ CpIPOS"
+                  className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+                />
+                <span className="text-xs text-slate-500">ใช้แสดงใน Support Chat ฝั่งร้านค้า หากไม่ใส่จะใช้โลโก้ระบบแทน</span>
               </label>
               <label className="grid gap-2 md:col-span-2">
                 <span className="text-sm font-bold text-slate-700">Security PIN สำหรับยืนยันคำสั่ง Development Center</span>
