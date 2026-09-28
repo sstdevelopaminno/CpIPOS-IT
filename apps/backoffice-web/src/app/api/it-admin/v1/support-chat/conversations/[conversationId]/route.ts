@@ -17,6 +17,7 @@ type Conversation = Record<string, unknown> & {
   id?: string;
   tenant_id?: string;
   assigned_user_id?: string | null;
+  status?: string;
 };
 
 export async function GET(
@@ -32,7 +33,7 @@ export async function GET(
       bridge, "get_messages", { conversation_id: conversationId }
     );
 
-    if (!data.conversation.assigned_user_id) {
+    if (!data.conversation.assigned_user_id && data.conversation.status !== "closed") {
       const claimed = await callSupportChat<{ conversation: Conversation; head: SupportChatHead }>(
         bridge, "claim_conversation", { conversation_id: conversationId }
       );
