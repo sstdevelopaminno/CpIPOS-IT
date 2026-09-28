@@ -119,20 +119,32 @@ export async function POST(request: Request, { params }: Params) {
       userAgent: requestMeta.userAgent ?? undefined
     });
 
+    const receiptResult = await supabase.from("tenant_subscription_receipts")
+      .select("id,tenant_id,receipt_number,amount,currency,customer_snapshot,package_snapshot")
+      .eq("id", settlement.receipt_id).maybeSingle();
+    if (receiptResult.error) throw receiptResult.error;
+    if (!receiptResult.data) throw new Error("settlement_receipt_not_found");
+
+    // Customer runtime is already unlocked atomically by the settlement RPC.
+    // Push the confirmation before email delivery so notification latency is
+    // never coupled to the mail provider.
+    await dispatchSupportPush({
+      audience:"store",
+      tenant_id:receiptResult.data.tenant_id,
+      kind:"request",
+      title:"ยืนยันการชำระเงินแล้ว",
+      body:`อนุมัติแพ็กเกจแล้ว · ใบเสร็จ ${receiptResult.data.receipt_number}`,
+      url:"/preview/pos/payments/package",
+      tag:`subscription-request:${requestId}`
+    }).catch(()=>null);
+
     let emailDelivery: { status: string; delivery_id?: string; message?: string } = {
       status: "failed",
       message: "ยังไม่ได้ส่งอีเมลยืนยันการชำระ"
     };
     try {
-      const [receiptResult, settingsResult] = await Promise.all([
-        supabase.from("tenant_subscription_receipts")
-          .select("id,tenant_id,receipt_number,amount,currency,customer_snapshot,package_snapshot")
-          .eq("id", settlement.receipt_id).maybeSingle(),
-        supabase.from("it_communication_settings")
-          .select("billing_email,support_email").eq("id", "default").maybeSingle()
-      ]);
-      if (receiptResult.error) throw receiptResult.error;
-      if (!receiptResult.data) throw new Error("settlement_receipt_not_found_for_email");
+      const settingsResult = await supabase.from("it_communication_settings")
+        .select("billing_email,support_email").eq("id", "default").maybeSingle();
 
       const customer = obj(receiptResult.data.customer_snapshot);
       const pkg = obj(receiptResult.data.package_snapshot);
@@ -163,16 +175,6 @@ export async function POST(request: Request, { params }: Params) {
           actorUserId: auth.userId
         });
       }
-
-      await dispatchSupportPush({
-        audience:"store",
-        tenant_id:receiptResult.data.tenant_id,
-        kind:"request",
-        title:"ยืนยันการชำระเงินแล้ว",
-        body:`เลขที่ใบเสร็จ ${receiptResult.data.receipt_number}`,
-        url:"/preview/pos/payments/package",
-        tag:`subscription-request:${requestId}`
-      }).catch(()=>null);
 
       await appendAuditLog({
         tenantId: receiptResult.data.tenant_id,
