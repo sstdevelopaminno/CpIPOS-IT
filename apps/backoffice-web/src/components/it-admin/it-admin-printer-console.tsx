@@ -23,12 +23,10 @@ const COPY={
   eyebrow:"ระบบพิมพ์ / รีโมต",
   title:"เครื่องพิมพ์ / Print Agent",
   desc:"จัดการเครื่องพิมพ์และ Print Agent จากศูนย์กลาง พร้อมค้นหา แก้ไข ทดสอบ และลบรายการที่เกี่ยวข้อง",
-  refresh:"รีเฟรช",remote:"ค้นหาจากระยะไกล",search:"ค้นหาร้าน / สาขา / เครื่อง / Agent / รุ่น",
-  all:"ทั้งหมด",printers:"เครื่องพิมพ์",agents:"Print Agent",active:"ใช้งาน",online:"ออนไลน์",targets:"เครื่อง POS ที่สั่งตรวจได้",
+  refresh:"รีเฟรช",search:"ค้นหาร้าน / สาขา / เครื่อง / Agent / รุ่น",
+  all:"ทั้งหมด",printers:"เครื่องพิมพ์",agents:"Print Agent",active:"ใช้งาน",online:"ออนไลน์",
   type:"ประเภท",store:"ร้าน",branch:"สาขา",name:"ชื่อ",detail:"รุ่น / รหัสเครื่อง",connection:"การเชื่อมต่อ",status:"สถานะ",seen:"พบล่าสุด",actions:"จัดการ",
   edit:"แก้ไข",test:"ทดสอบ",remove:"ลบ",save:"บันทึก",cancel:"ยกเลิก",close:"ปิด",
-  remoteQueued:"ส่งคำสั่งค้นหาระยะไกลแล้ว ระบบจะรับ inventory ใหม่จาก heartbeat/MDM โดยอัตโนมัติ",
-  browserNote:"Web App/Browser ไม่สามารถสแกน USB/Bluetooth แบบเงียบได้ ต้องให้ผู้ใช้หน้าเครื่องอนุญาตครั้งแรกตามข้อจำกัดของ Browser หลังจากนั้น IT จะเห็น Agent/อุปกรณ์จาก heartbeat ได้",
   confirmDelete:"ยืนยันลบรายการนี้ออกจากรายการใช้งาน? ประวัติงานพิมพ์จะยังคงเก็บไว้",removed:"ลบรายการแล้ว",updated:"บันทึกการแก้ไขแล้ว",tested:"ส่งคำสั่งทดสอบแล้ว",
   noRows:"ไม่พบรายการตามเงื่อนไข",loading:"กำลังโหลด...",error:"โหลดข้อมูลไม่สำเร็จ",
   printer:"เครื่องพิมพ์",agent:"Print Agent",paper:"ขนาดกระดาษ",brand:"ยี่ห้อ",model:"รุ่น",enabled:"เปิดใช้งาน",
@@ -37,12 +35,10 @@ const COPY={
  en:{
   eyebrow:"PRINT / REMOTE OPERATIONS",title:"Printer / Print Agent",
   desc:"Central printer and Print Agent management with search, edit, test and remove actions.",
-  refresh:"Refresh",remote:"Remote discovery",search:"Search store / branch / printer / agent / model",
-  all:"All",printers:"Printers",agents:"Print Agents",active:"Active",online:"Online",targets:"Remote POS targets",
+  refresh:"Refresh",search:"Search store / branch / printer / agent / model",
+  all:"All",printers:"Printers",agents:"Print Agents",active:"Active",online:"Online",
   type:"Type",store:"Store",branch:"Branch",name:"Name",detail:"Model / device code",connection:"Connection",status:"Status",seen:"Last seen",actions:"Actions",
   edit:"Edit",test:"Test",remove:"Delete",save:"Save",cancel:"Cancel",close:"Close",
-  remoteQueued:"Remote discovery queued. Fresh printer inventory will arrive through POS heartbeat/MDM.",
-  browserNote:"Web browsers cannot silently enumerate USB/Bluetooth. A local user must grant permission once; after that IT can observe registered agents/devices through heartbeat.",
   confirmDelete:"Remove this item from active inventory? Print history will be preserved.",removed:"Item removed",updated:"Changes saved",tested:"Remote test queued",
   noRows:"No matching records",loading:"Loading...",error:"Unable to load data",
   printer:"Printer",agent:"Print Agent",paper:"Paper width",brand:"Brand",model:"Model",enabled:"Enabled",
@@ -132,17 +128,6 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
  function openEdit(row:Row){
   setEditing(row);
   setForm({name:row.name,brand:row.brand??"",model:row.model??"",paper_width_mm:String(row.paper_width_mm??80),status:row.status,active:row.active});
- }
-
- async function remoteDiscovery(){
-  setBusy("discover");setNotice("");setError("");
-  try{
-   const result=await api<{queued:number;skipped:number}>("/api/it-admin/v1/printer-control",{method:"POST",body:JSON.stringify({action:"discover"})});
-   setNotice(`${t.remoteQueued} · queued ${result.queued} / skipped ${result.skipped}`);
-   window.setTimeout(()=>void load(true),5000);
-   window.setTimeout(()=>void load(true),15000);
-  }catch(e){setError(e instanceof Error?e.message:t.error);}
-  finally{setBusy(null);}
  }
 
  async function test(row:Row){
