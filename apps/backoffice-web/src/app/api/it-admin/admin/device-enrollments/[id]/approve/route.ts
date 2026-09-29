@@ -50,7 +50,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       branchId: current.branch_id,
       allowTenantWide: auth.platformRole === "it_admin" || auth.platformRole === "it_support"
     });
-    if (auth.platformRole !== "it_admin") {
+    if (auth.platformRole !== "it_admin" && auth.platformRole !== "it_support") {
       await requireTenantFeatureIfConfigured(current.tenant_id, "mobile_device_enrollment", current.branch_id);
     }
 

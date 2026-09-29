@@ -37,9 +37,11 @@ function readIpAddress(headerStore: Headers) {
 export async function requireActivationAdmin(): Promise<ActivationAdminContext> {
   const auth = await getAuthContext({ requireBranchScope: false });
   const isItAdmin = auth.platformRole === "it_admin";
+  const isItSupport = auth.platformRole === "it_support";
+  const isPlatformIt = isItAdmin || isItSupport;
   const isBranchAdmin = auth.branchRole === "owner" || auth.branchRole === "manager";
-  if (!isItAdmin && !isBranchAdmin) {
-    throw new ActivationAdminGuardError("forbidden", "Activation enrollment requires it_admin or owner/manager permission.", 403);
+  if (!isPlatformIt && !isBranchAdmin) {
+    throw new ActivationAdminGuardError("forbidden", "Activation enrollment requires IT staff or owner/manager permission.", 403);
   }
 
   const headerStore = await headers();
@@ -66,7 +68,7 @@ export async function assertActivationScope(input: {
     throw new ActivationAdminGuardError("missing_tenant_id", "tenant_id is required.", 422);
   }
 
-  if (input.auth.platformRole === "it_admin") {
+  if (input.auth.platformRole === "it_admin" || input.auth.platformRole === "it_support") {
     return { tenantId, branchId };
   }
 

@@ -68,7 +68,7 @@ export async function POST(request: Request) {
 
     // IT enrollment authority must not depend on a customer's paid POS features.
     // Non-IT mobile enrollment remains governed by package entitlements.
-    if (auth.platformRole !== "it_admin") {
+    if (auth.platformRole !== "it_admin" && auth.platformRole !== "it_support") {
       await requireTenantFeatureIfConfigured(tenantId, "mobile_device_enrollment", branchId);
       await requireTenantFeatureIfConfigured(tenantId, "mobile_qr_login", branchId);
     }

@@ -29,7 +29,7 @@ export async function GET(request: Request) {
       allowTenantWide: auth.platformRole === "it_admin" || auth.platformRole === "it_support"
     });
 
-    if (auth.platformRole !== "it_admin") {
+    if (auth.platformRole !== "it_admin" && auth.platformRole !== "it_support") {
       await requireTenantFeatureIfConfigured(tenantId, "mobile_device_enrollment", branchId);
     }
 
