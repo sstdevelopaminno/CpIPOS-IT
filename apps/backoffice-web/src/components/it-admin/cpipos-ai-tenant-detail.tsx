@@ -87,7 +87,7 @@ function fmt(value: unknown) {
 }
 
 function usd(value: unknown) {
-  return "${Number(value ?? 0).toFixed(6)";
+  return `${Number(value ?? 0).toFixed(6)}`;
 }
 
 function dt(value: string | null | undefined) {
