@@ -46,7 +46,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       return;
     }
     const prompt = enabled ? "ปิดใช้งาน" : "เปิดใช้งาน";
-    const scopeNotice = item.key === "more.ai_assistant"
+    const scopeNotice = item.key === "main.ai_assistant"
       ? "การปิด CpiPOS AI จะบล็อกทั้งเมนู หน้า AI และ API ของ AI สำหรับร้านนี้ทันที โดยไม่กระทบเมนู POS อื่น"
       : "ล็อกเฉพาะเมนูที่เลือก โดยยังแสดงรายการและลิงก์ใน POS ไม่เปลี่ยนค่าของเมนูอื่นหรือสิทธิ์แพ็กเกจ";
     if (!window.confirm(`${prompt} "${item.label}" ของร้าน ${storeName}?\n\n${scopeNotice}`)) return;
@@ -89,7 +89,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
               : "เปิดใช้งานใน POS";
     return <div key={item.key} className={child ? styles.child : styles.parent}>
       <div className={styles.menuLabel}>
-        <strong>{item.label}{item.key === "more.ai_assistant" ? <span className={styles.aiBadge}>AI POLICY</span> : null}</strong>
+        <strong>{item.label}{item.key === "main.ai_assistant" ? <span className={styles.aiBadge}>AI POLICY</span> : null}</strong>
         <small className={effective ? styles.available : styles.unavailable}>{message}</small>
         {blockedByAccess ? <small className={styles.accessHelp}>
           คำสั่ง IT: เปิด แต่เงื่อนไขแพ็กเกจ/สาขายังปิด •{" "}
