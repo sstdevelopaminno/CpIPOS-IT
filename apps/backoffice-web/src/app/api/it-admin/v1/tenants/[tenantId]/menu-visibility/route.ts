@@ -20,7 +20,7 @@ const COMPAT_KEYS: Record<string, string> = {
   tables: "more.tables", kitchen_manage: "more.kitchen_manage",
   stock: "more.stock", buffet_pricing: "more.buffet",
   members: "more.members", tax_invoices: "more.tax_invoices",
-  product_sales: "more.product_sales",
+  product_sales: "more.product_sales", ai_assistant: "more.ai_assistant",
   store: "settings.store", branches: "settings.branches",
   devices: "settings.devices", printers: "settings.printers",
   activity: "settings.activity", settings_payments: "settings.payments",
