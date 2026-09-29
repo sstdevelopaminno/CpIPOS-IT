@@ -12,8 +12,8 @@ export default async function DeviceHealthPage({
   if (!auth || !["it_admin", "it_support"].includes(auth.platformRole)) {
     return (
       <section className="surface">
-        <h2>Forbidden</h2>
-        <p>Platform admin permission is required.</p>
+        <h2>ไม่มีสิทธิ์เข้าถึง</h2>
+        <p>เมนูนี้อนุญาตเฉพาะเจ้าหน้าที่ IT ที่ได้รับสิทธิ์</p>
       </section>
     );
   }
