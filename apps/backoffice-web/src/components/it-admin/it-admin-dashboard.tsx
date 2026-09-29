@@ -101,9 +101,9 @@ type ModalKind = "stores" | "data" | "databases" | "api" | null;
 const copy = {
   th: {
     title: "ภาพรวมระบบ",
-    subtitle: "ข้อมูลสดจากฐาน POS หลัก CpiPOS-001 ผ่าน IT Control Plane",
-    ready: "ระบบ POS เชื่อมต่อปกติ",
-    degraded: "ระบบ POS ต้องตรวจสอบ",
+    subtitle: "ข้อมูลสดจาก CpiPOS-001 และ CpiPOS-Communications ผ่าน IT Control Plane",
+    ready: "ระบบฐานข้อมูลเชื่อมต่อปกติ",
+    degraded: "ฐานข้อมูลบางส่วนต้องตรวจสอบ",
     refresh: "รีเฟรช",
     refreshing: "กำลังอัปเดต",
     updated: "อัปเดต",
@@ -117,8 +117,8 @@ const copy = {
     tables: "ตาราง",
     businessDb: "CpiPOS-001",
     businessRole: "POS / Business / Device / MDM Authority",
-    operationalDb: "ฐานระบบอื่นในอนาคต",
-    operationalRole: "Reserved · ไม่ใช่ dependency ของ POS",
+    operationalDb: "CpiPOS-Communications",
+    operationalRole: "Support Chat / Notifications / Communications",
     used: "ใช้แล้ว",
     remaining: "คงเหลือ",
     api: "POS Control Plane",
@@ -127,12 +127,12 @@ const copy = {
     view: "ดูรายละเอียด",
     storeStatus: "สถานะร้านค้า",
     storeStatusDesc: "ร้านออนไลน์ = มีอุปกรณ์ส่ง last_seen ภายในช่วงเวลาที่กำหนด",
-    databaseUsage: "การใช้พื้นที่ฐานข้อมูล POS",
-    databaseUsageDesc: "CpiPOS-001 เป็นฐานข้อมูลที่ระบบ POS ใช้งานจริงในปัจจุบัน",
+    databaseUsage: "การใช้พื้นที่ฐานข้อมูล",
+    databaseUsageDesc: "วัดพื้นที่ CpiPOS-001 และ CpiPOS-Communications แยกจากกันแบบสด",
     apiHealth: "การเชื่อมต่อและการวัดค่า",
-    apiHealthDesc: "Response time จาก IT Server ไปยัง POS Control Plane และสถานะล่าสุดจากฐานหลัก",
+    apiHealthDesc: "Response time จาก IT Server ไปยังฐาน POS หลักและฐาน Communications",
     businessPlane: "CpiPOS-001 API",
-    operationalPlane: "Future operational API",
+    operationalPlane: "CpiPOS-Communications API",
     response: "ตอบกลับ",
     errors60: "API errors · 60 นาที",
     serverErrors: "5xx",
@@ -160,16 +160,16 @@ const copy = {
     retry: "ลองใหม่",
     manageStores: "จัดการร้านค้า",
     monitoring: "Monitoring",
-    topology: "โครงสร้างฐานข้อมูล POS",
+    topology: "โครงสร้างฐานข้อมูล",
     activeDatabase: "ฐานที่ใช้งานจริง",
     reservedDatabase: "ฐานสำรองสำหรับระบบอื่น",
-    reservedNote: "ฐานข้อมูลที่เตรียมไว้สำหรับระบบอื่นในอนาคตจะไม่ถูกเรียกและไม่ถูกนับเป็น Incident, API failure หรือ POS health จนกว่าจะเปิดใช้งานอย่างชัดเจน"
+    reservedNote: "ยังไม่มีฐานข้อมูลเพิ่มเติมที่เปิดใช้ใน Dashboard"
   },
   en: {
     title: "System overview",
-    subtitle: "Live data from the authoritative CpiPOS-001 POS database through the IT Control Plane",
-    ready: "POS control plane healthy",
-    degraded: "POS control plane needs attention",
+    subtitle: "Live data from CpiPOS-001 and CpiPOS-Communications through the IT Control Plane",
+    ready: "Database control plane healthy",
+    degraded: "One or more database sources need attention",
     refresh: "Refresh",
     refreshing: "Refreshing",
     updated: "Updated",
@@ -183,8 +183,8 @@ const copy = {
     tables: "tables",
     businessDb: "CpiPOS-001",
     businessRole: "POS / Business / Device / MDM Authority",
-    operationalDb: "Future system database",
-    operationalRole: "Reserved · not a POS dependency",
+    operationalDb: "CpiPOS-Communications",
+    operationalRole: "Support Chat / Notifications / Communications",
     used: "Used",
     remaining: "Remaining",
     api: "POS Control Plane",
@@ -193,12 +193,12 @@ const copy = {
     view: "View details",
     storeStatus: "Store status",
     storeStatusDesc: "Online means at least one device reported last_seen within the configured window",
-    databaseUsage: "POS database usage",
-    databaseUsageDesc: "CpiPOS-001 is the database currently used by the POS platform",
+    databaseUsage: "Database usage",
+    databaseUsageDesc: "Live usage for CpiPOS-001 and CpiPOS-Communications, measured separately",
     apiHealth: "Connectivity and measurements",
-    apiHealthDesc: "IT Server to POS Control Plane response time and health from the authoritative database",
+    apiHealthDesc: "IT Server response time to the primary POS and Communications database planes",
     businessPlane: "CpiPOS-001 API",
-    operationalPlane: "Future operational API",
+    operationalPlane: "CpiPOS-Communications API",
     response: "Response",
     errors60: "API errors · 60 min",
     serverErrors: "5xx",
@@ -226,10 +226,10 @@ const copy = {
     retry: "Retry",
     manageStores: "Manage stores",
     monitoring: "Monitoring",
-    topology: "POS database topology",
+    topology: "Database topology",
     activeDatabase: "Active database",
     reservedDatabase: "Reserved for another system",
-    reservedNote: "Databases reserved for future systems are not queried and do not count as incidents, API failures, or POS health dependencies until explicitly enabled."
+    reservedNote: "No additional reserved database is currently enabled in this dashboard."
   }
 } as const;
 
@@ -427,7 +427,7 @@ export function ItAdminDashboard({ language }: { language: Language }) {
         <button type="button" className={styles.metricCard} onClick={() => setModal("databases")}>
           <span>{text.topology}</span>
           <strong>{data.topology.active_database_count} Active</strong>
-          <small>{text.businessDb} · {data.topology.reserved_database_count} Reserved</small>
+          <small>{operationalEnabled ? `${text.businessDb} · ${text.operationalDb}` : `${text.businessDb} · ${data.topology.reserved_database_count} Reserved`}</small>
         </button>
         <button type="button" className={styles.metricCard} onClick={() => setModal("api")}>
           <span>{text.api}</span>
@@ -522,7 +522,7 @@ export function ItAdminDashboard({ language }: { language: Language }) {
                   <div><span>{text.totalRows}</span><strong>{formatNumber(data.data.estimated_rows_total, language)}</strong></div>
                   <div><span>{text.totalTables}</span><strong>{formatNumber(data.data.user_tables_total, language)}</strong></div>
                   <div><span>{text.businessDb}</span><strong>{formatNumber(businessDb?.estimated_rows ?? null, language)}</strong></div>
-                  <div><span>{text.activeDatabase}</span><strong>{data.topology.active_database_count}</strong></div>
+                  <div><span>{text.operationalDb}</span><strong>{formatNumber(operationalDb?.estimated_rows ?? null, language)}</strong></div>
                 </div>
                 <div className={styles.infoBox}><span>{text.dataNote}</span></div>
               </div>

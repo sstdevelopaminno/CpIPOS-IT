@@ -7,6 +7,8 @@ export const SUPABASE_FREE_DATABASE_QUOTA_BYTES = 500 * 1024 * 1024;
 const DASHBOARD_BRIDGE_TIMEOUT_MS = 8_000;
 const PRIMARY_BRIDGE_SLUG = "cpipos-it-dashboard-primary";
 const OPERATIONAL_BRIDGE_SLUG = "cpipos-it-dashboard-operational";
+const DEFAULT_COMMUNICATIONS_URL = "https://wznixoeezgyhtwurcswb.supabase.co";
+const DEFAULT_COMMUNICATIONS_PUBLISHABLE_KEY = "sb_publishable_G-lNDIwwsT7wthv4Ad4Qag_fz7R420Q";
 
 export type DatabaseTopTable = {
   schema: string;
@@ -127,20 +129,14 @@ type PrimaryBridgePayload = {
 
 type OperationalBridgePayload = {
   plane: "operational";
+  role?: "communications";
   checked_at: string;
-  online_window_minutes: number;
-  devices: {
-    total: number;
-    online: number;
-    stores_online: number;
-    latest_seen_at: string | null;
-  };
-  operations: {
-    open_incidents: number;
-    critical_incidents: number;
-    pending_commands: number;
-  };
   database: unknown;
+  communications?: {
+    conversations: number;
+    messages: number;
+    attachments: number;
+  };
 };
 
 type PrimaryBridgeResult = {
@@ -297,7 +293,10 @@ function databaseSource<T extends { database: DatabaseMetrics }>(source: SourceS
 
 export async function loadDashboardOverview(accessToken: string): Promise<DashboardOverview> {
   const checkedAt = new Date();
-  const operationalPlaneEnabled = asBoolean(readEnv("IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED"));
+  const operationalPlaneFlag = readEnv("IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED");
+  const operationalPlaneEnabled = operationalPlaneFlag === undefined
+    ? true
+    : asBoolean(operationalPlaneFlag);
   const primaryUrl = readRequiredEnv("CPIPOS_SUPABASE_URL", "Missing CpiPOS-001 Supabase URL.");
   const primaryPublishableKey = readRequiredEnv(
     "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
@@ -320,11 +319,9 @@ export async function loadDashboardOverview(accessToken: string): Promise<Dashbo
 
   const operationalPromise: Promise<SourceState<OperationalBridgeResult>> = operationalPlaneEnabled
     ? capture<OperationalBridgeResult>("operational_control_plane_bridge_failed", async () => {
-        const operationalUrl = readRequiredEnv("IT_SUPABASE_URL", "Missing optional operational Supabase URL.");
-        const operationalPublishableKey = readRequiredEnv(
-          "IT_SUPABASE_PUBLISHABLE_KEY",
-          "Missing optional operational Supabase publishable key."
-        );
+        const operationalUrl = readEnv("IT_SUPABASE_URL")?.trim() || DEFAULT_COMMUNICATIONS_URL;
+        const operationalPublishableKey =
+          readEnv("IT_SUPABASE_PUBLISHABLE_KEY")?.trim() || DEFAULT_COMMUNICATIONS_PUBLISHABLE_KEY;
         const payload = await invokeBridge<OperationalBridgePayload>({
           baseUrl: operationalUrl,
           publishableKey: operationalPublishableKey,
@@ -358,8 +355,10 @@ export async function loadDashboardOverview(accessToken: string): Promise<Dashbo
     http_5xx: null,
     top_routes: []
   };
-  const devicePayload = operationalPlaneEnabled ? operationalPayload?.devices : primaryPayload?.devices;
-  const operationPayload = operationalPlaneEnabled ? operationalPayload?.operations : primaryPayload?.operations;
+  // CpiPOS-Communications is measured as a second database plane only.
+  // POS devices, MDM and operational incidents remain authoritative in CpiPOS-001.
+  const devicePayload = primaryPayload?.devices;
+  const operationPayload = primaryPayload?.operations;
   const activePlanesReady = enabledSources.filter((source) => source.ready).length;
   const estimatedRows = businessMetrics
     ? businessMetrics.estimated_rows + (operationalPlaneEnabled && operationalMetrics ? operationalMetrics.estimated_rows : 0)
@@ -371,9 +370,7 @@ export async function loadDashboardOverview(accessToken: string): Promise<Dashbo
   return {
     status: degradedSources.length ? "degraded" : "ready",
     checked_at: checkedAt.toISOString(),
-    online_window_minutes:
-      (operationalPlaneEnabled ? operationalPayload?.online_window_minutes : primaryPayload?.devices?.online_window_minutes) ??
-      DASHBOARD_ONLINE_WINDOW_MINUTES,
+    online_window_minutes: primaryPayload?.devices?.online_window_minutes ?? DASHBOARD_ONLINE_WINDOW_MINUTES,
     topology: {
       mode: operationalPlaneEnabled ? "dual_plane" : "single_pos_database",
       active_database_count: operationalPlaneEnabled ? 2 : 1,
