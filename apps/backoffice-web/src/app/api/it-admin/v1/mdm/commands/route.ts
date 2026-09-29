@@ -219,7 +219,9 @@ export async function POST(req: Request) {
         "MDM connection is disabled or the POS registry is inactive. Re-enroll this device before queueing commands.", 409);
     }
 
-    const snapshot = toSnapshot(device);\n    const mdmPolicyRole = auth.platformRole === "it_support" ? "support" : "it_admin";\n    const validation = validateMdmCommandRequest({
+    const snapshot = toSnapshot(device);
+    const mdmPolicyRole = auth.platformRole === "it_support" ? "support" : "it_admin";
+    const validation = validateMdmCommandRequest({
       tenantId,
       deviceId,
       commandType,
