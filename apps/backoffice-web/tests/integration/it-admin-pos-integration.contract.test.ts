@@ -28,7 +28,8 @@ const operationalDashboardBridge = source("../../../../supabase/control-plane-fu
 
 describe("IT Admin <-> POS single-primary control-plane contract", () => {
   it("keeps business monitoring inside the IT Admin Control Plane", () => {
-    expect(monitorPage).toContain('module="monitoring"');
+    expect(monitorPage).toContain("ItAdminMonitoringConsole");
+    expect(monitorPage).toContain("getCurrentLanguage");
     expect(monitorPage).not.toContain("/api/admin/pos/monitor");
     expect(monitorPage).not.toContain("/api/it-admin/v1/monitor");
     expect(monitorRoute).toContain("requireItAdmin()");
