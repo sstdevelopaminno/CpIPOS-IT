@@ -47,7 +47,7 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
     expect(healthRoute).not.toContain('"TABLE_QR_SIGNING_SECRET"');
   });
 
-  it("keeps Dashboard metrics on authenticated Control Plane bridges while defaulting to one POS database", () => {
+  it("keeps Dashboard metrics on authenticated Control Plane bridges with Communications active as the second database", () => {
     expect(dashboardRoute).toContain("requireItAdmin()");
     expect(dashboardRoute).toContain("getVerifiedSupabaseAccessToken(context.auth.userId)");
     expect(dashboardRoute).toContain("loadDashboardOverview(accessToken)");
@@ -55,7 +55,8 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
     expect(supabaseServer).toContain("supabase.auth.getUser(accessToken)");
     expect(dashboardService).toContain('PRIMARY_BRIDGE_SLUG = "cpipos-it-dashboard-primary"');
     expect(dashboardService).toContain('OPERATIONAL_BRIDGE_SLUG = "cpipos-it-dashboard-operational"');
-    expect(dashboardService).toContain('readEnv("IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED")');
+    expect(dashboardService).toContain("const operationalPlaneEnabled = true");
+    expect(dashboardService).not.toContain('readEnv("IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED")');
     expect(dashboardService).toContain('mode: operationalPlaneEnabled ? "dual_plane" : "single_pos_database"');
     expect(dashboardService).toContain('authoritative_plane: "CpiPOS-001"');
     expect(dashboardService).not.toContain("context.supabase");
