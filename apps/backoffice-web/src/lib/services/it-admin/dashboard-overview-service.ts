@@ -165,9 +165,6 @@ function asString(value: unknown): string | null {
   return normalized || null;
 }
 
-function asBoolean(value: string | undefined): boolean {
-  return ["1", "true", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
-}
 
 function safeErrorCode(error: unknown, fallback: string): string {
   if (!(error instanceof Error)) return fallback;
