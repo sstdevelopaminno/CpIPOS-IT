@@ -10,7 +10,9 @@ describe("Devices MDM management console",()=>{
   const healthPage=src("src/app/(it-admin)/tenants/[tenantId]/devices/[deviceId]/health/page.tsx");
 
   it("provides search filters edit soft-delete pairing and printer test",()=>{
-    expect(ui).toContain('command_type:"test_printer"');
+    expect(ui).toContain('queueDeviceCommand(row,"test_printer")');
+    expect(ui).toContain('queueDeviceCommand(row,"request_diagnostics")');
+    expect(ui).toContain('queueDeviceCommand(row,"check_update")');
     expect(ui).toContain('action:"delete"');
     expect(ui).toContain("device-enrollments");
     expect(ui).toContain("mdmFilter");
