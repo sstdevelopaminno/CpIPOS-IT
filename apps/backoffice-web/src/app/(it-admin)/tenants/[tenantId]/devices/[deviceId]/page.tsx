@@ -6,5 +6,5 @@ export default async function DevicePage({
   params: Promise<{ tenantId: string; deviceId: string }>;
 }) {
   const { tenantId, deviceId } = await params;
-  redirect(`/it-admin/tenants/${encodeURIComponent(tenantId)}/devices/${encodeURIComponent(deviceId)}/health`);
+  redirect(`/tenants/${encodeURIComponent(tenantId)}/devices/${encodeURIComponent(deviceId)}/health`);
 }

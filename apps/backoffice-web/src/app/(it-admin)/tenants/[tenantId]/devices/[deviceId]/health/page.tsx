@@ -9,7 +9,7 @@ export default async function DeviceHealthPage({
 }) {
   const { tenantId, deviceId } = await params;
   const auth = await getAuthContext({ requireBranchScope: false }).catch(() => null);
-  if (!auth || auth.platformRole !== "it_admin") {
+  if (!auth || !["it_admin", "it_support"].includes(auth.platformRole)) {
     return (
       <section className="surface">
         <h2>Forbidden</h2>
