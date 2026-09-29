@@ -11,10 +11,11 @@ describe("IT support notifications and customer request navigation",()=>{
   const chat=src("src/app/api/it-admin/v1/support-chat/conversations/[conversationId]/route.ts");
   const review=src("src/app/api/it-admin/v1/subscription-payments/review/[requestId]/route.ts");
 
-  it("shows Chat and Customer Requests as direct menus with badges",()=>{
-    expect(layout).toContain('customerRequests: "คำขอจากลูกค้า"');
-    expect(layout).toContain('href: "/it-admin/requests"');
+  it("keeps customer payment requests inside Subscription Payments and preserves badges",()=>{
+    expect(layout).not.toContain('href: "/it-admin/requests"');
+    expect(layout).toContain('href: "/it-admin/subscription-payments"');
     expect(layout).toContain('supportChat: "แชท"');
+    expect(shell).toContain('targetHref === "/it-admin/subscription-payments"');
     expect(shell).toContain("requestUnread");
   });
   it("supports true browser push",()=>{
