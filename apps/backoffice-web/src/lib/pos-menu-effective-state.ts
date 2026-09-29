@@ -23,6 +23,7 @@ export const POS_MENU_NAV_FEATURES: Readonly<Record<string, string | null>> = {
   "more.members": "core_pos_sales",
   "more.tax_invoices": "core_pos_sales",
   "more.product_sales": "advanced_sales_reports",
+  "more.ai_assistant": null, // Corporate IT policy controls AI availability independently per tenant.
   "settings.store": "core_pos_sales",
   "settings.branches": "branch_management",
   "settings.devices": null, // POS explicitly exempts devices from isSettingLocked.
