@@ -45,10 +45,22 @@ function surfaceFromMetadata(metadata:JsonRecord|null){
   if(source.includes("windows")||runtime.includes("windows")) return "windows_runtime";
   return "registered";
 }
+const PRINTER_DB_STATUSES=new Set(["online","offline","checking","connecting","needs_check","disabled","disconnected"]);
+const PRINTER_ACTIVE_STATUSES=new Set(["online","offline","checking","connecting","needs_check","disconnected"]);
+
 function connectionType(mode:string){
   if(mode==="lan") return "NETWORK_ESC_POS";
   if(mode==="bluetooth") return "BLUETOOTH_BRIDGE";
   return "LOCAL_BRIDGE";
+}
+
+function normalizePrinterStatus(requested:unknown,current:unknown,active:boolean){
+  if(!active)return "disabled";
+  const requestedStatus=text(requested,40).toLowerCase();
+  if(PRINTER_ACTIVE_STATUSES.has(requestedStatus))return requestedStatus;
+  const currentStatus=text(current,40).toLowerCase();
+  if(PRINTER_ACTIVE_STATUSES.has(currentStatus))return currentStatus;
+  return "offline";
 }
 
 async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
@@ -293,11 +305,11 @@ export async function PATCH(request:Request){
       const name=text(body?.name,120)||String(current.data.display_name);
       const paper=Number(body?.paper_width_mm);
       const nextPaper=paper===58||paper===80?paper:Number(current.data.paper_width_mm);
-      const status=text(body?.status,40)||String(current.data.status);
       const active=typeof body?.active==="boolean"?body.active:Boolean(current.data.is_active);
+      const status=normalizePrinterStatus(body?.status,current.data.status,active);
       const update=await db.from("printer_devices").update({
         display_name:name,brand:text(body?.brand,100)||null,model:text(body?.model,120)||null,
-        paper_width_mm:nextPaper,status, is_active:active,disconnected_at:active?null:new Date().toISOString(),updated_at:new Date().toISOString()
+        paper_width_mm:nextPaper,status,is_active:active,disconnected_at:active?null:new Date().toISOString(),updated_at:new Date().toISOString()
       }).eq("id",id).select("id").single();
       if(update.error) throw update.error;
       if(current.data.printer_profile_id){
@@ -354,7 +366,7 @@ export async function DELETE(request:Request){
       if(current.error) throw current.error;
       if(!current.data) return fail("printer_not_found","Printer was not found.",404);
       const now=new Date().toISOString();
-      const removed=await db.from("printer_devices").update({is_active:false,status:"inactive",disconnected_at:now,updated_at:now}).eq("id",id);
+      const removed=await db.from("printer_devices").update({is_active:false,status:"disabled",disconnected_at:now,updated_at:now}).eq("id",id);
       if(removed.error) throw removed.error;
       if(current.data.printer_profile_id){
         const disabled=await db.from("printer_profiles").update({enabled:false,updated_at:now}).eq("id",current.data.printer_profile_id);
