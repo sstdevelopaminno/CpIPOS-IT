@@ -8,21 +8,20 @@ describe("IT printer control",()=>{
  const ui=src("src/components/it-admin/it-admin-printer-console.tsx");
  const api=src("src/app/api/it-admin/v1/printer-control/route.ts");
 
- it("uses the dedicated localized printer console",()=>{
+ it("uses the dedicated localized printer console without duplicating MDM discovery",()=>{
   expect(page).toContain('module === "printer"');
   expect(page).toContain("ItAdminPrinterConsole");
-  expect(ui).toContain('Remote discovery');
-  expect(ui).toContain('ค้นหาจากระยะไกล');
+  expect(ui).toContain('title:"เครื่องพิมพ์ / Print Agent"');
+  expect(ui).toContain('title:"Printer / Print Agent"');
+  expect(ui).not.toContain("remoteTargetsTitle");
+  expect(ui).not.toContain("discoverHere");
+  expect(ui).not.toContain("remoteDiscovery(target)");
  });
 
- it("supports search, remote diagnostics, edit, test and delete",()=>{
+ it("supports search, edit, test and delete while MDM discovery stays outside this page",()=>{
   expect(ui).toContain("setQuery");
   expect(api).toContain('command_type:"request_diagnostics"');
   expect(api).toContain('command_type:"test_printer"');
-  expect(api).toContain('device_id?:unknown');
-  expect(api).toContain('deviceQuery=deviceQuery.eq("id",deviceId)');
-  expect(ui).toContain("discoverHere");
-  expect(ui).toContain("remoteDiscovery(target)");
   expect(api).toContain("export async function PATCH");
   expect(api).toContain("export async function DELETE");
   expect(api).toContain('namespace:"it_printer_control_write"');
