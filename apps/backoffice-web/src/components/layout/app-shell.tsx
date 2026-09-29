@@ -27,6 +27,7 @@ export type AppShellNavIcon =
   | "provision"
   | "branch"
   | "users"
+  | "ai"
   | "device"
   | "android"
   | "printer"
@@ -114,6 +115,16 @@ function NavIcon({ name }: { name: AppShellNavIcon }) {
         <circle cx="9" cy="8" r="3" />
         <path d="M4 20c.4-4 2.2-6 5-6s4.6 2 5 6" />
         <path d="M16 5.5a3 3 0 010 5M16 14c2.3.4 3.6 2.4 4 5" />
+      </svg>
+    );
+  }
+
+  if (name === "ai") {
+    return (
+      <svg {...common}>
+        <path d="M12 3l1.3 3.4L17 7.8l-3.7 1.4L12 13l-1.3-3.8L7 7.8l3.7-1.4L12 3z" />
+        <path d="M5 13l.8 2.2L8 16l-2.2.8L5 19l-.8-2.2L2 16l2.2-.8L5 13z" />
+        <path d="M18 12l.9 2.4 2.1.9-2.1.9L18 19l-.9-2.8-2.1-.9 2.1-.9L18 12z" />
       </svg>
     );
   }
