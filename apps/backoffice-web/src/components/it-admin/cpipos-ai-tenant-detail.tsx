@@ -116,7 +116,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(\`/api/it-admin/v1/cpipos-ai/tenants/${encodeURIComponent(tenantId)}\`, {
+      const response = await fetch(`/api/it-admin/v1/cpipos-ai/tenants/${encodeURIComponent(tenantId)}`, {
         cache: "no-store", credentials: "include"
       });
       const body = (await response.json().catch(() => null)) as Envelope<Detail> | null;
@@ -144,7 +144,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
     setBusy("quota");
     setError("");
     try {
-      const response = await fetch(\`/api/it-admin/v1/cpipos-ai/tenants/${encodeURIComponent(tenantId)}\`, {
+      const response = await fetch(`/api/it-admin/v1/cpipos-ai/tenants/${encodeURIComponent(tenantId)}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -168,12 +168,12 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
 
   async function clearHistory(user?: UserRow) {
     if (busy) return;
-    const scopeText = user ? \`ของ ${user.full_name} · ${user.branch_name}\` : "ทั้งหมดของร้านนี้";
-    if (!window.confirm(\`ล้างประวัติ CpiPOS AI ${scopeText} หรือไม่?\\n\\nข้อความใน OpenAI Conversation จะถูกลบ แต่ token และค่าใช้จ่ายเดิมจะยังคงอยู่เพื่อการบัญชี/Quota\`)) return;
-    setBusy(user ? \`history:${user.user_id}:${user.branch_id}\` : "history:all");
+    const scopeText = user ? `ของ ${user.full_name} · ${user.branch_name}` : "ทั้งหมดของร้านนี้";
+    if (!window.confirm(`ล้างประวัติ CpiPOS AI ${scopeText} หรือไม่?\\n\\nข้อความใน OpenAI Conversation จะถูกลบ แต่ token และค่าใช้จ่ายเดิมจะยังคงอยู่เพื่อการบัญชี/Quota`)) return;
+    setBusy(user ? `history:${user.user_id}:${user.branch_id}` : "history:all");
     setError("");
     try {
-      const response = await fetch(\`/api/it-admin/v1/cpipos-ai/tenants/${encodeURIComponent(tenantId)}/history\`, {
+      const response = await fetch(`/api/it-admin/v1/cpipos-ai/tenants/${encodeURIComponent(tenantId)}/history`, {
         method: "DELETE",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -243,10 +243,10 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
           <div className={styles.quotaStatus}>
             <span>Effective quota</span>
             <strong>{data?.quota.source ?? "—"}</strong>
-            <p>Requests: {limits?.requests ? \`${fmt(usage?.requests)}/${fmt(limits.requests)}\` : "ไม่จำกัด"}</p>
-            <p>Tokens: {limits?.tokens ? \`${fmt(usage?.total_tokens)}/${fmt(limits.tokens)}\` : "ไม่จำกัด"}</p>
-            <p>Cost: {limits?.cost_usd ? \`${usd(usage?.cost_usd)}/${usd(limits.cost_usd)}\` : "ไม่จำกัด"}</p>
-            {limits?.requests ? <div className={styles.progress}><i style={{ width: \`${requestPercent}%\` }} /></div> : null}
+            <p>Requests: {limits?.requests ? `${fmt(usage?.requests)}/${fmt(limits.requests)}` : "ไม่จำกัด"}</p>
+            <p>Tokens: {limits?.tokens ? `${fmt(usage?.total_tokens)}/${fmt(limits.tokens)}` : "ไม่จำกัด"}</p>
+            <p>Cost: {limits?.cost_usd ? `${usd(usage?.cost_usd)}/${usd(limits.cost_usd)}` : "ไม่จำกัด"}</p>
+            {limits?.requests ? <div className={styles.progress}><i style={{ width: `${requestPercent}%` }} /></div> : null}
           </div>
         </div>
       </section>
@@ -256,8 +256,8 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
         <div className={styles.tableWrap}><table>
           <thead><tr><th>ผู้ใช้</th><th>Role / สาขา</th><th>User ID</th><th>Conversation ID</th><th>อัปเดตล่าสุด</th><th /></tr></thead>
           <tbody>{(data?.users ?? []).length ? data!.users.map((user) => {
-            const key = \`history:${user.user_id}:${user.branch_id}\`;
-            return <tr key={\`${user.user_id}:${user.branch_id}\`}>
+            const key = `history:${user.user_id}:${user.branch_id}`;
+            return <tr key={`${user.user_id}:${user.branch_id}`}>
               <td><div className={styles.storeCell}><strong>{user.full_name}</strong><span>{user.email}</span></div></td>
               <td>{user.role}<small className={styles.muted}>{user.branch_name} · {user.branch_id}</small></td>
               <td><code className={styles.code}>{user.user_id}</code></td>
