@@ -46,7 +46,6 @@ function surfaceFromMetadata(metadata:JsonRecord|null){
   return "registered";
 }
 const PRINTER_DB_STATUSES=new Set(["online","offline","checking","connecting","needs_check","disabled","disconnected"]);
-const PRINTER_ACTIVE_STATUSES=new Set(["online","offline","checking","connecting","needs_check","disconnected"]);
 
 function connectionType(mode:string){
   if(mode==="lan") return "NETWORK_ESC_POS";
@@ -57,9 +56,9 @@ function connectionType(mode:string){
 function normalizePrinterStatus(requested:unknown,current:unknown,active:boolean){
   if(!active)return "disabled";
   const requestedStatus=text(requested,40).toLowerCase();
-  if(PRINTER_ACTIVE_STATUSES.has(requestedStatus))return requestedStatus;
+  if(PRINTER_DB_STATUSES.has(requestedStatus) && requestedStatus!=="disabled")return requestedStatus;
   const currentStatus=text(current,40).toLowerCase();
-  if(PRINTER_ACTIVE_STATUSES.has(currentStatus))return currentStatus;
+  if(PRINTER_DB_STATUSES.has(currentStatus) && currentStatus!=="disabled")return currentStatus;
   return "offline";
 }
 
