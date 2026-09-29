@@ -186,7 +186,6 @@ export async function POST(request:Request){
     const context=await requireItAdmin();
     assertItSupportAction(context);
     const rate=await enforceRateLimit({
-      request,
       namespace:"it_printer_control_action",
       key:`${context.auth.userId}:${getClientIpAddress(request)??"unknown"}`,
       max:20,windowMs:60_000,failClosedOnBackendError:true
