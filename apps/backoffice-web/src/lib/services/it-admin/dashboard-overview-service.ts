@@ -1,6 +1,6 @@
 import "server-only";
 
-import { readEnv, readRequiredEnv } from "@/lib/env";
+import { readRequiredEnv } from "@/lib/env";
 
 export const DASHBOARD_ONLINE_WINDOW_MINUTES = 5;
 export const SUPABASE_FREE_DATABASE_QUOTA_BYTES = 500 * 1024 * 1024;
@@ -313,9 +313,8 @@ export async function loadDashboardOverview(accessToken: string): Promise<Dashbo
 
   const operationalPromise: Promise<SourceState<OperationalBridgeResult>> = operationalPlaneEnabled
     ? capture<OperationalBridgeResult>("operational_control_plane_bridge_failed", async () => {
-        const operationalUrl = readEnv("IT_SUPABASE_URL")?.trim() || DEFAULT_COMMUNICATIONS_URL;
-        const operationalPublishableKey =
-          readEnv("IT_SUPABASE_PUBLISHABLE_KEY")?.trim() || DEFAULT_COMMUNICATIONS_PUBLISHABLE_KEY;
+        const operationalUrl = DEFAULT_COMMUNICATIONS_URL;
+        const operationalPublishableKey = DEFAULT_COMMUNICATIONS_PUBLISHABLE_KEY;
         const payload = await invokeBridge<OperationalBridgePayload>({
           baseUrl: operationalUrl,
           publishableKey: operationalPublishableKey,

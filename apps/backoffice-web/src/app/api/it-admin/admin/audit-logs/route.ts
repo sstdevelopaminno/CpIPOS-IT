@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     let query = supabase
       .from("audit_logs")
       .select(
-        "id,tenant_id,branch_id,actor_user_id,target_user_id,device_code,pos_session_id,action,target_table,target_type,target_id,module,entity_type,entity_id,created_at,metadata",
+        "id,tenant_id,branch_id,actor_user_id,actor_role,target_user_id,device_code,pos_session_id,action,target_table,target_type,target_id,module,entity_type,entity_id,created_at,metadata",
         { count: "exact" }
       )
       .order("created_at", { ascending: false })

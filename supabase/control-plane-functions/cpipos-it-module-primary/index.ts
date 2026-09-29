@@ -393,6 +393,8 @@ Deno.serve(async (req) => {
         const tenant = tenants.get(tenantId);
         return {
           id: branchId,
+          tenant_id: tenantId,
+          branch_id: branchId,
           store: tenant?.name ?? tenant?.code ?? "—",
           branch: branch.name,
           level,
@@ -411,6 +413,43 @@ Deno.serve(async (req) => {
         warnings: rows.filter((row) => row.level === "Warning").length,
         critical: rows.filter((row) => row.level === "Critical").length
       }, rows, "60-minute read-only Control Plane view. No synthetic health is generated.");
+    }
+
+    if (module === "incidents") {
+      const [incidentResult, tenantResult, branchResult, deviceResult] = await Promise.all([
+        admin.from("pos_device_incidents")
+          .select("id,tenant_id,branch_id,pos_device_id,device_code,code,severity,title,message,detected_at,resolved_at")
+          .order("detected_at", { ascending: false }).limit(150),
+        admin.from("tenants").select("id,name"),
+        admin.from("branches").select("id,name"),
+        admin.from("branch_devices").select("id,device_name,device_code")
+      ]);
+      for (const result of [incidentResult, tenantResult, branchResult, deviceResult]) if (result.error) throw result.error;
+      const tenants = new Map((tenantResult.data ?? []).map((row) => [String(row.id), row.name]));
+      const branches = new Map((branchResult.data ?? []).map((row) => [String(row.id), row.name]));
+      const devices = new Map((deviceResult.data ?? []).map((row) => [String(row.id), row.device_name || row.device_code]));
+      const rows = (incidentResult.data ?? []).map((row) => ({
+        id: row.id,
+        source: "system",
+        tenant_id: row.tenant_id,
+        branch_id: row.branch_id,
+        tenant: tenants.get(String(row.tenant_id)) ?? "—",
+        branch: branches.get(String(row.branch_id)) ?? "—",
+        device: devices.get(String(row.pos_device_id)) ?? row.device_code ?? "—",
+        severity: row.severity,
+        code: row.code,
+        title: row.title,
+        message: row.message,
+        detected_at: row.detected_at,
+        status: row.resolved_at ? "resolved" : "open",
+        editable: false,
+        deletable: false
+      }));
+      return moduleResponse("incidents", {
+        recent: rows.length,
+        open: rows.filter((row) => row.status === "open").length,
+        critical: rows.filter((row) => row.status === "open" && String(row.severity).toLowerCase() === "critical").length
+      }, rows, "Incident จากระบบ POS/Device Health ใน CpiPOS-001");
     }
 
     if (module === "audit") {

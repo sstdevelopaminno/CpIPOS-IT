@@ -30,10 +30,10 @@ export function SupportRequestNotifier(){
     return()=>{alive=false;window.removeEventListener("cpipos-it-push-notification",onPush);window.removeEventListener("focus",refresh);};
   },[]);
   if(!toast)return null;
-  return <button type="button" onClick={()=>window.location.assign("/it-admin/requests")}
+  return <button type="button" onClick={()=>window.location.assign("/it-admin/subscription-payments")}
     className="fixed right-5 top-20 z-[210] w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-amber-200 bg-white p-4 text-left shadow-2xl">
     <div className="text-sm font-black text-slate-950">{toast.title}</div>
     <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{toast.message}</div>
-    <div className="mt-2 text-[10px] font-black text-amber-600">เปิดคำขอจากลูกค้า</div>
+    <div className="mt-2 text-[10px] font-black text-amber-600">เปิดตารางชำระแพ็กเกจ</div>
   </button>;
 }

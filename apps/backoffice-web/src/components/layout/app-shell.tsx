@@ -471,7 +471,7 @@ export function AppShell({
                           {targetHref === "/it-admin/support-chat" && supportUnread > 0 ? (
                             <span className={styles.supportBadge}>{supportUnread > 99 ? "99+" : supportUnread}</span>
                           ) : null}
-                          {targetHref === "/it-admin/requests" && requestUnread > 0 ? (
+                          {targetHref === "/it-admin/subscription-payments" && requestUnread > 0 ? (
                             <span className={styles.supportBadge}>{requestUnread > 99 ? "99+" : requestUnread}</span>
                           ) : null}
                           <span className={`${styles.navCaret} ${treeOpen ? styles.navCaretOpen : ""}`} aria-hidden="true">⌄</span>
@@ -490,7 +490,7 @@ export function AppShell({
                           {targetHref === "/it-admin/support-chat" && supportUnread > 0 ? (
                             <span className={styles.supportBadge}>{supportUnread > 99 ? "99+" : supportUnread}</span>
                           ) : null}
-                          {targetHref === "/it-admin/requests" && requestUnread > 0 ? (
+                          {targetHref === "/it-admin/subscription-payments" && requestUnread > 0 ? (
                             <span className={styles.supportBadge}>{requestUnread > 99 ? "99+" : requestUnread}</span>
                           ) : null}
                         </Link>
@@ -540,7 +540,7 @@ export function AppShell({
             <span className={styles.internalDot} />
             CpIPOS Internal Operations
           </div>
-          <div className={styles.sidebarMeta}>CpiPOS-001 · CpiPOS-002</div>
+          <div className={styles.sidebarMeta}>CpiPOS-001 · CpiPOS-Communications</div>
         </div>
       </aside>
 

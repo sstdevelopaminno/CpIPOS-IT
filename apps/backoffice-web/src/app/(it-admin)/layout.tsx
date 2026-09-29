@@ -36,9 +36,9 @@ const copy = {
       subscriptionPayments: "ตารางชำระแพ็กเกจ",
       desktopLicense: "ออก License POS Desktop",
       entitlements: "Feature Entitlements",
-      monitoring: "Monitoring",
-      incidents: "Incidents",
-      audit: "Audit Logs",
+      monitoring: "มอนิเตอร์ระบบ",
+      incidents: "เหตุขัดข้อง",
+      audit: "บันทึกตรวจสอบ",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
       supportChat: "แชท",
       customerRequests: "คำขอจากลูกค้า",
@@ -127,7 +127,6 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
       { href: "/it-admin/pos-users", label: text.items.users, group: text.groups.customer, icon: "users" },
       { href: "/it-admin/subscription-payments", label: text.items.subscriptionPayments, group: text.groups.commercial, icon: "package" },
       { href: "/it-admin/license-issuer", label: text.items.desktopLicense, group: text.groups.commercial, icon: "entitlement" },
-      { href: "/it-admin/requests", label: text.items.customerRequests, group: text.groups.operations, icon: "audit" },
       { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat",
         children: [
           { href: "/it-admin/support-chat", label: text.items.supportChatInbox },
@@ -155,7 +154,6 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
-    { href: "/it-admin/requests", label: text.items.customerRequests, group: text.groups.operations, icon: "audit" },
     { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat",
         children: [
           { href: "/it-admin/support-chat", label: text.items.supportChatInbox },

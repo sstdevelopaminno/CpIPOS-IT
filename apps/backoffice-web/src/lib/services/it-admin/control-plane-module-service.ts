@@ -28,7 +28,7 @@ export type ItAdminModulePayload = {
   note: string | null;
 };
 
-const OPERATIONAL_MODULES = new Set<ItAdminModule>(["devices", "incidents"]);
+const OPERATIONAL_MODULES = new Set<ItAdminModule>();
 const BRIDGE_TIMEOUT_MS = 8_000;
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
