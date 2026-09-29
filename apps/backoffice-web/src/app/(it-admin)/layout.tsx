@@ -127,6 +127,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
       { href: "/it-admin/store-registrations", label: text.items.registrations, group: text.groups.customer, icon: "provision" },
       { href: "/it-admin/branches", label: text.items.branches, group: text.groups.customer, icon: "branch" },
       { href: "/it-admin/pos-users", label: text.items.users, group: text.groups.customer, icon: "users" },
+      { href: "/it-admin/cpipos-ai", label: text.items.cpiposAi, group: text.groups.customer, icon: "ai" },
       { href: "/it-admin/subscription-payments", label: text.items.subscriptionPayments, group: text.groups.commercial, icon: "package" },
       { href: "/it-admin/license-issuer", label: text.items.desktopLicense, group: text.groups.commercial, icon: "entitlement" },
       { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat",
