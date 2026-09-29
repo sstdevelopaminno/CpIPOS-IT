@@ -6,6 +6,7 @@ export const POS_MENU_GROUPS = [
   { key: "sales_list", label: "รายการขาย", href: "/preview/pos/sales-list", children: [] },
   { key: "kitchen", label: "ครัว", href: "/preview/pos/kitchen", children: [] },
   { key: "shift", label: "เปิด/ปิดกะ", href: "/preview/pos/shift", children: [] },
+  { key: "ai_assistant", label: "CpiPOS AI ผู้ช่วยร้านค้า", href: "/preview/pos/ai-assistant", children: [] },
   { key: "more", label: "เพิ่มเติม", href: "/preview/pos/more", children: [
     { key: "sales_summary", label: "สรุปยอดขาย", href: "/preview/pos/sales-summary" },
     { key: "receipts", label: "ใบเสร็จย้อนหลัง", href: "/preview/pos/receipts" },
@@ -15,10 +16,9 @@ export const POS_MENU_GROUPS = [
     { key: "buffet_pricing", label: "ตั้งค่าราคาบุฟเฟ่", href: "/preview/pos/buffet-pricing" },
     { key: "members", label: "สมาชิก", href: "/preview/pos/members" },
     { key: "tax_invoices", label: "ออกใบกำกับภาษี", href: "/preview/pos/tax-invoices" },
-    { key: "product_sales", label: "รายการขายสินค้า", href: "/preview/pos/product-sales" },
-    { key: "ai_assistant", label: "CpiPOS AI ผู้ช่วยร้านค้า", href: "/preview/pos/ai-assistant" }
+    { key: "product_sales", label: "รายการขายสินค้า", href: "/preview/pos/product-sales" }
   ] },
-  { key: "payments", label: "ชำระเงิน", href: "/preview/pos/payments", children: [] },
+  { key: "package_payment", label: "ชำระแพ็กเกจ", href: "/preview/pos/payments/package", children: [] },
   { key: "settings", label: "ตั้งค่า", href: "/preview/pos/settings", children: [
     { key: "store", label: "ข้อมูลร้านค้า/บริษัท", href: "/preview/pos/settings" },
     { key: "branches", label: "เพิ่มสาขา", href: "/preview/pos/settings" },
@@ -29,6 +29,8 @@ export const POS_MENU_GROUPS = [
     { key: "inet_nops", label: "INET QR", href: "/preview/pos/settings" },
     { key: "taxes", label: "ตั้งค่าภาษี", href: "/preview/pos/settings" },
     { key: "notifications", label: "ตั้งค่าการแจ้งเตือน", href: "/preview/pos/settings" },
+    { key: "support", label: "ศูนย์ช่วยเหลือ", href: "/preview/pos/payments" },
+    { key: "push_notifications", label: "การแจ้งเตือนอุปกรณ์", href: "/preview/pos/settings" },
     { key: "users", label: "ผู้ใช้งาน", href: "/preview/pos/settings" },
     { key: "language", label: "เปลี่ยนภาษา", href: "/preview/pos/settings" },
     { key: "menu_placement", label: "สลับแถบเมนูหลัก", href: "/preview/pos/settings" },
