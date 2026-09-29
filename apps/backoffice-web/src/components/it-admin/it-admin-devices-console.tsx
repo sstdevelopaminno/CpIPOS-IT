@@ -45,13 +45,22 @@ export function ItAdminDevicesConsole({language}:{language:Language}){
     device:th?"อุปกรณ์":"Device", store:th?"ร้าน / สาขา":"Store / Branch", app:th?"เวอร์ชัน":"Version", mdm:th?"MDM":"MDM",
     printer:th?"เครื่องพิมพ์":"Printer", seen:th?"พบล่าสุด":"Last seen", actions:th?"จัดการ":"Actions",
     manage:th?"จัดการ":"Manage", health:th?"Health / Full MDM":"Health / Full MDM", pair:th?"Pair / เชื่อม MDM":"Pair / Connect MDM",
-    testPrinter:th?"ทดสอบเครื่องพิมพ์":"Test printer", edit:th?"แก้ไข":"Edit", remove:th?"ลบรายการ":"Remove",
+    testPrinter:th?"ทดสอบเครื่องพิมพ์":"Test printer",
+    diagnostics:th?"เก็บ Diagnostics":"Collect diagnostics",
+    checkUpdate:th?"ตรวจอัปเดตแอป":"Check app update",
+    edit:th?"แก้ไข":"Edit", remove:th?"ลบรายการ":"Remove",
     close:th?"ปิด":"Close", save:th?"บันทึก":"Save", disconnect:th?"ตัด MDM":"Disconnect MDM", connect:th?"เชื่อม MDM":"Connect MDM",
     remote:th?"ดูหน้าจอ":"View screen", remoteUnavailable:th?"Agent ยังไม่รองรับ Remote Screen":"Remote screen agent not available",
     noRows:th?"ไม่พบอุปกรณ์ตามเงื่อนไข":"No devices match the filters",
     name:th?"ชื่อเครื่อง":"Device name", type:th?"ประเภท":"Type", lock:th?"ล็อกการใช้งาน":"Access lock",
     unlocked:th?"ไม่ล็อก":"Unlocked", lockOn:th?"ล็อก":"Locked", ownership:th?"ประเภทเจ้าของเครื่อง":"Ownership",
-    latestModern:th?"Full MDM ต้องใช้ Android 1.0.23 + Device Owner":"Full MDM requires Android 1.0.23 + Device Owner"
+    latestModern:th?"Full MDM ต้องใช้ Android 1.0.23 + Device Owner · Browser/PWA รองรับ diagnostics/printer/update check แต่ไม่สามารถดูหน้าจอหรือถอนแอป Android ได้":"Full MDM requires Android 1.0.23 + Device Owner · Browser/PWA supports diagnostics/printer/update checks but cannot provide Android screen view or app uninstall",
+    total:th?"อุปกรณ์ทั้งหมด":"Total devices",
+    registry:th?"Registry ใช้งาน":"Registry active",
+    healthReported:th?"มี Health":"Health reported",
+    mdmConnected:th?"MDM เชื่อมต่อ":"MDM connected",
+    onlineCount:th?"ออนไลน์":"Online",
+    lockedCount:th?"ถูกล็อก":"Locked"
   };
   const [data,setData]=useState<Payload|null>(null);
   const [loading,setLoading]=useState(true);
@@ -118,14 +127,20 @@ export function ItAdminDevicesConsole({language}:{language:Language}){
     try{await patch(row,{action:"delete"});setSuccess(th?"ลบรายการแบบเก็บประวัติแล้ว":"Device removed with audit retained.");await load();}
     catch(e){setError(e instanceof Error?e.message:"Remove failed.");}finally{setBusy(false);}
   }
-  async function printerTest(row:Row){
+  async function queueDeviceCommand(row:Row,commandType:"test_printer"|"request_diagnostics"|"check_update"){
     setBusy(true);setError("");
     try{
       const response=await fetch("/api/it-admin/v1/device-commands",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({
-        tenant_id:row.tenant_id,branch_id:row.branch_id,pos_device_id:row.id,command_type:"test_printer"
+        tenant_id:row.tenant_id,branch_id:row.branch_id,pos_device_id:row.id,command_type:commandType
       })});
-      await json(response);setSuccess(th?"ส่งคำสั่งทดสอบเครื่องพิมพ์แล้ว รอ heartbeat/ACK จากเครื่อง":"Printer test queued; waiting for device heartbeat/ACK.");
-    }catch(e){setError(e instanceof Error?e.message:"Printer test failed.");}finally{setBusy(false);}
+      await json(response);
+      const message=commandType==="test_printer"
+        ? (th?"ส่งคำสั่งทดสอบเครื่องพิมพ์แล้ว รอ heartbeat/ACK จากเครื่อง":"Printer test queued; waiting for device heartbeat/ACK.")
+        : commandType==="request_diagnostics"
+          ? (th?"ส่งคำสั่งเก็บ Diagnostics แล้ว รอเครื่องตอบกลับ":"Diagnostics request queued; waiting for device response.")
+          : (th?"ส่งคำสั่งตรวจอัปเดตแอปแล้ว รอเครื่องตอบกลับ":"App update check queued; waiting for device response.");
+      setSuccess(message);
+    }catch(e){setError(e instanceof Error?e.message:"Device command failed.");}finally{setBusy(false);}
   }
   async function disconnect(row:Row){
     if(!row.enrollment_id)return;
@@ -154,7 +169,12 @@ export function ItAdminDevicesConsole({language}:{language:Language}){
     {success?<div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-700">{success}</div>:null}
     {error?<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>:null}
     <section className="grid grid-cols-2 gap-3 md:grid-cols-6">
-      {Object.entries(data?.summary??{}).map(([k,v])=><div key={k} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="text-xs text-slate-500">{k}</div><div className="mt-1 text-2xl font-black">{v}</div></div>)}
+      {Object.entries(data?.summary??{}).map(([k,v])=>{
+        const labels:Record<string,string>={
+          total:t.total,active:t.registry,health_reported:t.healthReported,mdm_connected:t.mdmConnected,online:t.onlineCount,locked:t.lockedCount
+        };
+        return <div key={k} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="text-xs text-slate-500">{labels[k]??k}</div><div className="mt-1 text-2xl font-black">{v}</div></div>;
+      })}
     </section>
     <section className="rounded-2xl border border-slate-200 bg-white p-3">
       <div className="grid gap-2 md:grid-cols-[1fr_180px_180px]">
@@ -178,12 +198,14 @@ export function ItAdminDevicesConsole({language}:{language:Language}){
               <td className="px-4 py-3"><b>{row.device}</b><div className="text-xs text-slate-500">{row.device_code} · {row.device_type}</div><div className={`mt-1 text-xs font-bold ${row.online?"text-emerald-600":"text-slate-400"}`}>{row.online?t.online:t.offline}{row.locked?" · "+t.locked:""}</div></td>
               <td className="px-4 py-3"><b>{row.app_version||"—"}</b><div className="text-xs text-slate-500">{row.runtime_version||"—"}</div></td>
               <td className="px-4 py-3"><b>{row.mdm_status}</b><div className="text-xs text-slate-500">{row.full_mdm?"Full MDM · Device Owner":row.mdm_trust}</div></td>
-              <td className="px-4 py-3"><b>{row.printer_status||"—"}</b><button disabled={busy} onClick={()=>void printerTest(row)} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold">{t.testPrinter}</button></td>
+              <td className="px-4 py-3"><b>{row.printer_status||"—"}</b><button disabled={busy} onClick={()=>void queueDeviceCommand(row,"test_printer")} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold">{t.testPrinter}</button></td>
               <td className="px-4 py-3 text-xs">{dt(row.last_seen_at,language)}</td>
               <td className="px-4 py-3"><div className="flex flex-wrap gap-1.5">
                 <Link href={`/tenants/${row.tenant_id}/devices/${row.id}/health`} className="rounded-lg bg-blue-600 px-2 py-1 text-xs font-bold text-white">{t.health}</Link>
                 <button onClick={()=>open(row)} className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold">{t.manage}</button>
                 <Link href={`/tenants/${row.tenant_id}/devices`} className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold">{t.pair}</Link>
+                <button disabled={busy} onClick={()=>void queueDeviceCommand(row,"request_diagnostics")} className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold">{t.diagnostics}</button>
+                <button disabled={busy} onClick={()=>void queueDeviceCommand(row,"check_update")} className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold">{t.checkUpdate}</button>
                 <button disabled={!remoteReady} title={remoteReady?t.remote:t.remoteUnavailable} className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold disabled:opacity-40">{t.remote}</button>
               </div></td>
             </tr>;

@@ -1,6 +1,5 @@
 import { DeviceHealthConsole } from "@/components/it-admin/device-health-console";
 import { FullMdmControlConsole } from "@/components/it-admin/full-mdm-control-console";
-import { FullMdmControlConsole } from "@/components/it-admin/full-mdm-control-console";
 import { getAuthContext } from "@/lib/auth-context";
 
 export default async function DeviceHealthPage({
