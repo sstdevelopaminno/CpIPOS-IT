@@ -24,7 +24,10 @@ describe("IT printer control",()=>{
  });
 
  it("preserves print history when removing a printer and safely releases agent claims",()=>{
-  expect(api).toContain('is_active:false,status:"inactive"');
+  expect(api).toContain('is_active:false,status:"disabled"');
+  expect(api).toContain("PRINTER_DB_STATUSES");
+  expect(api).toContain("normalizePrinterStatus");
+  expect(api).not.toContain('is_active:false,status:"inactive"');
   expect(api).toContain("claimed_by_agent_id:null");
   expect(api).toContain("it_printer_removed");
   expect(api).toContain("it_print_agent_deleted");
