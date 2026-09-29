@@ -116,7 +116,7 @@ export function CpiPosAiAdminConsole() {
     setSaving(pkg.id);
     setError("");
     try {
-      const response = await fetch(\`/api/it-admin/v1/cpipos-ai/packages/${encodeURIComponent(pkg.id)}\`, {
+      const response = await fetch(`/api/it-admin/v1/cpipos-ai/packages/${encodeURIComponent(pkg.id)}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "content-type": "application/json" },
@@ -212,9 +212,9 @@ export function CpiPosAiAdminConsole() {
                  const requestLimit = row.quota.limits.requests;
                  const tokenLimit = row.quota.limits.tokens;
                  const costLimit = row.quota.limits.cost_usd;
-                 const quotaText = requestLimit ? \`${fmt(row.usage.requests)}/${fmt(requestLimit)} ครั้ง\`
-                   : tokenLimit ? \`${fmt(row.usage.total_tokens)}/${fmt(tokenLimit)} tokens\`
-                   : costLimit ? \`${usd(row.usage.cost_usd)}/${usd(costLimit)}\`
+                 const quotaText = requestLimit ? `${fmt(row.usage.requests)}/${fmt(requestLimit)} ครั้ง`
+                   : tokenLimit ? `${fmt(row.usage.total_tokens)}/${fmt(tokenLimit)} tokens`
+                   : costLimit ? `${usd(row.usage.cost_usd)}/${usd(costLimit)}`
                    : "ไม่จำกัด";
                  return (
                    <tr key={row.tenant_id}>
@@ -225,7 +225,7 @@ export function CpiPosAiAdminConsole() {
                      <td>{fmt(row.usage.total_tokens)}</td>
                      <td>{usd(row.usage.cost_usd)}</td>
                      <td><span className={styles.quotaBadge}>{quotaText}</span></td>
-                     <td><Link className={styles.detailButton} href={\`/it-admin/cpipos-ai/${encodeURIComponent(row.tenant_id)}\`}>ดูรายละเอียด</Link></td>
+                     <td><Link className={styles.detailButton} href={`/it-admin/cpipos-ai/${encodeURIComponent(row.tenant_id)}`}>ดูรายละเอียด</Link></td>
                    </tr>
                  );
                })}
