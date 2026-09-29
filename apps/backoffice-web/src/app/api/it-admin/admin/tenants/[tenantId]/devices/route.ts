@@ -5,7 +5,7 @@ import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-ad
 
 type DevicePayload = {
   device_id?: string;
-  action?: "approve" | "activate" | "deactivate" | "block" | "update" | "set_dual_screen";
+  action?: "approve" | "activate" | "deactivate" | "block" | "update" | "set_dual_screen" | "delete";
   dual_screen_enabled?: boolean;
   device_name?: string;
   device_type?: "pos_terminal" | "mobile_scanner" | "kiosk";
@@ -20,6 +20,7 @@ type DeviceRow = {
   device_name: string;
   device_type: string;
   status: string;
+  is_active: boolean;
   is_locked: boolean;
   metadata: Record<string, unknown> | null;
   last_seen_at: string | null;
@@ -82,7 +83,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
 
     const { data: current, error: currentError } = await supabase
       .from("branch_devices")
-      .select("id,tenant_id,branch_id,device_code,device_name,device_type,status,is_locked,metadata,last_seen_at,updated_at")
+      .select("id,tenant_id,branch_id,device_code,device_name,device_type,status,is_active,is_locked,metadata,last_seen_at,updated_at")
       .eq("tenant_id", tenantId)
       .eq("id", deviceId)
       .maybeSingle<DeviceRow>();
@@ -181,6 +182,47 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       }
     }
 
+    if (action === "delete") {
+      const nowIso = new Date().toISOString();
+      const activeSession = await supabase.from("pos_sessions")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("device_id", deviceId)
+        .eq("status", "active")
+        .gt("expires_at", nowIso)
+        .limit(1)
+        .maybeSingle<{ id: string }>();
+      if (activeSession.error) throw new Error(activeSession.error.message);
+      if (activeSession.data) {
+        return fail("device_has_active_session", "อุปกรณ์ยังมี POS session ที่ใช้งานอยู่ กรุณาออกจากระบบบนเครื่องก่อนลบรายการ.", 409);
+      }
+
+      patch.status = "inactive";
+      patch.is_active = false;
+      patch.is_locked = true;
+      metadata.deleted_at = nowIso;
+      metadata.deleted_by = auth.userId;
+      metadata.deleted_source = "it_admin_devices_console";
+
+      await Promise.all([
+        supabase.from("device_enrollments").update({
+          enrollment_status: "revoked",
+          trust_level: "untrusted",
+          revoked_at: nowIso,
+          updated_at: nowIso
+        }).eq("tenant_id", tenantId).eq("branch_id", current.branch_id).eq("device_code", current.device_code),
+        supabase.from("mdm_commands").update({
+          status: "cancelled",
+          updated_at: nowIso,
+          command_result: { code: "device_registry_deleted", deleted_at: nowIso }
+        }).eq("tenant_id", tenantId).eq("device_id", deviceId).in("status", ["queued", "picked_up"]),
+        supabase.from("device_commands").update({
+          status: "expired",
+          result: { code: "device_registry_deleted", deleted_at: nowIso }
+        }).eq("tenant_id", tenantId).eq("pos_device_id", deviceId).eq("status", "pending")
+      ]);
+    }
+
     if (action === "set_dual_screen") {
       if (current.device_type !== "pos_terminal") {
         return fail("dual_screen_pos_terminal_required", "Dual-screen policy is supported for POS terminals only.", 409);
@@ -208,7 +250,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       .update(patch)
       .eq("tenant_id", tenantId)
       .eq("id", deviceId)
-      .select("id,tenant_id,branch_id,device_code,device_name,device_type,status,is_locked,last_seen_at,metadata,updated_at")
+      .select("id,tenant_id,branch_id,device_code,device_name,device_type,status,is_active,is_locked,last_seen_at,metadata,updated_at")
       .single();
 
     if (updateError) {

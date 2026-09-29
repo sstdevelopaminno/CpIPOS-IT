@@ -151,6 +151,10 @@ export function FullMdmControlConsole({ tenantId, deviceId }: { tenantId: string
       if (control.commandType === "uninstall_app") {
         payload.packageName = packageName.trim();
       }
+      if (control.commandType === "start_remote_support") {
+        payload.sessionMode = "attended";
+        payload.ttlMinutes = 15;
+      }
 
       const response = await fetch("/api/it-admin/v1/mdm/commands", {
         method: "POST",
