@@ -65,7 +65,7 @@ function normalizePrinterStatus(requested:unknown,current:unknown,active:boolean
 async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
   const db=context.supabase;
   const [printers,agents,tenants,branches,devices,health,profiles,commands]=await Promise.all([
-    db.from("printer_devices").select("id,tenant_id,branch_id,printer_profile_id,display_name,brand,model,connection_mode,paper_width_mm,runtime_device_code,status,is_active,last_seen_at,metadata,created_at,updated_at").order("updated_at",{ascending:false}).limit(500).returns<PrinterRow[]>(),
+    db.from("printer_devices").select("id,tenant_id,branch_id,printer_profile_id,display_name,brand,model,connection_mode,paper_width_mm,runtime_device_code,status,is_active,last_seen_at,metadata,created_at,updated_at").eq("is_active",true).neq("status","disabled").order("updated_at",{ascending:false}).limit(500).returns<PrinterRow[]>(),
     db.from("print_agents").select("id,tenant_id,branch_id,device_id,device_code,agent_name,status,last_seen_at,last_claim_at,app_version,metadata,created_at,updated_at").order("updated_at",{ascending:false}).limit(500).returns<AgentRow[]>(),
     db.from("tenants").select("id,name").limit(500),
     db.from("branches").select("id,name").limit(500),

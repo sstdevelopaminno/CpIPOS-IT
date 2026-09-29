@@ -29,7 +29,7 @@ const COPY={
   edit:"แก้ไข",test:"ทดสอบ",remove:"ลบ",save:"บันทึก",cancel:"ยกเลิก",close:"ปิด",
   remoteQueued:"ส่งคำสั่งค้นหาระยะไกลแล้ว ระบบจะรับ inventory ใหม่จาก heartbeat/MDM โดยอัตโนมัติ",
   browserNote:"Web App/Browser ไม่สามารถสแกน USB/Bluetooth แบบเงียบได้ ต้องให้ผู้ใช้หน้าเครื่องอนุญาตครั้งแรกตามข้อจำกัดของ Browser หลังจากนั้น IT จะเห็น Agent/อุปกรณ์จาก heartbeat ได้",
-  confirmDelete:"ยืนยันลบรายการนี้ออกจากระบบใช้งาน?",removed:"ลบรายการแล้ว",updated:"บันทึกการแก้ไขแล้ว",tested:"ส่งคำสั่งทดสอบแล้ว",
+  confirmDelete:"ยืนยันลบรายการนี้ออกจากรายการใช้งาน? ประวัติงานพิมพ์จะยังคงเก็บไว้",removed:"ลบรายการแล้ว",updated:"บันทึกการแก้ไขแล้ว",tested:"ส่งคำสั่งทดสอบแล้ว",
   noRows:"ไม่พบรายการตามเงื่อนไข",loading:"กำลังโหลด...",error:"โหลดข้อมูลไม่สำเร็จ",
   printer:"เครื่องพิมพ์",agent:"Print Agent",paper:"ขนาดกระดาษ",brand:"ยี่ห้อ",model:"รุ่น",enabled:"เปิดใช้งาน",
   source:"แหล่งข้อมูล",inactive:"ไม่ใช้งาน",blocked:"ถูกบล็อก",offline:"ออฟไลน์",checking:"กำลังตรวจ",unknown:"ไม่ทราบ"
@@ -43,7 +43,7 @@ const COPY={
   edit:"Edit",test:"Test",remove:"Delete",save:"Save",cancel:"Cancel",close:"Close",
   remoteQueued:"Remote discovery queued. Fresh printer inventory will arrive through POS heartbeat/MDM.",
   browserNote:"Web browsers cannot silently enumerate USB/Bluetooth. A local user must grant permission once; after that IT can observe registered agents/devices through heartbeat.",
-  confirmDelete:"Remove this item from active use?",removed:"Item removed",updated:"Changes saved",tested:"Remote test queued",
+  confirmDelete:"Remove this item from active inventory? Print history will be preserved.",removed:"Item removed",updated:"Changes saved",tested:"Remote test queued",
   noRows:"No matching records",loading:"Loading...",error:"Unable to load data",
   printer:"Printer",agent:"Print Agent",paper:"Paper width",brand:"Brand",model:"Model",enabled:"Enabled",
   source:"Source",inactive:"Inactive",blocked:"Blocked",offline:"Offline",checking:"Checking",unknown:"Unknown"
@@ -110,6 +110,25 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
   });
  },[data?.rows,kind,status,query]);
 
+ function removeFromSnapshot(row:Row){
+  setData(current=>{
+   if(!current)return current;
+   const nextRows=current.rows.filter(item=>!(item.resource_type===row.resource_type&&item.id===row.id));
+   return {
+    ...current,
+    rows:nextRows,
+    summary:{
+     ...current.summary,
+     total:nextRows.length,
+     printers:nextRows.filter(item=>item.resource_type==="printer").length,
+     agents:nextRows.filter(item=>item.resource_type==="agent").length,
+     active:nextRows.filter(item=>item.active).length,
+     online:nextRows.filter(item=>item.online).length
+    }
+   };
+  });
+ }
+
  function openEdit(row:Row){
   setEditing(row);
   setForm({name:row.name,brand:row.brand??"",model:row.model??"",paper_width_mm:String(row.paper_width_mm??80),status:row.status,active:row.active});
@@ -155,7 +174,9 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
   setBusy(`delete:${row.id}`);setError("");
   try{
    await api("/api/it-admin/v1/printer-control",{method:"DELETE",body:JSON.stringify({resource_type:row.resource_type,id:row.id})});
-   setNotice(t.removed);await load(true);
+   removeFromSnapshot(row);
+   setNotice(t.removed);
+   void load(true);
   }catch(e){setError(e instanceof Error?e.message:t.error);}
   finally{setBusy(null);}
  }

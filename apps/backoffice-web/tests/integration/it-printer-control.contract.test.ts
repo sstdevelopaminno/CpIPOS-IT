@@ -21,6 +21,8 @@ describe("IT printer control",()=>{
   expect(api).toContain('command_type:"test_printer"');
   expect(api).toContain("export async function PATCH");
   expect(api).toContain("export async function DELETE");
+  expect(api).toContain('.eq("is_active",true).neq("status","disabled")');
+  expect(ui).toContain("removeFromSnapshot(row)");
  });
 
  it("preserves print history when removing a printer and safely releases agent claims",()=>{
@@ -31,5 +33,6 @@ describe("IT printer control",()=>{
   expect(api).toContain("claimed_by_agent_id:null");
   expect(api).toContain("it_printer_removed");
   expect(api).toContain("it_print_agent_deleted");
+  expect(api).toContain('metadata:{display_name:current.data.display_name,recoverable:true}');
  });
 });
