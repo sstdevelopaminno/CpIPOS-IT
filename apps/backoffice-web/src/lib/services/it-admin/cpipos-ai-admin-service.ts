@@ -1,6 +1,6 @@
 import "server-only";
 
-import { readEnv } from "@/lib/env";
+import { readRequiredEnv } from "@/lib/env";
 import type { ItAdminContext } from "@/lib/it-admin-guard";
 import { appendAuditLog } from "@/lib/audit-log";
 
@@ -381,8 +381,7 @@ export async function updateCpiposAiTenantQuota(context: ItAdminContext, tenantI
 }
 
 async function openAiFetch(path: string, init?: RequestInit) {
-  const key = readEnv("OPENAI_API_KEY");
-  if (!key) throw new Error("openai_api_key_missing: ฝั่ง CpIPOS-IT ยังไม่ได้ตั้งค่า OPENAI_API_KEY");
+  const key = readRequiredEnv("OPENAI_API_KEY", "CpIPOS-IT requires OPENAI_API_KEY to clear OpenAI conversation history.");
   const response = await fetch(`https://api.openai.com/v1${path}`, {
     ...init,
     cache: "no-store",
