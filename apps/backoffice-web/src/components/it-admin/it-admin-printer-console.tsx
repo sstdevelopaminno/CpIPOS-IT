@@ -13,7 +13,7 @@ type Row={
 };
 type Snapshot={
   checked_at:string;summary:{total:number;printers:number;agents:number;active:number;online:number;remote_targets:number};
-  rows:Row[];remote_targets:Array<{id:string;tenant_id:string;branch_id:string;tenant:string;branch:string;device_code:string;device_name:string;surface:string;status:string;last_seen_at:string|null}>;
+  rows:Row[];remote_targets:Array<{id:string;tenant:string;branch:string;device_code:string;device_name:string;surface:string;last_seen_at:string|null}>;
   note:string;
 };
 type Envelope<T>={data?:T;error?:{message?:string}};
@@ -22,7 +22,7 @@ const COPY={
  th:{
   eyebrow:"ระบบพิมพ์ / รีโมต",
   title:"เครื่องพิมพ์ / Print Agent",
-  desc:"จัดการเครื่องพิมพ์และ Print Agent จากศูนย์กลาง พร้อมค้นหาจาก POS/MDM และทดสอบการเชื่อมต่อระยะไกล",
+  desc:"จัดการเครื่องพิมพ์และ Print Agent จากศูนย์กลาง พร้อมค้นหา แก้ไข ทดสอบ และลบรายการที่เกี่ยวข้อง",
   refresh:"รีเฟรช",remote:"ค้นหาจากระยะไกล",search:"ค้นหาร้าน / สาขา / เครื่อง / Agent / รุ่น",
   all:"ทั้งหมด",printers:"เครื่องพิมพ์",agents:"Print Agent",active:"ใช้งาน",online:"ออนไลน์",targets:"เครื่อง POS ที่สั่งตรวจได้",
   type:"ประเภท",store:"ร้าน",branch:"สาขา",name:"ชื่อ",detail:"รุ่น / รหัสเครื่อง",connection:"การเชื่อมต่อ",status:"สถานะ",seen:"พบล่าสุด",actions:"จัดการ",
@@ -32,15 +32,11 @@ const COPY={
   confirmDelete:"ยืนยันลบรายการนี้ออกจากรายการใช้งาน? ประวัติงานพิมพ์จะยังคงเก็บไว้",removed:"ลบรายการแล้ว",updated:"บันทึกการแก้ไขแล้ว",tested:"ส่งคำสั่งทดสอบแล้ว",
   noRows:"ไม่พบรายการตามเงื่อนไข",loading:"กำลังโหลด...",error:"โหลดข้อมูลไม่สำเร็จ",
   printer:"เครื่องพิมพ์",agent:"Print Agent",paper:"ขนาดกระดาษ",brand:"ยี่ห้อ",model:"รุ่น",enabled:"เปิดใช้งาน",
-  source:"แหล่งข้อมูล",inactive:"ไม่ใช้งาน",blocked:"ถูกบล็อก",offline:"ออฟไลน์",checking:"กำลังตรวจ",unknown:"ไม่ทราบ",
-  remoteTargetsTitle:"เครื่อง POS / MDM สำหรับค้นหาระยะไกล",
-  remoteTargetsDesc:"เลือกเครื่องเป้าหมายเพื่อให้ POS, Web App, Windows Runtime หรือ Android MDM ส่งข้อมูลเครื่องพิมพ์ล่าสุดกลับเข้าระบบ",
-  device:"เครื่อง",platform:"ช่องทาง",discoverHere:"ค้นหาที่เครื่องนี้",noTargets:"ยังไม่พบเครื่อง POS ที่ลงทะเบียนสำหรับค้นหาระยะไกล",
-  remoteTargetQueued:"ส่งคำสั่งค้นหาไปยังเครื่องที่เลือกแล้ว"
+  source:"แหล่งข้อมูล",inactive:"ไม่ใช้งาน",blocked:"ถูกบล็อก",offline:"ออฟไลน์",checking:"กำลังตรวจ",unknown:"ไม่ทราบ"
  },
  en:{
   eyebrow:"PRINT / REMOTE OPERATIONS",title:"Printer / Print Agent",
-  desc:"Central printer and Print Agent management with POS/MDM remote discovery and remote connection testing.",
+  desc:"Central printer and Print Agent management with search, edit, test and remove actions.",
   refresh:"Refresh",remote:"Remote discovery",search:"Search store / branch / printer / agent / model",
   all:"All",printers:"Printers",agents:"Print Agents",active:"Active",online:"Online",targets:"Remote POS targets",
   type:"Type",store:"Store",branch:"Branch",name:"Name",detail:"Model / device code",connection:"Connection",status:"Status",seen:"Last seen",actions:"Actions",
@@ -50,11 +46,7 @@ const COPY={
   confirmDelete:"Remove this item from active inventory? Print history will be preserved.",removed:"Item removed",updated:"Changes saved",tested:"Remote test queued",
   noRows:"No matching records",loading:"Loading...",error:"Unable to load data",
   printer:"Printer",agent:"Print Agent",paper:"Paper width",brand:"Brand",model:"Model",enabled:"Enabled",
-  source:"Source",inactive:"Inactive",blocked:"Blocked",offline:"Offline",checking:"Checking",unknown:"Unknown",
-  remoteTargetsTitle:"POS / MDM remote discovery targets",
-  remoteTargetsDesc:"Choose a target so POS, Web App, Windows Runtime or Android MDM can return the latest printer inventory.",
-  device:"Device",platform:"Surface",discoverHere:"Discover on this device",noTargets:"No registered POS device is available for remote discovery",
-  remoteTargetQueued:"Remote discovery was queued for the selected device"
+  source:"Source",inactive:"Inactive",blocked:"Blocked",offline:"Offline",checking:"Checking",unknown:"Unknown"
  }
 } as const;
 
@@ -142,17 +134,11 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
   setForm({name:row.name,brand:row.brand??"",model:row.model??"",paper_width_mm:String(row.paper_width_mm??80),status:row.status,active:row.active});
  }
 
- async function remoteDiscovery(target?:Snapshot["remote_targets"][number]){
-  const busyKey=target?`discover:${target.id}`:"discover";
-  setBusy(busyKey);setNotice("");setError("");
+ async function remoteDiscovery(){
+  setBusy("discover");setNotice("");setError("");
   try{
-   const result=await api<{queued:number;skipped:number}>("/api/it-admin/v1/printer-control",{
-    method:"POST",
-    body:JSON.stringify(target?{
-      action:"discover",tenant_id:target.tenant_id,branch_id:target.branch_id,device_id:target.id
-    }:{action:"discover"})
-   });
-   setNotice(`${target?t.remoteTargetQueued:t.remoteQueued} · queued ${result.queued} / skipped ${result.skipped}`);
+   const result=await api<{queued:number;skipped:number}>("/api/it-admin/v1/printer-control",{method:"POST",body:JSON.stringify({action:"discover"})});
+   setNotice(`${t.remoteQueued} · queued ${result.queued} / skipped ${result.skipped}`);
    window.setTimeout(()=>void load(true),5000);
    window.setTimeout(()=>void load(true),15000);
   }catch(e){setError(e instanceof Error?e.message:t.error);}
@@ -200,49 +186,17 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
   <div className="flex flex-wrap items-start justify-between gap-4">
    <div><div className="text-xs font-black uppercase tracking-[.18em] text-blue-600">{t.eyebrow}</div><h1 className="mt-2 text-3xl font-black text-slate-950">{t.title}</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{t.desc}</p></div>
    <div className="flex gap-2">
-    <button onClick={()=>void remoteDiscovery()} disabled={busy!==null} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">⌁ {busy==="discover"?t.loading:t.remote}</button>
     <button onClick={()=>void load()} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700">{t.refresh}</button>
    </div>
   </div>
 
-  <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">{t.browserNote}</div>
   {notice?<div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{notice}</div>:null}
   {error?<div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>:null}
 
-  <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-   <div className="flex flex-wrap items-start justify-between gap-3">
-    <div>
-     <h2 className="text-sm font-black text-slate-950">{t.remoteTargetsTitle}</h2>
-     <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-500">{t.remoteTargetsDesc}</p>
-    </div>
-    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{data?.remote_targets.length??0}</span>
-   </div>
-   <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-    {(data?.remote_targets??[]).map(target=><div key={target.id} className="rounded-2xl border border-slate-200 p-4">
-     <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-       <div className="truncate text-sm font-black text-slate-950">{target.device_name}</div>
-       <div className="mt-1 text-xs text-slate-500">{target.device_code} · {target.tenant} · {target.branch}</div>
-      </div>
-      <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${target.status==="active"?"bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-700"}`}>{target.status==="active"?t.active:target.status}</span>
-     </div>
-     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-      <div><span className="text-slate-400">{t.platform}</span><div className="mt-0.5 font-bold text-slate-700">{sourceLabel(target.surface,language)}</div></div>
-      <div><span className="text-slate-400">{t.seen}</span><div className="mt-0.5 font-bold text-slate-700">{fmt(target.last_seen_at,language)}</div></div>
-     </div>
-     <button onClick={()=>void remoteDiscovery(target)} disabled={busy!==null}
-      className="mt-4 w-full rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 disabled:opacity-50">
-      {busy===`discover:${target.id}`?t.loading:t.discoverHere}
-     </button>
-    </div>)}
-    {!loading&&(data?.remote_targets.length??0)===0?<div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500">{t.noTargets}</div>:null}
-   </div>
-  </section>
-
-  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
    {[
     [t.all,summary?.total??"—"],[t.printers,summary?.printers??"—"],[t.agents,summary?.agents??"—"],
-    [t.active,summary?.active??"—"],[t.online,summary?.online??"—"],[t.targets,summary?.remote_targets??"—"]
+    [t.active,summary?.active??"—"],[t.online,summary?.online??"—"]
    ].map(([label,value])=><div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-2xl font-black text-slate-950">{value}</div></div>)}
   </div>
 
