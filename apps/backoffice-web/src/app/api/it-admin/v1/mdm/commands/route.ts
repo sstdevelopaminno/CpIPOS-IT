@@ -225,7 +225,7 @@ export async function POST(req: Request) {
       deviceId,
       commandType,
       requestedBy: auth.userId,
-      requestedByRole: "it_admin",
+      requestedByRole: mdmPolicyRole,
       reason,
       payload: rawPayload
     }, snapshot);
@@ -256,7 +256,7 @@ export async function POST(req: Request) {
         decision: "rejected",
         reason: rejection,
         actor_id: auth.userId,
-        actor_role: "it_admin",
+        actor_role: auth.platformRole,
         metadata: { reason_text: safeReason, payload, eligibility: eligibilitySnapshot }
       });
       await appendItAuditLog({
@@ -283,7 +283,7 @@ export async function POST(req: Request) {
         reason: safeReason || null,
         payload,
         requested_by: auth.userId,
-        requested_by_role: "it_admin",
+        requested_by_role: auth.platformRole,
         eligibility_snapshot: eligibilitySnapshot,
         queued_at: now.toISOString(),
         expires_at: new Date(now.getTime() + ttlMinutes * 60_000).toISOString()
@@ -326,7 +326,7 @@ export async function POST(req: Request) {
         decision: "accepted",
         reason: safeReason || null,
         actor_id: auth.userId,
-        actor_role: "it_admin",
+        actor_role: auth.platformRole,
         metadata: { payload, eligibility: eligibilitySnapshot }
       }),
       appendItAuditLog({

@@ -21,7 +21,7 @@ export class ActivationAdminGuardError extends Error {
 export type ActivationAdminContext = {
   auth: AuthContext;
   supabase: ReturnType<typeof getSupabaseServiceClient>;
-  actorRole: "it_admin" | "owner" | "manager";
+  actorRole: "it_admin" | "it_support" | "owner" | "manager";
   requestMeta: {
     ipAddress: string | null;
     userAgent: string | null;
@@ -46,7 +46,7 @@ export async function requireActivationAdmin(): Promise<ActivationAdminContext> 
   return {
     auth,
     supabase: getSupabaseServiceClient(),
-    actorRole: isItAdmin ? "it_admin" : (auth.branchRole as "owner" | "manager"),
+    actorRole: isItAdmin ? "it_admin" : isItSupport ? "it_support" : (auth.branchRole as "owner" | "manager"),
     requestMeta: {
       ipAddress: readIpAddress(headerStore),
       userAgent: headerStore.get("user-agent")

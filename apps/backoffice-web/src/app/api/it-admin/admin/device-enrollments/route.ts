@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       auth,
       tenantId: tenantIdParam,
       branchId: branchIdParam,
-      allowTenantWide: auth.platformRole === "it_admin"
+      allowTenantWide: auth.platformRole === "it_admin" || auth.platformRole === "it_support"
     });
 
     if (auth.platformRole !== "it_admin") {

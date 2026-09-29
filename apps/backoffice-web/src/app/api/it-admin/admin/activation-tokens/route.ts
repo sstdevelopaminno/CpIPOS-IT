@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       return fail("invalid_payload", "tenant_id is required.", 422);
     }
 
-    const allowTenantWide = auth.platformRole === "it_admin";
+    const allowTenantWide = auth.platformRole === "it_admin" || auth.platformRole === "it_support";
     const { tenantId, branchId } = await assertActivationScope({
       auth,
       tenantId: requestedTenantId,
