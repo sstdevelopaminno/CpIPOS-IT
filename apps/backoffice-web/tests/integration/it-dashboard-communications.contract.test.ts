@@ -8,10 +8,11 @@ describe("IT dashboard communications database plane",()=>{
   const service=src("src/lib/services/it-admin/dashboard-overview-service.ts");
   const dashboard=src("src/components/it-admin/it-admin-dashboard.tsx");
 
-  it("enables the communications database plane by default with safe public connection metadata",()=>{
+  it("keeps the communications database plane active regardless of legacy deployment flags",()=>{
     expect(service).toContain('DEFAULT_COMMUNICATIONS_URL = "https://wznixoeezgyhtwurcswb.supabase.co"');
-    expect(service).toContain("operationalPlaneFlag === undefined");
+    expect(service).toContain("const operationalPlaneEnabled = true");
     expect(service).toContain("DEFAULT_COMMUNICATIONS_PUBLISHABLE_KEY");
+    expect(service).not.toContain("IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED");
   });
 
   it("keeps POS devices and incidents authoritative in CpiPOS-001",()=>{

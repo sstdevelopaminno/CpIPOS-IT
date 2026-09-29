@@ -293,10 +293,7 @@ function databaseSource<T extends { database: DatabaseMetrics }>(source: SourceS
 
 export async function loadDashboardOverview(accessToken: string): Promise<DashboardOverview> {
   const checkedAt = new Date();
-  const operationalPlaneFlag = readEnv("IT_DASHBOARD_OPERATIONAL_PLANE_ENABLED");
-  const operationalPlaneEnabled = operationalPlaneFlag === undefined
-    ? true
-    : asBoolean(operationalPlaneFlag);
+  const operationalPlaneEnabled = true;
   const primaryUrl = readRequiredEnv("CPIPOS_SUPABASE_URL", "Missing CpiPOS-001 Supabase URL.");
   const primaryPublishableKey = readRequiredEnv(
     "CPIPOS_SUPABASE_PUBLISHABLE_KEY",
