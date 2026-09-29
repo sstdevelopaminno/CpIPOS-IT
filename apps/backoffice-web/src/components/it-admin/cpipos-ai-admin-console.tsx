@@ -55,7 +55,7 @@ function fmt(value: unknown) {
 }
 
 function usd(value: unknown) {
-  return `${Number(value ?? 0).toFixed(4)}`;
+  return "$" + Number(value ?? 0).toFixed(4);
 }
 
 function inputValue(value: number | string | null | undefined) {
