@@ -31,7 +31,7 @@ const copy = {
       users: "ผู้ใช้งาน / สิทธิ์ POS",
       devices: "Devices / MDM",
       android: "Android App Rollout",
-      printer: "Printer / Print Agent",
+      printer: "เครื่องพิมพ์ / Print Agent",
       packages: "แพ็กเกจ / Subscription",
       subscriptionPayments: "ตารางชำระแพ็กเกจ",
       desktopLicense: "ออก License POS Desktop",

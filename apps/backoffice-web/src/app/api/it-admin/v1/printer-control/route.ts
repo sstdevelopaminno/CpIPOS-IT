@@ -203,15 +203,16 @@ export async function POST(request:Request){
     });
     if(!rate.ok) return fail("rate_limited","Too many printer control actions.",429);
 
-    const body=await request.json().catch(()=>null) as {action?:unknown;tenant_id?:unknown;branch_id?:unknown;resource_type?:unknown;id?:unknown}|null;
+    const body=await request.json().catch(()=>null) as {action?:unknown;tenant_id?:unknown;branch_id?:unknown;device_id?:unknown;resource_type?:unknown;id?:unknown}|null;
     const action=text(body?.action,40);
     if(action!=="discover" && action!=="test") return fail("invalid_action","Unknown printer control action.",422);
 
     const db=context.supabase;
     let deviceQuery=db.from("branch_devices").select("id,tenant_id,branch_id,device_code,device_name,status,is_active,last_seen_at").eq("is_active",true);
-    const tenantId=text(body?.tenant_id,80); const branchId=text(body?.branch_id,80);
+    const tenantId=text(body?.tenant_id,80); const branchId=text(body?.branch_id,80); const deviceId=text(body?.device_id,80);
     if(tenantId) deviceQuery=deviceQuery.eq("tenant_id",tenantId);
     if(branchId) deviceQuery=deviceQuery.eq("branch_id",branchId);
+    if(deviceId) deviceQuery=deviceQuery.eq("id",deviceId);
 
     if(action==="test"){
       const resourceType=text(body?.resource_type,20) as ResourceType;
@@ -277,7 +278,7 @@ export async function POST(request:Request){
       actorUserId:context.auth.userId,actorRole:context.auth.platformRole,
       action:"it_printer_remote_discovery",targetTable:"device_commands",
       module:"printer",entityType:"printer_discovery",
-      metadata:{tenant_id:tenantId||null,branch_id:branchId||null,queued:rows.length,skipped:skip.size},
+      metadata:{tenant_id:tenantId||null,branch_id:branchId||null,device_id:deviceId||null,queued:rows.length,skipped:skip.size},
       ipAddress:context.requestMeta.ipAddress??undefined,userAgent:context.requestMeta.userAgent??undefined
     });
     return ok({queued:rows.length,skipped:skip.size,devices:devices.map(device=>({id:device.id,device_code:device.device_code,device_name:device.device_name}))});
@@ -288,6 +289,12 @@ export async function PATCH(request:Request){
   try{
     const context=await requireItAdmin();
     assertItSupportAction(context);
+    const rate=await enforceRateLimit({
+      namespace:"it_printer_control_write",
+      key:`${context.auth.userId}:${getClientIpAddress(request)??"unknown"}`,
+      max:30,windowMs:60_000,failClosedOnBackendError:true
+    });
+    if(!rate.ok) return fail("rate_limited","Too many printer changes.",429);
     const body=await request.json().catch(()=>null) as {
       resource_type?:unknown;id?:unknown;name?:unknown;brand?:unknown;model?:unknown;
       paper_width_mm?:unknown;status?:unknown;active?:unknown
@@ -354,6 +361,12 @@ export async function DELETE(request:Request){
   try{
     const context=await requireItAdmin();
     assertItSupportAction(context);
+    const rate=await enforceRateLimit({
+      namespace:"it_printer_control_delete",
+      key:`${context.auth.userId}:${getClientIpAddress(request)??"unknown"}`,
+      max:12,windowMs:60_000,failClosedOnBackendError:true
+    });
+    if(!rate.ok) return fail("rate_limited","Too many printer delete actions.",429);
     const body=await request.json().catch(()=>null) as {resource_type?:unknown;id?:unknown}|null;
     const resourceType=text(body?.resource_type,20) as ResourceType;
     const id=text(body?.id,80);

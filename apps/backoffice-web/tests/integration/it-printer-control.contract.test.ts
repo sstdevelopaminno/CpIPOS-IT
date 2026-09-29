@@ -19,8 +19,14 @@ describe("IT printer control",()=>{
   expect(ui).toContain("setQuery");
   expect(api).toContain('command_type:"request_diagnostics"');
   expect(api).toContain('command_type:"test_printer"');
+  expect(api).toContain('device_id?:unknown');
+  expect(api).toContain('deviceQuery=deviceQuery.eq("id",deviceId)');
+  expect(ui).toContain("discoverHere");
+  expect(ui).toContain("remoteDiscovery(target)");
   expect(api).toContain("export async function PATCH");
   expect(api).toContain("export async function DELETE");
+  expect(api).toContain('namespace:"it_printer_control_write"');
+  expect(api).toContain('namespace:"it_printer_control_delete"');
   expect(api).toContain('.eq("is_active",true).neq("status","disabled")');
   expect(ui).toContain("removeFromSnapshot(row)");
  });
