@@ -46,6 +46,13 @@ describe("CpIPOS IT AI control center", () => {
     expect(service).toContain("response_id");
   });
 
+  it("renders provider cost values instead of a literal interpolation string", () => {
+    expect(listUi).toContain('return "$" + Number(value ?? 0).toFixed(4);');
+    expect(detailUi).toContain('return "$" + Number(value ?? 0).toFixed(6);');
+    expect(listUi).not.toContain('return "${Number');
+    expect(detailUi).not.toContain('return "${Number');
+  });
+
   it("supports scoped history clearing while retaining usage accounting", () => {
     expect(service).toContain("clearCpiposAiHistory");
     expect(service).toContain("history_cleared_at");
