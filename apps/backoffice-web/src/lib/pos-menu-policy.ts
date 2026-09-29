@@ -24,6 +24,7 @@ export const POS_MENU_CATALOG: readonly PosMenuDefinition[] = [
   { key: "more.members", label: "สมาชิก", group: "more", parent: "main.more", route: "/preview/pos/members" },
   { key: "more.tax_invoices", label: "ออกใบกำกับภาษี", group: "more", parent: "main.more", route: "/preview/pos/tax-invoices" },
   { key: "more.product_sales", label: "รายการขายสินค้า", group: "more", parent: "main.more", route: "/preview/pos/product-sales" },
+  { key: "more.ai_assistant", label: "CpiPOS AI ผู้ช่วยร้านค้า", group: "more", parent: "main.more", route: "/preview/pos/ai-assistant", protected: true },
   { key: "settings.store", label: "ข้อมูลร้านค้า/บริษัท", group: "settings", parent: "main.settings" },
   { key: "settings.branches", label: "เพิ่มสาขา", group: "settings", parent: "main.settings" },
   { key: "settings.devices", label: "เพิ่มเครื่องแคชเชียร์", group: "settings", parent: "main.settings" },

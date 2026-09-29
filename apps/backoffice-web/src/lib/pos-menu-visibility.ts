@@ -15,7 +15,8 @@ export const POS_MENU_GROUPS = [
     { key: "buffet_pricing", label: "ตั้งค่าราคาบุฟเฟ่", href: "/preview/pos/buffet-pricing" },
     { key: "members", label: "สมาชิก", href: "/preview/pos/members" },
     { key: "tax_invoices", label: "ออกใบกำกับภาษี", href: "/preview/pos/tax-invoices" },
-    { key: "product_sales", label: "รายการขายสินค้า", href: "/preview/pos/product-sales" }
+    { key: "product_sales", label: "รายการขายสินค้า", href: "/preview/pos/product-sales" },
+    { key: "ai_assistant", label: "CpiPOS AI ผู้ช่วยร้านค้า", href: "/preview/pos/ai-assistant" }
   ] },
   { key: "payments", label: "ชำระเงิน", href: "/preview/pos/payments", children: [] },
   { key: "settings", label: "ตั้งค่า", href: "/preview/pos/settings", children: [

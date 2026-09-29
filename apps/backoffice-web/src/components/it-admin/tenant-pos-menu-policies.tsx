@@ -46,7 +46,10 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       return;
     }
     const prompt = enabled ? "ปิดใช้งาน" : "เปิดใช้งาน";
-    if (!window.confirm(`${prompt} "${item.label}" ของร้าน ${storeName}?\n\nล็อกเฉพาะเมนูที่เลือก โดยยังแสดงรายการและลิงก์ใน POS ไม่เปลี่ยนค่าของเมนูอื่นหรือสิทธิ์แพ็กเกจ`)) return;
+    const scopeNotice = item.key === "more.ai_assistant"
+      ? "การปิด CpiPOS AI จะบล็อกทั้งเมนู หน้า AI และ API ของ AI สำหรับร้านนี้ทันที โดยไม่กระทบเมนู POS อื่น"
+      : "ล็อกเฉพาะเมนูที่เลือก โดยยังแสดงรายการและลิงก์ใน POS ไม่เปลี่ยนค่าของเมนูอื่นหรือสิทธิ์แพ็กเกจ";
+    if (!window.confirm(`${prompt} "${item.label}" ของร้าน ${storeName}?\n\n${scopeNotice}`)) return;
     setBusy(item.key); setError(""); setSuccess("");
     try {
       const response = await fetch(endpoint, {
@@ -86,7 +89,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
               : "เปิดใช้งานใน POS";
     return <div key={item.key} className={child ? styles.child : styles.parent}>
       <div className={styles.menuLabel}>
-        <strong>{item.label}</strong>
+        <strong>{item.label}{item.key === "more.ai_assistant" ? <span className={styles.aiBadge}>AI POLICY</span> : null}</strong>
         <small className={effective ? styles.available : styles.unavailable}>{message}</small>
         {blockedByAccess ? <small className={styles.accessHelp}>
           คำสั่ง IT: เปิด แต่เงื่อนไขแพ็กเกจ/สาขายังปิด •{" "}
@@ -118,6 +121,6 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
           {byParent.get(item.key)?.map(child => menuRow(child, true))}
         </div> : null}
       </section>)}
-    <p className={styles.note}>สวิตช์แสดงสถานะที่ POS ใช้งานได้จริงทุกสาขา หากแพ็กเกจไม่รองรับจะขึ้น “ปิด” แม้คำสั่ง IT ยังเป็น “เปิด” และจะไม่แก้แพ็กเกจให้เอง • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • การปิดโดย IT ล็อกเฉพาะปุ่มที่เลือก ไม่ซ่อนลิงก์หรือปิด API • POS อ่านสถานะใหม่เมื่อกลับเข้าแท็บ</p>
+    <p className={styles.note}>สวิตช์แสดงสถานะที่ POS ใช้งานได้จริงทุกสาขา หากแพ็กเกจไม่รองรับจะขึ้น “ปิด” แม้คำสั่ง IT ยังเป็น “เปิด” และจะไม่แก้แพ็กเกจให้เอง • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • เมนูทั่วไปยังเป็น navigation lock ตามเดิม แต่ <strong>CpiPOS AI</strong> เป็น policy lock แบบบังคับ: เมื่อปิดจะบล็อกหน้า AI และ API ของ AI สำหรับร้านนั้นด้วย • POS อ่านสถานะใหม่เมื่อกลับเข้าแท็บ</p>
   </div>;
 }
