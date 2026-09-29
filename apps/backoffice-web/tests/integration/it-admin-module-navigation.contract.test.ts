@@ -53,7 +53,8 @@ describe("IT Admin connected module navigation", () => {
     expect(tenantsPage).not.toContain("requireItAdmin");
     expect(tenantsPage).not.toContain("context.supabase");
     expect(provisioningPage).not.toContain("context.supabase");
-    expect(monitoringPage).toContain('module="monitoring"');
+    expect(monitoringPage).toContain("ItAdminMonitoringConsole");
+    expect(monitoringPage).toContain("getCurrentLanguage");
     expect(monitoringPage).not.toContain("/api/it-admin/v1/monitor");
   });
 
