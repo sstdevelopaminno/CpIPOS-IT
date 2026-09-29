@@ -50,6 +50,20 @@ const COPY={
  }
 } as const;
 
+function statusLabel(row:Row,t:typeof COPY.th|typeof COPY.en){
+ if(row.online)return t.online;
+ if(row.status==="active")return t.active;
+ if(row.status==="inactive")return t.inactive;
+ if(row.status==="blocked")return t.blocked;
+ if(row.status==="offline")return t.offline;
+ if(row.status==="checking")return t.checking;
+ return row.status||t.unknown;
+}
+function sourceLabel(source:string,language:Language){
+ const th:Record<string,string>={android_mdm:"Android MDM",browser:"เว็บแอป / Browser",windows_runtime:"Windows Runtime",registered:"ลงทะเบียนในระบบ"};
+ const en:Record<string,string>={android_mdm:"Android MDM",browser:"Web App / Browser",windows_runtime:"Windows Runtime",registered:"Registered"};
+ return (language==="th"?th:en)[source]||source;
+}
 function fmt(value:string|null,language:Language){
  if(!value)return "—"; const d=new Date(value); if(Number.isNaN(d.getTime()))return "—";
  return new Intl.DateTimeFormat(language==="th"?"th-TH":"en-GB",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Bangkok"}).format(d);
@@ -87,7 +101,9 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
   const q=query.trim().toLowerCase();
   return (data?.rows??[]).filter(row=>{
    if(kind!=="all"&&row.resource_type!==kind)return false;
-   if(status!=="all"&&row.status!==status)return false;
+   if(status==="online"&&!row.online)return false;
+   if(status==="active"&&!row.active)return false;
+   if(status!=="all"&&status!=="online"&&status!=="active"&&row.status!==status)return false;
    if(!q)return true;
    return [row.tenant,row.branch,row.name,row.brand,row.model,row.device_code,row.runtime_device_code,row.status,row.source]
     .some(value=>String(value??"").toLowerCase().includes(q));
@@ -178,10 +194,10 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
     {rows.map(row=><tr key={`${row.resource_type}:${row.id}`} className="hover:bg-slate-50/70">
      <td className="px-4 py-3 font-bold">{row.resource_type==="printer"?t.printer:t.agent}</td>
      <td className="px-4 py-3">{row.tenant}</td><td className="px-4 py-3">{row.branch}</td>
-     <td className="px-4 py-3"><div className="font-bold text-slate-900">{row.name}</div><div className="text-[11px] text-slate-500">{row.source}</div></td>
+     <td className="px-4 py-3"><div className="font-bold text-slate-900">{row.name}</div><div className="text-[11px] text-slate-500">{sourceLabel(row.source,language)}</div></td>
      <td className="px-4 py-3">{row.resource_type==="printer"?([row.brand,row.model].filter(Boolean).join(" ")||"—"):(row.device_code||"—")}</td>
      <td className="px-4 py-3">{row.resource_type==="printer"?`${row.connection||"—"} · ${row.paper_width_mm??"—"} mm`:(row.app_version||"—")}</td>
-     <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${row.online?"bg-emerald-100 text-emerald-700":row.status==="blocked"?"bg-red-100 text-red-700":"bg-slate-100 text-slate-700"}`}>{row.online?t.online:row.status}</span></td>
+     <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${row.online?"bg-emerald-100 text-emerald-700":row.status==="blocked"?"bg-red-100 text-red-700":"bg-slate-100 text-slate-700"}`}>{statusLabel(row,t)}</span></td>
      <td className="whitespace-nowrap px-4 py-3">{fmt(row.last_seen_at,language)}</td>
      <td className="px-4 py-3"><div className="flex gap-1.5">
       <button onClick={()=>openEdit(row)} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-bold">{t.edit}</button>

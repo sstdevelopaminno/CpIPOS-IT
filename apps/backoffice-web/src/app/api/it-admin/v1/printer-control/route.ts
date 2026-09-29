@@ -373,9 +373,16 @@ export async function DELETE(request:Request){
     const current=await db.from("print_agents").select("id,tenant_id,branch_id,agent_name,device_code").eq("id",id).maybeSingle();
     if(current.error) throw current.error;
     if(!current.data) return fail("agent_not_found","Print Agent was not found.",404);
-    await db.from("print_jobs").update({
+    const disabled=await db.from("print_agents").update({
+      status:"inactive",updated_at:new Date().toISOString()
+    }).eq("id",id).eq("tenant_id",current.data.tenant_id).eq("branch_id",current.data.branch_id);
+    if(disabled.error) throw disabled.error;
+
+    const released=await db.from("print_jobs").update({
       claimed_by_agent_id:null,claimed_at:null,claim_expires_at:null,agent_attempt_id:null,updated_at:new Date().toISOString()
     }).eq("claimed_by_agent_id",id).eq("tenant_id",current.data.tenant_id).eq("branch_id",current.data.branch_id);
+    if(released.error) throw released.error;
+
     const deleted=await db.from("print_agents").delete().eq("id",id);
     if(deleted.error) throw deleted.error;
     await appendAuditLog({
