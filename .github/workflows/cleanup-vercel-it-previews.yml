@@ -1,0 +1,88 @@
+name: One-time cleanup Vercel IT previews
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cleanup-vercel-it-previews.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete every non-production deployment from cp-ipos-it-web
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: team_ZKmv6uQSU9QUyP08mxAr2YDI
+          VERCEL_PROJECT_NAME: cp-ipos-it-web
+        run: |
+          set -euo pipefail
+
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::Missing repository secret VERCEL_TOKEN."
+            exit 1
+          fi
+
+          project_json=$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_NAME?teamId=$VERCEL_TEAM_ID")
+
+          project_id=$(printf '%s' "$project_json" | jq -r '.id // empty')
+          if [ -z "$project_id" ]; then
+            echo "::error::Could not resolve Vercel project id for $VERCEL_PROJECT_NAME."
+            exit 1
+          fi
+
+          echo "Resolved $VERCEL_PROJECT_NAME as $project_id"
+
+          deleted=0
+          cursor=""
+
+          while :; do
+            url="https://api.vercel.com/v7/deployments?projectId=$project_id&teamId=$VERCEL_TEAM_ID&limit=100"
+            if [ -n "$cursor" ]; then
+              url="$url&until=$cursor"
+            fi
+
+            payload=$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "$url")
+
+            mapfile -t preview_ids < <(
+              printf '%s' "$payload" |
+              jq -r '.deployments[] | select((.target // "") != "production") | .uid // .id'
+            )
+
+            for deployment_id in "${preview_ids[@]}"; do
+              [ -n "$deployment_id" ] || continue
+              echo "Deleting Preview deployment $deployment_id"
+              curl --fail --silent --show-error \
+                -X DELETE \
+                -H "Authorization: Bearer $VERCEL_TOKEN" \
+                "https://api.vercel.com/v13/deployments/$deployment_id?teamId=$VERCEL_TEAM_ID" >/dev/null
+              deleted=$((deleted + 1))
+            done
+
+            cursor=$(printf '%s' "$payload" | jq -r '.pagination.next // empty')
+            [ -n "$cursor" ] || break
+          done
+
+          verify=$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v7/deployments?projectId=$project_id&teamId=$VERCEL_TEAM_ID&limit=100")
+
+          remaining=$(printf '%s' "$verify" | jq '[.deployments[] | select((.target // "") != "production")] | length')
+
+          echo "Deleted Preview deployments: $deleted"
+          echo "Remaining non-production deployments on first page: $remaining"
+
+          if [ "$remaining" -ne 0 ]; then
+            echo "::error::Preview deployments still remain."
+            exit 1
+          fi
