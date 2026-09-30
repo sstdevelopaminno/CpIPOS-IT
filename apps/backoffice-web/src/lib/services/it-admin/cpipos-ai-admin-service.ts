@@ -31,6 +31,9 @@ type TenantOverride = {
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
   history_retention_days: number | null;
+  document_storage_mb: number | null;
+  document_retention_days: number | null;
+  document_max_file_mb: number | null;
 };
 
 type DocumentUsageAgg = {
