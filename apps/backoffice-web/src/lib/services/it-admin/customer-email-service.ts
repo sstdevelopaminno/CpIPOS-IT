@@ -221,8 +221,10 @@ async function getOrCreateDelivery(input: {
   subject: string;
   triggerMode: CustomerEmailTriggerMode;
   actorUserId?: string | null;
+  eventKeySuffix?: string | null;
 }) {
-  const eventKey = `${input.eventType}:${input.sourceId}`;
+  const suffix = text(input.eventKeySuffix, 80).replace(/[^a-zA-Z0-9_-]/g, "");
+  const eventKey = `${input.eventType}:${input.sourceId}${suffix ? `:${suffix}` : ""}`;
   const existing = await input.db.from("customer_email_deliveries")
     .select("id,event_key,status,attempt_count,last_attempt_at,sent_at")
     .eq("event_key", eventKey).maybeSingle<DeliveryRow>();
@@ -410,6 +412,7 @@ export async function deliverCustomerEmail(input: {
   message: CustomerEmailMessage;
   triggerMode: CustomerEmailTriggerMode;
   actorUserId?: string | null;
+  eventKeySuffix?: string | null;
 }): Promise<CustomerEmailDeliveryResult> {
   const settings = await loadSettings(input.db);
   const brandedMessage = brandMessage(input.message, settings, input.eventType);
@@ -432,7 +435,8 @@ export async function deliverCustomerEmail(input: {
     to,
     subject: brandedMessage.subject,
     triggerMode: input.triggerMode,
-    actorUserId: input.actorUserId
+    actorUserId: input.actorUserId,
+    eventKeySuffix: input.eventKeySuffix
   });
 
   if (delivery.status === "sent") {
