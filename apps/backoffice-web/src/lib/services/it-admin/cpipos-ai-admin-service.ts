@@ -18,6 +18,9 @@ type PackageQuota = {
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
   history_retention_days: number | null;
+  document_retention_days: number | null;
+  document_storage_mb: number | null;
+  document_file_limit: number | null;
 };
 
 type TenantOverride = {
@@ -28,6 +31,9 @@ type TenantOverride = {
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
   history_retention_days: number | null;
+  document_retention_days: number | null;
+  document_storage_mb: number | null;
+  document_file_limit: number | null;
 };
 
 type UsageAgg = {
@@ -91,7 +97,12 @@ function effectiveQuota(packageQuota: PackageQuota | null, override: TenantOverr
     limits,
     history_retention_days:
       nullablePositive(override?.history_retention_days) ??
-      nullablePositive(packageQuota?.history_retention_days)
+      nullablePositive(packageQuota?.history_retention_days),
+    documents: {
+      retention_days: nullablePositive(override?.document_retention_days) ?? nullablePositive(packageQuota?.document_retention_days),
+      storage_mb: nullablePositive(override?.document_storage_mb) ?? nullablePositive(packageQuota?.document_storage_mb),
+      file_limit: nullablePositive(override?.document_file_limit) ?? nullablePositive(packageQuota?.document_file_limit)
+    }
   };
 }
 
@@ -158,9 +169,9 @@ export async function listCpiposAiStores(context: ItAdminContext) {
       .select("tenant_id,menu_key,is_enabled")
       .in("menu_key", ["main.ai_assistant", "more.ai_assistant"]),
     db.from("pos_ai_package_quotas")
-      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days"),
+      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_retention_days,document_storage_mb,document_file_limit"),
     db.from("pos_ai_tenant_quota_overrides")
-      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days"),
+      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_retention_days,document_storage_mb,document_file_limit"),
     db.rpc("pos_ai_admin_tenant_usage", { p_started_at: bounds.start, p_ended_at: bounds.end }),
     db.from("pos_ai_chat_rooms").select("id,tenant_id,user_id,branch_id,title,openai_conversation_id,updated_at,last_message_at")
   ]);
@@ -269,6 +280,9 @@ export async function updateCpiposAiPackageQuota(context: ItAdminContext, packag
     monthly_token_limit: nullablePositive(input.monthly_token_limit),
     monthly_cost_limit_usd: nullablePositive(input.monthly_cost_limit_usd),
     history_retention_days: nullablePositive(input.history_retention_days),
+    document_retention_days: nullablePositive(input.document_retention_days),
+    document_storage_mb: nullablePositive(input.document_storage_mb),
+    document_file_limit: nullablePositive(input.document_file_limit),
     updated_by: context.auth.userId,
     updated_at: new Date().toISOString()
   };
@@ -332,7 +346,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
   const packageId = contract.data?.package_id ?? tenant.data.package_id ?? null;
   const [pkg, packageQuota, profiles, branches, roles] = await Promise.all([
     packageId ? db.from("subscription_packages").select("id,code,name").eq("id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    packageId ? db.from("pos_ai_package_quotas").select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days").eq("package_id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    packageId ? db.from("pos_ai_package_quotas").select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_retention_days,document_storage_mb,document_file_limit").eq("package_id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
     db.from("users_profiles").select("id,email,full_name,is_active"),
     db.from("branches").select("id,code,name,is_active").eq("tenant_id", tenantId),
     db.from("user_branch_roles").select("user_id,branch_id,role,is_default").eq("tenant_id", tenantId).in("role", ["owner","manager"])
@@ -426,6 +440,9 @@ export async function updateCpiposAiTenantQuota(context: ItAdminContext, tenantI
     monthly_token_limit: mode === "custom" ? nullablePositive(input.monthly_token_limit) : null,
     monthly_cost_limit_usd: mode === "custom" ? nullablePositive(input.monthly_cost_limit_usd) : null,
     history_retention_days: nullablePositive(input.history_retention_days),
+    document_retention_days: nullablePositive(input.document_retention_days),
+    document_storage_mb: nullablePositive(input.document_storage_mb),
+    document_file_limit: nullablePositive(input.document_file_limit),
     updated_by: context.auth.userId,
     updated_at: new Date().toISOString()
   };
