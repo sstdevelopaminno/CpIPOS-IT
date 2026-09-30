@@ -26,6 +26,7 @@ type PackageRow = {
   status: string;
   feature_codes: string[];
   custom_per_store: boolean;
+  metadata?: Record<string, unknown> | null;
 };
 
 type Payload = {
@@ -76,6 +77,13 @@ function money(value: number | null | undefined) {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(Number(value));
 }
 
+function metaNumber(row: PackageRow, key: string) {
+  const parsed = Number(row.metadata?.[key] ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+function metaBoolean(row: PackageRow, key: string) {
+  return row.metadata?.[key] === true;
+}
 function numberOrNull(value: string) {
   const text = value.trim();
   if (!text) return null;
@@ -98,7 +106,7 @@ function draftFrom(row: PackageRow): Draft {
     max_products: row.max_products == null ? "" : String(row.max_products),
     monthly_bill_limit: row.monthly_bill_limit == null ? "" : String(row.monthly_bill_limit),
     storage_limit_gb: row.storage_limit_gb == null ? "" : String(row.storage_limit_gb),
-    retention_months: row.quota_mode === "standard" ? "6" : String(row.retention_months ?? 6),
+    retention_months: row.retention_months == null ? "" : String(row.retention_months),
     is_active: row.is_active,
     quota_mode: row.quota_mode === "custom" ? "custom" : "standard"
   };
@@ -163,7 +171,7 @@ export function PackageCatalogManager() {
       max_products: custom ? null : numberOrNull(draft.max_products),
       monthly_bill_limit: custom ? null : numberOrNull(draft.monthly_bill_limit),
       storage_limit_gb: custom ? null : numberOrNull(draft.storage_limit_gb),
-      retention_months: custom ? null : 6,
+      retention_months: custom ? null : numberOrNull(draft.retention_months),
       is_active: draft.is_active,
       status: draft.is_active ? "active" : "inactive"
     };
@@ -192,7 +200,7 @@ export function PackageCatalogManager() {
   async function remove(row: PackageRow) {
     if (busy) return;
     const reason = window.prompt(
-      ["starter","growth","custom"].includes(row.code)
+      ["starter","growth","business","custom"].includes(row.code)
         ? "แพ็กเกจหลักจะถูกพักใช้งาน ไม่ลบประวัติ กรุณาระบุเหตุผล"
         : "ระบุเหตุผลการลบ/พักแพ็กเกจ",
       "ปรับปรุงรายการแพ็กเกจ"
@@ -221,6 +229,7 @@ export function PackageCatalogManager() {
         <p>ราคา · ส่วนลด · โควตา · อายุข้อมูล</p>
       </div>
       <div className={styles.headerActions}>
+        <Link href="/it-admin/cpipos-ai">AI Quota</Link>
         <Link href="/it-admin/tenants">CUSTOM รายร้าน</Link>
         <button type="button" onClick={() => setDraft(emptyDraft())}>+ เพิ่มแพ็กเกจ</button>
       </div>
@@ -229,7 +238,7 @@ export function PackageCatalogManager() {
     <section className={styles.stats}>
       <article><span>ทั้งหมด</span><strong>{data?.packages.length ?? 0}</strong></article>
       <article><span>Active</span><strong>{activeCount}</strong></article>
-      <article><span>Sales Retention</span><strong>6 เดือน</strong></article>
+      <article><span>Canonical</span><strong>Starter · Growth · Business · CUSTOM</strong></article>
     </section>
 
     <div className={styles.toolbar}>
@@ -244,7 +253,7 @@ export function PackageCatalogManager() {
     <section className={styles.tableCard}>
       <div className={styles.tableWrap}>
         <table>
-          <thead><tr><th>แพ็กเกจ</th><th>รายเดือน</th><th>รายปี</th><th>โควตา</th><th>เก็บยอดขาย</th><th>สถานะ</th><th /></tr></thead>
+          <thead><tr><th>แพ็กเกจ</th><th>รายเดือน</th><th>รายปี</th><th>โควตา</th><th>สินค้า / บิล</th><th>AI / โหมดขาย</th><th>เก็บยอดขาย</th><th>สถานะ</th><th /></tr></thead>
           <tbody>
             {rows.map((row) => <tr key={row.id}>
               <td><strong>{row.name}</strong><small>{row.code}{row.custom_per_store ? " · รายร้าน" : ""}</small></td>
@@ -257,19 +266,28 @@ export function PackageCatalogManager() {
               <td>
                 {row.custom_per_store ? "—" : row.yearly_price && row.effective_yearly_price ? <>
                   <strong>{money(row.effective_yearly_price)}</strong>
-                  {row.yearly_discount_percent > 0 ? <small>ส่วนลด {row.yearly_discount_percent}%</small> : null}
+                  {metaNumber(row,"annual_discount_percent") ? <small>
+                    ลด {metaNumber(row,"annual_discount_percent")}% · จาก {money(metaNumber(row,"yearly_list_price"))}
+                  </small> : row.yearly_discount_percent > 0 ? <small>ส่วนลด {row.yearly_discount_percent}%</small> : null}
                 </> : "ยังไม่ตั้ง"}
               </td>
               <td>{row.custom_per_store ? <span className={styles.customBadge}>IT กำหนด</span> :
                 <span>{row.max_branches} สาขา · {row.max_devices ?? "—"} เครื่อง · {row.max_users ?? "—"} ผู้ใช้</span>}</td>
-              <td><strong>{row.custom_per_store ? "ตามสัญญา" : "6 เดือน"}</strong></td>
+              <td>{row.custom_per_store ? "ตามสัญญา" : <span>{row.max_products ?? "ไม่จำกัด"} สินค้า · {row.monthly_bill_limit ?? "ไม่จำกัด"} บิล/เดือน</span>}</td>
+              <td>{row.custom_per_store ? <span className={styles.customBadge}>IT กำหนด</span> : <span>
+                {metaBoolean(row,"ai_included") ? `AI รวม ${metaNumber(row,"ai_monthly_requests") ?? "ตามโควตา"}` :
+                  metaBoolean(row,"ai_addon_available") ? `AI Add-on ฿${metaNumber(row,"ai_addon_monthly_price") ?? 299}` : "ไม่รวม AI"}
+                {" · "}
+                {metaNumber(row,"sales_mode_limit") ? `${metaNumber(row,"sales_mode_limit")} โหมด` : "โหมดตามสัญญา"}
+              </span>}</td>
+              <td><strong>{row.custom_per_store ? "ตามสัญญา" : row.retention_months ? `${row.retention_months} เดือน` : "ไม่กำหนด"}</strong></td>
               <td><span className={row.is_active && row.status === "active" ? styles.active : styles.retired}>{row.status}</span></td>
               <td><div className={styles.rowActions}>
                 <button type="button" onClick={() => setDraft(draftFrom(row))}>แก้ไข</button>
                 <button type="button" className={styles.deleteButton} onClick={() => void remove(row)} disabled={busy}>ลบ</button>
               </div></td>
             </tr>)}
-            {!loading && rows.length === 0 ? <tr><td colSpan={7} className={styles.empty}>ยังไม่มีแพ็กเกจ</td></tr> : null}
+            {!loading && rows.length === 0 ? <tr><td colSpan={9} className={styles.empty}>ยังไม่มีแพ็กเกจ</td></tr> : null}
           </tbody>
         </table>
       </div>
@@ -283,7 +301,7 @@ export function PackageCatalogManager() {
         </div> : null}
         <div className={styles.formGrid}>
           <label><span>ชื่อแพ็กเกจ</span><input value={draft.name} onChange={(e) => update("name",e.target.value)} /></label>
-          <label><span>Code</span><input value={draft.code} disabled={Boolean(draft.id && ["starter","growth","custom"].includes(draft.code))} onChange={(e) => update("code",e.target.value)} /></label>
+          <label><span>Code</span><input value={draft.code} disabled={Boolean(draft.id && ["starter","growth","business","custom"].includes(draft.code))} onChange={(e) => update("code",e.target.value)} /></label>
           {!draft.id ? <label><span>ประเภท</span><select value={draft.quota_mode} onChange={(e) => update("quota_mode",e.target.value as Draft["quota_mode"])}><option value="standard">Standard</option><option value="custom">CUSTOM</option></select></label> : null}
           <label className={styles.switch}><input type="checkbox" checked={draft.is_active} onChange={(e) => update("is_active",e.target.checked)} /><span>เปิดใช้งาน</span></label>
         </div>
@@ -305,7 +323,7 @@ export function PackageCatalogManager() {
             <label><span>สินค้า</span><input type="number" min="1" placeholder="ไม่จำกัด" value={draft.max_products} onChange={(e) => update("max_products",e.target.value)} /></label>
             <label><span>บิล / เดือน</span><input type="number" min="1" placeholder="ไม่จำกัด" value={draft.monthly_bill_limit} onChange={(e) => update("monthly_bill_limit",e.target.value)} /></label>
             <label><span>Storage GB</span><input type="number" min="0.01" step="0.01" placeholder="ไม่กำหนด" value={draft.storage_limit_gb} onChange={(e) => update("storage_limit_gb",e.target.value)} /></label>
-            <label><span>Sales Retention</span><input value="6 เดือน" disabled /></label>
+            <label><span>Sales Retention (เดือน)</span><input type="number" min="1" placeholder="ไม่กำหนด" value={draft.retention_months} onChange={(e) => update("retention_months",e.target.value)} /></label>
           </div>
         </> : null}
 

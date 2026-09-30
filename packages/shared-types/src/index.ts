@@ -1,7 +1,7 @@
 export type UUID = string;
 
 export type PlatformRole = "it_admin" | "it_support" | "tenant_user";
-export type BranchRole = "owner" | "manager" | "staff" | "accountant";
+export type BranchRole = "owner" | "manager" | "staff" | "accountant" | "kitchen";
 
 export type PaymentMethod = "cash" | "bank_transfer";
 export type OrderType = "dine_in" | "takeaway" | "delivery_manual";
@@ -55,7 +55,8 @@ export type PosFeatureCode =
   | "branch_management"
   | "user_management"
   | "mobile_qr_login"
-  | "mobile_device_enrollment";
+  | "mobile_device_enrollment"
+  | "cpipos_ai";
 
 export interface Tenant {
   id: UUID;
