@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PosMenuDefinition } from "@/lib/pos-menu-policy";
+import { isPosMenuAlwaysEnabled, type PosMenuDefinition } from "@/lib/pos-menu-policy";
 import type { MenuAvailability } from "@/lib/pos-menu-effective-state";
 import styles from "./tenant-pos-menu-policies.module.css";
 
@@ -37,6 +37,10 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   ])), [data, main]);
   async function toggle(item: PosMenuDefinition) {
     if (!data || busy) return;
+    if (isPosMenuAlwaysEnabled(item.key)) {
+      setError("เมนูเปิด/ปิดกะเป็นเมนูหลักของ POS และเปิดใช้งานเสมอ");
+      return;
+    }
     const enabled = data.overrides[item.key] !== false;
     const availability = data.availability?.[item.key];
     // The main switch shows actual POS availability, not an IT command that
@@ -70,7 +74,8 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
     } finally { setBusy(null); }
   }
   function menuRow(item: PosMenuDefinition, child: boolean) {
-    const configured = data?.overrides[item.key] !== false;
+    const alwaysEnabled = isPosMenuAlwaysEnabled(item.key);
+    const configured = alwaysEnabled || data?.overrides[item.key] !== false;
     const entitlement = data?.availability?.[item.key];
     const allowed = entitlement?.feature_allowed === true;
     const effective = configured && allowed;
@@ -100,9 +105,9 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
         aria-label={`${item.label}: ${effective ? "เปิดใช้งานใน POS" : message}`}
         title={blockedByAccess ? "ต้องเปิดสิทธิ์แพ็กเกจหรือสาขาก่อนจึงจะเปิดเมนูนี้ได้" : message}
         className={effective ? styles.switchOn : styles.switchOff}
-        disabled={busy !== null || !entitlement || !allowed}
+        disabled={busy !== null || alwaysEnabled || !entitlement || !allowed}
         onClick={() => void toggle(item)}>
-        <span>{effective ? "เปิด" : "ปิด"}</span><i aria-hidden />
+        <span>{alwaysEnabled ? "เปิดเสมอ" : effective ? "เปิด" : "ปิด"}</span><i aria-hidden />
       </button>
     </div>;
   }
