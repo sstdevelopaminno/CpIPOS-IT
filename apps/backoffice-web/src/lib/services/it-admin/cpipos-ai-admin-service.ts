@@ -3,6 +3,7 @@ import "server-only";
 import { readRequiredEnv } from "@/lib/env";
 import type { ItAdminContext } from "@/lib/it-admin-guard";
 import { appendAuditLog } from "@/lib/audit-log";
+import { invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
 
 type QuotaLimits = {
   requests: number | null;
@@ -98,6 +99,44 @@ function usageShape(row?: Partial<UsageAgg> | null) {
     total_tokens: Math.max(0, Math.trunc(numberValue(row?.total_tokens))),
     cost_usd: Number(numberValue(row?.total_cost_usd).toFixed(8))
   };
+}
+
+async function syncPackageAiFeature(context: ItAdminContext, packageId: string, enabled: boolean) {
+  const result = await context.supabase.from("subscription_package_features")
+    .upsert({
+      package_id: packageId,
+      feature_code: "cpipos_ai",
+      included: enabled
+    }, { onConflict: "package_id,feature_code" });
+  if (result.error) throw new Error(result.error.message);
+  invalidateTenantFeatureGateCache();
+}
+
+async function syncTenantAiFeatureOverride(
+  context: ItAdminContext,
+  tenantId: string,
+  mode: "inherit" | "custom" | "unlimited",
+  enabledOverride: boolean | null
+) {
+  const deleteExisting = await context.supabase.from("tenant_feature_subscriptions")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("feature_code", "cpipos_ai")
+    .is("branch_id", null);
+  if (deleteExisting.error) throw new Error(deleteExisting.error.message);
+
+  if (mode !== "inherit" || enabledOverride !== null) {
+    const insert = await context.supabase.from("tenant_feature_subscriptions")
+      .insert({
+        tenant_id: tenantId,
+        branch_id: null,
+        feature_code: "cpipos_ai",
+        is_enabled: enabledOverride !== false,
+        source: "ai_quota_override"
+      });
+    if (insert.error) throw new Error(insert.error.message);
+  }
+  invalidateTenantFeatureGateCache();
 }
 
 export async function listCpiposAiStores(context: ItAdminContext) {
@@ -232,6 +271,7 @@ export async function updateCpiposAiPackageQuota(context: ItAdminContext, packag
     .upsert(payload, { onConflict: "package_id" })
     .select("*").single();
   if (saved.error) throw new Error(saved.error.message);
+  await syncPackageAiFeature(context, packageId, Boolean(saved.data.is_enabled));
   await appendAuditLog({
     actorUserId: context.auth.userId,
     actorRole: context.auth.platformRole,
@@ -365,6 +405,7 @@ export async function updateCpiposAiTenantQuota(context: ItAdminContext, tenantI
   const saved = await context.supabase.from("pos_ai_tenant_quota_overrides")
     .upsert(payload, { onConflict: "tenant_id" }).select("*").single();
   if (saved.error) throw new Error(saved.error.message);
+  await syncTenantAiFeatureOverride(context, tenantId, mode, payload.is_enabled_override);
   await appendAuditLog({
     tenantId,
     actorUserId: context.auth.userId,
