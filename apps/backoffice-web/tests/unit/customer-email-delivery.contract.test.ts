@@ -44,6 +44,9 @@ describe("transactional customer email delivery", () => {
     expect(manual).toContain("publicStoreCode");
     expect(manual).not.toContain('storeCode: store.code');
     expect(service).toContain('/^\\d{6}$/');
+    expect(service).toContain("eventKeySuffix");
+    expect(manual).toContain("store-code-correction-v1");
+    expect(manual).toContain("แก้ไข Store Code");
     expect(registrationUi).toContain("ส่งอีเมลเปิดระบบ");
     expect(paymentUi).toContain("ส่งอีเมลยืนยันชำระ");
     expect(service).toContain("ระบบจะไม่ส่ง PIN หรือรหัสลับทางอีเมล");
