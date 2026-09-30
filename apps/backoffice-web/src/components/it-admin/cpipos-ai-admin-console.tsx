@@ -39,6 +39,7 @@ type StoreRow = {
     source: string;
     limits: { requests: number | null; tokens: number | null; cost_usd: number | null };
     history_retention_days: number | null;
+    documents: { storage_limit_mb: number | null; retention_days: number | null; max_file_mb: number | null };
   };
   usage: { requests: number; users: number; total_tokens: number; cost_usd: number };
   document_usage: { count: number; bytes: number; last_document_at: string | null };
