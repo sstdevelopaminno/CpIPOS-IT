@@ -259,7 +259,7 @@ export async function createPackage(context: ItAdminContext, input: PackageMutat
     max_products: toNullablePositiveInteger(input.max_products, null),
     monthly_bill_limit: toNullablePositiveInteger(input.monthly_bill_limit, null),
     storage_limit_gb: input.storage_limit_gb == null ? null : toMoney(input.storage_limit_gb, null),
-    retention_months: quotaMode === "standard" ? 6 : toNullablePositiveInteger(input.retention_months, null),
+    retention_months: quotaMode === "standard" ? toNullablePositiveInteger(input.retention_months, 6) : toNullablePositiveInteger(input.retention_months, null),
     quota_mode: quotaMode,
     is_active: input.is_active ?? true,
     status: input.status ?? "active",
@@ -309,7 +309,7 @@ export async function updatePackage(context: ItAdminContext, packageId: string, 
     input.single_device_mode === true ||
     input.branch_selection === "hidden";
 
-  if (typeof input.code === "string" && input.code.trim() && !["starter","growth","custom"].includes(current.code)) patch.code = normalizeCode(input.code);
+  if (typeof input.code === "string" && input.code.trim() && !["starter","growth","business","custom"].includes(current.code)) patch.code = normalizeCode(input.code);
   if (typeof input.name === "string" && input.name.trim()) patch.name = normalizeText(input.name);
   if (!currentIsCustom && typeof input.monthly_price === "number") patch.monthly_price = toMoney(input.monthly_price, current.monthly_price);
   if (!currentIsCustom && (typeof input.yearly_price === "number" || input.yearly_price === null)) {
@@ -323,7 +323,9 @@ export async function updatePackage(context: ItAdminContext, packageId: string, 
   if (!currentIsCustom && (typeof input.max_products === "number" || input.max_products === null)) patch.max_products = input.max_products === null ? null : toPositiveInteger(input.max_products, current.max_products);
   if (!currentIsCustom && (typeof input.monthly_bill_limit === "number" || input.monthly_bill_limit === null)) patch.monthly_bill_limit = input.monthly_bill_limit === null ? null : toPositiveInteger(input.monthly_bill_limit, current.monthly_bill_limit);
   if (!currentIsCustom && (typeof input.storage_limit_gb === "number" || input.storage_limit_gb === null)) patch.storage_limit_gb = input.storage_limit_gb === null ? null : toMoney(input.storage_limit_gb, current.storage_limit_gb);
-  if (!currentIsCustom) patch.retention_months = 6;
+  if (!currentIsCustom && (typeof input.retention_months === "number" || input.retention_months === null)) {
+    patch.retention_months = input.retention_months === null ? null : toPositiveInteger(input.retention_months, current.retention_months);
+  }
   if (typeof input.is_active === "boolean") patch.is_active = input.is_active;
   if (input.status === "active" || input.status === "inactive" || input.status === "retired") patch.status = input.status;
   if (singleRegisterPackage && !currentIsCustom) {
