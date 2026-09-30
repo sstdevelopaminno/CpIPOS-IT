@@ -7,9 +7,6 @@
   "buildCommand": "corepack pnpm -C ../.. --filter backoffice-web build",
   "outputDirectory": ".next",
   "git": {
-    "deploymentEnabled": {
-      "*": false,
-      "main": true
-    }
+    "deploymentEnabled": false
   }
 }
