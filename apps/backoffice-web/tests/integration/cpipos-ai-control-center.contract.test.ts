@@ -9,6 +9,8 @@ const detailUi = src("../../src/components/it-admin/cpipos-ai-tenant-detail.tsx"
 const service = src("../../src/lib/services/it-admin/cpipos-ai-admin-service.ts");
 const migration = src("../../../../supabase/migrations/20260929224000_pos_ai_usage_quota.sql");
 const roomMigration = src("../../../../supabase/migrations/20260930133000_cpipos_ai_chat_rooms_retention.sql");
+const documentMigration = src("../../../../supabase/migrations/20260930161000_cpipos_ai_document_vault.sql");
+const documentUi = src("../../src/components/it-admin/cpipos-ai-documents-admin.tsx");
 
 describe("CpIPOS IT AI control center", () => {
   it("adds CpiPOS AI to IT navigation", () => {
@@ -24,6 +26,21 @@ describe("CpIPOS IT AI control center", () => {
     expect(service).toContain(".filter((row) => row.ai_enabled)");
     expect(listUi).toContain("ร้านค้าที่เปิดใช้งาน CpiPOS AI");
     expect(listUi).toContain("ต้นทุน AI เดือนนี้");
+  });
+
+  it("adds AI document storage to IT navigation and package/store policy", () => {
+    expect(layout).toContain('aiDocuments: "ไฟล์เอกสาร AI"');
+    expect(layout).toContain('href: "/it-admin/ai-documents"');
+    expect(documentMigration).toContain("document_storage_mb");
+    expect(documentMigration).toContain("document_retention_days");
+    expect(documentMigration).toContain("document_max_file_mb");
+    expect(documentMigration).toContain("pos_ai_admin_document_usage");
+    expect(service).toContain("listCpiposAiDocumentStores");
+    expect(service).toContain("document_storage_mb");
+    expect(listUi).toContain("พื้นที่เอกสาร AI (MB)");
+    expect(detailUi).toContain("เก็บเอกสาร (วัน)");
+    expect(documentUi).toContain("ไฟล์เอกสาร CpiPOS AI");
+    expect(documentUi).toContain("Private Storage");
   });
 
   it("supports package/per-store quota and chat retention", () => {
