@@ -19,9 +19,9 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
       admin.supabase.from("tenant_pos_menu_policies").select("menu_key,is_enabled,updated_at")
         .eq("tenant_id", tenantId),
       admin.supabase.from("tenant_subscription_contracts")
-        .select("package_id,status,ended_at").eq("tenant_id", tenantId)
+        .select("package_id,status,ended_at,metadata").eq("tenant_id", tenantId)
         .order("created_at", { ascending: false }).limit(1)
-        .maybeSingle<{ package_id: string; status: string; ended_at: string | null }>(),
+        .maybeSingle<{ package_id: string; status: string; ended_at: string | null; metadata: Record<string, unknown> | null }>(),
       admin.supabase.from("branches").select("id").eq("tenant_id", tenantId).eq("is_active", true),
       admin.supabase.from("tenant_feature_subscriptions")
         .select("feature_code,is_enabled,branch_id").eq("tenant_id", tenantId)
