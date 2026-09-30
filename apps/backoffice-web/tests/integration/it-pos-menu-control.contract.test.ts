@@ -12,13 +12,14 @@ describe("IT ↔ POS single-source menu policy", () => {
   it("maps every legacy menu switch to exactly one canonical key (including shift)", () => {
     const canonical = POS_MENU_CATALOG.map(item => item.key).sort();
     const aliases = [...legacy.matchAll(/\b[a-z_]+: "((?:main|more|settings)\.[a-z_]+)"/g)].map(match => match[1]);
-    expect(canonical).toHaveLength(34);
+    expect(canonical).toHaveLength(35);
     expect(new Set(canonical).size).toBe(canonical.length);
     expect(new Set(aliases).size).toBe(aliases.length);
     expect(aliases.sort()).toEqual(canonical);
     expect(posMenuKeyForRoute("/preview/pos/shift")).toBe("main.shift");
     expect(posMenuKeyForRoute("/preview/pos/ai-assistant")).toBe("main.ai_assistant");
     expect(canonical).toContain("main.ai_assistant");
+    expect(canonical).toContain("more.ai_documents");
     expect(canonical).toContain("main.package_payment");
     expect(canonical).toContain("settings.support");
     expect(canonical).toContain("settings.push_notifications");
