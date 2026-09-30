@@ -72,6 +72,29 @@ comment on table public.pos_ai_document_package_policies is
 comment on table public.pos_ai_document_tenant_overrides is
   'Optional IT tenant override for AI-generated document retention and storage quota.';
 
+create or replace function public.pos_ai_document_admin_usage()
+returns table(
+  tenant_id uuid,
+  file_count bigint,
+  total_bytes bigint,
+  last_created_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $
+  select d.tenant_id,
+         count(*)::bigint as file_count,
+         coalesce(sum(d.size_bytes),0)::bigint as total_bytes,
+         max(d.created_at) as last_created_at
+  from public.pos_ai_documents d
+  group by d.tenant_id;
+$;
+
+revoke all on function public.pos_ai_document_admin_usage() from public, anon, authenticated;
+grant execute on function public.pos_ai_document_admin_usage() to service_role;
+
 insert into public.pos_ai_document_package_policies(package_id,is_enabled,retention_days,storage_limit_mb,max_files)
 select
   p.id,
