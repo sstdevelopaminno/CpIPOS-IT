@@ -2,7 +2,7 @@ import { readBoundedJson } from "@/lib/server/limited-json";
 import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
-import { POS_MENU_CATALOG, isValidPosMenuKey } from "@/lib/pos-menu-policy";
+import { POS_MENU_CATALOG, isPosMenuAlwaysEnabled, isValidPosMenuKey } from "@/lib/pos-menu-policy";
 import { resolvePosMenuAvailability, type FeatureFlag, type PlanFlag, type ContractStatus } from "@/lib/pos-menu-effective-state";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 
@@ -73,6 +73,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ tenan
     const key = typeof body?.menu_key === "string" ? body.menu_key.trim() : "";
     if (!isValidPosMenuKey(key) || typeof body?.is_enabled !== "boolean") {
       return fail("invalid_menu_policy", "กรุณาเลือกเมนูและสถานะที่ถูกต้อง", 422);
+    }
+    if (isPosMenuAlwaysEnabled(key) && body.is_enabled === false) {
+      return fail("core_menu_required", "เมนูเปิด/ปิดกะเป็นเมนูหลักของ POS และไม่สามารถปิดได้", 422);
     }
     const existing = await admin.supabase.from("tenant_pos_menu_policies")
       .select("is_enabled").eq("tenant_id", tenantId).eq("menu_key", key)
