@@ -266,6 +266,61 @@ export async function listCpiposAiStores(context: ItAdminContext) {
   };
 }
 
+export async function listCpiposAiDocumentStores(context: ItAdminContext) {
+  const db = context.supabase;
+  const [tenants, contracts, packages, packageQuotas, tenantOverrides, documentUsage] = await Promise.all([
+    db.from("tenants").select("id,code,name,display_name,is_active,package_id").order("name"),
+    db.from("tenant_subscription_contracts")
+      .select("tenant_id,package_id,status,created_at")
+      .in("status", ["active","trial"])
+      .order("created_at", { ascending: false }),
+    db.from("subscription_packages").select("id,code,name"),
+    db.from("pos_ai_package_quotas")
+      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb"),
+    db.from("pos_ai_tenant_quota_overrides")
+      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb"),
+    db.rpc("pos_ai_admin_document_usage")
+  ]);
+  for (const result of [tenants,contracts,packages,packageQuotas,tenantOverrides,documentUsage]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
+  const latestContract = new Map<string,{ package_id: string; status: string }>();
+  for (const row of contracts.data ?? []) {
+    if (!latestContract.has(row.tenant_id)) latestContract.set(row.tenant_id,row);
+  }
+  const packageMap = new Map((packages.data ?? []).map((row) => [row.id,row]));
+  const packageQuotaMap = new Map((packageQuotas.data ?? []).map((row) => [row.package_id,row as PackageQuota]));
+  const overrideMap = new Map((tenantOverrides.data ?? []).map((row) => [row.tenant_id,row as TenantOverride]));
+  const usageMap = new Map(((documentUsage.data ?? []) as DocumentUsageAgg[]).map((row) => [row.tenant_id,row]));
+
+  return {
+    generated_at: new Date().toISOString(),
+    rows: (tenants.data ?? []).map((tenant) => {
+      const contract = latestContract.get(tenant.id) ?? null;
+      const packageId = contract?.package_id ?? tenant.package_id ?? null;
+      const pkg = packageId ? packageMap.get(packageId) ?? null : null;
+      const quota = effectiveQuota(packageId ? packageQuotaMap.get(packageId) ?? null : null, overrideMap.get(tenant.id) ?? null);
+      const usage = usageMap.get(tenant.id);
+      return {
+        tenant_id: tenant.id,
+        store_code: tenant.code,
+        name: tenant.display_name || tenant.name,
+        active: Boolean(tenant.is_active),
+        package_code: pkg?.code ?? null,
+        package_name: pkg?.name ?? null,
+        contract_status: contract?.status ?? null,
+        policy: quota.documents,
+        usage: {
+          count: Math.max(0,Math.trunc(numberValue(usage?.document_count))),
+          bytes: Math.max(0,Math.trunc(numberValue(usage?.total_bytes))),
+          last_document_at: usage?.last_document_at ?? null
+        }
+      };
+    })
+  };
+}
+
 export async function listCpiposAiPackageQuotas(context: ItAdminContext) {
   const db = context.supabase;
   const [packages, quotas] = await Promise.all([
