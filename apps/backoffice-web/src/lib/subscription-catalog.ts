@@ -294,6 +294,17 @@ export const DEFAULT_PACKAGE_FEATURE_CATALOG: PackageFeatureCatalogItem[] = [
     includedByDefault: false,
     pricedPerBranch: false,
     isActive: true
+  },
+  {
+    code: "ai_document_vault",
+    name: "AI Document Vault",
+    description: "Private storage for AI-generated sales, stock, accounting and marketing documents.",
+    defaultMonthlyPrice: 0,
+    defaultYearlyPrice: 0,
+    defaultPerpetualPrice: 0,
+    includedByDefault: false,
+    pricedPerBranch: false,
+    isActive: true
   }
 ];
 
@@ -428,7 +439,8 @@ export const DEFAULT_PACKAGE_CATALOG: PackageCatalogItem[] = [
       "user_management",
       "mobile_qr_login",
       "mobile_device_enrollment",
-      "cpipos_ai"
+      "cpipos_ai",
+      "ai_document_vault"
     ],
     target: "แพ็กเกจธุรกิจเต็มรูปแบบ พร้อม CpiPOS AI",
     metadata: {
