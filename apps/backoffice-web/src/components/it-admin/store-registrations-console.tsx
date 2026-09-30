@@ -65,13 +65,30 @@ export function StoreRegistrationsConsole() {
   });
   const [busy, setBusy] = useState(false);
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try { setData(await api<Payload>()); setError(""); }
-    catch (e) { setError(e instanceof Error ? e.message : "โหลดคำขอไม่สำเร็จ"); }
-    finally { setLoading(false); }
+  const reload = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      setData(await api<Payload>());
+      if (!silent) setError("");
+    } catch (e) {
+      if (!silent) setError(e instanceof Error ? e.message : "โหลดคำขอไม่สำเร็จ");
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
-  useEffect(() => { void reload(); }, [reload]);
+
+  useEffect(() => {
+    void reload(false);
+    const refresh = () => {
+      if (document.visibilityState === "visible") void reload(true);
+    };
+    const intervalId = window.setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [reload]);
 
   function open(row: Row, mode: "edit" | "activate") {
     setSelected(row); setForm(draft(row)); setIntent(mode); setPin(""); setError(""); setSuccess("");
