@@ -54,7 +54,19 @@ export type MenuAvailability = {
 
 export type FeatureFlag = { feature_code: string; is_enabled: boolean; branch_id?: string | null };
 export type PlanFlag = { feature_code: string; included: boolean | null };
-export type ContractStatus = { status: string; ended_at: string | null } | null;
+export type ContractStatus = {
+  status: string;
+  ended_at: string | null;
+  metadata?: Record<string, unknown> | null;
+} | null;
+
+const DINE_IN_LINKED_FEATURES = new Set(["table_management", "kitchen_printing", "qr_table_ordering"]);
+
+function dineInEnabled(contract: ContractStatus): boolean {
+  const raw = contract?.metadata?.sales_modes;
+  return Boolean(raw && typeof raw === "object" && !Array.isArray(raw) &&
+    (raw as Record<string, unknown>).dine_in === true);
+}
 
 /** Mirrors POS hasBranchFeature: package, then tenant override, then branch override,
  * while inactive/expired contracts always deny gated features. Never writes data. */
@@ -84,6 +96,7 @@ export function resolvePosMenuAvailability(args: {
         let enabled = feature ? (planMap.get(feature) ?? false) : true;
         if (feature && tenantMap.has(feature)) enabled = tenantMap.get(feature)!;
         if (feature && branchMap.has(branch + ":" + feature)) enabled = branchMap.get(branch + ":" + feature)!;
+        if (feature && dineInEnabled(contract) && DINE_IN_LINKED_FEATURES.has(feature)) enabled = true;
         if (enabled) available += 1;
       }
     }
