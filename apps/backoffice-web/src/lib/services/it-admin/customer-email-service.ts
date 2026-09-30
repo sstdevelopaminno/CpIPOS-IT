@@ -259,12 +259,14 @@ export function buildStoreActivationEmail(input: {
   supportEmail: string;
 }): CustomerEmailMessage {
   const subject = `เปิดระบบ POS | ${text(input.storeName, 120)} | CpIPOS`;
+  const rawStoreCode = text(input.storeCode, 20);
+  const storeCode = /^\d{6}$/.test(rawStoreCode) ? rawStoreCode : "—";
   const lines = [
     `เรียน ${text(input.ownerName, 120) || text(input.storeName, 120)}`,
     "",
     "ระบบ CpIPOS ของร้านได้รับการเปิดใช้งานแล้ว",
     `ร้านค้า: ${text(input.storeName, 180)}`,
-    `Store Code: ${text(input.storeCode, 80)}`,
+    `Store Code: ${storeCode}`,
     input.ownerCode ? `รหัสผู้ใช้งาน Owner: ${text(input.ownerCode, 20)}` : "",
     `สิ้นสุดช่วงทดลองใช้: ${thaiDate(input.trialExpiresAt)}`,
     "",
@@ -274,7 +276,7 @@ export function buildStoreActivationEmail(input: {
 
   const rows = [
     ["ร้านค้า", input.storeName],
-    ["Store Code", input.storeCode],
+    ["Store Code", storeCode],
     input.ownerCode ? ["รหัสผู้ใช้งาน Owner", input.ownerCode] : null,
     ["สิ้นสุดช่วงทดลองใช้", thaiDate(input.trialExpiresAt)]
   ].filter(Boolean) as string[][];
