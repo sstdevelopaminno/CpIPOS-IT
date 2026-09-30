@@ -100,6 +100,7 @@ type Detail = {
   };
   users: UserRow[];
   rooms: RoomRow[];
+  document_usage: { count: number; bytes: number };
   events: UsageRow[];
   series: { daily: SeriesRow[]; monthly: SeriesRow[]; yearly: SeriesRow[] };
 };
@@ -255,7 +256,8 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
         <article><span>AI Users / ห้องแชท</span><strong>{fmt(data?.users.length)} / {fmt(data?.rooms.length)}</strong><small>Owner / Manager · OpenAI Conversations</small></article>
         <article><span>คำขอเดือนนี้</span><strong>{fmt(usage?.requests)}</strong><small>{data?.quota.month ?? "—"}</small></article>
         <article><span>Token เดือนนี้</span><strong>{fmt(usage?.total_tokens)}</strong><small>Input {fmt(usage?.input_tokens)} · Output {fmt(usage?.output_tokens)}</small></article>
-        <article><span>ต้นทุนเดือนนี้</span><strong className={styles.smallStrong}>{usd(usage?.cost_usd)}</strong><small>Estimated OpenAI cost</small></article>
+        <article><span>ต้นทุนเดือนนี้</span><strong className={styles.smallStrong}>{usd(usage?.cost_usd)}</strong><small>Estimated provider cost</small></article>
+        <article><span>ไฟล์เอกสาร AI</span><strong>{fmt(data?.document_usage.count)}</strong><small>{(Number(data?.document_usage.bytes ?? 0) / 1024 / 1024).toFixed(2)} MB</small></article>
       </section>
 
       <section className={styles.panel}>
