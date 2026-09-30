@@ -17,29 +17,27 @@ describe("IT POS menu switch reflects ACTUAL menu availability", () => {
   it("covers the exact same 31 tenant-specific menu controls", () => {
     expect(Object.keys(POS_MENU_NAV_FEATURES).sort()).toEqual(POS_MENU_CATALOG.map(m => m.key).sort());
   });
-  it("shows OFF when IT is ON but package lacks feature; no other menu is cascaded", () => {
+  it("keeps shift available even when the package does not include attendance tracking", () => {
     const result = resolvePosMenuAvailability(base);
-    expect(result["main.shift"]).toMatchObject({ feature_code: "attendance_tracking", feature_allowed: false, reason: "package" });
+    expect(result["main.shift"]).toMatchObject({ feature_code: null, feature_allowed: true, reason: "available" });
     expect(result["main.sales"]).toMatchObject({ feature_code: "core_pos_sales", feature_allowed: true, reason: "available" });
     expect(result["main.more"]).toMatchObject({ feature_code: null, feature_allowed: true, reason: "available" });
   });
-  it("becomes ON as soon as the existing tenant feature override is enabled", () => {
-    const result = resolvePosMenuAvailability({
-      ...base, feature_overrides: [{ feature_code: "attendance_tracking", is_enabled: true, branch_id: null }]
-    });
-    expect(result["main.shift"]).toMatchObject({ feature_allowed: true, reason: "available" });
-  });
-  it("honors branch overrides with lower priority than safety but higher than tenant plan", () => {
+  it("keeps shift independent from attendance tenant and branch overrides", () => {
     const result = resolvePosMenuAvailability({
       ...base, active_branch_ids: ["b1", "b2"],
       feature_overrides: [
-        { feature_code: "attendance_tracking", is_enabled: true, branch_id: null },
+        { feature_code: "attendance_tracking", is_enabled: false, branch_id: null },
         { feature_code: "attendance_tracking", is_enabled: false, branch_id: "b2" }
       ]
     });
     expect(result["main.shift"]).toMatchObject({
-      feature_allowed: false, available_branches: 1, total_branches: 2, reason: "partial_branches"
+      feature_code: null, feature_allowed: true, available_branches: 2, total_branches: 2, reason: "available"
     });
+  });
+  it("ignores stale IT shift-off overrides because opening a shift is required for POS sales", () => {
+    const result = resolvePosMenuAvailability({ ...base, overrides: { "main.shift": false } });
+    expect(result["main.shift"]).toMatchObject({ feature_allowed: true, reason: "available" });
   });
   it("does not claim accessible menus for an expired contract or tenant with no active branches", () => {
     expect(resolvePosMenuAvailability({ ...base, contract: { status: "trial", ended_at: "2026-09-20T00:00:00Z" } })["main.sales"].reason).toBe("contract_inactive");
