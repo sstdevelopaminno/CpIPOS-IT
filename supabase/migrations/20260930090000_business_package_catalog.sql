@@ -283,6 +283,17 @@ where p.code = 'business'
 on conflict (package_id, feature_code)
 do update set included = excluded.included;
 
+-- Make the AI entitlement explicit in the package feature matrix so POS navigation
+-- and the AI quota layer agree. Growth receives this feature only through a
+-- tenant add-on override; CUSTOM keeps AI available for contract-specific quota.
+insert into public.subscription_package_features(package_id, feature_code, included)
+select p.id, 'cpipos_ai',
+       case when p.code in ('business','custom') then true else false end
+from public.subscription_packages p
+where p.code in ('starter','growth','business','custom')
+on conflict (package_id, feature_code)
+do update set included = excluded.included;
+
 -- AI package policy: Starter/Growth do not include AI by default.
 -- Growth can be enabled as the 299 THB/month add-on through the tenant AI override.
 insert into public.pos_ai_package_quotas(
