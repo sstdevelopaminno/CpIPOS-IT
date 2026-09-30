@@ -109,3 +109,33 @@ alter table public.pos_ai_documents enable row level security;
 
 comment on table public.pos_ai_documents is
   'Metadata only. Document bytes live in private Supabase Storage bucket cpipos-ai-documents.';
+
+create or replace function public.pos_ai_document_usage(p_tenant_id uuid)
+returns table(document_count bigint,total_bytes bigint)
+language sql
+stable
+security definer
+set search_path=pg_catalog,public
+as $
+  select count(*)::bigint,coalesce(sum(d.size_bytes),0)::bigint
+  from public.pos_ai_documents d
+  where d.tenant_id=p_tenant_id;
+$;
+
+revoke all on function public.pos_ai_document_usage(uuid) from public,anon,authenticated;
+grant execute on function public.pos_ai_document_usage(uuid) to service_role;
+
+create or replace function public.pos_ai_admin_document_usage()
+returns table(tenant_id uuid,document_count bigint,total_bytes bigint,last_document_at timestamptz)
+language sql
+stable
+security definer
+set search_path=pg_catalog,public
+as $
+  select d.tenant_id,count(*)::bigint,coalesce(sum(d.size_bytes),0)::bigint,max(d.created_at)
+  from public.pos_ai_documents d
+  group by d.tenant_id;
+$;
+
+revoke all on function public.pos_ai_admin_document_usage() from public,anon,authenticated;
+grant execute on function public.pos_ai_admin_document_usage() to service_role;
