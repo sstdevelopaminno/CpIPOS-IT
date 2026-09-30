@@ -33,7 +33,7 @@ const COMPAT_KEYS: Record<string, string> = {
 function toLegacy(rows: PolicyRow[]) {
   const byKey = new Map(rows.map(row => [row.menu_key, row.is_enabled]));
   return Object.fromEntries(POS_MENU_POLICY_KEYS.map(key => [
-    key, byKey.get(COMPAT_KEYS[key]) !== false
+    key, key === "shift" ? true : byKey.get(COMPAT_KEYS[key]) !== false
   ]));
 }
 function version(rows: PolicyRow[], contractUpdatedAt: string) {
@@ -93,6 +93,7 @@ export async function PUT(request: Request, context: { params: Promise<{ tenantI
     }
     const before = toLegacy(rows);
     const after = normalizePosMenuVisibility({ ...before, ...body.visibility });
+    after.shift = true;
     const now = new Date().toISOString();
     const changes = POS_MENU_POLICY_KEYS
       .filter(key => before[key] !== after[key])
