@@ -15,8 +15,8 @@ describe("CUSTOM package control plane", () => {
 
   it("keeps CUSTOM terms tenant-scoped and lets fixed packages own retention", () => {
     expect(migration).toContain("tenant_custom_package_terms");
-    expect(businessMigration).toContain("Starter 6, Growth 12, Business 24");
-    expect(businessMigration).toContain("else coalesce(sp.retention_months,6)");
+    expect(businessMigration).toContain("Starter 6 months, Growth 12 months, Business 24 months");
+    expect(businessMigration).toContain("else coalesce(sp.retention_months, 6)");
     expect(packageService).toContain("toNullablePositiveInteger(input.retention_months, 6)");
   });
 

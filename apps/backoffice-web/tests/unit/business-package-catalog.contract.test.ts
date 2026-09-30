@@ -50,6 +50,6 @@ describe("IT Business package control plane", () => {
     expect(service).toContain("toNullablePositiveInteger(input.retention_months, 6)");
     expect(service).toContain('["starter","growth","business","custom"]');
     expect(manager).toContain("Sales Retention (เดือน)");
-    expect(migration).toContain("else coalesce(sp.retention_months,6)");
+    expect(migration).toContain("else coalesce(sp.retention_months, 6)");
   });
 });
