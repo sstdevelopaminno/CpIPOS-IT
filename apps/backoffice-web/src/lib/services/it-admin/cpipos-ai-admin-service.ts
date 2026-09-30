@@ -325,7 +325,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
       .select("menu_key,is_enabled").eq("tenant_id", tenantId)
       .in("menu_key", ["main.ai_assistant", "more.ai_assistant"]),
     db.from("pos_ai_tenant_quota_overrides")
-      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,updated_at")
+      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_retention_days,document_storage_mb,document_file_limit,updated_at")
       .eq("tenant_id", tenantId).maybeSingle(),
     db.from("pos_ai_chat_rooms")
       .select("id,title,tenant_id,branch_id,user_id,openai_conversation_id,created_at,updated_at,last_message_at")
