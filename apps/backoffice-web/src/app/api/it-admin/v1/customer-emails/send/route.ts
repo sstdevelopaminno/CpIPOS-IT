@@ -94,7 +94,18 @@ export async function POST(request: Request) {
         return fail("public_store_code_missing", "ไม่พบ Store Code 6 หลัก กรุณาตรวจข้อมูล Provisioning ก่อนส่งอีเมล", 409);
       }
 
-      const message = buildStoreActivationEmail({
+      const originalDelivery = await ctx.supabase.from("customer_email_deliveries")
+        .select("id,status,trigger_mode")
+        .eq("event_type", "store_activation")
+        .eq("source_id", registration.data.id)
+        .eq("status", "sent")
+        .eq("trigger_mode", "manual")
+        .limit(1)
+        .maybeSingle<{ id: string; status: string; trigger_mode: string }>();
+      if (originalDelivery.error) throw new Error("activation_email_delivery_lookup_failed");
+      const isStoreCodeCorrection = Boolean(originalDelivery.data);
+
+      const baseMessage = buildStoreActivationEmail({
         storeName: store.display_name || store.name || registration.data.store_name,
         storeCode: publicStoreCode,
         ownerName: registration.data.owner_name,
@@ -102,6 +113,13 @@ export async function POST(request: Request) {
         trialExpiresAt: lifecycle.data?.trial_expires_at ?? null,
         supportEmail: settings.support_email
       });
+      const message = isStoreCodeCorrection ? {
+        ...baseMessage,
+        subject: `แก้ไข Store Code | ${baseMessage.subject}`,
+        textBody: `แก้ไขข้อมูลจากอีเมลก่อนหน้า: กรุณาใช้ Store Code 6 หลักด้านล่างแทนรหัสเดิม\n\n${baseMessage.textBody}`,
+        htmlBody: '<div style="margin-bottom:16px;padding:13px 15px;border-radius:10px;background:#fff8e8;color:#7a5512;font-size:13px;line-height:1.65"><strong>แก้ไขข้อมูล:</strong> กรุณาใช้ Store Code 6 หลักในอีเมลฉบับนี้แทนรหัสจากอีเมลก่อนหน้า</div>' + baseMessage.htmlBody
+      } : baseMessage;
+
       const delivery = await deliverCustomerEmail({
         db: ctx.supabase,
         eventType: "store_activation",
@@ -110,7 +128,8 @@ export async function POST(request: Request) {
         to: ownerEmail,
         message,
         triggerMode: "manual",
-        actorUserId: ctx.auth.userId
+        actorUserId: ctx.auth.userId,
+        eventKeySuffix: isStoreCodeCorrection ? "store-code-correction-v1" : undefined
       });
 
       await appendAuditLog({
