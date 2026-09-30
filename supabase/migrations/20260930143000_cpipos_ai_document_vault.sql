@@ -83,14 +83,14 @@ language sql
 stable
 security definer
 set search_path = pg_catalog, public
-as $
+as $fn$
   select d.tenant_id,
          count(*)::bigint as file_count,
          coalesce(sum(d.size_bytes),0)::bigint as total_bytes,
          max(d.created_at) as last_created_at
   from public.pos_ai_documents d
   group by d.tenant_id;
-$;
+$fn$;
 
 revoke all on function public.pos_ai_document_admin_usage() from public, anon, authenticated;
 grant execute on function public.pos_ai_document_admin_usage() to service_role;
