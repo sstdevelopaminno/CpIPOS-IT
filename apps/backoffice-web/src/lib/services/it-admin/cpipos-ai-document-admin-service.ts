@@ -89,7 +89,6 @@ export async function updateCpiposAiDocumentPackagePolicy(
   if (saved.error) throw new Error(saved.error.message);
 
   await appendAuditLog({
-    tenantId: null,
     actorUserId: context.auth.userId,
     actorRole: context.auth.platformRole,
     action: "it_ai_document_package_policy_changed",
