@@ -11,6 +11,7 @@ describe("IT Business package control plane", () => {
   const navigation = src("src/app/(it-admin)/layout.tsx");
   const catalog = src("src/lib/subscription-catalog.ts");
   const shared = src("../../packages/shared-types/src/index.ts");
+  const aiAdmin = src("src/lib/services/it-admin/cpipos-ai-admin-service.ts");
 
   it("makes Business a canonical 1,500 THB package with annual 10% discount", () => {
     expect(migration).toContain("monthly_price = 1500");
@@ -40,6 +41,9 @@ describe("IT Business package control plane", () => {
     expect(manager).toContain("AI / โหมดขาย");
     expect(manager).toContain('metaBoolean(row,"ai_included")');
     expect(manager).toContain("AI Quota");
+    expect(aiAdmin).toContain("syncPackageAiFeature");
+    expect(aiAdmin).toContain("syncTenantAiFeatureOverride");
+    expect(aiAdmin).toContain('"cpipos_ai"');
   });
 
   it("allows package-specific retention instead of the retired global six-month rule", () => {
