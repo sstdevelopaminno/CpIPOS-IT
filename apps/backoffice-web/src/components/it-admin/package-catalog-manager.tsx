@@ -266,7 +266,9 @@ export function PackageCatalogManager() {
               <td>
                 {row.custom_per_store ? "—" : row.yearly_price && row.effective_yearly_price ? <>
                   <strong>{money(row.effective_yearly_price)}</strong>
-                  {row.yearly_discount_percent > 0 ? <small>ส่วนลด {row.yearly_discount_percent}%</small> : null}
+                  {metaNumber(row,"annual_discount_percent") ? <small>
+                    ลด {metaNumber(row,"annual_discount_percent")}% · จาก {money(metaNumber(row,"yearly_list_price"))}
+                  </small> : row.yearly_discount_percent > 0 ? <small>ส่วนลด {row.yearly_discount_percent}%</small> : null}
                 </> : "ยังไม่ตั้ง"}
               </td>
               <td>{row.custom_per_store ? <span className={styles.customBadge}>IT กำหนด</span> :
