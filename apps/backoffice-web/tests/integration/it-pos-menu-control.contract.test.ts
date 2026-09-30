@@ -12,7 +12,7 @@ describe("IT ↔ POS single-source menu policy", () => {
   it("maps every legacy menu switch to exactly one canonical key (including shift)", () => {
     const canonical = POS_MENU_CATALOG.map(item => item.key).sort();
     const aliases = [...legacy.matchAll(/\b[a-z_]+: "((?:main|more|settings)\.[a-z_]+)"/g)].map(match => match[1]);
-    expect(canonical).toHaveLength(34);
+    expect(canonical).toHaveLength(35);
     expect(new Set(canonical).size).toBe(canonical.length);
     expect(new Set(aliases).size).toBe(aliases.length);
     expect(aliases.sort()).toEqual(canonical);
@@ -22,6 +22,8 @@ describe("IT ↔ POS single-source menu policy", () => {
     expect(canonical).toContain("main.package_payment");
     expect(canonical).toContain("settings.support");
     expect(canonical).toContain("settings.push_notifications");
+    expect(canonical).toContain("more.ai_documents");
+    expect(posMenuKeyForRoute("/preview/pos/documents")).toBe("more.ai_documents");
   });
 
   it("locks only an exact key; an enabled shift is not locked by IT menu policy", () => {
@@ -53,6 +55,7 @@ describe("IT ↔ POS single-source menu policy", () => {
     expect(ui).toContain('item.key === "main.ai_assistant"');
     expect(ui).toContain("AI POLICY");
     expect(availability).toContain('"main.ai_assistant": null');
+    expect(availability).toContain('"more.ai_documents": "ai_document_vault"');
     expect(availability).toContain('"main.package_payment": null');
     expect(availability).toContain('"settings.support": null');
     expect(availability).toContain('"settings.push_notifications": null');

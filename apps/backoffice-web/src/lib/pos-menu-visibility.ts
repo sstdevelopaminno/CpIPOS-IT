@@ -6,7 +6,7 @@ export const POS_MENU_GROUPS = [
   { key: "sales_list", label: "รายการขาย", href: "/preview/pos/sales-list", children: [] },
   { key: "kitchen", label: "ครัว", href: "/preview/pos/kitchen", children: [] },
   { key: "shift", label: "เปิด/ปิดกะ", href: "/preview/pos/shift", children: [] },
-  { key: "ai_assistant", label: "CpiPOS AI ผู้ช่วยร้านค้า", href: "/preview/pos/ai-assistant", children: [] },
+  { key: "ai_assistant", label: "CpiPOS AI", href: "/preview/pos/ai-assistant", children: [] },
   { key: "more", label: "เพิ่มเติม", href: "/preview/pos/more", children: [
     { key: "sales_summary", label: "สรุปยอดขาย", href: "/preview/pos/sales-summary" },
     { key: "receipts", label: "ใบเสร็จย้อนหลัง", href: "/preview/pos/receipts" },
@@ -16,7 +16,8 @@ export const POS_MENU_GROUPS = [
     { key: "buffet_pricing", label: "ตั้งค่าราคาบุฟเฟ่", href: "/preview/pos/buffet-pricing" },
     { key: "members", label: "สมาชิก", href: "/preview/pos/members" },
     { key: "tax_invoices", label: "ออกใบกำกับภาษี", href: "/preview/pos/tax-invoices" },
-    { key: "product_sales", label: "รายการขายสินค้า", href: "/preview/pos/product-sales" }
+    { key: "product_sales", label: "รายการขายสินค้า", href: "/preview/pos/product-sales" },
+    { key: "ai_documents", label: "เก็บไฟล์เอกสาร", href: "/preview/pos/documents" }
   ] },
   { key: "package_payment", label: "ชำระแพ็กเกจ", href: "/preview/pos/payments/package", children: [] },
   { key: "settings", label: "ตั้งค่า", href: "/preview/pos/settings", children: [

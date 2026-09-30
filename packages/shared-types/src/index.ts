@@ -56,7 +56,8 @@ export type PosFeatureCode =
   | "user_management"
   | "mobile_qr_login"
   | "mobile_device_enrollment"
-  | "cpipos_ai";
+  | "cpipos_ai"
+  | "ai_document_vault";
 
 export interface Tenant {
   id: UUID;

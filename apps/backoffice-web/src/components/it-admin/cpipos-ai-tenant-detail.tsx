@@ -73,6 +73,7 @@ type Detail = {
     source: string;
     limits: { requests: number | null; tokens: number | null; cost_usd: number | null };
     history_retention_days: number | null;
+    documents: { storage_limit_mb: number | null; retention_days: number | null; max_file_mb: number | null };
     override: {
       quota_mode?: "inherit" | "custom" | "unlimited";
       is_enabled_override?: boolean | null;
@@ -80,6 +81,9 @@ type Detail = {
       monthly_token_limit?: number | null;
       monthly_cost_limit_usd?: number | string | null;
       history_retention_days?: number | null;
+      document_storage_mb?: number | null;
+      document_retention_days?: number | null;
+      document_max_file_mb?: number | null;
     } | null;
     package_default: {
       is_enabled?: boolean;
@@ -87,12 +91,16 @@ type Detail = {
       monthly_token_limit?: number | null;
       monthly_cost_limit_usd?: number | string | null;
       history_retention_days?: number | null;
+      document_storage_mb?: number | null;
+      document_retention_days?: number | null;
+      document_max_file_mb?: number | null;
     } | null;
     month: string;
     usage: { requests: number; users: number; total_tokens: number; input_tokens: number; output_tokens: number; cost_usd: number };
   };
   users: UserRow[];
   rooms: RoomRow[];
+  document_usage: { count: number; bytes: number };
   events: UsageRow[];
   series: { daily: SeriesRow[]; monthly: SeriesRow[]; yearly: SeriesRow[] };
 };
@@ -129,6 +137,9 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
   const [tokens, setTokens] = useState("");
   const [cost, setCost] = useState("");
   const [retentionDays, setRetentionDays] = useState("");
+  const [documentStorageMb, setDocumentStorageMb] = useState("");
+  const [documentRetentionDays, setDocumentRetentionDays] = useState("");
+  const [documentMaxFileMb, setDocumentMaxFileMb] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -147,6 +158,9 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
       setTokens(field(override?.monthly_token_limit));
       setCost(field(override?.monthly_cost_limit_usd));
       setRetentionDays(field(override?.history_retention_days));
+      setDocumentStorageMb(field(override?.document_storage_mb));
+      setDocumentRetentionDays(field(override?.document_retention_days));
+      setDocumentMaxFileMb(field(override?.document_max_file_mb));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "โหลดข้อมูล AI ของร้านไม่สำเร็จ");
     } finally {
@@ -173,7 +187,10 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
           monthly_request_limit: quotaMode === "custom" && requests ? requests : null,
           monthly_token_limit: quotaMode === "custom" && tokens ? tokens : null,
           monthly_cost_limit_usd: quotaMode === "custom" && cost ? cost : null,
-          history_retention_days: retentionDays || null
+          history_retention_days: retentionDays || null,
+          document_storage_mb: documentStorageMb || null,
+          document_retention_days: documentRetentionDays || null,
+          document_max_file_mb: documentMaxFileMb || null
         })
       });
       const body = (await response.json().catch(() => null)) as Envelope<unknown> | null;
@@ -239,7 +256,8 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
         <article><span>AI Users / ห้องแชท</span><strong>{fmt(data?.users.length)} / {fmt(data?.rooms.length)}</strong><small>Owner / Manager · OpenAI Conversations</small></article>
         <article><span>คำขอเดือนนี้</span><strong>{fmt(usage?.requests)}</strong><small>{data?.quota.month ?? "—"}</small></article>
         <article><span>Token เดือนนี้</span><strong>{fmt(usage?.total_tokens)}</strong><small>Input {fmt(usage?.input_tokens)} · Output {fmt(usage?.output_tokens)}</small></article>
-        <article><span>ต้นทุนเดือนนี้</span><strong className={styles.smallStrong}>{usd(usage?.cost_usd)}</strong><small>Estimated OpenAI cost</small></article>
+        <article><span>ต้นทุนเดือนนี้</span><strong className={styles.smallStrong}>{usd(usage?.cost_usd)}</strong><small>Estimated provider cost</small></article>
+        <article><span>ไฟล์เอกสาร AI</span><strong>{fmt(data?.document_usage.count)}</strong><small>{(Number(data?.document_usage.bytes ?? 0) / 1024 / 1024).toFixed(2)} MB</small></article>
       </section>
 
       <section className={styles.panel}>
@@ -258,7 +276,9 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
             <label><span>คำขอ / เดือน</span><input disabled={quotaMode !== "custom"} inputMode="numeric" value={requests} onChange={(event) => setRequests(event.target.value.replace(/[^0-9]/g,""))} placeholder="ไม่จำกัด" /></label>
             <label><span>Token / เดือน</span><input disabled={quotaMode !== "custom"} inputMode="numeric" value={tokens} onChange={(event) => setTokens(event.target.value.replace(/[^0-9]/g,""))} placeholder="ไม่จำกัด" /></label>
             <label><span>เก็บประวัติแชท (วัน)</span><input inputMode="numeric" value={retentionDays} onChange={(event) => setRetentionDays(event.target.value.replace(/[^0-9]/g,""))} placeholder="ว่าง = ตามแพ็กเกจ" /></label>
-            <label><span>ที่เก็บข้อความ</span><input value="OpenAI Conversations" disabled /></label>
+            <label><span>พื้นที่เอกสาร AI (MB)</span><input inputMode="numeric" value={documentStorageMb} onChange={(event) => setDocumentStorageMb(event.target.value.replace(/[^0-9]/g,""))} placeholder="ว่าง = ตามแพ็กเกจ" /></label>
+            <label><span>เก็บเอกสาร (วัน)</span><input inputMode="numeric" value={documentRetentionDays} onChange={(event) => setDocumentRetentionDays(event.target.value.replace(/[^0-9]/g,""))} placeholder="ว่าง = ตามแพ็กเกจ" /></label>
+            <label><span>ขนาดไฟล์สูงสุด (MB)</span><input inputMode="numeric" value={documentMaxFileMb} onChange={(event) => setDocumentMaxFileMb(event.target.value.replace(/[^0-9]/g,""))} placeholder="ว่าง = ตามแพ็กเกจ" /></label>
             <label className={styles.span2}><span>งบ AI / เดือน (USD)</span><input disabled={quotaMode !== "custom"} inputMode="decimal" value={cost} onChange={(event) => setCost(event.target.value.replace(/[^0-9.]/g,""))} placeholder="ไม่จำกัด" /></label>
             <button type="button" className={styles.primaryButton} disabled={Boolean(busy)} onClick={() => void saveQuota()}>{busy === "quota" ? "กำลังบันทึก…" : "บันทึก Quota ร้าน"}</button>
           </div>
@@ -269,6 +289,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
             <p>Tokens: {limits?.tokens ? `${fmt(usage?.total_tokens)}/${fmt(limits.tokens)}` : "ไม่จำกัด"}</p>
             <p>Cost: {limits?.cost_usd ? `${usd(usage?.cost_usd)}/${usd(limits.cost_usd)}` : "ไม่จำกัด"}</p>
             <p>เก็บประวัติ: {data?.quota.history_retention_days ? `${fmt(data.quota.history_retention_days)} วัน` : "ตามสัญญา / ไม่กำหนด"}</p>
+            <p>เอกสาร: {data?.quota.documents.storage_limit_mb ? `${fmt(data.quota.documents.storage_limit_mb)} MB` : "ตามแพ็กเกจ/สัญญา"} · {data?.quota.documents.retention_days ? `${fmt(data.quota.documents.retention_days)} วัน` : "ไม่กำหนด"}</p>
             {limits?.requests ? <div className={styles.progress}><i style={{ width: `${requestPercent}%` }} /></div> : null}
           </div>
         </div>

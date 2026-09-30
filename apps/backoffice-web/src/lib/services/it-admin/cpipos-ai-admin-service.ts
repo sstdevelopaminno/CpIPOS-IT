@@ -18,6 +18,9 @@ type PackageQuota = {
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
   history_retention_days: number | null;
+  document_storage_mb: number | null;
+  document_retention_days: number | null;
+  document_max_file_mb: number | null;
 };
 
 type TenantOverride = {
@@ -28,6 +31,16 @@ type TenantOverride = {
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
   history_retention_days: number | null;
+  document_storage_mb: number | null;
+  document_retention_days: number | null;
+  document_max_file_mb: number | null;
+};
+
+type DocumentUsageAgg = {
+  tenant_id: string;
+  document_count: number | string | null;
+  total_bytes: number | string | null;
+  last_document_at: string | null;
 };
 
 type UsageAgg = {
@@ -91,7 +104,18 @@ function effectiveQuota(packageQuota: PackageQuota | null, override: TenantOverr
     limits,
     history_retention_days:
       nullablePositive(override?.history_retention_days) ??
-      nullablePositive(packageQuota?.history_retention_days)
+      nullablePositive(packageQuota?.history_retention_days),
+    documents: {
+      storage_limit_mb:
+        nullablePositive(override?.document_storage_mb) ??
+        nullablePositive(packageQuota?.document_storage_mb),
+      retention_days:
+        nullablePositive(override?.document_retention_days) ??
+        nullablePositive(packageQuota?.document_retention_days),
+      max_file_mb:
+        nullablePositive(override?.document_max_file_mb) ??
+        nullablePositive(packageQuota?.document_max_file_mb)
+    }
   };
 }
 
@@ -147,7 +171,7 @@ async function syncTenantAiFeatureOverride(
 export async function listCpiposAiStores(context: ItAdminContext) {
   const db = context.supabase;
   const bounds = monthBoundsBangkok();
-  const [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, links] = await Promise.all([
+  const [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, documentUsage, links] = await Promise.all([
     db.from("tenants").select("id,code,name,display_name,is_active,package_id").order("name"),
     db.from("tenant_subscription_contracts")
       .select("tenant_id,package_id,status,created_at")
@@ -158,13 +182,14 @@ export async function listCpiposAiStores(context: ItAdminContext) {
       .select("tenant_id,menu_key,is_enabled")
       .in("menu_key", ["main.ai_assistant", "more.ai_assistant"]),
     db.from("pos_ai_package_quotas")
-      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days"),
+      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb"),
     db.from("pos_ai_tenant_quota_overrides")
-      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days"),
+      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb"),
     db.rpc("pos_ai_admin_tenant_usage", { p_started_at: bounds.start, p_ended_at: bounds.end }),
+    db.rpc("pos_ai_admin_document_usage"),
     db.from("pos_ai_chat_rooms").select("id,tenant_id,user_id,branch_id,title,openai_conversation_id,updated_at,last_message_at")
   ]);
-  for (const result of [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, links]) {
+  for (const result of [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, documentUsage, links]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -176,6 +201,7 @@ export async function listCpiposAiStores(context: ItAdminContext) {
   const packageQuotaMap = new Map((packageQuotas.data ?? []).map((row) => [row.package_id, row as PackageQuota]));
   const overrideMap = new Map((tenantOverrides.data ?? []).map((row) => [row.tenant_id, row as TenantOverride]));
   const usageMap = new Map(((usage.data ?? []) as UsageAgg[]).map((row) => [row.tenant_id, row]));
+  const documentUsageMap = new Map(((documentUsage.data ?? []) as DocumentUsageAgg[]).map((row) => [row.tenant_id, row]));
   const linksByTenant = new Map<string, Array<Record<string, unknown>>>();
   for (const row of links.data ?? []) {
     const current = linksByTenant.get(row.tenant_id) ?? [];
@@ -201,6 +227,7 @@ export async function listCpiposAiStores(context: ItAdminContext) {
     const effectiveEnabled = Boolean(tenant.is_active && menuEnabled && quota.enabled);
     const monthUsage = usageShape(usageMap.get(tenant.id));
     const tenantLinks = linksByTenant.get(tenant.id) ?? [];
+    const docs = documentUsageMap.get(tenant.id);
     return {
       tenant_id: tenant.id,
       store_code: tenant.code,
@@ -216,7 +243,12 @@ export async function listCpiposAiStores(context: ItAdminContext) {
       ai_user_count: new Set(tenantLinks.map((row) => String(row.user_id))).size,
       last_conversation_at: tenantLinks.map((row) => String(row.updated_at ?? "")).filter(Boolean).sort().at(-1) ?? null,
       quota,
-      usage: monthUsage
+      usage: monthUsage,
+      document_usage: {
+        count: Math.max(0, Math.trunc(numberValue(docs?.document_count))),
+        bytes: Math.max(0, Math.trunc(numberValue(docs?.total_bytes))),
+        last_document_at: docs?.last_document_at ?? null
+      }
     };
   }).filter((row) => row.ai_enabled);
 
@@ -234,6 +266,61 @@ export async function listCpiposAiStores(context: ItAdminContext) {
   };
 }
 
+export async function listCpiposAiDocumentStores(context: ItAdminContext) {
+  const db = context.supabase;
+  const [tenants, contracts, packages, packageQuotas, tenantOverrides, documentUsage] = await Promise.all([
+    db.from("tenants").select("id,code,name,display_name,is_active,package_id").order("name"),
+    db.from("tenant_subscription_contracts")
+      .select("tenant_id,package_id,status,created_at")
+      .in("status", ["active","trial"])
+      .order("created_at", { ascending: false }),
+    db.from("subscription_packages").select("id,code,name"),
+    db.from("pos_ai_package_quotas")
+      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb"),
+    db.from("pos_ai_tenant_quota_overrides")
+      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb"),
+    db.rpc("pos_ai_admin_document_usage")
+  ]);
+  for (const result of [tenants,contracts,packages,packageQuotas,tenantOverrides,documentUsage]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
+  const latestContract = new Map<string,{ package_id: string; status: string }>();
+  for (const row of contracts.data ?? []) {
+    if (!latestContract.has(row.tenant_id)) latestContract.set(row.tenant_id,row);
+  }
+  const packageMap = new Map((packages.data ?? []).map((row) => [row.id,row]));
+  const packageQuotaMap = new Map((packageQuotas.data ?? []).map((row) => [row.package_id,row as PackageQuota]));
+  const overrideMap = new Map((tenantOverrides.data ?? []).map((row) => [row.tenant_id,row as TenantOverride]));
+  const usageMap = new Map(((documentUsage.data ?? []) as DocumentUsageAgg[]).map((row) => [row.tenant_id,row]));
+
+  return {
+    generated_at: new Date().toISOString(),
+    rows: (tenants.data ?? []).map((tenant) => {
+      const contract = latestContract.get(tenant.id) ?? null;
+      const packageId = contract?.package_id ?? tenant.package_id ?? null;
+      const pkg = packageId ? packageMap.get(packageId) ?? null : null;
+      const quota = effectiveQuota(packageId ? packageQuotaMap.get(packageId) ?? null : null, overrideMap.get(tenant.id) ?? null);
+      const usage = usageMap.get(tenant.id);
+      return {
+        tenant_id: tenant.id,
+        store_code: tenant.code,
+        name: tenant.display_name || tenant.name,
+        active: Boolean(tenant.is_active),
+        package_code: pkg?.code ?? null,
+        package_name: pkg?.name ?? null,
+        contract_status: contract?.status ?? null,
+        policy: quota.documents,
+        usage: {
+          count: Math.max(0,Math.trunc(numberValue(usage?.document_count))),
+          bytes: Math.max(0,Math.trunc(numberValue(usage?.total_bytes))),
+          last_document_at: usage?.last_document_at ?? null
+        }
+      };
+    })
+  };
+}
+
 export async function listCpiposAiPackageQuotas(context: ItAdminContext) {
   const db = context.supabase;
   const [packages, quotas] = await Promise.all([
@@ -242,7 +329,7 @@ export async function listCpiposAiPackageQuotas(context: ItAdminContext) {
       .eq("is_active", true)
       .order("display_order", { ascending: true, nullsFirst: false }),
     db.from("pos_ai_package_quotas")
-      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,updated_at")
+      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb,updated_at")
   ]);
   if (packages.error) throw new Error(packages.error.message);
   if (quotas.error) throw new Error(quotas.error.message);
@@ -256,6 +343,9 @@ export async function listCpiposAiPackageQuotas(context: ItAdminContext) {
       monthly_token_limit: null,
       monthly_cost_limit_usd: null,
       history_retention_days: null,
+      document_storage_mb: null,
+      document_retention_days: null,
+      document_max_file_mb: null,
       updated_at: null
     }
   }));
@@ -269,6 +359,9 @@ export async function updateCpiposAiPackageQuota(context: ItAdminContext, packag
     monthly_token_limit: nullablePositive(input.monthly_token_limit),
     monthly_cost_limit_usd: nullablePositive(input.monthly_cost_limit_usd),
     history_retention_days: nullablePositive(input.history_retention_days),
+    document_storage_mb: nullablePositive(input.document_storage_mb),
+    document_retention_days: nullablePositive(input.document_retention_days),
+    document_max_file_mb: nullablePositive(input.document_max_file_mb),
     updated_by: context.auth.userId,
     updated_at: new Date().toISOString()
   };
@@ -301,7 +394,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
   const yearStart = new Date(Date.UTC(now.getUTCFullYear() - 4, 0, 1)).toISOString();
   const monthSeriesStart = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1)).toISOString();
 
-  const [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage] = await Promise.all([
+  const [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage, documentUsage] = await Promise.all([
     db.from("tenants").select("id,code,name,display_name,is_active,package_id").eq("id", tenantId).maybeSingle(),
     db.from("tenant_subscription_contracts")
       .select("package_id,status,created_at")
@@ -311,7 +404,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
       .select("menu_key,is_enabled").eq("tenant_id", tenantId)
       .in("menu_key", ["main.ai_assistant", "more.ai_assistant"]),
     db.from("pos_ai_tenant_quota_overrides")
-      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,updated_at")
+      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb,updated_at")
       .eq("tenant_id", tenantId).maybeSingle(),
     db.from("pos_ai_chat_rooms")
       .select("id,title,tenant_id,branch_id,user_id,openai_conversation_id,created_at,updated_at,last_message_at")
@@ -322,9 +415,10 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: dayStart, p_ended_at: now.toISOString(), p_grain: "day" }),
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: monthSeriesStart, p_ended_at: now.toISOString(), p_grain: "month" }),
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: yearStart, p_ended_at: now.toISOString(), p_grain: "year" }),
-    db.rpc("pos_ai_usage_summary", { p_tenant_id: tenantId, p_started_at: month.start, p_ended_at: month.end })
+    db.rpc("pos_ai_usage_summary", { p_tenant_id: tenantId, p_started_at: month.start, p_ended_at: month.end }),
+    db.rpc("pos_ai_document_usage", { p_tenant_id: tenantId })
   ]);
-  for (const result of [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage]) {
+  for (const result of [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage, documentUsage]) {
     if (result.error) throw new Error(result.error.message);
   }
   if (!tenant.data) return null;
@@ -332,7 +426,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
   const packageId = contract.data?.package_id ?? tenant.data.package_id ?? null;
   const [pkg, packageQuota, profiles, branches, roles] = await Promise.all([
     packageId ? db.from("subscription_packages").select("id,code,name").eq("id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    packageId ? db.from("pos_ai_package_quotas").select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days").eq("package_id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    packageId ? db.from("pos_ai_package_quotas").select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,document_storage_mb,document_retention_days,document_max_file_mb").eq("package_id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
     db.from("users_profiles").select("id,email,full_name,is_active"),
     db.from("branches").select("id,code,name,is_active").eq("tenant_id", tenantId),
     db.from("user_branch_roles").select("user_id,branch_id,role,is_default").eq("tenant_id", tenantId).in("role", ["owner","manager"])
@@ -407,6 +501,10 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
     },
     users,
     rooms,
+    document_usage: {
+      count: Math.max(0, Math.trunc(numberValue(((documentUsage.data ?? []) as Array<{document_count?: number | string}>)[0]?.document_count))),
+      bytes: Math.max(0, Math.trunc(numberValue(((documentUsage.data ?? []) as Array<{total_bytes?: number | string}>)[0]?.total_bytes)))
+    },
     events: events.data ?? [],
     series: {
       daily: daily.data ?? [],
@@ -426,6 +524,9 @@ export async function updateCpiposAiTenantQuota(context: ItAdminContext, tenantI
     monthly_token_limit: mode === "custom" ? nullablePositive(input.monthly_token_limit) : null,
     monthly_cost_limit_usd: mode === "custom" ? nullablePositive(input.monthly_cost_limit_usd) : null,
     history_retention_days: nullablePositive(input.history_retention_days),
+    document_storage_mb: nullablePositive(input.document_storage_mb),
+    document_retention_days: nullablePositive(input.document_retention_days),
+    document_max_file_mb: nullablePositive(input.document_max_file_mb),
     updated_by: context.auth.userId,
     updated_at: new Date().toISOString()
   };
