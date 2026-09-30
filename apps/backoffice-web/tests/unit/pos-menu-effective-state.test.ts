@@ -39,6 +39,30 @@ describe("IT POS menu switch reflects ACTUAL menu availability", () => {
     const result = resolvePosMenuAvailability({ ...base, overrides: { "main.shift": false } });
     expect(result["main.shift"]).toMatchObject({ feature_allowed: true, reason: "available" });
   });
+  it("opens dine-in linked menus even when the package omits their feature rows, while IT can still lock them", () => {
+    const dineInBase = {
+      ...base,
+      contract: { status: "trial", ended_at: null, metadata: { sales_modes: { dine_in: true } } },
+      plan: [
+        { feature_code: "core_pos_sales", included: true },
+        { feature_code: "table_management", included: false },
+        { feature_code: "kitchen_printing", included: false },
+        { feature_code: "qr_table_ordering", included: false }
+      ]
+    };
+    const open = resolvePosMenuAvailability(dineInBase);
+    expect(open["more.tables"]).toMatchObject({ feature_allowed: true, reason: "available" });
+    expect(open["more.kitchen_manage"]).toMatchObject({ feature_allowed: true, reason: "available" });
+    expect(open["settings.notifications"]).toMatchObject({ feature_allowed: true, reason: "available" });
+
+    const itLocked = resolvePosMenuAvailability({
+      ...dineInBase,
+      overrides: { "more.tables": false, "more.kitchen_manage": false, "settings.notifications": false }
+    });
+    expect(itLocked["more.tables"].reason).toBe("it_locked");
+    expect(itLocked["more.kitchen_manage"].reason).toBe("it_locked");
+    expect(itLocked["settings.notifications"].reason).toBe("it_locked");
+  });
   it("does not claim accessible menus for an expired contract or tenant with no active branches", () => {
     expect(resolvePosMenuAvailability({ ...base, contract: { status: "trial", ended_at: "2026-09-20T00:00:00Z" } })["main.sales"].reason).toBe("contract_inactive");
     expect(resolvePosMenuAvailability({ ...base, active_branch_ids: [] })["main.sales"].reason).toBe("no_active_branch");
