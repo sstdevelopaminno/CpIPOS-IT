@@ -297,9 +297,21 @@ export async function POST(req: Request) {
       }
       const activated = await ctx.supabase.from("store_registration_requests")
         .update({ status: "activated", tenant_id: result.tenant.id, approved_by: ctx.auth.userId,
-          custom_terms: approvedCustomTerms, activated_at: new Date().toISOString(), updated_at: new Date().toISOString(), last_error: null })
+          custom_terms: approvedCustomTerms ?? row.custom_terms ?? {}, activated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(), last_error: null })
         .eq("id", row.id).eq("status", "processing").select("id").maybeSingle();
-      if (activated.error || !activated.data) throw new Error("registration_finalize_failed");
+      if (activated.error || !activated.data) {
+        console.error("[store-registration] finalize failed", {
+          registration_id: row.id,
+          tenant_id: result.tenant.id,
+          error: activated.error?.message ?? "registration_finalize_empty"
+        });
+        throw new StoreProvisioningError(
+          "registration_finalize_failed",
+          "ร้านถูกสร้างแล้ว แต่บันทึกสถานะคำขอไม่สำเร็จ กรุณากดเปิดใช้งานรายการเดิมอีกครั้ง",
+          500
+        );
+      }
       await appendAuditLog({ tenantId: result.tenant.id, branchId: result.branch.id, actorUserId: ctx.auth.userId,
         actorRole: "it_admin", action: "store_registration_activated", targetTable: "store_registration_requests",
         targetId: row.id, module: "it_admin", metadata: {
