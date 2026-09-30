@@ -10,6 +10,9 @@ import {
 
 export const dynamic = "force-dynamic";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Manual activation emails sent before this cutoff used tenants.code (T-...)
+// instead of the canonical six-digit Store Code. Allow exactly one correction.
+const LEGACY_INTERNAL_STORE_CODE_EMAIL_CUTOFF = Date.parse("2026-09-30T15:23:00.000Z");
 
 type Body = {
   event_type?: "store_activation" | "payment_confirmation";
@@ -95,15 +98,19 @@ export async function POST(request: Request) {
       }
 
       const originalDelivery = await ctx.supabase.from("customer_email_deliveries")
-        .select("id,status,trigger_mode")
+        .select("id,status,trigger_mode,sent_at")
         .eq("event_type", "store_activation")
         .eq("source_id", registration.data.id)
         .eq("status", "sent")
         .eq("trigger_mode", "manual")
         .limit(1)
-        .maybeSingle<{ id: string; status: string; trigger_mode: string }>();
+        .maybeSingle<{ id: string; status: string; trigger_mode: string; sent_at: string | null }>();
       if (originalDelivery.error) throw new Error("activation_email_delivery_lookup_failed");
-      const isStoreCodeCorrection = Boolean(originalDelivery.data);
+      const originalSentAt = originalDelivery.data?.sent_at ? Date.parse(originalDelivery.data.sent_at) : Number.NaN;
+      const isStoreCodeCorrection = Boolean(
+        originalDelivery.data && Number.isFinite(originalSentAt) &&
+        originalSentAt < LEGACY_INTERNAL_STORE_CODE_EMAIL_CUTOFF
+      );
 
       const baseMessage = buildStoreActivationEmail({
         storeName: store.display_name || store.name || registration.data.store_name,
