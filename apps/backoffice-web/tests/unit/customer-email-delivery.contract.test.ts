@@ -36,9 +36,14 @@ describe("transactional customer email delivery", () => {
     expect(settings).toContain("auto_send_payment_confirmation");
   });
 
-  it("keeps a manual IT send path with no PIN disclosure", () => {
+  it("keeps a manual IT send path with no PIN disclosure and canonical six-digit Store Code", () => {
     expect(manual).toContain("requireItAdmin()");
     expect(manual).toContain("enforceRateLimit");
+    expect(manual).toContain("provision_request_key");
+    expect(manual).toContain("it_store_provisioning_requests");
+    expect(manual).toContain("publicStoreCode");
+    expect(manual).not.toContain('storeCode: store.code');
+    expect(service).toContain('/^\\d{6}$/');
     expect(registrationUi).toContain("ส่งอีเมลเปิดระบบ");
     expect(paymentUi).toContain("ส่งอีเมลยืนยันชำระ");
     expect(service).toContain("ระบบจะไม่ส่ง PIN หรือรหัสลับทางอีเมล");
