@@ -46,7 +46,9 @@ export const POS_MENU_CATALOG: readonly PosMenuDefinition[] = [
 ] as const;
 const catalog = new Map(POS_MENU_CATALOG.map(item => [item.key, item]));
 export function isValidPosMenuKey(key: string): boolean { return catalog.has(key); }
+export function isPosMenuAlwaysEnabled(key: string): boolean { return key === "main.shift"; }
 export function isPosMenuEnabled(key: string, overrides: Record<string, boolean>): boolean {
+  if (isPosMenuAlwaysEnabled(key)) return true;
   if (!catalog.has(key)) return true;
   return overrides[key] !== false;
 }
