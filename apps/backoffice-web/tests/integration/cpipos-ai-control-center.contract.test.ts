@@ -8,6 +8,7 @@ const listUi = src("../../src/components/it-admin/cpipos-ai-admin-console.tsx");
 const detailUi = src("../../src/components/it-admin/cpipos-ai-tenant-detail.tsx");
 const service = src("../../src/lib/services/it-admin/cpipos-ai-admin-service.ts");
 const migration = src("../../../../supabase/migrations/20260929224000_pos_ai_usage_quota.sql");
+const roomMigration = src("../../../../supabase/migrations/20260930133000_cpipos_ai_chat_rooms_retention.sql");
 
 describe("CpIPOS IT AI control center", () => {
   it("adds CpiPOS AI to IT navigation", () => {
@@ -25,19 +26,22 @@ describe("CpIPOS IT AI control center", () => {
     expect(listUi).toContain("ต้นทุน AI เดือนนี้");
   });
 
-  it("supports package and per-store quota", () => {
+  it("supports package/per-store quota and chat retention", () => {
     expect(migration).toContain("pos_ai_package_quotas");
     expect(migration).toContain("pos_ai_tenant_quota_overrides");
     expect(migration).toContain("monthly_request_limit");
     expect(migration).toContain("monthly_token_limit");
     expect(migration).toContain("monthly_cost_limit_usd");
+    expect(roomMigration).toContain("history_retention_days");
     expect(listUi).toContain("AI Quota ต่อแพ็กเกจ / ต่อเดือน");
+    expect(listUi).toContain("เก็บประวัติแชท (วัน)");
     expect(detailUi).toContain("AI Quota ของร้านนี้");
+    expect(detailUi).toContain("เก็บประวัติแชท (วัน)");
   });
 
-  it("shows IDs, command usage and daily/monthly/yearly summaries", () => {
-    expect(detailUi).toContain("OpenAI Conversation ID");
-    expect(detailUi).toContain("User ID");
+  it("shows chat-room IDs, command usage and daily/monthly/yearly summaries", () => {
+    expect(detailUi).toContain("ห้องแชทและ OpenAI Conversation ID");
+    expect(detailUi).toContain("Room ID");
     expect(detailUi).toContain("คำสั่งที่ผู้ใช้พิมพ์และ Token ต่อคำขอ");
     expect(detailUi).toContain("สรุปรายวัน");
     expect(detailUi).toContain("สรุปรายเดือน");
@@ -53,10 +57,20 @@ describe("CpIPOS IT AI control center", () => {
     expect(detailUi).not.toContain('return "${Number');
   });
 
-  it("supports scoped history clearing while retaining usage accounting", () => {
+  it("supports room-scoped or whole-store clearing while retaining usage accounting", () => {
     expect(service).toContain("clearCpiposAiHistory");
+    expect(service).toContain('from("pos_ai_chat_rooms")');
     expect(service).toContain("history_cleared_at");
     expect(service).toContain("usage_accounting_retained: true");
     expect(detailUi).toContain("ล้างประวัติทั้งร้าน");
+    expect(detailUi).toContain("ลบห้องแชท");
+  });
+
+  it("keeps transcript storage in OpenAI and only room pointers locally", () => {
+    expect(roomMigration).toContain("pos_ai_chat_rooms");
+    expect(roomMigration).not.toContain("message_text");
+    expect(listUi).toContain("OpenAI Conversations");
+    expect(detailUi).toContain("OpenAI Conversations");
+    expect(service).toContain("deleteOpenAiConversation");
   });
 });

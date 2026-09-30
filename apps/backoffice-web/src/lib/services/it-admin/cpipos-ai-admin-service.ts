@@ -17,6 +17,7 @@ type PackageQuota = {
   monthly_request_limit: number | null;
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
+  history_retention_days: number | null;
 };
 
 type TenantOverride = {
@@ -26,6 +27,7 @@ type TenantOverride = {
   monthly_request_limit: number | null;
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
+  history_retention_days: number | null;
 };
 
 type UsageAgg = {
@@ -86,7 +88,10 @@ function effectiveQuota(packageQuota: PackageQuota | null, override: TenantOverr
     enabled,
     mode,
     source: mode === "inherit" ? "package" : mode === "custom" ? "tenant_custom" : "tenant_unlimited",
-    limits
+    limits,
+    history_retention_days:
+      nullablePositive(override?.history_retention_days) ??
+      nullablePositive(packageQuota?.history_retention_days)
   };
 }
 
@@ -153,11 +158,11 @@ export async function listCpiposAiStores(context: ItAdminContext) {
       .select("tenant_id,menu_key,is_enabled")
       .in("menu_key", ["main.ai_assistant", "more.ai_assistant"]),
     db.from("pos_ai_package_quotas")
-      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd"),
+      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days"),
     db.from("pos_ai_tenant_quota_overrides")
-      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd"),
+      .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days"),
     db.rpc("pos_ai_admin_tenant_usage", { p_started_at: bounds.start, p_ended_at: bounds.end }),
-    db.from("pos_ai_conversation_links").select("tenant_id,user_id,branch_id,openai_conversation_id,updated_at")
+    db.from("pos_ai_chat_rooms").select("id,tenant_id,user_id,branch_id,title,openai_conversation_id,updated_at,last_message_at")
   ]);
   for (const result of [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, links]) {
     if (result.error) throw new Error(result.error.message);
@@ -237,7 +242,7 @@ export async function listCpiposAiPackageQuotas(context: ItAdminContext) {
       .eq("is_active", true)
       .order("display_order", { ascending: true, nullsFirst: false }),
     db.from("pos_ai_package_quotas")
-      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,updated_at")
+      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days,updated_at")
   ]);
   if (packages.error) throw new Error(packages.error.message);
   if (quotas.error) throw new Error(quotas.error.message);
@@ -250,6 +255,7 @@ export async function listCpiposAiPackageQuotas(context: ItAdminContext) {
       monthly_request_limit: null,
       monthly_token_limit: null,
       monthly_cost_limit_usd: null,
+      history_retention_days: null,
       updated_at: null
     }
   }));
@@ -262,6 +268,7 @@ export async function updateCpiposAiPackageQuota(context: ItAdminContext, packag
     monthly_request_limit: nullablePositive(input.monthly_request_limit),
     monthly_token_limit: nullablePositive(input.monthly_token_limit),
     monthly_cost_limit_usd: nullablePositive(input.monthly_cost_limit_usd),
+    history_retention_days: nullablePositive(input.history_retention_days),
     updated_by: context.auth.userId,
     updated_at: new Date().toISOString()
   };
@@ -306,9 +313,9 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
     db.from("pos_ai_tenant_quota_overrides")
       .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,updated_at")
       .eq("tenant_id", tenantId).maybeSingle(),
-    db.from("pos_ai_conversation_links")
-      .select("tenant_id,branch_id,user_id,openai_conversation_id,created_at,updated_at")
-      .eq("tenant_id", tenantId).order("updated_at", { ascending: false }),
+    db.from("pos_ai_chat_rooms")
+      .select("id,title,tenant_id,branch_id,user_id,openai_conversation_id,created_at,updated_at,last_message_at")
+      .eq("tenant_id", tenantId).order("last_message_at", { ascending: false }),
     db.from("pos_ai_usage_events")
       .select("id,branch_id,user_id,openai_conversation_id,response_id,model,prompt_text,input_tokens,cached_input_tokens,cache_write_tokens,output_tokens,reasoning_tokens,total_tokens,total_cost_usd,pricing_source,service_tier,status,requested_at,history_cleared_at")
       .eq("tenant_id", tenantId).order("requested_at", { ascending: false }).limit(250),
@@ -325,7 +332,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
   const packageId = contract.data?.package_id ?? tenant.data.package_id ?? null;
   const [pkg, packageQuota, profiles, branches, roles] = await Promise.all([
     packageId ? db.from("subscription_packages").select("id,code,name").eq("id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    packageId ? db.from("pos_ai_package_quotas").select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd").eq("package_id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    packageId ? db.from("pos_ai_package_quotas").select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days").eq("package_id", packageId).maybeSingle() : Promise.resolve({ data: null, error: null }),
     db.from("users_profiles").select("id,email,full_name,is_active"),
     db.from("branches").select("id,code,name,is_active").eq("tenant_id", tenantId),
     db.from("user_branch_roles").select("user_id,branch_id,role,is_default").eq("tenant_id", tenantId).in("role", ["owner","manager"])
@@ -344,10 +351,12 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
     ? menuPolicy.get("main.ai_assistant") !== false
     : menuPolicy.get("more.ai_assistant") !== false;
 
-  const users = (links.data ?? []).map((link) => {
+  const rooms = (links.data ?? []).map((link) => {
     const profile = profileMap.get(link.user_id);
     const branch = branchMap.get(link.branch_id);
     return {
+      room_id: link.id,
+      room_title: link.title,
       user_id: link.user_id,
       full_name: profile?.full_name ?? "—",
       email: profile?.email ?? "—",
@@ -356,9 +365,27 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
       branch_name: branch?.name ?? branch?.code ?? "—",
       conversation_id: link.openai_conversation_id,
       conversation_created_at: link.created_at,
-      conversation_updated_at: link.updated_at
+      conversation_updated_at: link.updated_at,
+      last_message_at: link.last_message_at
     };
   });
+
+  const users = Array.from(
+    new Map(
+      rooms.map((room) => [
+        `${room.user_id}:${room.branch_id}`,
+        {
+          user_id: room.user_id,
+          full_name: room.full_name,
+          email: room.email,
+          role: room.role,
+          branch_id: room.branch_id,
+          branch_name: room.branch_name,
+          room_count: rooms.filter((item) => item.user_id === room.user_id && item.branch_id === room.branch_id).length
+        }
+      ])
+    ).values()
+  );
 
   return {
     generated_at: new Date().toISOString(),
@@ -379,6 +406,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
       usage: monthUsageShape
     },
     users,
+    rooms,
     events: events.data ?? [],
     series: {
       daily: daily.data ?? [],
@@ -397,6 +425,7 @@ export async function updateCpiposAiTenantQuota(context: ItAdminContext, tenantI
     monthly_request_limit: mode === "custom" ? nullablePositive(input.monthly_request_limit) : null,
     monthly_token_limit: mode === "custom" ? nullablePositive(input.monthly_token_limit) : null,
     monthly_cost_limit_usd: mode === "custom" ? nullablePositive(input.monthly_cost_limit_usd) : null,
+    history_retention_days: nullablePositive(input.history_retention_days),
     updated_by: context.auth.userId,
     updated_at: new Date().toISOString()
   };
@@ -460,51 +489,58 @@ async function deleteOpenAiConversation(conversationId: string) {
   await openAiFetch(`/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
 }
 
-export async function clearCpiposAiHistory(context: ItAdminContext, tenantId: string, userId?: string | null, branchId?: string | null) {
-  let query = context.supabase.from("pos_ai_conversation_links")
-    .select("tenant_id,branch_id,user_id,openai_conversation_id")
+export async function clearCpiposAiHistory(
+  context: ItAdminContext,
+  tenantId: string,
+  userId?: string | null,
+  branchId?: string | null,
+  roomId?: string | null
+) {
+  let query = context.supabase.from("pos_ai_chat_rooms")
+    .select("id,tenant_id,branch_id,user_id,openai_conversation_id,title")
     .eq("tenant_id", tenantId);
   if (userId) query = query.eq("user_id", userId);
   if (branchId) query = query.eq("branch_id", branchId);
-  const links = await query;
-  if (links.error) throw new Error(links.error.message);
+  if (roomId) query = query.eq("id", roomId);
+  const rooms = await query;
+  if (rooms.error) throw new Error(rooms.error.message);
 
-  for (const link of links.data ?? []) {
-    await deleteOpenAiConversation(link.openai_conversation_id);
+  for (const room of rooms.data ?? []) {
+    await deleteOpenAiConversation(room.openai_conversation_id);
   }
 
-  let deleteLinks = context.supabase.from("pos_ai_conversation_links").delete().eq("tenant_id", tenantId);
-  let redact = context.supabase.from("pos_ai_usage_events")
-    .update({ prompt_text: null, history_cleared_at: new Date().toISOString() })
-    .eq("tenant_id", tenantId);
-  if (userId) {
-    deleteLinks = deleteLinks.eq("user_id", userId);
-    redact = redact.eq("user_id", userId);
+  const conversationIds = (rooms.data ?? []).map((room) => room.openai_conversation_id);
+  if (conversationIds.length) {
+    const deleted = await context.supabase.from("pos_ai_chat_rooms")
+      .delete()
+      .in("id", (rooms.data ?? []).map((room) => room.id));
+    if (deleted.error) throw new Error(deleted.error.message);
+
+    const redacted = await context.supabase.from("pos_ai_usage_events")
+      .update({ prompt_text: null, history_cleared_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId)
+      .in("openai_conversation_id", conversationIds);
+    if (redacted.error) throw new Error(redacted.error.message);
   }
-  if (branchId) {
-    deleteLinks = deleteLinks.eq("branch_id", branchId);
-    redact = redact.eq("branch_id", branchId);
-  }
-  const [deleted, redacted] = await Promise.all([deleteLinks, redact]);
-  if (deleted.error) throw new Error(deleted.error.message);
-  if (redacted.error) throw new Error(redacted.error.message);
 
   await appendAuditLog({
     tenantId,
     actorUserId: context.auth.userId,
     actorRole: context.auth.platformRole,
     action: "it_ai_history_cleared",
-    targetTable: "pos_ai_conversation_links",
-    targetId: tenantId,
+    targetTable: "pos_ai_chat_rooms",
+    targetId: roomId ?? tenantId,
     metadata: {
-      cleared_conversations: (links.data ?? []).length,
+      cleared_conversations: (rooms.data ?? []).length,
+      scoped_room_id: roomId ?? null,
       scoped_user_id: userId ?? null,
       scoped_branch_id: branchId ?? null,
-      usage_accounting_retained: true
+      usage_accounting_retained: true,
+      transcript_storage: "openai_conversations"
     },
     ipAddress: context.requestMeta.ipAddress ?? undefined,
     userAgent: context.requestMeta.userAgent ?? undefined
   });
 
-  return { cleared_conversations: (links.data ?? []).length, usage_accounting_retained: true };
+  return { cleared_conversations: (rooms.data ?? []).length, usage_accounting_retained: true };
 }

@@ -10,6 +10,7 @@ type PackageQuota = {
   monthly_request_limit: number | null;
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
+  history_retention_days: number | null;
   updated_at?: string | null;
 };
 
@@ -34,6 +35,7 @@ type StoreRow = {
   quota: {
     source: string;
     limits: { requests: number | null; tokens: number | null; cost_usd: number | null };
+    history_retention_days: number | null;
   };
   usage: { requests: number; users: number; total_tokens: number; cost_usd: number };
 };
@@ -74,6 +76,7 @@ export function CpiPosAiAdminConsole() {
     monthly_request_limit: string;
     monthly_token_limit: string;
     monthly_cost_limit_usd: string;
+    history_retention_days: string;
   }>>({});
 
   const load = useCallback(async (silent = false) => {
@@ -88,7 +91,8 @@ export function CpiPosAiAdminConsole() {
         is_enabled: pkg.quota.is_enabled !== false,
         monthly_request_limit: inputValue(pkg.quota.monthly_request_limit),
         monthly_token_limit: inputValue(pkg.quota.monthly_token_limit),
-        monthly_cost_limit_usd: inputValue(pkg.quota.monthly_cost_limit_usd)
+        monthly_cost_limit_usd: inputValue(pkg.quota.monthly_cost_limit_usd),
+        history_retention_days: inputValue(pkg.quota.history_retention_days)
       }])));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "โหลดข้อมูล CpiPOS AI ไม่สำเร็จ");
@@ -124,7 +128,8 @@ export function CpiPosAiAdminConsole() {
           is_enabled: draft.is_enabled,
           monthly_request_limit: draft.monthly_request_limit || null,
           monthly_token_limit: draft.monthly_token_limit || null,
-          monthly_cost_limit_usd: draft.monthly_cost_limit_usd || null
+          monthly_cost_limit_usd: draft.monthly_cost_limit_usd || null,
+          history_retention_days: draft.history_retention_days || null
         })
       });
       const body = (await response.json().catch(() => null)) as Envelope<unknown> | null;
@@ -169,7 +174,7 @@ export function CpiPosAiAdminConsole() {
         </div>
         <div className={styles.packageGrid}>
           {(data?.packages ?? []).map((pkg) => {
-            const draft = drafts[pkg.id] ?? { is_enabled: true, monthly_request_limit: "", monthly_token_limit: "", monthly_cost_limit_usd: "" };
+            const draft = drafts[pkg.id] ?? { is_enabled: true, monthly_request_limit: "", monthly_token_limit: "", monthly_cost_limit_usd: "", history_retention_days: "" };
             return (
               <article className={styles.packageCard} key={pkg.id}>
                 <div className={styles.packageTitle}>
@@ -185,6 +190,9 @@ export function CpiPosAiAdminConsole() {
                     onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_request_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
                   <label><span>Token / เดือน</span><input inputMode="numeric" value={draft.monthly_token_limit}
                     onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_token_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
+                  <label><span>เก็บประวัติแชท (วัน)</span><input inputMode="numeric" value={draft.history_retention_days}
+                    onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, history_retention_days: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="IT / สัญญากำหนด" /></label>
+                  <label><span>ที่เก็บข้อความ</span><input value="OpenAI Conversations" disabled /></label>
                   <label className={styles.span2}><span>งบ AI / เดือน (USD)</span><input inputMode="decimal" value={draft.monthly_cost_limit_usd}
                     onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_cost_limit_usd: event.target.value.replace(/[^0-9.]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
                 </div>
@@ -204,7 +212,7 @@ export function CpiPosAiAdminConsole() {
         </div>
         <div className={styles.tableWrap}>
           <table>
-            <thead><tr><th>ร้านค้า</th><th>แพ็กเกจ</th><th>AI Users</th><th>คำขอเดือนนี้</th><th>Tokens</th><th>ค่าใช้จ่าย</th><th>Quota</th><th /></tr></thead>
+            <thead><tr><th>ร้านค้า</th><th>แพ็กเกจ</th><th>AI Users</th><th>คำขอเดือนนี้</th><th>Tokens</th><th>ค่าใช้จ่าย</th><th>Quota / Retention</th><th /></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={8} className={styles.empty}>กำลังโหลดข้อมูล…</td></tr> :
                rows.length === 0 ? <tr><td colSpan={8} className={styles.empty}>ยังไม่มีร้านที่เปิดใช้งาน CpiPOS AI</td></tr> :
@@ -224,7 +232,7 @@ export function CpiPosAiAdminConsole() {
                      <td>{fmt(row.usage.requests)}</td>
                      <td>{fmt(row.usage.total_tokens)}</td>
                      <td>{usd(row.usage.cost_usd)}</td>
-                     <td><span className={styles.quotaBadge}>{quotaText}</span></td>
+                     <td><span className={styles.quotaBadge}>{quotaText}</span><small className={styles.muted}>เก็บแชท {row.quota.history_retention_days ? `${fmt(row.quota.history_retention_days)} วัน` : "ตามสัญญา"}</small></td>
                      <td><Link className={styles.detailButton} href={`/it-admin/cpipos-ai/${encodeURIComponent(row.tenant_id)}`}>ดูรายละเอียด</Link></td>
                    </tr>
                  );

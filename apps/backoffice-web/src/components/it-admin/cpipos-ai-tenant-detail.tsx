@@ -33,9 +33,22 @@ type UserRow = {
   role: string;
   branch_id: string;
   branch_name: string;
+  room_count: number;
+};
+
+type RoomRow = {
+  room_id: string;
+  room_title: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  branch_id: string;
+  branch_name: string;
   conversation_id: string;
   conversation_created_at: string;
   conversation_updated_at: string;
+  last_message_at: string;
 };
 
 type SeriesRow = {
@@ -59,23 +72,27 @@ type Detail = {
     mode: "inherit" | "custom" | "unlimited";
     source: string;
     limits: { requests: number | null; tokens: number | null; cost_usd: number | null };
+    history_retention_days: number | null;
     override: {
       quota_mode?: "inherit" | "custom" | "unlimited";
       is_enabled_override?: boolean | null;
       monthly_request_limit?: number | null;
       monthly_token_limit?: number | null;
       monthly_cost_limit_usd?: number | string | null;
+      history_retention_days?: number | null;
     } | null;
     package_default: {
       is_enabled?: boolean;
       monthly_request_limit?: number | null;
       monthly_token_limit?: number | null;
       monthly_cost_limit_usd?: number | string | null;
+      history_retention_days?: number | null;
     } | null;
     month: string;
     usage: { requests: number; users: number; total_tokens: number; input_tokens: number; output_tokens: number; cost_usd: number };
   };
   users: UserRow[];
+  rooms: RoomRow[];
   events: UsageRow[];
   series: { daily: SeriesRow[]; monthly: SeriesRow[]; yearly: SeriesRow[] };
 };
@@ -111,6 +128,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
   const [requests, setRequests] = useState("");
   const [tokens, setTokens] = useState("");
   const [cost, setCost] = useState("");
+  const [retentionDays, setRetentionDays] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,6 +146,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
       setRequests(field(override?.monthly_request_limit));
       setTokens(field(override?.monthly_token_limit));
       setCost(field(override?.monthly_cost_limit_usd));
+      setRetentionDays(field(override?.history_retention_days));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "โหลดข้อมูล AI ของร้านไม่สำเร็จ");
     } finally {
@@ -153,7 +172,8 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
           is_enabled_override: enabledMode === "inherit" ? null : enabledMode === "enabled",
           monthly_request_limit: quotaMode === "custom" && requests ? requests : null,
           monthly_token_limit: quotaMode === "custom" && tokens ? tokens : null,
-          monthly_cost_limit_usd: quotaMode === "custom" && cost ? cost : null
+          monthly_cost_limit_usd: quotaMode === "custom" && cost ? cost : null,
+          history_retention_days: retentionDays || null
         })
       });
       const body = (await response.json().catch(() => null)) as Envelope<unknown> | null;
@@ -166,18 +186,18 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
     }
   }
 
-  async function clearHistory(user?: UserRow) {
+  async function clearHistory(room?: RoomRow) {
     if (busy) return;
-    const scopeText = user ? `ของ ${user.full_name} · ${user.branch_name}` : "ทั้งหมดของร้านนี้";
-    if (!window.confirm(`ล้างประวัติ CpiPOS AI ${scopeText} หรือไม่?\\n\\nข้อความใน OpenAI Conversation จะถูกลบ แต่ token และค่าใช้จ่ายเดิมจะยังคงอยู่เพื่อการบัญชี/Quota`)) return;
-    setBusy(user ? `history:${user.user_id}:${user.branch_id}` : "history:all");
+    const scopeText = room ? `ห้อง “${room.room_title}” ของ ${room.full_name}` : "ทั้งหมดของร้านนี้";
+    if (!window.confirm(`ล้างประวัติ CpiPOS AI ${scopeText} หรือไม่?\n\nข้อความใน OpenAI Conversation จะถูกลบ แต่ token และค่าใช้จ่ายเดิมจะยังคงอยู่เพื่อการบัญชี/Quota`)) return;
+    setBusy(room ? `history:${room.room_id}` : "history:all");
     setError("");
     try {
       const response = await fetch(`/api/it-admin/v1/cpipos-ai/tenants/${encodeURIComponent(tenantId)}/history`, {
         method: "DELETE",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(user ? { user_id: user.user_id, branch_id: user.branch_id } : {})
+        body: JSON.stringify(room ? { room_id: room.room_id } : {})
       });
       const body = (await response.json().catch(() => null)) as Envelope<unknown> | null;
       if (!response.ok) throw new Error(body?.error?.message ?? "ล้างประวัติ AI ไม่สำเร็จ");
@@ -216,7 +236,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
 
       <section className={styles.summaryGrid}>
         <article><span>แพ็กเกจ</span><strong className={styles.smallStrong}>{data?.package?.name ?? "—"}</strong><small>{data?.contract_status ?? "—"}</small></article>
-        <article><span>AI Users</span><strong>{fmt(data?.users.length)}</strong><small>Owner / Manager</small></article>
+        <article><span>AI Users / ห้องแชท</span><strong>{fmt(data?.users.length)} / {fmt(data?.rooms.length)}</strong><small>Owner / Manager · OpenAI Conversations</small></article>
         <article><span>คำขอเดือนนี้</span><strong>{fmt(usage?.requests)}</strong><small>{data?.quota.month ?? "—"}</small></article>
         <article><span>Token เดือนนี้</span><strong>{fmt(usage?.total_tokens)}</strong><small>Input {fmt(usage?.input_tokens)} · Output {fmt(usage?.output_tokens)}</small></article>
         <article><span>ต้นทุนเดือนนี้</span><strong className={styles.smallStrong}>{usd(usage?.cost_usd)}</strong><small>Estimated OpenAI cost</small></article>
@@ -237,6 +257,8 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
             </select></label>
             <label><span>คำขอ / เดือน</span><input disabled={quotaMode !== "custom"} inputMode="numeric" value={requests} onChange={(event) => setRequests(event.target.value.replace(/[^0-9]/g,""))} placeholder="ไม่จำกัด" /></label>
             <label><span>Token / เดือน</span><input disabled={quotaMode !== "custom"} inputMode="numeric" value={tokens} onChange={(event) => setTokens(event.target.value.replace(/[^0-9]/g,""))} placeholder="ไม่จำกัด" /></label>
+            <label><span>เก็บประวัติแชท (วัน)</span><input inputMode="numeric" value={retentionDays} onChange={(event) => setRetentionDays(event.target.value.replace(/[^0-9]/g,""))} placeholder="ว่าง = ตามแพ็กเกจ" /></label>
+            <label><span>ที่เก็บข้อความ</span><input value="OpenAI Conversations" disabled /></label>
             <label className={styles.span2}><span>งบ AI / เดือน (USD)</span><input disabled={quotaMode !== "custom"} inputMode="decimal" value={cost} onChange={(event) => setCost(event.target.value.replace(/[^0-9.]/g,""))} placeholder="ไม่จำกัด" /></label>
             <button type="button" className={styles.primaryButton} disabled={Boolean(busy)} onClick={() => void saveQuota()}>{busy === "quota" ? "กำลังบันทึก…" : "บันทึก Quota ร้าน"}</button>
           </div>
@@ -246,26 +268,31 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
             <p>Requests: {limits?.requests ? `${fmt(usage?.requests)}/${fmt(limits.requests)}` : "ไม่จำกัด"}</p>
             <p>Tokens: {limits?.tokens ? `${fmt(usage?.total_tokens)}/${fmt(limits.tokens)}` : "ไม่จำกัด"}</p>
             <p>Cost: {limits?.cost_usd ? `${usd(usage?.cost_usd)}/${usd(limits.cost_usd)}` : "ไม่จำกัด"}</p>
+            <p>เก็บประวัติ: {data?.quota.history_retention_days ? `${fmt(data.quota.history_retention_days)} วัน` : "ตามสัญญา / ไม่กำหนด"}</p>
             {limits?.requests ? <div className={styles.progress}><i style={{ width: `${requestPercent}%` }} /></div> : null}
           </div>
         </div>
       </section>
 
       <section className={styles.panel}>
-        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>AI USERS & IDS</span><h3>ผู้ใช้และ OpenAI Conversation ID</h3></div></div>
+        <div className={styles.panelHeader}>
+          <div><span className={styles.eyebrow}>AI CHAT ROOMS & IDS</span><h3>ห้องแชทและ OpenAI Conversation ID</h3></div>
+          <small>ข้อความเต็มอยู่ฝั่ง OpenAI · CpiPOS เก็บเฉพาะ Room ID / Conversation ID / ชื่อห้อง</small>
+        </div>
         <div className={styles.tableWrap}><table>
-          <thead><tr><th>ผู้ใช้</th><th>Role / สาขา</th><th>User ID</th><th>Conversation ID</th><th>อัปเดตล่าสุด</th><th /></tr></thead>
-          <tbody>{(data?.users ?? []).length ? data!.users.map((user) => {
-            const key = `history:${user.user_id}:${user.branch_id}`;
-            return <tr key={`${user.user_id}:${user.branch_id}`}>
-              <td><div className={styles.storeCell}><strong>{user.full_name}</strong><span>{user.email}</span></div></td>
-              <td>{user.role}<small className={styles.muted}>{user.branch_name} · {user.branch_id}</small></td>
-              <td><code className={styles.code}>{user.user_id}</code></td>
-              <td><code className={styles.code}>{user.conversation_id}</code></td>
-              <td>{dt(user.conversation_updated_at)}</td>
-              <td><button type="button" className={styles.dangerOutlineButton} disabled={Boolean(busy)} onClick={() => void clearHistory(user)}>{busy === key ? "กำลังล้าง…" : "ล้างประวัติ"}</button></td>
+          <thead><tr><th>ห้องแชท</th><th>ผู้ใช้ / Role</th><th>สาขา</th><th>Room ID</th><th>Conversation ID</th><th>ล่าสุด</th><th /></tr></thead>
+          <tbody>{(data?.rooms ?? []).length ? data!.rooms.map((room) => {
+            const key = `history:${room.room_id}`;
+            return <tr key={room.room_id}>
+              <td><div className={styles.storeCell}><strong>{room.room_title}</strong><span>{room.email}</span></div></td>
+              <td>{room.full_name}<small className={styles.muted}>{room.role} · {room.user_id}</small></td>
+              <td>{room.branch_name}<small className={styles.muted}>{room.branch_id}</small></td>
+              <td><code className={styles.code}>{room.room_id}</code></td>
+              <td><code className={styles.code}>{room.conversation_id}</code></td>
+              <td>{dt(room.last_message_at)}</td>
+              <td><button type="button" className={styles.dangerOutlineButton} disabled={Boolean(busy)} onClick={() => void clearHistory(room)}>{busy === key ? "กำลังลบ…" : "ลบห้องแชท"}</button></td>
             </tr>;
-          }) : <tr><td colSpan={6} className={styles.empty}>ยังไม่มี Conversation ของร้านนี้</td></tr>}</tbody>
+          }) : <tr><td colSpan={7} className={styles.empty}>ยังไม่มีห้องแชทของร้านนี้</td></tr>}</tbody>
         </table></div>
       </section>
 

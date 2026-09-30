@@ -6,10 +6,11 @@ export async function DELETE(request: Request, context: { params: Promise<{ tena
   try {
     const admin = await requireItAdmin();
     const tenantId = parseTenantParam((await context.params).tenantId);
-    const body = (await request.json().catch(() => ({}))) as { user_id?: unknown; branch_id?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { user_id?: unknown; branch_id?: unknown; room_id?: unknown };
     const userId = typeof body.user_id === "string" && body.user_id.trim() ? body.user_id.trim() : null;
     const branchId = typeof body.branch_id === "string" && body.branch_id.trim() ? body.branch_id.trim() : null;
-    const result = await clearCpiposAiHistory(admin, tenantId, userId, branchId);
+    const roomId = typeof body.room_id === "string" && body.room_id.trim() ? body.room_id.trim() : null;
+    const result = await clearCpiposAiHistory(admin, tenantId, userId, branchId, roomId);
     return ok(result);
   } catch (error) {
     return guardItAdminError(error);
