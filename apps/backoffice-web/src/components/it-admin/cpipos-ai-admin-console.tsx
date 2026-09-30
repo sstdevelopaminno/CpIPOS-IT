@@ -11,6 +11,9 @@ type PackageQuota = {
   monthly_token_limit: number | null;
   monthly_cost_limit_usd: number | string | null;
   history_retention_days: number | null;
+  document_retention_days: number | null;
+  document_storage_mb: number | null;
+  document_file_limit: number | null;
   updated_at?: string | null;
 };
 
@@ -77,6 +80,9 @@ export function CpiPosAiAdminConsole() {
     monthly_token_limit: string;
     monthly_cost_limit_usd: string;
     history_retention_days: string;
+    document_retention_days: string;
+    document_storage_mb: string;
+    document_file_limit: string;
   }>>({});
 
   const load = useCallback(async (silent = false) => {
@@ -92,7 +98,10 @@ export function CpiPosAiAdminConsole() {
         monthly_request_limit: inputValue(pkg.quota.monthly_request_limit),
         monthly_token_limit: inputValue(pkg.quota.monthly_token_limit),
         monthly_cost_limit_usd: inputValue(pkg.quota.monthly_cost_limit_usd),
-        history_retention_days: inputValue(pkg.quota.history_retention_days)
+        history_retention_days: inputValue(pkg.quota.history_retention_days),
+        document_retention_days: inputValue(pkg.quota.document_retention_days),
+        document_storage_mb: inputValue(pkg.quota.document_storage_mb),
+        document_file_limit: inputValue(pkg.quota.document_file_limit)
       }])));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "โหลดข้อมูล CpiPOS AI ไม่สำเร็จ");
@@ -129,7 +138,10 @@ export function CpiPosAiAdminConsole() {
           monthly_request_limit: draft.monthly_request_limit || null,
           monthly_token_limit: draft.monthly_token_limit || null,
           monthly_cost_limit_usd: draft.monthly_cost_limit_usd || null,
-          history_retention_days: draft.history_retention_days || null
+          history_retention_days: draft.history_retention_days || null,
+          document_retention_days: draft.document_retention_days || null,
+          document_storage_mb: draft.document_storage_mb || null,
+          document_file_limit: draft.document_file_limit || null
         })
       });
       const body = (await response.json().catch(() => null)) as Envelope<unknown> | null;
@@ -174,7 +186,7 @@ export function CpiPosAiAdminConsole() {
         </div>
         <div className={styles.packageGrid}>
           {(data?.packages ?? []).map((pkg) => {
-            const draft = drafts[pkg.id] ?? { is_enabled: true, monthly_request_limit: "", monthly_token_limit: "", monthly_cost_limit_usd: "", history_retention_days: "" };
+            const draft = drafts[pkg.id] ?? { is_enabled: true, monthly_request_limit: "", monthly_token_limit: "", monthly_cost_limit_usd: "", history_retention_days: "", document_retention_days: "", document_storage_mb: "", document_file_limit: "" };
             return (
               <article className={styles.packageCard} key={pkg.id}>
                 <div className={styles.packageTitle}>
@@ -192,7 +204,12 @@ export function CpiPosAiAdminConsole() {
                     onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_token_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
                   <label><span>เก็บประวัติแชท (วัน)</span><input inputMode="numeric" value={draft.history_retention_days}
                     onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, history_retention_days: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="IT / สัญญากำหนด" /></label>
-                  <label><span>ที่เก็บข้อความ</span><input value="OpenAI Conversations" disabled /></label>
+                  <label><span>เก็บเอกสาร (วัน)</span><input inputMode="numeric" value={draft.document_retention_days}
+                    onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, document_retention_days: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ตามสัญญา" /></label>
+                  <label><span>พื้นที่เอกสาร (MB)</span><input inputMode="numeric" value={draft.document_storage_mb}
+                    onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, document_storage_mb: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
+                  <label><span>จำนวนไฟล์เอกสาร</span><input inputMode="numeric" value={draft.document_file_limit}
+                    onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, document_file_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
                   <label className={styles.span2}><span>งบ AI / เดือน (USD)</span><input inputMode="decimal" value={draft.monthly_cost_limit_usd}
                     onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_cost_limit_usd: event.target.value.replace(/[^0-9.]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
                 </div>
