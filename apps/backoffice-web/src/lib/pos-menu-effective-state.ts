@@ -1,4 +1,4 @@
-import { POS_MENU_CATALOG } from "@/lib/pos-menu-policy";
+import { POS_MENU_CATALOG, isPosMenuAlwaysEnabled } from "@/lib/pos-menu-policy";
 
 /**
  * Mirrors the feature gates on the CUSTOMER POS navigation surfaces.
@@ -10,7 +10,7 @@ export const POS_MENU_NAV_FEATURES: Readonly<Record<string, string | null>> = {
   "main.sales": "core_pos_sales",
   "main.sales_list": "advanced_sales_reports",
   "main.kitchen": null, // POS staff sidebar does not package-gate this link.
-  "main.shift": "attendance_tracking",
+  "main.shift": null,
   "main.ai_assistant": null,
   "main.more": null,
   "main.package_payment": null,
@@ -88,7 +88,7 @@ export function resolvePosMenuAvailability(args: {
       }
     }
     const featureAllowed = contractActive && total > 0 && available === total;
-    const itEnabled = overrides[menu.key] !== false;
+    const itEnabled = isPosMenuAlwaysEnabled(menu.key) || overrides[menu.key] !== false;
     const reason: MenuAvailability["reason"] = !itEnabled ? "it_locked"
       : !contractActive ? "contract_inactive"
       : total === 0 ? "no_active_branch"
