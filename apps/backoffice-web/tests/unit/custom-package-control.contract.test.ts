@@ -11,11 +11,13 @@ describe("CUSTOM package control plane", () => {
   const registrationApi = src("src/app/api/it-admin/v1/store-registrations/route.ts");
   const publicRegistrationApi = src("src/app/api/store-registration/route.ts");
   const migration = src("../../supabase/migrations/20260928210000_custom_package_controls_compat.sql");
+  const businessMigration = src("../../supabase/migrations/20260930090000_business_package_catalog.sql");
 
-  it("locks standard sales retention to six months", () => {
-    expect(migration).toContain("where quota_mode='standard'");
-    expect(migration).toContain("set retention_months=6");
-    expect(packageService).toContain('retention_months: quotaMode === "standard" ? 6');
+  it("keeps CUSTOM terms tenant-scoped and lets fixed packages own retention", () => {
+    expect(migration).toContain("tenant_custom_package_terms");
+    expect(businessMigration).toContain("Starter 6, Growth 12, Business 24");
+    expect(businessMigration).toContain("else coalesce(sp.retention_months,6)");
+    expect(packageService).toContain("toNullablePositiveInteger(input.retention_months, 6)");
   });
 
   it("keeps CUSTOM commercial terms per tenant", () => {
