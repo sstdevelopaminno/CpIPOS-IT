@@ -53,20 +53,24 @@ export async function POST(request: Request) {
 
     if (body.event_type === "store_activation") {
       const registration = await ctx.supabase.from("store_registration_requests")
-        .select("id,tenant_id,store_name,owner_name,owner_email,status,activated_at")
+        .select("id,tenant_id,store_name,owner_name,owner_email,status,activated_at,provision_request_key")
         .eq("id", body.source_id).maybeSingle();
       if (registration.error) throw registration.error;
       if (!registration.data || registration.data.status !== "activated" || !registration.data.tenant_id) {
         return fail("activation_email_not_ready", "ส่งอีเมลเปิดระบบได้เฉพาะร้านที่เปิดใช้งานแล้ว", 409);
       }
 
-      const [tenant, lifecycle] = await Promise.all([
+      const [tenant, lifecycle, provisioning] = await Promise.all([
         ctx.supabase.from("tenants").select("id,code,name,display_name,primary_owner_user_id")
           .eq("id", registration.data.tenant_id).maybeSingle(),
         ctx.supabase.from("tenant_data_lifecycle").select("trial_expires_at")
-          .eq("tenant_id", registration.data.tenant_id).maybeSingle()
+          .eq("tenant_id", registration.data.tenant_id).maybeSingle(),
+        registration.data.provision_request_key
+          ? ctx.supabase.from("it_store_provisioning_requests").select("result")
+              .eq("request_key", registration.data.provision_request_key).maybeSingle<{ result: Record<string, unknown> | null }>()
+          : Promise.resolve({ data: null, error: null })
       ]);
-      if (tenant.error || lifecycle.error) throw new Error("activation_email_context_failed");
+      if (tenant.error || lifecycle.error || provisioning.error) throw new Error("activation_email_context_failed");
       const store = tenant.data;
       if (!store) return fail("store_not_found", "ไม่พบร้านค้า", 404);
 
@@ -84,9 +88,15 @@ export async function POST(request: Request) {
         if (!ownerProfile.error && ownerProfile.data?.email) ownerEmail = ownerProfile.data.email;
       }
 
+      const provisioningResult = obj(provisioning.data?.result);
+      const publicStoreCode = String(provisioningResult.store_code ?? "").trim();
+      if (!/^\d{6}$/.test(publicStoreCode)) {
+        return fail("public_store_code_missing", "ไม่พบ Store Code 6 หลัก กรุณาตรวจข้อมูล Provisioning ก่อนส่งอีเมล", 409);
+      }
+
       const message = buildStoreActivationEmail({
         storeName: store.display_name || store.name || registration.data.store_name,
-        storeCode: store.code || "—",
+        storeCode: publicStoreCode,
         ownerName: registration.data.owner_name,
         ownerCode,
         trialExpiresAt: lifecycle.data?.trial_expires_at ?? null,
