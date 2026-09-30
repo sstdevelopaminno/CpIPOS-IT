@@ -1,0 +1,100 @@
+name: One-time deploy store registration fixes to Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-store-registration-production.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      VERCEL_TEAM_ID: team_ZKmv6uQSU9QUyP08mxAr2YDI
+      VERCEL_PROJECT_NAME: cp-ipos-it-web
+      VERCEL_CLI_VERSION: 59.19.1
+
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Corepack and pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.4 --activate
+
+      - name: Validate Vercel token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::Missing repository secret VERCEL_TOKEN."
+            exit 1
+          fi
+
+      - name: Resolve and link Production project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_json=$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_NAME?teamId=$VERCEL_TEAM_ID")
+          project_id=$(printf '%s' "$project_json" | jq -r '.id // empty')
+          if [ -z "$project_id" ]; then
+            echo "::error::Could not resolve Vercel project id for $VERCEL_PROJECT_NAME."
+            exit 1
+          fi
+          mkdir -p apps/backoffice-web/.vercel
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_TEAM_ID" "$project_id" > apps/backoffice-web/.vercel/project.json
+          echo "Resolved $VERCEL_PROJECT_NAME as $project_id"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Tests
+        run: pnpm --filter backoffice-web exec vitest run --passWithNoTests
+
+      - name: Pull Production environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: >
+          npx --yes vercel@$VERCEL_CLI_VERSION pull
+          --yes --environment=production
+          --token="$VERCEL_TOKEN"
+          --scope="$VERCEL_TEAM_ID"
+          --cwd apps/backoffice-web
+
+      - name: Build Production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: >
+          npx --yes vercel@$VERCEL_CLI_VERSION build
+          --prod
+          --token="$VERCEL_TOKEN"
+          --scope="$VERCEL_TEAM_ID"
+          --cwd apps/backoffice-web
+
+      - name: Deploy Production only
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: >
+          npx --yes vercel@$VERCEL_CLI_VERSION deploy
+          --prebuilt --prod
+          --token="$VERCEL_TOKEN"
+          --scope="$VERCEL_TEAM_ID"
+          --cwd apps/backoffice-web
