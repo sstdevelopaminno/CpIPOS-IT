@@ -394,7 +394,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
   const yearStart = new Date(Date.UTC(now.getUTCFullYear() - 4, 0, 1)).toISOString();
   const monthSeriesStart = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1)).toISOString();
 
-  const [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage] = await Promise.all([
+  const [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage, documentUsage] = await Promise.all([
     db.from("tenants").select("id,code,name,display_name,is_active,package_id").eq("id", tenantId).maybeSingle(),
     db.from("tenant_subscription_contracts")
       .select("package_id,status,created_at")
@@ -415,9 +415,10 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: dayStart, p_ended_at: now.toISOString(), p_grain: "day" }),
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: monthSeriesStart, p_ended_at: now.toISOString(), p_grain: "month" }),
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: yearStart, p_ended_at: now.toISOString(), p_grain: "year" }),
-    db.rpc("pos_ai_usage_summary", { p_tenant_id: tenantId, p_started_at: month.start, p_ended_at: month.end })
+    db.rpc("pos_ai_usage_summary", { p_tenant_id: tenantId, p_started_at: month.start, p_ended_at: month.end }),
+    db.rpc("pos_ai_document_usage", { p_tenant_id: tenantId })
   ]);
-  for (const result of [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage]) {
+  for (const result of [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage, documentUsage]) {
     if (result.error) throw new Error(result.error.message);
   }
   if (!tenant.data) return null;
@@ -500,6 +501,10 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
     },
     users,
     rooms,
+    document_usage: {
+      count: Math.max(0, Math.trunc(numberValue(((documentUsage.data ?? []) as Array<{document_count?: number | string}>)[0]?.document_count))),
+      bytes: Math.max(0, Math.trunc(numberValue(((documentUsage.data ?? []) as Array<{total_bytes?: number | string}>)[0]?.total_bytes)))
+    },
     events: events.data ?? [],
     series: {
       daily: daily.data ?? [],
