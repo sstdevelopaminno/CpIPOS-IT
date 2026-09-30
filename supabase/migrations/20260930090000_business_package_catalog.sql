@@ -195,6 +195,28 @@ set is_active = false,
 where code not in ('starter','growth','business','custom')
   and (is_active = true or status <> 'retired');
 
+-- CpiPOS AI is a commercial add-on / included feature.
+insert into public.package_feature_catalog(
+  code,name,description,default_monthly_price,default_yearly_price,default_perpetual_price,
+  included_by_default,priced_per_branch,is_active
+)
+values (
+  'cpipos_ai',
+  'CpiPOS AI',
+  'AI assistant for sales, margin, stock and marketing analysis. Growth may buy the add-on; Business includes it.',
+  299,3229,0,false,false,true
+)
+on conflict (code) do update
+set name = excluded.name,
+    description = excluded.description,
+    default_monthly_price = excluded.default_monthly_price,
+    default_yearly_price = excluded.default_yearly_price,
+    default_perpetual_price = excluded.default_perpetual_price,
+    included_by_default = excluded.included_by_default,
+    priced_per_branch = excluded.priced_per_branch,
+    is_active = true,
+    updated_at = now();
+
 -- Business includes the full commercial POS feature catalog.
 insert into public.subscription_package_features(package_id, feature_code, included)
 select p.id, f.code, true
