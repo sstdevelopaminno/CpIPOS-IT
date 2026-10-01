@@ -24,6 +24,7 @@ function getCopy(lang: AppLanguage) {
       submitting: "Signing in...",
       requiredError: "Please enter email and password.",
       invalidCredentialsError: "Invalid email or password.",
+      temporaryExpiredError: "The temporary password has expired. Request a new one.",
       notAuthorizedError: "This account does not have IT Admin or IT Support access.",
       defaultError: "Unable to sign in right now."
     };
@@ -46,6 +47,7 @@ function getCopy(lang: AppLanguage) {
     submitting: "กำลังเข้าสู่ระบบ...",
     requiredError: "กรุณากรอกอีเมลและรหัสผ่าน",
     invalidCredentialsError: "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+    temporaryExpiredError: "รหัสผ่านชั่วคราวหมดอายุแล้ว กรุณากดลืมรหัสผ่านเพื่อขอรหัสใหม่",
     notAuthorizedError: "บัญชีนี้ไม่มีสิทธิ์ IT Admin หรือ IT Support",
     defaultError: "ไม่สามารถเข้าสู่ระบบได้ในขณะนี้"
   };
@@ -90,7 +92,9 @@ export default function ItAdminLoginPage() {
       const result = (await response.json().catch(() => null)) as { code?: string; password_change_required?: boolean } | null;
 
       if (!response.ok) {
-        if (response.status === 401 || result?.code === "invalid_credentials") {
+        if (result?.code === "temporary_password_expired") {
+          setError(copy.temporaryExpiredError);
+        } else if (response.status === 401 || result?.code === "invalid_credentials") {
           setError(copy.invalidCredentialsError);
         } else if (response.status === 403 || result?.code === "not_authorized") {
           setError(copy.notAuthorizedError);
