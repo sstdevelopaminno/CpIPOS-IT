@@ -41,7 +41,7 @@ describe("CUSTOM package control plane", () => {
 
   it("accepts website CUSTOM requests but requires IT-reviewed terms before activation", () => {
     expect(publicRegistrationApi).toContain("custom_requirements");
-    expect(publicRegistrationApi).toContain('quota_mode", ["standard","custom"]');
+    expect(publicRegistrationApi).toMatch(/\.in\("quota_mode",\s*\["standard",\s*"custom"\]\)/);
     expect(registrationApi).toContain("sanitizeCustomTerms");
     expect(registrationApi).toContain("tenant_custom_package_terms");
     expect(registrationApi).toContain("custom_terms: approvedCustomTerms");
