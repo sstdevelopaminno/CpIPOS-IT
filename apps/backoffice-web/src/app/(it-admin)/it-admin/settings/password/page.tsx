@@ -8,8 +8,52 @@ export default function ItAdminPasswordSettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [recoveryNotice, setRecoveryNotice] = useState("");
+
+  async function requestTemporaryPassword() {
+    if (recoveryBusy || busy) return;
+    setRecoveryBusy(true);
+    setError("");
+    setSuccess("");
+    setRecoveryNotice("");
+
+    try {
+      const response = await fetch("/api/it-admin/auth/request-temporary-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => null) as {
+        code?: string;
+        masked_email?: string;
+      } | null;
+
+      if (!response.ok) {
+        const message = body?.code === "rate_limited"
+          ? "มีการขอรหัสผ่านชั่วคราวถี่เกินไป กรุณารอสักครู่"
+          : body?.code === "account_inactive"
+            ? "บัญชี IT นี้ถูกปิดการใช้งาน"
+            : body?.code === "not_authorized"
+              ? "บัญชีนี้ไม่มีสิทธิ์ IT Admin หรือ IT Support"
+              : "ไม่สามารถส่งรหัสผ่านชั่วคราวได้ในขณะนี้";
+        setError(message);
+        return;
+      }
+
+      const target = body?.masked_email ? ` ไปที่ ${body.masked_email}` : "";
+      setRecoveryNotice(
+        `ส่งรหัสผ่านชั่วคราว${target} แล้ว กรุณานำรหัสจากอีเมลมาใส่ในช่อง “รหัสผ่านปัจจุบัน” จากนั้นกำหนดรหัสใหม่ รหัสชั่วคราวมีอายุ 30 นาที`
+      );
+      setCurrentPassword("");
+    } catch {
+      setError("ไม่สามารถส่งรหัสผ่านชั่วคราวได้ในขณะนี้");
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,12 +117,31 @@ export default function ItAdminPasswordSettingsPage() {
 
       <form onSubmit={submit} style={{ display: "grid", gap: 14, marginTop: 20 }}>
         <label style={{ display: "grid", gap: 7, fontWeight: 800 }}>
-          รหัสผ่านปัจจุบัน
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <span>รหัสผ่านปัจจุบัน</span>
+            <button
+              type="button"
+              onClick={() => void requestTemporaryPassword()}
+              disabled={recoveryBusy || busy}
+              style={{
+                border: 0,
+                background: "transparent",
+                padding: 0,
+                color: "#176fe8",
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: recoveryBusy || busy ? "wait" : "pointer"
+              }}
+            >
+              {recoveryBusy ? "กำลังส่งรหัสชั่วคราว..." : "จำรหัสปัจจุบันไม่ได้?"}
+            </button>
+          </span>
           <input
             type={inputType}
             value={currentPassword}
             onChange={(event) => setCurrentPassword(event.target.value)}
             autoComplete="current-password"
+            placeholder="กรอกรหัสปัจจุบัน หรือรหัสชั่วคราวจากอีเมล"
             style={{ minHeight: 46, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 13px" }}
           />
         </label>
@@ -112,12 +175,17 @@ export default function ItAdminPasswordSettingsPage() {
           รหัสใหม่ต้องมีอย่างน้อย 12 ตัวอักษร และประกอบด้วยตัวพิมพ์ใหญ่ ตัวพิมพ์เล็ก ตัวเลข และอักขระพิเศษ
         </div>
 
+        {recoveryNotice ? (
+          <div role="status" style={{ borderRadius: 10, background: "#eff6ff", border: "1px solid #bfdbfe", padding: 12, color: "#1d4ed8", fontSize: 12, lineHeight: 1.65 }}>
+            {recoveryNotice}
+          </div>
+        ) : null}
         {success ? <p role="status" style={{ color: "#15803d", fontWeight: 800 }}>{success}</p> : null}
         {error ? <p role="alert" style={{ color: "#b91c1c", fontWeight: 800 }}>{error}</p> : null}
 
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || recoveryBusy}
           style={{
             minHeight: 46,
             border: 0,
