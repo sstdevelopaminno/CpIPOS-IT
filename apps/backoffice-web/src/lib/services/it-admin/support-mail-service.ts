@@ -199,6 +199,20 @@ export async function archiveSupportMail(threadId: string) {
   return callBridge<BridgeBase>({ action: "archive", thread_id: threadId });
 }
 
+export async function trashSupportMail(threadId: string) {
+  return callBridge<BridgeBase & { trashed?: boolean }>({
+    action: "trash",
+    thread_id: threadId
+  });
+}
+
+export async function trashManySupportMail(threadIds: string[]) {
+  return callBridge<BridgeBase & { trashed_count?: number }>({
+    action: "trash_many",
+    thread_ids: threadIds.slice(0, 50)
+  });
+}
+
 export function supportMailboxAddress() {
   return SUPPORT_MAILBOX;
 }
