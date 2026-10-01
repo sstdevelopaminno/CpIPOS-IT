@@ -72,7 +72,8 @@ describe("IT Support Mail integration", () => {
     expect(consoleUi).toContain("รีเฟรชไม่สำเร็จ");
     expect(consoleUi).toContain("60_000");
     expect(consoleUi).toContain("syncStatus");
-    expect(consoleUi).toContain("Do not show a global red banner");
+    expect(consoleUi).toContain('setSyncStatus("error")');
+    expect(consoleUi).toContain("รีเฟรชไม่สำเร็จ");
     expect(service).toContain("Gmail Support ทำรายการนี้ไม่สำเร็จชั่วคราว");
     expect(bridge).toContain('folder === "sent"');
     expect(bridge).toContain("threadSummary_(thread, messages");
