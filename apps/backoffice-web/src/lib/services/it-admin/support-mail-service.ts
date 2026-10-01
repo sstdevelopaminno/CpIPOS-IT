@@ -16,6 +16,7 @@ export type SupportMailThreadSummary = {
   last_message_at: string;
   message_count: number;
   unread: boolean;
+  starred?: boolean;
   in_inbox: boolean;
 };
 
@@ -36,6 +37,7 @@ type BridgeBase = {
 };
 
 type ListThreadsResponse = BridgeBase & {
+  folder?: string;
   threads?: SupportMailThreadSummary[];
 };
 
@@ -85,13 +87,18 @@ async function callBridge<T extends BridgeBase>(payload: Record<string, unknown>
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...payload, secret }),
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(25000),
       cache: "no-store"
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const timeout = error instanceof Error &&
+      (error.name === "TimeoutError" || error.name === "AbortError" || /timeout|aborted/i.test(message));
     throw new SupportMailBridgeError(
-      "support_mail_bridge_unavailable",
-      error instanceof Error ? error.message : "ไม่สามารถเชื่อมต่อ Mail Bridge ได้",
+      timeout ? "support_mail_bridge_timeout" : "support_mail_bridge_unavailable",
+      timeout
+        ? "การโหลดอีเมลใช้เวลานานเกินกำหนด ระบบจะลองใหม่อัตโนมัติ"
+        : (message || "ไม่สามารถเชื่อมต่อ Mail Bridge ได้"),
       503
     );
   }
@@ -126,16 +133,20 @@ async function callBridge<T extends BridgeBase>(payload: Record<string, unknown>
 export async function listSupportMailThreads(input?: {
   query?: string;
   unreadOnly?: boolean;
+  folder?: "inbox" | "starred" | "sent" | "archive";
   limit?: number;
 }) {
+  const folder = input?.folder ?? "inbox";
   const body = await callBridge<ListThreadsResponse>({
     action: "list_threads",
     query: String(input?.query ?? "").trim().slice(0, 180),
     unread_only: input?.unreadOnly === true,
-    limit: Math.max(1, Math.min(50, Math.trunc(input?.limit ?? 30)))
+    folder,
+    limit: Math.max(1, Math.min(30, Math.trunc(input?.limit ?? 24)))
   });
   return {
     mailbox: normalizeMailbox(body.mailbox) || SUPPORT_MAILBOX,
+    folder: String(body.folder || folder),
     threads: Array.isArray(body.threads) ? body.threads : []
   };
 }
