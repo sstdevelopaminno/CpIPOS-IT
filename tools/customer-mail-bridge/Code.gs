@@ -108,16 +108,32 @@ function messageSummary_(message) {
   };
 }
 
-function threadSummary_(thread, messages) {
+function threadSummary_(thread, messages, folder, mailbox) {
   var list = messages || [];
   var last = list.length ? list[list.length - 1] : null;
+
+  if (folder === "sent" && list.length) {
+    for (var i = list.length - 1; i >= 0; i -= 1) {
+      var from = String(list[i].getFrom() || "").toLowerCase();
+      if (mailbox && from.indexOf(String(mailbox).toLowerCase()) >= 0) {
+        last = list[i];
+        break;
+      }
+    }
+  }
+
+  var displayFrom = last ? safeText_(last.getFrom(), 500) : "";
+  if (folder === "sent" && last) {
+    displayFrom = "ถึง " + safeText_(last.getTo(), 500);
+  }
+
   return {
     id: thread.getId(),
-    subject: safeText_(thread.getFirstMessageSubject(), 500),
-    from: last ? safeText_(last.getFrom(), 500) : "",
+    subject: last ? safeText_(last.getSubject(), 500) : safeText_(thread.getFirstMessageSubject(), 500),
+    from: displayFrom,
     to: last ? safeText_(last.getTo(), 1000) : "",
     snippet: last ? snippet_(last.getPlainBody(), 180) : "",
-    last_message_at: thread.getLastMessageDate().toISOString(),
+    last_message_at: last ? last.getDate().toISOString() : thread.getLastMessageDate().toISOString(),
     message_count: thread.getMessageCount(),
     unread: thread.isUnread(),
     starred: thread.hasStarredMessages(),
@@ -147,7 +163,7 @@ function listThreads_(body, mailbox) {
   var messageGroups = threads.length ? GmailApp.getMessagesForThreads(threads) : [];
   var summaries = [];
   for (var i = 0; i < threads.length; i += 1) {
-    summaries.push(threadSummary_(threads[i], messageGroups[i] || []));
+    summaries.push(threadSummary_(threads[i], messageGroups[i] || [], folder, mailbox));
   }
 
   return json_({
@@ -167,7 +183,7 @@ function getThread_(body, mailbox) {
   return json_({
     ok: true,
     mailbox: mailbox,
-    thread: threadSummary_(thread, messages),
+    thread: threadSummary_(thread, messages, "thread", mailbox),
     messages: messages.map(messageSummary_)
   });
 }
