@@ -67,9 +67,9 @@ export async function GET(request: Request) {
     const query = clean(url.searchParams.get("q"), 180);
     const unreadOnly = url.searchParams.get("unread") === "1";
     const folderRaw = clean(url.searchParams.get("folder"), 20);
-    const folder = (["inbox", "starred", "sent", "archive"] as const).includes(
-      folderRaw as "inbox" | "starred" | "sent" | "archive"
-    ) ? folderRaw as "inbox" | "starred" | "sent" | "archive" : "inbox";
+    const folder = (["all", "inbox", "starred", "sent", "archive"] as const).includes(
+      folderRaw as "all" | "inbox" | "starred" | "sent" | "archive"
+    ) ? folderRaw as "all" | "inbox" | "starred" | "sent" | "archive" : "inbox";
     const result = await listSupportMailThreads({ query, unreadOnly, folder, limit: 24 });
     return ok({
       ...result,
