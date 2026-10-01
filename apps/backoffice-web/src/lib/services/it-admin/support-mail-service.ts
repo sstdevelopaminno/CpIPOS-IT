@@ -146,14 +146,15 @@ export async function listSupportMailThreads(input?: {
     folder,
     limit: Math.max(1, Math.min(30, Math.trunc(input?.limit ?? 24)))
   });
-  if (!body.bridge_version || !Array.isArray(body.capabilities)) {
+  const versioned = Boolean(body.bridge_version) && Array.isArray(body.capabilities);
+  if (!versioned && folder !== "inbox") {
     throw new SupportMailBridgeError(
       "support_mail_bridge_upgrade_required",
       "Mail Bridge ยังเป็นเวอร์ชันเก่า กรุณาอัปเดต Apps Script เวอร์ชันล่าสุดก่อนใช้งานการกรองสถานะและการลบ",
       409
     );
   }
-  if (!body.capabilities.includes(folder)) {
+  if (versioned && !body.capabilities!.includes(folder)) {
     throw new SupportMailBridgeError(
       "support_mail_folder_unsupported",
       "Mail Bridge เวอร์ชันนี้ยังไม่รองรับกล่องอีเมลที่เลือก",
@@ -164,8 +165,8 @@ export async function listSupportMailThreads(input?: {
     mailbox: normalizeMailbox(body.mailbox) || SUPPORT_MAILBOX,
     folder: String(body.folder || folder),
     threads: Array.isArray(body.threads) ? body.threads : [],
-    bridge_version: body.bridge_version,
-    capabilities: body.capabilities
+    bridge_version: body.bridge_version || "legacy",
+    capabilities: Array.isArray(body.capabilities) ? body.capabilities : ["inbox"]
   };
 }
 
