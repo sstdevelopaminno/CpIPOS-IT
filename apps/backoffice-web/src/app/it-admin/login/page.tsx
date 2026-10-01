@@ -15,6 +15,11 @@ function getCopy(lang: AppLanguage) {
       passwordLabel: "Password",
       passwordPlaceholder: "Enter password",
       showPassword: "Show password",
+      forgotPassword: "Forgot password?",
+      forgotEmailRequired: "Enter your email first.",
+      forgotSending: "Sending temporary password...",
+      forgotSent: "A temporary password has been sent to your email. Sign in with it, then set a new password in Settings.",
+      forgotError: "Unable to send a temporary password right now.",
       submit: "Log in",
       submitting: "Signing in...",
       requiredError: "Please enter email and password.",
@@ -32,6 +37,11 @@ function getCopy(lang: AppLanguage) {
     passwordLabel: "รหัสผ่าน",
     passwordPlaceholder: "กรอกรหัสผ่าน",
     showPassword: "แสดงรหัสผ่าน",
+    forgotPassword: "ลืมรหัสผ่าน?",
+    forgotEmailRequired: "กรุณากรอกอีเมลก่อนขอรหัสผ่านชั่วคราว",
+    forgotSending: "กำลังส่งรหัสผ่านชั่วคราว...",
+    forgotSent: "ส่งรหัสผ่านชั่วคราวไปยังอีเมลแล้ว ใช้รหัสดังกล่าวล็อกอิน จากนั้นตั้งรหัสใหม่ที่เมนู ตั้งค่า",
+    forgotError: "ไม่สามารถส่งรหัสผ่านชั่วคราวได้ในขณะนี้",
     submit: "ล็อกอิน",
     submitting: "กำลังเข้าสู่ระบบ...",
     requiredError: "กรุณากรอกอีเมลและรหัสผ่าน",
@@ -53,7 +63,9 @@ export default function ItAdminLoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,7 +87,7 @@ export default function ItAdminLoginPage() {
         body: JSON.stringify({ email: trimmedEmail, password }),
         cache: "no-store"
       });
-      const result = (await response.json().catch(() => null)) as { code?: string } | null;
+      const result = (await response.json().catch(() => null)) as { code?: string; password_change_required?: boolean } | null;
 
       if (!response.ok) {
         if (response.status === 401 || result?.code === "invalid_credentials") {
@@ -91,11 +103,43 @@ export default function ItAdminLoginPage() {
       // Force a fresh document request after the Route Handler has written the
       // Supabase auth cookies. This avoids reusing a cached unauthenticated RSC
       // navigation state immediately after login.
-      window.location.assign("/it-admin");
+      window.location.assign(result?.password_change_required ? "/it-admin/settings/password" : "/it-admin");
     } catch {
       setError(copy.defaultError);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    if (forgotLoading) return;
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError(copy.forgotEmailRequired);
+      setNotice("");
+      return;
+    }
+
+    setForgotLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/it-admin/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail }),
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        setError(copy.forgotError);
+        return;
+      }
+      setNotice(copy.forgotSent);
+    } catch {
+      setError(copy.forgotError);
+    } finally {
+      setForgotLoading(false);
     }
   }
 
@@ -171,29 +215,51 @@ export default function ItAdminLoginPage() {
               style={{ minWidth: 0, width: "100%" }}
             />
           </div>
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              marginTop: "-4px",
-              fontSize: "12px",
-              color: "#64748b",
-              cursor: "pointer"
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={showPassword}
-              onChange={(event) => setShowPassword(event.target.checked)}
-              style={{ width: "16px", height: "16px" }}
-            />
-            {copy.showPassword}
-          </label>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginTop: "-4px" }}>
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                color: "#64748b",
+                cursor: "pointer"
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showPassword}
+                onChange={(event) => setShowPassword(event.target.checked)}
+                style={{ width: "16px", height: "16px" }}
+              />
+              {copy.showPassword}
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleForgotPassword()}
+              disabled={forgotLoading}
+              style={{
+                border: 0,
+                background: "transparent",
+                padding: "4px 0",
+                color: "#176fe8",
+                fontSize: "12px",
+                fontWeight: 800,
+                cursor: forgotLoading ? "wait" : "pointer"
+              }}
+            >
+              {forgotLoading ? copy.forgotSending : copy.forgotPassword}
+            </button>
+          </div>
 
-          <button type="submit" className="store-v2-login-btn" disabled={loading || !email.trim() || !password}>
+          <button type="submit" className="store-v2-login-btn" disabled={loading || forgotLoading || !email.trim() || !password}>
             {loading ? copy.submitting : copy.submit}
           </button>
+          {notice ? (
+            <p role="status" aria-live="polite" style={{ margin: "4px 0 0", color: "#15803d", fontSize: "12px", lineHeight: 1.55 }}>
+              {notice}
+            </p>
+          ) : null}
           {error ? (
             <p className="store-v2-error" role="alert" aria-live="assertive">
               {error}
