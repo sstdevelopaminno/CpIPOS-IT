@@ -34,6 +34,8 @@ function doPost(e) {
     if (action === "reply") return reply_(body, mailbox || effective);
     if (action === "mark_read") return markRead_(body, mailbox || effective);
     if (action === "archive") return archive_(body, mailbox || effective);
+    if (action === "trash") return trash_(body, mailbox || effective);
+    if (action === "trash_many") return trashMany_(body, mailbox || effective);
     if (action !== "send_transactional") {
       return json_({ ok: false, error: "unsupported_action", mailbox: mailbox || effective });
     }
@@ -186,6 +188,32 @@ function archive_(body, mailbox) {
   var thread = threadById_(body.thread_id);
   thread.moveToArchive();
   return json_({ ok: true, mailbox: mailbox, thread_id: thread.getId(), archived: true });
+}
+
+function trash_(body, mailbox) {
+  var thread = threadById_(body.thread_id);
+  thread.moveToTrash();
+  return json_({ ok: true, mailbox: mailbox, thread_id: thread.getId(), trashed: true });
+}
+
+function trashMany_(body, mailbox) {
+  var ids = Array.isArray(body.thread_ids) ? body.thread_ids : [];
+  ids = ids
+    .map(function (value) { return safeText_(value, 200); })
+    .filter(Boolean)
+    .slice(0, 50);
+
+  if (!ids.length) throw new Error("thread_ids_required");
+
+  var trashed = 0;
+  for (var i = 0; i < ids.length; i += 1) {
+    var thread = GmailApp.getThreadById(ids[i]);
+    if (!thread) continue;
+    thread.moveToTrash();
+    trashed += 1;
+  }
+
+  return json_({ ok: true, mailbox: mailbox, trashed_count: trashed });
 }
 
 function sendTransactional_(body, mailbox) {
