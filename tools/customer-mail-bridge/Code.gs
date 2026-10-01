@@ -149,7 +149,7 @@ function getThread_(body, mailbox) {
   return json_({
     ok: true,
     mailbox: mailbox,
-    thread: threadSummary_(thread, thread.getMessages()),
+    thread: threadSummary_(thread, messages),
     messages: messages.map(messageSummary_)
   });
 }
