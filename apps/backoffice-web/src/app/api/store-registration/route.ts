@@ -55,9 +55,15 @@ export async function GET() {
         const effective = Number(
           (Number(row.monthly_price ?? 0) * (1 - Math.max(0, Math.min(100, discount)) / 100)).toFixed(2)
         );
+        const rawSalesModeLimit = Number(row.metadata?.sales_mode_limit);
+        const salesModeLimit =
+          row.quota_mode === "custom" || row.code === "custom"
+            ? 3
+            : Math.max(1, Math.min(3, Number.isFinite(rawSalesModeLimit) ? Math.trunc(rawSalesModeLimit) : 1));
         return {
           ...row,
           effective_monthly_price: row.quota_mode === "custom" ? null : effective,
+          sales_mode_limit: salesModeLimit,
           contact_sales:
             row.quota_mode === "custom" ||
             row.code === "custom" ||
@@ -203,7 +209,7 @@ export async function POST(req: Request) {
 
     const { data: pkg, error: packageError } = await db
       .from("subscription_packages")
-      .select("id,code,quota_mode,monthly_price")
+      .select("id,code,quota_mode,monthly_price,metadata")
       .eq("id", body.package_id)
       .eq("is_active", true)
       .eq("status", "active")
@@ -215,6 +221,18 @@ export async function POST(req: Request) {
     }
 
     const isCustom = pkg.quota_mode === "custom" || pkg.code === "custom";
+    const selectedModeCount = keys.filter((key) => modes[key]).length;
+    const rawSalesModeLimit = Number(pkg.metadata?.sales_mode_limit);
+    const salesModeLimit = isCustom
+      ? keys.length
+      : Math.max(1, Math.min(keys.length, Number.isFinite(rawSalesModeLimit) ? Math.trunc(rawSalesModeLimit) : 1));
+    if (selectedModeCount > salesModeLimit) {
+      return reject(
+        "sales_mode_limit_exceeded",
+        `แพ็กเกจนี้เลือกโหมดขายได้สูงสุด ${salesModeLimit} โหมด`,
+        "sales_modes"
+      );
+    }
     if (isCustom && customRequirements.length < 10) {
       return reject(
         "custom_requirements_required",
