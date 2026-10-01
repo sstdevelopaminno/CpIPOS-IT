@@ -50,6 +50,7 @@ type Draft = {
   monthly_bill_limit: string;
   storage_limit_gb: string;
   retention_months: string;
+  sales_mode_limit: string;
   is_active: boolean;
   quota_mode: "standard" | "custom";
 };
@@ -68,6 +69,7 @@ const emptyDraft = (): Draft => ({
   monthly_bill_limit: "",
   storage_limit_gb: "",
   retention_months: "6",
+  sales_mode_limit: "1",
   is_active: true,
   quota_mode: "standard"
 });
@@ -107,6 +109,7 @@ function draftFrom(row: PackageRow): Draft {
     monthly_bill_limit: row.monthly_bill_limit == null ? "" : String(row.monthly_bill_limit),
     storage_limit_gb: row.storage_limit_gb == null ? "" : String(row.storage_limit_gb),
     retention_months: row.retention_months == null ? "" : String(row.retention_months),
+    sales_mode_limit: row.custom_per_store ? "" : String(metaNumber(row, "sales_mode_limit") ?? 1),
     is_active: row.is_active,
     quota_mode: row.quota_mode === "custom" ? "custom" : "standard"
   };
@@ -172,6 +175,7 @@ export function PackageCatalogManager() {
       monthly_bill_limit: custom ? null : numberOrNull(draft.monthly_bill_limit),
       storage_limit_gb: custom ? null : numberOrNull(draft.storage_limit_gb),
       retention_months: custom ? null : numberOrNull(draft.retention_months),
+      sales_mode_limit: custom ? null : Math.max(1, Math.min(3, numberOrNull(draft.sales_mode_limit) ?? 1)),
       is_active: draft.is_active,
       status: draft.is_active ? "active" : "inactive"
     };
@@ -324,6 +328,7 @@ export function PackageCatalogManager() {
             <label><span>บิล / เดือน</span><input type="number" min="1" placeholder="ไม่จำกัด" value={draft.monthly_bill_limit} onChange={(e) => update("monthly_bill_limit",e.target.value)} /></label>
             <label><span>Storage GB</span><input type="number" min="0.01" step="0.01" placeholder="ไม่กำหนด" value={draft.storage_limit_gb} onChange={(e) => update("storage_limit_gb",e.target.value)} /></label>
             <label><span>Sales Retention (เดือน)</span><input type="number" min="1" placeholder="ไม่กำหนด" value={draft.retention_months} onChange={(e) => update("retention_months",e.target.value)} /></label>
+            <label><span>โหมดขายสูงสุด</span><input type="number" min="1" max="3" value={draft.sales_mode_limit} onChange={(e) => update("sales_mode_limit",e.target.value)} /></label>
           </div>
         </> : null}
 

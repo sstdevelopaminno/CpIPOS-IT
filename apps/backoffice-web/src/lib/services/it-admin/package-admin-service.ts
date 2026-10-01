@@ -18,6 +18,7 @@ export type PackageMutationInput = {
   monthly_bill_limit?: number | null;
   storage_limit_gb?: number | null;
   retention_months?: number | null;
+  sales_mode_limit?: number | null;
   quota_mode?: "standard" | "custom" | "exempt";
   is_active?: boolean;
   status?: "active" | "inactive" | "retired";
@@ -118,6 +119,11 @@ function normalizeFeatureMap(features: PackageMutationInput["features"]): Map<st
 
 function normalizePackageMetadata(input: PackageMutationInput, current?: Record<string, unknown> | null) {
   const metadata = { ...(current ?? {}), ...(input.metadata ?? {}) };
+  if (typeof input.sales_mode_limit === "number") {
+    metadata.sales_mode_limit = Math.max(1, Math.min(3, toPositiveInteger(input.sales_mode_limit, 1) ?? 1));
+  } else if (input.sales_mode_limit === null) {
+    metadata.sales_mode_limit = null;
+  }
   const singleRegister =
     input.store_mode === "single_register" ||
     input.no_branch_mode === true ||
@@ -153,7 +159,9 @@ function hasPackageModeInput(input: PackageMutationInput) {
     typeof input.no_branch_mode === "boolean" ||
     typeof input.single_device_mode === "boolean" ||
     input.branch_selection ||
-    typeof input.max_cashier_devices === "number"
+    typeof input.max_cashier_devices === "number" ||
+    typeof input.sales_mode_limit === "number" ||
+    input.sales_mode_limit === null
   );
 }
 
