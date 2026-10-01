@@ -60,11 +60,13 @@ function bridgeConfig() {
   const url =
     process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_URL?.trim() ||
     DEFAULT_SUPPORT_MAIL_BRIDGE_URL;
-  const secret = process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
+  const secret =
+    process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET?.trim() ||
+    process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
   if (!url || !secret) {
     throw new SupportMailBridgeError(
       "support_mail_not_configured",
-      "ยังไม่ได้ตั้งค่า Mail Bridge สำหรับอีเมล Support",
+      "ยังไม่ได้ตั้งค่า Secret สำหรับ Mail Bridge ของอีเมล Support",
       503
     );
   }
