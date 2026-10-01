@@ -3,6 +3,7 @@ import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { readBoundedJson } from "@/lib/server/limited-json";
+import { resolveSupportMailStoreContext } from "@/lib/services/it-admin/support-mail-store-context";
 import {
   SupportMailBridgeError,
   archiveSupportMail,
@@ -61,7 +62,12 @@ export async function GET(request: Request) {
     const threadId = clean(url.searchParams.get("thread_id"), 220);
     if (threadId) {
       const result = await getSupportMailThread(threadId);
-      return ok(result);
+      const storeContext = await resolveSupportMailStoreContext({
+        threadId,
+        thread: result.thread,
+        messages: result.messages
+      }).catch(() => null);
+      return ok({ ...result, store_context: storeContext });
     }
 
     const query = clean(url.searchParams.get("q"), 180);

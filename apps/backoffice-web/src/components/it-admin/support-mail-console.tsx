@@ -45,10 +45,36 @@ type InboxData = {
   actor: { user_id: string; role: "it_admin" | "it_support" };
 };
 
+type StoreContext = {
+  matched: boolean;
+  ambiguous: boolean;
+  match_source: "store_code" | "account_email" | "registration_email" | "provisioning_email" | null;
+  matched_email: string | null;
+  candidates: number;
+  tenant_id: string | null;
+  branch_id: string | null;
+  store_code: string | null;
+  store_name: string | null;
+  owner_name: string | null;
+  owner_phone: string | null;
+  owner_email: string | null;
+  package_name: string | null;
+  is_active: boolean | null;
+  open_incident_count: number;
+  linked_incident: {
+    id: string;
+    title: string;
+    status: string;
+    severity: string;
+    detected_at: string;
+  } | null;
+};
+
 type ThreadData = {
   mailbox: string;
   thread: ThreadSummary;
   messages: MailMessage[];
+  store_context?: StoreContext | null;
 };
 
 type Envelope<T> = {
@@ -160,6 +186,8 @@ export function SupportMailConsole() {
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialog>(null);
+  const [incidentBusy, setIncidentBusy] = useState(false);
+  const [incidentNotice, setIncidentNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
@@ -222,6 +250,7 @@ export function SupportMailConsole() {
         `/api/it-admin/v1/support-mail?thread_id=${encodeURIComponent(threadId)}`
       );
       setMailbox(data.mailbox);
+      setIncidentNotice("");
       setDetail({ ...data, thread: { ...data.thread, unread: false } });
       if (data.thread.unread) {
         setThreads((current) => current.map((item) =>
@@ -385,6 +414,63 @@ export function SupportMailConsole() {
       setError(normalizeError(cause, "ลบอีเมลไม่สำเร็จ"));
     } finally {
       setBusy("");
+    }
+  }
+
+  async function createIncidentFromMail() {
+    const context = detail?.store_context;
+    if (!detail?.thread || !context?.matched || !context.tenant_id) return;
+    if (context.linked_incident) {
+      window.open("/it-admin/incidents", "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const external = [...detail.messages].reverse().find(
+      (message) => !message.from.toLowerCase().includes(mailbox.toLowerCase())
+    ) ?? detail.messages[0];
+    const subject = detail.thread.subject || "Support Mail";
+    const message = [
+      `Support Mail Thread: ${detail.thread.id}`,
+      context.store_code ? `Store Code: ${context.store_code}` : null,
+      external?.from ? `From: ${external.from}` : null,
+      "",
+      String(external?.body ?? detail.thread.snippet ?? "").slice(0, 1300)
+    ].filter((value) => value !== null).join("\n").slice(0, 2000);
+
+    setIncidentBusy(true);
+    setIncidentNotice("");
+    try {
+      const created = await request<{ id: string }>("/api/it-admin/v1/incidents", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: context.tenant_id,
+          branch_id: context.branch_id || "",
+          severity: "warning",
+          code: "SUPPORT_MAIL",
+          title: `Support Mail: ${subject}`.slice(0, 160),
+          message
+        })
+      });
+      setIncidentNotice("สร้างเคส IT แล้ว");
+      setDetail((current) => current?.store_context ? {
+        ...current,
+        store_context: {
+          ...current.store_context,
+          open_incident_count: current.store_context.open_incident_count + 1,
+          linked_incident: {
+            id: created.id,
+            title: `Support Mail: ${subject}`.slice(0, 160),
+            status: "open",
+            severity: "warning",
+            detected_at: new Date().toISOString()
+          }
+        }
+      } : current);
+    } catch (cause) {
+      setIncidentNotice(normalizeError(cause, "สร้างเคส IT ไม่สำเร็จ"));
+    } finally {
+      setIncidentBusy(false);
     }
   }
 
@@ -700,6 +786,59 @@ export function SupportMailConsole() {
                   </button>
                   <span className="ml-auto text-[10px] font-bold text-slate-400">{detail.thread.message_count} ข้อความ</span>
                 </div>
+
+                {detail.store_context?.matched ? (
+                  <div className="mx-4 mt-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-white px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="mr-auto min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-black text-white">ร้านที่เกี่ยวข้อง</span>
+                          <strong className="truncate text-sm text-[#17324d]">{detail.store_context.store_name || "ร้านค้า"}</strong>
+                          {detail.store_context.store_code ? (
+                            <span className="rounded-full border border-blue-200 bg-white px-2 py-1 text-[10px] font-black text-blue-700">
+                              Store Code {detail.store_context.store_code}
+                            </span>
+                          ) : null}
+                          {detail.store_context.package_name ? (
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
+                              {detail.store_context.package_name}
+                            </span>
+                          ) : null}
+                          <span className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                            detail.store_context.is_active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                          }`}>
+                            {detail.store_context.is_active ? "ใช้งาน" : "ไม่ใช้งาน"}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                          {detail.store_context.owner_name ? <span>เจ้าของ: {detail.store_context.owner_name}</span> : null}
+                          {detail.store_context.owner_email ? <span>{detail.store_context.owner_email}</span> : null}
+                          <span>เคสที่ยังเปิด {detail.store_context.open_incident_count}</span>
+                        </div>
+                      </div>
+                      {detail.store_context.linked_incident ? (
+                        <button type="button" onClick={() => window.open("/it-admin/incidents", "_blank", "noopener,noreferrer")}
+                          className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-50">
+                          เปิดเคส IT
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => void createIncidentFromMail()} disabled={incidentBusy}
+                          className="rounded-xl bg-[#17324d] px-3 py-2 text-xs font-black text-white hover:bg-[#244765] disabled:opacity-50">
+                          {incidentBusy ? "กำลังสร้าง..." : "สร้างเคส IT"}
+                        </button>
+                      )}
+                    </div>
+                    {incidentNotice ? (
+                      <div className={`mt-2 text-[11px] font-bold ${incidentNotice.includes("แล้ว") ? "text-emerald-700" : "text-red-600"}`}>
+                        {incidentNotice}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : detail.store_context?.ambiguous ? (
+                  <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-800">
+                    พบข้อมูลที่อาจตรงกับหลายร้าน ({detail.store_context.candidates} ร้าน) จึงยังไม่ผูกอัตโนมัติ
+                  </div>
+                ) : null}
 
                 <header className="border-b border-slate-100 px-6 py-4">
                   <h3 className="text-xl font-black leading-8 text-[#17324d]">{detail.thread.subject || "(ไม่มีหัวข้อ)"}</h3>

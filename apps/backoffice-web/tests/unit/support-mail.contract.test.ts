@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 describe("IT Support Mail integration", () => {
   const bridge = read("../../tools/customer-mail-bridge/Code.gs");
   const service = read("src/lib/services/it-admin/support-mail-service.ts");
+  const storeContext = read("src/lib/services/it-admin/support-mail-store-context.ts");
   const api = read("src/app/api/it-admin/v1/support-mail/route.ts");
   const consoleUi = read("src/components/it-admin/support-mail-console.tsx");
 
@@ -40,6 +41,14 @@ describe("IT Support Mail integration", () => {
     expect(consoleUi).toContain("ตอบกลับอีเมล");
     expect(consoleUi).toContain("ลบทั้งหมดในหน้า");
     expect(consoleUi).toContain("ย้ายไปถังขยะ");
+    expect(consoleUi).toContain("ร้านที่เกี่ยวข้อง");
+    expect(consoleUi).toContain("สร้างเคส IT");
+    expect(consoleUi).toContain('code: "SUPPORT_MAIL"');
+    expect(api).toContain("resolveSupportMailStoreContext");
+    expect(storeContext).toContain("store_registration_requests");
+    expect(storeContext).toContain("pos_login_contexts");
+    expect(storeContext).toContain("user_branch_roles");
+    expect(storeContext).toContain("it_manual_incidents");
     expect(consoleUi).toContain("navCollapsed");
     expect(consoleUi).toContain('label: "ทั้งหมด"');
     expect(consoleUi).toContain("inboxRequestIdRef");
