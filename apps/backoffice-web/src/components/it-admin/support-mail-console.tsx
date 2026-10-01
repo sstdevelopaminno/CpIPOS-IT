@@ -10,7 +10,7 @@ import {
   type MouseEvent
 } from "react";
 
-type MailFolder = "inbox" | "starred" | "sent" | "archive";
+type MailFolder = "all" | "inbox" | "starred" | "sent" | "archive";
 type SyncStatus = "idle" | "syncing" | "ok" | "error";
 
 type ThreadSummary = {
@@ -39,6 +39,8 @@ type MailMessage = {
 type InboxData = {
   mailbox: string;
   folder?: string;
+  bridge_version?: string;
+  capabilities?: string[];
   threads: ThreadSummary[];
   actor: { user_id: string; role: "it_admin" | "it_support" };
 };
@@ -61,6 +63,7 @@ type DeleteDialog = {
 } | null;
 
 const folderItems: Array<{ key: MailFolder; label: string; icon: string }> = [
+  { key: "all", label: "ทั้งหมด", icon: "◫" },
   { key: "inbox", label: "กล่องจดหมาย", icon: "▣" },
   { key: "starred", label: "ติดดาว", icon: "☆" },
   { key: "sent", label: "ส่งแล้ว", icon: "➤" },
@@ -162,11 +165,10 @@ export function SupportMailConsole() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [syncMessage, setSyncMessage] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
-  const inboxLoadingRef = useRef(false);
+  const inboxRequestIdRef = useRef(0);
 
   const loadInbox = useCallback(async (silent = false) => {
-    if (inboxLoadingRef.current) return;
-    inboxLoadingRef.current = true;
+    const requestId = ++inboxRequestIdRef.current;
     setSyncStatus("syncing");
     if (!silent) {
       setBusy("inbox");
@@ -176,6 +178,7 @@ export function SupportMailConsole() {
       if (activeQuery) params.set("q", activeQuery);
       if (unreadOnly) params.set("unread", "1");
       const data = await request<InboxData>(`/api/it-admin/v1/support-mail?${params.toString()}`);
+      if (requestId !== inboxRequestIdRef.current) return;
       setMailbox(data.mailbox);
       setThreads(data.threads);
       setLastSyncedAt(new Date());
@@ -188,14 +191,14 @@ export function SupportMailConsole() {
       });
       if (!data.threads.length) setDetail(null);
     } catch (cause) {
+      if (requestId !== inboxRequestIdRef.current) return;
       const message = normalizeError(cause, "โหลดกล่องอีเมลไม่สำเร็จ");
       setSyncStatus("error");
       setSyncMessage(message);
       // Inbox/background sync failures belong to the compact sync indicator.
       // Do not show a global red banner while previously loaded mail is still usable.
     } finally {
-      inboxLoadingRef.current = false;
-      if (!silent) setBusy("");
+      if (requestId === inboxRequestIdRef.current && !silent) setBusy("");
     }
   }, [activeQuery, folder, unreadOnly]);
 
@@ -276,6 +279,7 @@ export function SupportMailConsole() {
     setSelectedIds([]);
     setDetail(null);
     setError("");
+    if (next !== "inbox") setUnreadOnly(false);
     setReplyOpen(false);
   }
 
