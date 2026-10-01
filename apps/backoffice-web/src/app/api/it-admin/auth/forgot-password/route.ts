@@ -66,8 +66,12 @@ export async function POST(request: Request) {
     return json({ ok: false, code: "service_unavailable" }, 503);
   }
 
-  if (!profile.data?.is_active || !["it_admin", "it_support"].includes(profile.data.platform_role ?? "")) {
-    return json({ ok: true, code: "reset_requested" }, 200);
+  if (!profile.data?.is_active) {
+    return json({ ok: false, code: "account_inactive" }, 403);
+  }
+
+  if (!["it_admin", "it_support"].includes(profile.data.platform_role ?? "")) {
+    return json({ ok: false, code: "not_authorized" }, 403);
   }
 
   const temporaryPassword = generateItTemporaryPassword();
