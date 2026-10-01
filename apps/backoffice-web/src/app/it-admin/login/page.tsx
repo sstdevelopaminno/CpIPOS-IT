@@ -19,6 +19,8 @@ function getCopy(lang: AppLanguage) {
       forgotEmailRequired: "Enter your email first.",
       forgotSending: "Sending temporary password...",
       forgotSent: "A temporary password has been sent to your email. Sign in with it, then set a new password in Settings.",
+      forgotNotAuthorized: "This email is not an IT Admin or IT Support account.",
+      forgotInactive: "This IT account is inactive.",
       forgotError: "Unable to send a temporary password right now.",
       submit: "Log in",
       submitting: "Signing in...",
@@ -42,6 +44,8 @@ function getCopy(lang: AppLanguage) {
     forgotEmailRequired: "กรุณากรอกอีเมลก่อนขอรหัสผ่านชั่วคราว",
     forgotSending: "กำลังส่งรหัสผ่านชั่วคราว...",
     forgotSent: "ส่งรหัสผ่านชั่วคราวไปยังอีเมลแล้ว ใช้รหัสดังกล่าวล็อกอิน จากนั้นตั้งรหัสใหม่ที่เมนู ตั้งค่า",
+    forgotNotAuthorized: "อีเมลนี้ไม่ใช่บัญชี IT Admin หรือ IT Support",
+    forgotInactive: "บัญชี IT นี้ถูกปิดการใช้งาน",
     forgotError: "ไม่สามารถส่งรหัสผ่านชั่วคราวได้ในขณะนี้",
     submit: "ล็อกอิน",
     submitting: "กำลังเข้าสู่ระบบ...",
@@ -135,8 +139,15 @@ export default function ItAdminLoginPage() {
         body: JSON.stringify({ email: trimmedEmail }),
         cache: "no-store"
       });
+      const result = (await response.json().catch(() => null)) as { code?: string } | null;
       if (!response.ok) {
-        setError(copy.forgotError);
+        if (result?.code === "not_authorized") {
+          setError(copy.forgotNotAuthorized);
+        } else if (result?.code === "account_inactive") {
+          setError(copy.forgotInactive);
+        } else {
+          setError(copy.forgotError);
+        }
         return;
       }
       setNotice(copy.forgotSent);
