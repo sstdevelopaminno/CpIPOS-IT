@@ -53,5 +53,13 @@ export async function POST(request: Request) {
     return json({ ok: false, code: "not_authorized" }, 403);
   }
 
-  return json({ ok: true }, 200);
+  const passwordChangeRequired = data.user.app_metadata?.password_change_required === true;
+  const expiresAtRaw = data.user.app_metadata?.temp_password_expires_at;
+  const expiresAt = typeof expiresAtRaw === "string" ? Date.parse(expiresAtRaw) : Number.NaN;
+  if (passwordChangeRequired && Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+    await supabase.auth.signOut();
+    return json({ ok: false, code: "temporary_password_expired" }, 401);
+  }
+
+  return json({ ok: true, password_change_required: passwordChangeRequired }, 200);
 }

@@ -28,12 +28,12 @@ describe("IT ↔ POS single-source menu policy", () => {
   it("locks only an exact key; an enabled shift is not locked by IT menu policy", () => {
     for (const item of POS_MENU_CATALOG) {
       const overrides = { [item.key]: false };
-      expect(isPosMenuEnabled(item.key, overrides)).toBe(false);
+      expect(isPosMenuEnabled(item.key, overrides)).toBe(item.key === "main.shift");
       for (const other of POS_MENU_CATALOG) {
         if (other.key !== item.key) expect(isPosMenuEnabled(other.key, overrides)).toBe(true);
       }
     }
-    expect(isPosMenuEnabled("main.shift", { "main.shift": true, "main.more": false })).toBe(true);
+    expect(isPosMenuEnabled("main.shift", { "main.shift": false, "main.more": false })).toBe(true);
   });
 
   it("reads and writes the same tenant-scoped Supabase table, not subscription metadata", () => {
@@ -63,7 +63,7 @@ describe("IT ↔ POS single-source menu policy", () => {
     expect(ui).toContain("เปิดใช้งานใน POS");
     expect(ui).toContain("feature_allowed");
     expect(ui).toContain("aria-checked={effective}");
-    expect(ui).toContain("disabled={busy !== null || !entitlement || !allowed}");
+    expect(ui).toContain("disabled={busy !== null || alwaysEnabled || !entitlement || !allowed}");
     expect(ui).toContain("/features");
     expect(ui).toContain("สิทธิ์พนักงานรายคนตรวจแยก");
   });

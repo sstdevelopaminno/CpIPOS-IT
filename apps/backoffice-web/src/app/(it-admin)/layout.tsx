@@ -51,6 +51,7 @@ const copy = {
       settings: "ตั้งค่า / Security",
       settingsUsers: "ตั้งค่า USER ใช้งาน",
       settingsEmailFooter: "ตั้งค่า ข้อความท้ายอีเมล์",
+      settingsPassword: "เปลี่ยนรหัสผ่าน",
       settingsLanguage: "ตั้งค่าภาษา"
     }
   },
@@ -97,6 +98,7 @@ const copy = {
       settings: "Settings / Security",
       settingsUsers: "User Settings",
       settingsEmailFooter: "Email Footer Settings",
+      settingsPassword: "Change Password",
       settingsLanguage: "Language Settings"
     }
   }
@@ -109,10 +111,12 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
     ? [
         { href: "/it-admin/settings/users", label: text.items.settingsUsers },
         { href: "/it-admin/settings/email-footer", label: text.items.settingsEmailFooter },
+        { href: "/it-admin/settings/password", label: text.items.settingsPassword },
         { href: "/it-admin/settings/language", label: text.items.settingsLanguage }
       ]
     : [
         { href: "/it-admin/settings/email-footer", label: text.items.settingsEmailFooter },
+        { href: "/it-admin/settings/password", label: text.items.settingsPassword },
         { href: "/it-admin/settings/language", label: text.items.settingsLanguage }
       ];
 
