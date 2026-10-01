@@ -27,6 +27,7 @@ describe("IT Support Mail integration", () => {
       expect(api).toContain(folder);
     }
     expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
+    expect(bridge).toContain("2026-10-01.4");
     expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
     expect(api).toContain("listSupportMailThreads");
@@ -42,6 +43,9 @@ describe("IT Support Mail integration", () => {
     expect(consoleUi).toContain("navCollapsed");
     expect(consoleUi).toContain('label: "ทั้งหมด"');
     expect(consoleUi).toContain("inboxRequestIdRef");
+    expect(consoleUi).toContain("bridgeCapabilities");
+    expect(consoleUi).toContain("folderSupported");
+    expect(consoleUi).toContain("canTrash");
     expect(api).toContain("trashManySupportMail");
     expect(api).toContain("support_mail_bulk_trashed");
   });
@@ -57,7 +61,7 @@ describe("IT Support Mail integration", () => {
     expect(service).toContain("AbortSignal.timeout(25000)");
     expect(service).toContain("support_mail_bridge_timeout");
     expect(consoleUi).toContain("รีเฟรชไม่สำเร็จ");
-    expect(consoleUi).toContain("30_000");
+    expect(consoleUi).toContain("60_000");
     expect(consoleUi).toContain("syncStatus");
     expect(consoleUi).toContain("Do not show a global red banner");
     expect(service).toContain("Gmail Support ทำรายการนี้ไม่สำเร็จชั่วคราว");

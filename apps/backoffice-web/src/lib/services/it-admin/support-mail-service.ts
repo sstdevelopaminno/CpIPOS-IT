@@ -150,7 +150,7 @@ export async function listSupportMailThreads(input?: {
   if (!versioned && folder !== "inbox") {
     throw new SupportMailBridgeError(
       "support_mail_bridge_upgrade_required",
-      "Mail Bridge ยังเป็นเวอร์ชันเก่า กรุณาอัปเดต Apps Script เวอร์ชันล่าสุดก่อนใช้งานการกรองสถานะและการลบ",
+      "Support Mail Bridge รุ่นปัจจุบันรองรับเฉพาะ Inbox จนกว่าจะ Deploy Code.gs เวอร์ชันล่าสุด",
       409
     );
   }

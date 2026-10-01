@@ -13,13 +13,14 @@
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-10-01.3";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-10-01.4";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
   "starred",
   "sent",
   "archive",
+  "status",
   "list_threads",
   "get_thread",
   "send_new",
@@ -45,6 +46,7 @@ function doPost(e) {
       return json_({ ok: false, error: "wrong_mailbox", mailbox: effective });
     }
 
+    if (action === "status") return json_({ ok: true, mailbox: mailbox || effective });
     if (action === "list_threads") return listThreads_(body, mailbox || effective);
     if (action === "get_thread") return getThread_(body, mailbox || effective);
     if (action === "send_new") return sendNew_(body, mailbox || effective);

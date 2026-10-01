@@ -165,12 +165,16 @@ export function SupportMailConsole() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [syncMessage, setSyncMessage] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [bridgeVersion, setBridgeVersion] = useState("legacy");
+  const [bridgeCapabilities, setBridgeCapabilities] = useState<string[]>(["inbox"]);
   const inboxRequestIdRef = useRef(0);
+  const hasSyncedRef = useRef(false);
+  const syncFailureCountRef = useRef(0);
 
   const loadInbox = useCallback(async (silent = false) => {
     const requestId = ++inboxRequestIdRef.current;
-    setSyncStatus("syncing");
     if (!silent) {
+      setSyncStatus("syncing");
       setBusy("inbox");
     }
     try {
@@ -181,7 +185,11 @@ export function SupportMailConsole() {
       if (requestId !== inboxRequestIdRef.current) return;
       setMailbox(data.mailbox);
       setThreads(data.threads);
+      setBridgeVersion(data.bridge_version || "legacy");
+      setBridgeCapabilities(Array.isArray(data.capabilities) ? data.capabilities : ["inbox"]);
       setLastSyncedAt(new Date());
+      hasSyncedRef.current = true;
+      syncFailureCountRef.current = 0;
       setSyncStatus("ok");
       setSyncMessage("");
       setSelectedIds((current) => current.filter((id) => data.threads.some((item) => item.id === id)));
@@ -193,10 +201,13 @@ export function SupportMailConsole() {
     } catch (cause) {
       if (requestId !== inboxRequestIdRef.current) return;
       const message = normalizeError(cause, "โหลดกล่องอีเมลไม่สำเร็จ");
-      setSyncStatus("error");
+      syncFailureCountRef.current += 1;
       setSyncMessage(message);
-      // Inbox/background sync failures belong to the compact sync indicator.
-      // Do not show a global red banner while previously loaded mail is still usable.
+      if (!silent || !hasSyncedRef.current || syncFailureCountRef.current >= 3) {
+        setSyncStatus("error");
+      }
+      // A single background refresh failure must not make a healthy mailbox
+      // look disconnected. Keep the last successful data and retry later.
     } finally {
       if (requestId === inboxRequestIdRef.current && !silent) setBusy("");
     }
@@ -245,9 +256,14 @@ export function SupportMailConsole() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadInbox(true);
-    }, 30_000);
+    }, 60_000);
     return () => window.clearInterval(timer);
   }, [loadInbox]);
+
+  const bridgeCurrent = bridgeVersion !== "legacy" && bridgeCapabilities.length > 1;
+  const canTrash = bridgeCapabilities.includes("trash") && bridgeCapabilities.includes("trash_many");
+  const folderSupported = useCallback((key: MailFolder) =>
+    key === "inbox" || bridgeCapabilities.includes(key), [bridgeCapabilities]);
 
   const unreadCount = useMemo(
     () => threads.reduce((sum, thread) => sum + (thread.unread ? 1 : 0), 0),
@@ -274,6 +290,10 @@ export function SupportMailConsole() {
 
   function changeFolder(next: MailFolder) {
     if (next === folder) return;
+    if (!folderSupported(next)) {
+      setSyncMessage("อัปเดต Apps Script Support Mail เป็นเวอร์ชันล่าสุดเพียงครั้งเดียว เพื่อใช้ตัวกรองสถานะนี้");
+      return;
+    }
     setFolder(next);
     setSelectedId("");
     setSelectedIds([]);
@@ -294,6 +314,10 @@ export function SupportMailConsole() {
   }
 
   function openSingleDelete(id: string, subject?: string) {
+    if (!canTrash) {
+      setSyncMessage("การลบต้องใช้ Support Mail Bridge เวอร์ชันล่าสุด กรุณา Deploy Code.gs ล่าสุดเพียงครั้งเดียว");
+      return;
+    }
     setDeleteDialog({
       ids: [id],
       title: "ลบอีเมลนี้?",
@@ -303,6 +327,10 @@ export function SupportMailConsole() {
 
   function openSelectedDelete() {
     if (!selectedIds.length) return;
+    if (!canTrash) {
+      setSyncMessage("การลบต้องใช้ Support Mail Bridge เวอร์ชันล่าสุด กรุณา Deploy Code.gs ล่าสุดเพียงครั้งเดียว");
+      return;
+    }
     setDeleteDialog({
       ids: selectedIds,
       title: `ลบอีเมลที่เลือก ${selectedIds.length} รายการ?`,
@@ -312,6 +340,10 @@ export function SupportMailConsole() {
 
   function openDeleteAllVisible() {
     if (!threads.length) return;
+    if (!canTrash) {
+      setSyncMessage("การลบต้องใช้ Support Mail Bridge เวอร์ชันล่าสุด กรุณา Deploy Code.gs ล่าสุดเพียงครั้งเดียว");
+      return;
+    }
     setDeleteDialog({
       ids: threads.map((thread) => thread.id),
       title: `ลบทั้งหมดในหน้านี้ ${threads.length} รายการ?`,
@@ -443,7 +475,7 @@ export function SupportMailConsole() {
       <header className="flex flex-wrap items-center gap-2 px-1">
         <h2 className="mr-auto text-2xl font-black text-slate-950">อีเมล Support</h2>
 
-        <span title={syncStatus === "error" ? syncMessage : undefined}
+        <span title={syncMessage || undefined}
           className={`rounded-full border px-3 py-1.5 text-[11px] font-black ${syncChip.cls}`}>
           {syncChip.label}
         </span>
@@ -459,6 +491,16 @@ export function SupportMailConsole() {
           ✎ เขียน
         </button>
       </header>
+
+      {!bridgeCurrent ? (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-800">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+          <span className="min-w-0 flex-1">
+            Inbox ใช้งานได้ปกติ · ต้อง Deploy Code.gs Support Mail เวอร์ชันล่าสุด 1 ครั้ง เพื่อเปิด ทั้งหมด / ติดดาว / ส่งแล้ว / เก็บถาวร / ลบ
+          </span>
+          <span className="rounded-full bg-white px-2 py-1 text-[10px] text-amber-700">Bridge {bridgeVersion}</span>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-bold text-red-700">
@@ -479,7 +521,9 @@ export function SupportMailConsole() {
           <div className="flex items-center gap-1 overflow-x-auto">
             {folderItems.map((item) => (
               <button key={item.key} type="button" onClick={() => changeFolder(item.key)}
-                className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-black transition ${
+                disabled={!folderSupported(item.key)}
+                title={!folderSupported(item.key) ? "ต้องอัปเดต Support Mail Bridge ก่อน" : undefined}
+                className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${
                   folder === item.key
                     ? "bg-[#17324d] text-white"
                     : "bg-slate-50 text-slate-600 hover:bg-slate-100"
@@ -562,8 +606,8 @@ export function SupportMailConsole() {
                   </strong>
                   <span className="text-[10px] font-bold text-slate-400">{threads.length} รายการ</span>
                   {threads.length ? (
-                    <button type="button" onClick={openDeleteAllVisible}
-                      className="ml-auto rounded-lg px-2 py-1 text-[10px] font-black text-red-500 hover:bg-red-50">
+                    <button type="button" onClick={openDeleteAllVisible} disabled={!canTrash}
+                      className="ml-auto rounded-lg px-2 py-1 text-[10px] font-black text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">
                       ลบทั้งหมดในหน้า
                     </button>
                   ) : null}
@@ -613,9 +657,10 @@ export function SupportMailConsole() {
                       <span className={`whitespace-nowrap pt-0.5 text-[10px] ${thread.unread ? "font-black text-slate-700" : "text-slate-400"}`}>
                         {formatDate(thread.last_message_at)}
                       </span>
-                      <button type="button" title="ลบ"
+                      <button type="button" title={canTrash ? "ลบ" : "ต้องอัปเดต Support Mail Bridge ก่อน"}
+                        disabled={!canTrash}
                         onClick={(event) => rowTrash(event, thread)}
-                        className="hidden rounded-md px-1.5 py-1 text-[11px] text-red-500 hover:bg-red-50 group-hover:block">
+                        className="hidden rounded-md px-1.5 py-1 text-[11px] text-red-500 hover:bg-red-50 group-hover:block disabled:cursor-not-allowed disabled:opacity-30">
                         ✕
                       </button>
                     </div>
@@ -644,7 +689,9 @@ export function SupportMailConsole() {
                     </button>
                   ) : null}
                   <button type="button" onClick={() => openSingleDelete(detail.thread.id, detail.thread.subject)}
-                    className="rounded-lg px-3 py-2 text-xs font-black text-red-600 hover:bg-red-50">
+                    disabled={!canTrash}
+                    title={!canTrash ? "ต้องอัปเดต Support Mail Bridge ก่อน" : undefined}
+                    className="rounded-lg px-3 py-2 text-xs font-black text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">
                     ✕ ลบ
                   </button>
                   <button type="button" onClick={() => void loadThread(selectedId)} disabled={busy === "thread"}
