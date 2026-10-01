@@ -13,6 +13,23 @@
  *
  * Backward compatible with the original transactional send payload.
  */
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-10-01.3";
+var SUPPORT_MAIL_CAPABILITIES = [
+  "all",
+  "inbox",
+  "starred",
+  "sent",
+  "archive",
+  "list_threads",
+  "get_thread",
+  "send_new",
+  "reply",
+  "mark_read",
+  "archive_thread",
+  "trash",
+  "trash_many"
+];
+
 function doPost(e) {
   try {
     var body = JSON.parse((e && e.postData && e.postData.contents) || "{}");
@@ -110,6 +127,7 @@ function threadSummary_(thread, messages) {
 
 function folderQuery_(folder) {
   var value = String(folder || "inbox").trim().toLowerCase();
+  if (value === "all") return "-in:spam -in:trash";
   if (value === "starred") return "is:starred -in:spam -in:trash";
   if (value === "sent") return "in:sent -in:spam -in:trash";
   if (value === "archive") return "-in:inbox -in:sent -in:drafts -in:spam -in:trash";
@@ -205,15 +223,14 @@ function trashMany_(body, mailbox) {
 
   if (!ids.length) throw new Error("thread_ids_required");
 
-  var trashed = 0;
+  var threads = [];
   for (var i = 0; i < ids.length; i += 1) {
     var thread = GmailApp.getThreadById(ids[i]);
-    if (!thread) continue;
-    thread.moveToTrash();
-    trashed += 1;
+    if (thread) threads.push(thread);
   }
 
-  return json_({ ok: true, mailbox: mailbox, trashed_count: trashed });
+  if (threads.length) GmailApp.moveThreadsToTrash(threads);
+  return json_({ ok: true, mailbox: mailbox, trashed_count: threads.length });
 }
 
 function sendTransactional_(body, mailbox) {
@@ -251,6 +268,10 @@ function sendTransactional_(body, mailbox) {
 }
 
 function json_(value) {
+  if (value && typeof value === "object") {
+    value.bridge_version = SUPPORT_MAIL_BRIDGE_VERSION;
+    value.capabilities = SUPPORT_MAIL_CAPABILITIES;
+  }
   return ContentService
     .createTextOutput(JSON.stringify(value))
     .setMimeType(ContentService.MimeType.JSON);
