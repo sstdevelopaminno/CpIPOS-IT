@@ -16,6 +16,7 @@ describe("IT support stale conversation recovery", () => {
   });
 
   it("disables automatic Vercel Git deployments", () => {
-    expect(vercel.git?.deploymentEnabled).toBe(false);
+    expect(vercel.git?.deploymentEnabled?.["*"]).toBe(false);
+    expect(vercel.git?.deploymentEnabled?.main).toBe(true);
   });
 });
