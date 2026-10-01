@@ -25,6 +25,8 @@ describe("IT Admin password recovery", () => {
     expect(forgotApi).toContain("it_forgot_password_ip");
     expect(forgotApi).toContain("it_forgot_password_account");
     expect(forgotApi).toContain('["it_admin", "it_support"]');
+    expect(forgotApi).toContain('code: "not_authorized"');
+    expect(forgotApi).toContain('code: "account_inactive"');
     expect(forgotApi).toContain("updateUserById");
   });
 
