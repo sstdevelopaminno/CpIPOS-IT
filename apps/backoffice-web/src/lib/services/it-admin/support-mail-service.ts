@@ -34,6 +34,8 @@ type BridgeBase = {
   ok?: boolean;
   error?: string;
   mailbox?: string;
+  bridge_version?: string;
+  capabilities?: string[];
 };
 
 type ListThreadsResponse = BridgeBase & {
@@ -133,7 +135,7 @@ async function callBridge<T extends BridgeBase>(payload: Record<string, unknown>
 export async function listSupportMailThreads(input?: {
   query?: string;
   unreadOnly?: boolean;
-  folder?: "inbox" | "starred" | "sent" | "archive";
+  folder?: "all" | "inbox" | "starred" | "sent" | "archive";
   limit?: number;
 }) {
   const folder = input?.folder ?? "inbox";
@@ -144,17 +146,26 @@ export async function listSupportMailThreads(input?: {
     folder,
     limit: Math.max(1, Math.min(30, Math.trunc(input?.limit ?? 24)))
   });
-  if (folder !== "inbox" && !body.folder) {
+  if (!body.bridge_version || !Array.isArray(body.capabilities)) {
     throw new SupportMailBridgeError(
       "support_mail_bridge_upgrade_required",
-      "Mail Bridge ต้องอัปเดต Code.gs เวอร์ชันล่าสุดก่อนใช้งานกล่อง ส่งแล้ว / ติดดาว / เก็บถาวร",
+      "Mail Bridge ยังเป็นเวอร์ชันเก่า กรุณาอัปเดต Apps Script เวอร์ชันล่าสุดก่อนใช้งานการกรองสถานะและการลบ",
+      409
+    );
+  }
+  if (!body.capabilities.includes(folder)) {
+    throw new SupportMailBridgeError(
+      "support_mail_folder_unsupported",
+      "Mail Bridge เวอร์ชันนี้ยังไม่รองรับกล่องอีเมลที่เลือก",
       409
     );
   }
   return {
     mailbox: normalizeMailbox(body.mailbox) || SUPPORT_MAILBOX,
     folder: String(body.folder || folder),
-    threads: Array.isArray(body.threads) ? body.threads : []
+    threads: Array.isArray(body.threads) ? body.threads : [],
+    bridge_version: body.bridge_version,
+    capabilities: body.capabilities
   };
 }
 
