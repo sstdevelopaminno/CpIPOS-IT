@@ -10,16 +10,19 @@ import {
   listSupportMailThreads,
   markSupportMailRead,
   replySupportMail,
-  sendSupportMail
+  sendSupportMail,
+  trashManySupportMail,
+  trashSupportMail
 } from "@/lib/services/it-admin/support-mail-service";
 
 export const dynamic = "force-dynamic";
 
-type SupportMailAction = "send_new" | "reply" | "mark_read" | "archive";
+type SupportMailAction = "send_new" | "reply" | "mark_read" | "archive" | "trash" | "trash_many";
 
 type Body = {
   action?: SupportMailAction;
   thread_id?: string;
+  thread_ids?: string[];
   to?: string;
   subject?: string;
   body?: string;
@@ -113,6 +116,26 @@ export async function POST(request: Request) {
       return ok({ sent: true });
     }
 
+    if (action === "trash_many") {
+      const threadIds = Array.isArray(input.thread_ids)
+        ? Array.from(new Set(input.thread_ids.map((value) => clean(value, 220)).filter(Boolean))).slice(0, 50)
+        : [];
+      if (!threadIds.length) return fail("thread_ids_required", "กรุณาเลือกรายการอีเมลที่ต้องการลบ", 422);
+
+      const result = await trashManySupportMail(threadIds);
+      await appendAuditLog({
+        actorUserId: ctx.auth.userId,
+        actorRole: ctx.auth.platformRole,
+        action: "support_mail_bulk_trashed",
+        targetTable: "gmail_support_mailbox",
+        module: "it_support",
+        metadata: { thread_ids: threadIds, requested_count: threadIds.length, trashed_count: result.trashed_count ?? null },
+        ipAddress: ctx.requestMeta.ipAddress ?? undefined,
+        userAgent: ctx.requestMeta.userAgent ?? undefined
+      });
+      return ok({ trashed: true, count: result.trashed_count ?? threadIds.length });
+    }
+
     const threadId = clean(input.thread_id, 220);
     if (!threadId) return fail("thread_id_required", "กรุณาเลือก Thread อีเมล", 422);
 
@@ -153,6 +176,22 @@ export async function POST(request: Request) {
         userAgent: ctx.requestMeta.userAgent ?? undefined
       });
       return ok({ archived: true, thread_id: threadId });
+    }
+
+    if (action === "trash") {
+      await trashSupportMail(threadId);
+      await appendAuditLog({
+        actorUserId: ctx.auth.userId,
+        actorRole: ctx.auth.platformRole,
+        action: "support_mail_trashed",
+        targetTable: "gmail_support_mailbox",
+        targetId: threadId,
+        module: "it_support",
+        metadata: { thread_id: threadId },
+        ipAddress: ctx.requestMeta.ipAddress ?? undefined,
+        userAgent: ctx.requestMeta.userAgent ?? undefined
+      });
+      return ok({ trashed: true, thread_id: threadId });
     }
 
     return fail("invalid_support_mail_action", "คำสั่งอีเมลไม่ถูกต้อง", 422);
