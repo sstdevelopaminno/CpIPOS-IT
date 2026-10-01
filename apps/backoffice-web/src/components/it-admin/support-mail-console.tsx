@@ -169,7 +169,6 @@ export function SupportMailConsole() {
     inboxLoadingRef.current = true;
     setSyncStatus("syncing");
     if (!silent) {
-      setError("");
       setBusy("inbox");
     }
     try {
@@ -192,7 +191,8 @@ export function SupportMailConsole() {
       const message = normalizeError(cause, "โหลดกล่องอีเมลไม่สำเร็จ");
       setSyncStatus("error");
       setSyncMessage(message);
-      if (!silent) setError(message);
+      // Inbox/background sync failures belong to the compact sync indicator.
+      // Do not show a global red banner while previously loaded mail is still usable.
     } finally {
       inboxLoadingRef.current = false;
       if (!silent) setBusy("");
@@ -220,7 +220,12 @@ export function SupportMailConsole() {
         });
       }
     } catch (cause) {
-      setError(normalizeError(cause, "เปิดอีเมลไม่สำเร็จ"));
+      const message = normalizeError(cause, "เปิดอีเมลไม่สำเร็จ");
+      setError(
+        message === "เชื่อมต่อ Gmail Support ไม่สำเร็จ"
+          ? "เปิดอีเมลนี้ไม่สำเร็จชั่วคราว กรุณากดรีเฟรชหรือลองเลือกอีเมลอีกครั้ง"
+          : message
+      );
     } finally {
       setBusy("");
     }
