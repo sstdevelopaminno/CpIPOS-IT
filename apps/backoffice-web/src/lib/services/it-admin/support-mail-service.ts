@@ -144,6 +144,13 @@ export async function listSupportMailThreads(input?: {
     folder,
     limit: Math.max(1, Math.min(30, Math.trunc(input?.limit ?? 24)))
   });
+  if (folder !== "inbox" && !body.folder) {
+    throw new SupportMailBridgeError(
+      "support_mail_bridge_upgrade_required",
+      "Mail Bridge ต้องอัปเดต Code.gs เวอร์ชันล่าสุดก่อนใช้งานกล่อง ส่งแล้ว / ติดดาว / เก็บถาวร",
+      409
+    );
+  }
   return {
     mailbox: normalizeMailbox(body.mailbox) || SUPPORT_MAILBOX,
     folder: String(body.folder || folder),
