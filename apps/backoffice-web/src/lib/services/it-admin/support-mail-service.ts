@@ -114,7 +114,7 @@ async function callBridge<T extends BridgeBase>(payload: Record<string, unknown>
           ? "ไม่พบอีเมลหรือ Thread นี้แล้ว"
           : code === "unauthorized"
             ? "Mail Bridge secret ไม่ตรงกัน"
-            : "เชื่อมต่อ Gmail Support ไม่สำเร็จ";
+            : "Gmail Support ทำรายการนี้ไม่สำเร็จชั่วคราว กรุณาลองใหม่";
     throw new SupportMailBridgeError(code, message, code === "thread_not_found" ? 404 : 502);
   }
 
