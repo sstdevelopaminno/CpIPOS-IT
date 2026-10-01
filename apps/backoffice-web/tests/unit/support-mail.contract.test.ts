@@ -22,10 +22,12 @@ describe("IT Support Mail integration", () => {
     for (const action of ["list_threads", "get_thread", "send_new", "reply", "mark_read", "archive", "trash", "trash_many"]) {
       expect(bridge).toContain(action);
     }
-    for (const folder of ["inbox", "starred", "sent", "archive"]) {
+    for (const folder of ["all", "inbox", "starred", "sent", "archive"]) {
       expect(bridge).toContain(folder);
       expect(api).toContain(folder);
     }
+    expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
+    expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
     expect(api).toContain("listSupportMailThreads");
     expect(api).toContain("getSupportMailThread");
@@ -38,6 +40,8 @@ describe("IT Support Mail integration", () => {
     expect(consoleUi).toContain("ลบทั้งหมดในหน้า");
     expect(consoleUi).toContain("ย้ายไปถังขยะ");
     expect(consoleUi).toContain("navCollapsed");
+    expect(consoleUi).toContain('label: "ทั้งหมด"');
+    expect(consoleUi).toContain("inboxRequestIdRef");
     expect(api).toContain("trashManySupportMail");
     expect(api).toContain("support_mail_bulk_trashed");
   });
@@ -57,7 +61,8 @@ describe("IT Support Mail integration", () => {
     expect(consoleUi).toContain("syncStatus");
     expect(consoleUi).toContain("Do not show a global red banner");
     expect(service).toContain("Gmail Support ทำรายการนี้ไม่สำเร็จชั่วคราว");
-    expect(bridge).toContain("threadSummary_(thread, messages)");
+    expect(bridge).toContain('folder === "sent"');
+    expect(bridge).toContain("threadSummary_(thread, messages");
     expect(bridge).toContain("getPlainBody()");
     expect(consoleUi).not.toContain("dangerouslySetInnerHTML");
   });
