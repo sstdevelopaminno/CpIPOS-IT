@@ -9,6 +9,7 @@ describe("IT Admin password recovery", () => {
   const loginApi = src("src/app/api/it-admin/auth/login/route.ts");
   const forgotApi = src("src/app/api/it-admin/auth/forgot-password/route.ts");
   const changeApi = src("src/app/api/it-admin/auth/change-password/route.ts");
+  const settingsRecoveryApi = src("src/app/api/it-admin/auth/request-temporary-password/route.ts");
   const passwordPage = src("src/app/(it-admin)/it-admin/settings/password/page.tsx");
   const layout = src("src/app/(it-admin)/layout.tsx");
   const service = src("src/lib/services/it-admin/it-password-recovery-service.ts");
@@ -44,5 +45,10 @@ describe("IT Admin password recovery", () => {
     expect(changeApi).toContain("current_password");
     expect(changeApi).toContain("strongEnough");
     expect(changeApi).toContain("password_change_required: false");
+    expect(passwordPage).toContain("จำรหัสปัจจุบันไม่ได้?");
+    expect(passwordPage).toContain("/api/it-admin/auth/request-temporary-password");
+    expect(settingsRecoveryApi).toContain("it_settings_temp_password");
+    expect(settingsRecoveryApi).toContain("masked_email");
+    expect(settingsRecoveryApi).toContain("sendItTemporaryPasswordEmail");
   });
 });
