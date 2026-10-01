@@ -89,35 +89,52 @@ function messageSummary_(message) {
   };
 }
 
-function threadSummary_(thread) {
-  var messages = thread.getMessages();
-  var last = messages.length ? messages[messages.length - 1] : null;
+function threadSummary_(thread, messages) {
+  var list = messages || [];
+  var last = list.length ? list[list.length - 1] : null;
   return {
     id: thread.getId(),
     subject: safeText_(thread.getFirstMessageSubject(), 500),
     from: last ? safeText_(last.getFrom(), 500) : "",
     to: last ? safeText_(last.getTo(), 1000) : "",
-    snippet: last ? snippet_(last.getPlainBody(), 220) : "",
+    snippet: last ? snippet_(last.getPlainBody(), 180) : "",
     last_message_at: thread.getLastMessageDate().toISOString(),
     message_count: thread.getMessageCount(),
     unread: thread.isUnread(),
+    starred: thread.hasStarredMessages(),
     in_inbox: thread.isInInbox()
   };
+}
+
+function folderQuery_(folder) {
+  var value = String(folder || "inbox").trim().toLowerCase();
+  if (value === "starred") return "is:starred -in:spam -in:trash";
+  if (value === "sent") return "in:sent -in:spam -in:trash";
+  if (value === "archive") return "-in:inbox -in:sent -in:drafts -in:spam -in:trash";
+  return "in:inbox -in:spam -in:trash";
 }
 
 function listThreads_(body, mailbox) {
   var query = cleanQuery_(body.query);
   var unreadOnly = body.unread_only === true;
-  var limit = boundedInt_(body.limit, 30, 1, 50);
-  var gmailQuery = "in:inbox -in:spam -in:trash";
+  var limit = boundedInt_(body.limit, 24, 1, 30);
+  var folder = String(body.folder || "inbox").trim().toLowerCase();
+  var gmailQuery = folderQuery_(folder);
   if (unreadOnly) gmailQuery += " is:unread";
   if (query) gmailQuery += " " + query;
 
   var threads = GmailApp.search(gmailQuery, 0, limit);
+  var messageGroups = threads.length ? GmailApp.getMessagesForThreads(threads) : [];
+  var summaries = [];
+  for (var i = 0; i < threads.length; i += 1) {
+    summaries.push(threadSummary_(threads[i], messageGroups[i] || []));
+  }
+
   return json_({
     ok: true,
     mailbox: mailbox,
-    threads: threads.map(threadSummary_)
+    folder: folder,
+    threads: summaries
   });
 }
 
@@ -130,7 +147,7 @@ function getThread_(body, mailbox) {
   return json_({
     ok: true,
     mailbox: mailbox,
-    thread: threadSummary_(thread),
+    thread: threadSummary_(thread, thread.getMessages()),
     messages: messages.map(messageSummary_)
   });
 }
