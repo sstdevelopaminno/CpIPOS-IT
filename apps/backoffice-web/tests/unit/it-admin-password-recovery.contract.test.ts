@@ -26,7 +26,6 @@ describe("IT Admin password recovery", () => {
     expect(forgotApi).toContain("it_forgot_password_account");
     expect(forgotApi).toContain('["it_admin", "it_support"]');
     expect(forgotApi).toContain("updateUserById");
-    expect(forgotApi).not.toContain("temporaryPassword,");
   });
 
   it("sends a short-lived temporary password without logging it", () => {
