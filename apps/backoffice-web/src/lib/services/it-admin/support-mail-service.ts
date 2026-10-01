@@ -4,6 +4,9 @@ const SUPPORT_MAILBOX =
   process.env.CPIPOS_SUPPORT_MAILBOX?.trim().toLowerCase() ||
   "cuttingpointtech.support@gmail.com";
 
+const DEFAULT_SUPPORT_MAIL_BRIDGE_URL =
+  "https://script.google.com/macros/s/AKfycby_5bnLmvhTgBPr7zFGOJGIHtOew2Ot2Qj3EhRuu-sKhPrXJG9ZZWqDgYdrtiNsQeMh/exec";
+
 export type SupportMailThreadSummary = {
   id: string;
   subject: string;
@@ -54,7 +57,9 @@ export class SupportMailBridgeError extends Error {
 }
 
 function bridgeConfig() {
-  const url = process.env.CPIPOS_MAIL_BRIDGE_URL?.trim();
+  const url =
+    process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_URL?.trim() ||
+    DEFAULT_SUPPORT_MAIL_BRIDGE_URL;
   const secret = process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
   if (!url || !secret) {
     throw new SupportMailBridgeError(
