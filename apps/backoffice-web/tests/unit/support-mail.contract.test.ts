@@ -18,15 +18,22 @@ describe("IT Support Mail integration", () => {
     expect(bridge).toContain("wrong_mailbox");
   });
 
-  it("supports inbox, thread read, reply, send, mark-read and archive", () => {
+  it("supports Gmail-style folders, thread read, reply, send, mark-read and archive", () => {
     for (const action of ["list_threads", "get_thread", "send_new", "reply", "mark_read", "archive"]) {
       expect(bridge).toContain(action);
     }
+    for (const folder of ["inbox", "starred", "sent", "archive"]) {
+      expect(bridge).toContain(folder);
+      expect(api).toContain(folder);
+    }
+    expect(bridge).toContain("getMessagesForThreads");
     expect(api).toContain("listSupportMailThreads");
     expect(api).toContain("getSupportMailThread");
     expect(api).toContain("replySupportMail");
     expect(api).toContain("sendSupportMail");
     expect(consoleUi).toContain("อีเมล Support");
+    expect(consoleUi).toContain("กล่องจดหมาย");
+    expect(consoleUi).toContain("ข้อความใหม่");
   });
 
   it("requires an authenticated IT role and rate limits read/write operations", () => {
@@ -36,7 +43,11 @@ describe("IT Support Mail integration", () => {
     expect(api).toContain("enforceRateLimit");
   });
 
-  it("never renders Gmail HTML bodies directly in the browser", () => {
+  it("keeps background sync resilient and never renders Gmail HTML directly", () => {
+    expect(service).toContain("AbortSignal.timeout(25000)");
+    expect(service).toContain("support_mail_bridge_timeout");
+    expect(consoleUi).toContain("รีเฟรชเบื้องหลังไม่สำเร็จ");
+    expect(consoleUi).toContain("30_000");
     expect(bridge).toContain("getPlainBody()");
     expect(consoleUi).not.toContain("dangerouslySetInnerHTML");
   });
