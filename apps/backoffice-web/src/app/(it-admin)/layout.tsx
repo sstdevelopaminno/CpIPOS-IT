@@ -44,6 +44,7 @@ const copy = {
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
       supportChat: "แชท",
       supportMail: "อีเมล Support",
+      otherContacts: "การติดต่ออื่นๆ",
       customerRequests: "คำขอจากลูกค้า",
       supportChatInbox: "กล่องสนทนา",
       supportHistory: "สมุดบันทึกแชท",
@@ -91,6 +92,7 @@ const copy = {
       emergencyBroadcast: "Emergency Broadcast",
       supportChat: "Chat",
       supportMail: "Support Email",
+      otherContacts: "Other Contacts",
       customerRequests: "Customer Requests",
       supportChatInbox: "Inbox",
       supportHistory: "Chat Notebook",
@@ -146,6 +148,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
           { href: "/it-admin/support-chat/history", label: text.items.supportHistory }
         ] },
       { href: "/it-admin/support-mail", label: text.items.supportMail, group: text.groups.operations, icon: "chat" },
+      { href: "/it-admin/other-contacts", label: text.items.otherContacts, group: text.groups.operations, icon: "chat" },
       settings
     ];
   }
@@ -175,6 +178,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
           { href: "/it-admin/support-chat/history", label: text.items.supportHistory }
         ] },
     { href: "/it-admin/support-mail", label: text.items.supportMail, group: text.groups.operations, icon: "chat" },
+    { href: "/it-admin/other-contacts", label: text.items.otherContacts, group: text.groups.operations, icon: "chat" },
     { href: "/it-admin/development", label: text.items.development, group: text.groups.development, icon: "code" },
     settings
   ];
