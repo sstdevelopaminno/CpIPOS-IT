@@ -71,6 +71,21 @@ describe("CpIPOS IT AI control center", () => {
     expect(detailUi).toContain("provider_cleanup_failed_count");
   });
 
+  it("keeps the AI control center compact by moving heavy controls into modals", () => {
+    expect(listUi).toContain("ตั้งค่า AI Quota");
+    expect(listUi).toContain("quotaOpen");
+    expect(listUi).toContain("modalBackdrop");
+    expect(detailUi).toContain('setDetailModal("overview")');
+    expect(detailUi).toContain('setDetailModal("quota")');
+    expect(detailUi).toContain('setDetailModal("usage")');
+    expect(detailUi).toContain('setDetailModal("series")');
+    expect(detailUi).toContain("ภาพรวม AI");
+    expect(detailUi).toContain("AI Quota ร้าน");
+    expect(detailUi).toContain("Command Log");
+    expect(detailUi).toContain("สรุปการใช้งาน");
+    expect(detailUi).toContain("ห้องแชทและ OpenAI Conversation ID");
+  });
+
   it("keeps transcript storage in OpenAI and only room pointers locally", () => {
     expect(roomMigration).toContain("pos_ai_chat_rooms");
     expect(roomMigration).not.toContain("message_text");
