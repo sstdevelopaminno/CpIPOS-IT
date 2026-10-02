@@ -19,6 +19,7 @@ type PackageRow = {
   code: string;
   name: string;
   monthly_price: number | string;
+  metadata?: Record<string, unknown> | null;
   quota: PackageQuota;
 };
 
@@ -62,6 +63,10 @@ function usd(value: unknown) {
 
 function inputValue(value: number | string | null | undefined) {
   return value == null ? "" : String(value);
+}
+function packageMetaNumber(pkg: PackageRow, key: string) {
+  const value = Number(pkg.metadata?.[key] ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 export function CpiPosAiAdminConsole() {
@@ -237,6 +242,11 @@ export function CpiPosAiAdminConsole() {
                           <span>{draft.is_enabled ? "เปิด AI" : "ปิด AI"}</span>
                         </label>
                       </div>
+                      {pkg.metadata?.ai_addon_available === true ? <div className={styles.quotaBadge}>
+                        Add-on จาก Subscription: ฿{packageMetaNumber(pkg,"ai_addon_monthly_price") ?? "—"} ·
+                        +{packageMetaNumber(pkg,"ai_addon_monthly_requests") ?? "—"} ครั้ง ·
+                        +{packageMetaNumber(pkg,"ai_addon_monthly_tokens") ?? "—"} tokens
+                      </div> : null}
                       <div className={styles.formGrid}>
                         <label><span>จำนวนคำขอ / เดือน</span><input inputMode="numeric" value={draft.monthly_request_limit}
                           onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_request_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
