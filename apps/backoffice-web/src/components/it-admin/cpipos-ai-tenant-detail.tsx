@@ -123,6 +123,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [quotaMode, setQuotaMode] = useState<"inherit" | "custom" | "unlimited">("inherit");
   const [enabledMode, setEnabledMode] = useState<"inherit" | "enabled" | "disabled">("inherit");
   const [requests, setRequests] = useState("");
@@ -192,6 +193,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
     if (!window.confirm(`ล้างประวัติ CpiPOS AI ${scopeText} หรือไม่?\n\nข้อความใน OpenAI Conversation จะถูกลบ แต่ token และค่าใช้จ่ายเดิมจะยังคงอยู่เพื่อการบัญชี/Quota`)) return;
     setBusy(room ? `history:${room.room_id}` : "history:all");
     setError("");
+    setNotice("");
     try {
       const response = await fetch(`/api/it-admin/v1/cpipos-ai/tenants/${encodeURIComponent(tenantId)}/history`, {
         method: "DELETE",
@@ -199,8 +201,21 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(room ? { room_id: room.room_id } : {})
       });
-      const body = (await response.json().catch(() => null)) as Envelope<unknown> | null;
+      const body = (await response.json().catch(() => null)) as Envelope<{
+        cleared_conversations?: number;
+        provider_deleted_conversations?: number;
+        provider_cleanup_failed_count?: number;
+        provider_cleanup_status?: "complete" | "deferred";
+      }> | null;
       if (!response.ok) throw new Error(body?.error?.message ?? "ล้างประวัติ AI ไม่สำเร็จ");
+      const result = body?.data;
+      const cleared = Number(result?.cleared_conversations ?? 0);
+      const pending = Number(result?.provider_cleanup_failed_count ?? 0);
+      setNotice(
+        pending > 0
+          ? `ล้างข้อมูล CpiPOS แล้ว ${cleared} ห้อง แต่การลบประวัติฝั่ง OpenAI ยังรอดำเนินการ ${pending} ห้อง เนื่องจาก provider ยังไม่พร้อม`
+          : `ล้างประวัติเรียบร้อย ${cleared} ห้อง`
+      );
       await load();
     } catch (clearError) {
       setError(clearError instanceof Error ? clearError.message : "ล้างประวัติ AI ไม่สำเร็จ");
@@ -233,6 +248,22 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
       </header>
 
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
+      {notice ? (
+        <div
+          role="status"
+          style={{
+            marginBottom: 16,
+            border: "1px solid #bfdbfe",
+            borderRadius: 12,
+            background: "#eff6ff",
+            color: "#1d4ed8",
+            padding: "12px 14px",
+            fontWeight: 700
+          }}
+        >
+          {notice}
+        </div>
+      ) : null}
 
       <section className={styles.summaryGrid}>
         <article><span>แพ็กเกจ</span><strong className={styles.smallStrong}>{data?.package?.name ?? "—"}</strong><small>{data?.contract_status ?? "—"}</small></article>

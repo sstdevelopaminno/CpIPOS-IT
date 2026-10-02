@@ -62,8 +62,13 @@ describe("CpIPOS IT AI control center", () => {
     expect(service).toContain('from("pos_ai_chat_rooms")');
     expect(service).toContain("history_cleared_at");
     expect(service).toContain("usage_accounting_retained: true");
+    expect(service).toContain("provider_cleanup_failed_count");
+    expect(service).toContain("pending_provider_conversation_ids");
+    expect(service).toContain("provider_cleanup_status");
     expect(detailUi).toContain("ล้างประวัติทั้งร้าน");
     expect(detailUi).toContain("ลบห้องแชท");
+    expect(detailUi).toContain("ล้างข้อมูล CpiPOS แล้ว");
+    expect(detailUi).toContain("provider_cleanup_failed_count");
   });
 
   it("keeps transcript storage in OpenAI and only room pointers locally", () => {

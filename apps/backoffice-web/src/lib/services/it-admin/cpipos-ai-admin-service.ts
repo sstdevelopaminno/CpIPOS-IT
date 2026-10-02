@@ -505,8 +505,26 @@ export async function clearCpiposAiHistory(
   const rooms = await query;
   if (rooms.error) throw new Error(rooms.error.message);
 
+  const providerCleanupFailures: Array<{ conversation_id: string; reason: string }> = [];
+  let providerDeletedCount = 0;
+
   for (const room of rooms.data ?? []) {
-    await deleteOpenAiConversation(room.openai_conversation_id);
+    try {
+      await deleteOpenAiConversation(room.openai_conversation_id);
+      providerDeletedCount += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "provider_cleanup_failed";
+      console.warn("[cpipos-ai] provider history cleanup deferred", {
+        tenant_id: tenantId,
+        room_id: room.id,
+        conversation_id: room.openai_conversation_id,
+        error: message
+      });
+      providerCleanupFailures.push({
+        conversation_id: room.openai_conversation_id,
+        reason: message.includes("OPENAI_API_KEY") ? "provider_not_configured" : "provider_delete_failed"
+      });
+    }
   }
 
   const conversationIds = (rooms.data ?? []).map((room) => room.openai_conversation_id);
@@ -532,6 +550,9 @@ export async function clearCpiposAiHistory(
     targetId: roomId ?? tenantId,
     metadata: {
       cleared_conversations: (rooms.data ?? []).length,
+      provider_deleted_conversations: providerDeletedCount,
+      provider_cleanup_failed_count: providerCleanupFailures.length,
+      pending_provider_conversation_ids: providerCleanupFailures.map((item) => item.conversation_id),
       scoped_room_id: roomId ?? null,
       scoped_user_id: userId ?? null,
       scoped_branch_id: branchId ?? null,
@@ -542,5 +563,11 @@ export async function clearCpiposAiHistory(
     userAgent: context.requestMeta.userAgent ?? undefined
   });
 
-  return { cleared_conversations: (rooms.data ?? []).length, usage_accounting_retained: true };
+  return {
+    cleared_conversations: (rooms.data ?? []).length,
+    provider_deleted_conversations: providerDeletedCount,
+    provider_cleanup_failed_count: providerCleanupFailures.length,
+    provider_cleanup_status: providerCleanupFailures.length ? "deferred" : "complete",
+    usage_accounting_retained: true
+  };
 }
