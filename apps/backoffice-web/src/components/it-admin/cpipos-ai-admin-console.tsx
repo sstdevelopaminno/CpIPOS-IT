@@ -37,6 +37,7 @@ type StoreRow = {
     source: string;
     limits: { requests: number | null; tokens: number | null; cost_usd: number | null };
     history_retention_days: number | null;
+    addons?: { purchases: number; requests: number; tokens: number; cost_usd: number };
   };
   usage: { requests: number; users: number; total_tokens: number; cost_usd: number };
 };
@@ -205,7 +206,10 @@ export function CpiPosAiAdminConsole() {
                      <td>{fmt(row.usage.requests)}</td>
                      <td>{fmt(row.usage.total_tokens)}</td>
                      <td>{usd(row.usage.cost_usd)}</td>
-                     <td><span className={styles.quotaBadge}>{quotaText}</span><small className={styles.muted}>เก็บแชท {row.quota.history_retention_days ? `${fmt(row.quota.history_retention_days)} วัน` : "ตามสัญญา"}</small></td>
+                     <td><span className={styles.quotaBadge}>{quotaText}</span>
+                       {row.quota.addons?.purchases ? <small className={styles.muted}>Add-on เดือนนี้ {fmt(row.quota.addons.purchases)} รายการ · +{fmt(row.quota.addons.requests)} ครั้ง · +{fmt(row.quota.addons.tokens)} tokens</small> : null}
+                       <small className={styles.muted}>เก็บแชท {row.quota.history_retention_days ? fmt(row.quota.history_retention_days) + " วัน" : "ตามสัญญา"}</small>
+                     </td>
                      <td><Link className={styles.detailButton} href={`/it-admin/cpipos-ai/${encodeURIComponent(row.tenant_id)}`}>ดูรายละเอียด</Link></td>
                    </tr>
                  );
