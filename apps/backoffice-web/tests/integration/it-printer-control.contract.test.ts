@@ -20,6 +20,10 @@ describe("IT printer control",()=>{
 
  it("supports search, remote diagnostics, test, edit and delete from one support surface",()=>{
   expect(ui).toContain("setQuery");
+  expect(ui).toContain("row.tenant_id");
+  expect(ui).toContain("row.runtime_device_code");
+  expect(ui).toContain("row.remote_device_name");
+  expect(ui).toContain("row.connection");
   expect(ui).toContain('value="runtime"');
   expect(api).toContain('resource_type:"runtime" as const');
   expect(api).toContain('command_type:"request_diagnostics"');

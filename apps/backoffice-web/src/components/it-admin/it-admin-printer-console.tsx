@@ -118,8 +118,11 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
    if(status==="active"&&!row.active)return false;
    if(status!=="all"&&status!=="online"&&status!=="active"&&row.status!==status)return false;
    if(!q)return true;
-   return [row.tenant,row.branch,row.name,row.brand,row.model,row.device_code,row.runtime_device_code,row.status,row.source]
-    .some(value=>String(value??"").toLowerCase().includes(q));
+   return [
+    row.id,row.tenant_id,row.branch_id,row.tenant,row.branch,row.name,row.brand,row.model,
+    row.connection,row.device_code,row.runtime_device_code,row.app_version,row.remote_device_id,
+    row.remote_device_name,row.status,row.source
+   ].some(value=>String(value??"").toLowerCase().includes(q));
   });
  },[data?.rows,kind,status,query]);
 
