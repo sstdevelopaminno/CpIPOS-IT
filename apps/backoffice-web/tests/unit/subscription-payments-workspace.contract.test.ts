@@ -19,7 +19,9 @@ describe("subscription payments IT workspace", () => {
     expect(api).toContain('from("tenant_data_lifecycle")');
     expect(api).toContain("metadata");
     expect(api).toContain('source: typeof payment.metadata?.source');
-    expect(api).toContain('kind: payment.metadata?.kind === "payment_notice"');
+    expect(api).toContain('payment.metadata?.kind === "ai_addon_payment"');
+    expect(api).toContain('"payment_notice"');
+    expect(api).toContain('"renewal_intent"');
     expect(ui).toContain("CpiPOS-001 · POS ↔ IT");
     expect(ui).toContain("POS → IT");
     expect(api).toContain("effectiveExpiry");
