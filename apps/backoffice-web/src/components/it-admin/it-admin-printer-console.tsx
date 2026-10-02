@@ -40,7 +40,7 @@ const COPY={
   noRows:"ไม่พบรายการตามเงื่อนไข",loading:"กำลังโหลด...",error:"โหลดข้อมูลไม่สำเร็จ",
   printer:"เครื่องพิมพ์",agent:"Print Agent",paper:"ขนาดกระดาษ",brand:"ยี่ห้อ",model:"รุ่น",enabled:"เปิดใช้งาน",
   source:"แหล่งข้อมูล",inactive:"ไม่ใช้งาน",blocked:"ถูกบล็อก",offline:"ออฟไลน์",checking:"กำลังตรวจ",agentMissing:"ยังไม่มี Print Agent",unknown:"ไม่ทราบ",
-  queue:"คิวรอ/Retry",failed:"ล้มเหลว 30 วัน",latency:"P95 พิมพ์ครบ",telemetry:"Telemetry ล่าสุด",diagnose:"ตรวจใหม่",queueLatency:"คิว→Agent P95",printLatency:"Agent→พิมพ์ P95",retry24h:"Retry 24 ชม.",staleLease:"Lease ค้าง",slowQueue:"คิวช้า ≥3s",slowPrint:"พิมพ์ช้า ≥3s",failureCodes:"สาเหตุล้มเหลว",transportFailures:"ปัญหาตามการเชื่อมต่อ"
+  queue:"คิวรอ/Retry",failed:"ล้มเหลว 30 วัน",latency:"P95 พิมพ์ครบ",telemetry:"Telemetry ล่าสุด",diagnose:"ตรวจใหม่",overview:"ภาพรวม / Diagnostics",queueLatency:"คิว→Agent P95",printLatency:"Agent→พิมพ์ P95",retry24h:"Retry 24 ชม.",staleLease:"Lease ค้าง",slowQueue:"คิวช้า ≥3s",slowPrint:"พิมพ์ช้า ≥3s",failureCodes:"สาเหตุล้มเหลว",transportFailures:"ปัญหาตามการเชื่อมต่อ"
  },
  en:{
   eyebrow:"PRINT / REMOTE OPERATIONS",title:"Printer / Print Agent",
@@ -53,7 +53,7 @@ const COPY={
   noRows:"No matching records",loading:"Loading...",error:"Unable to load data",
   printer:"Printer",agent:"Print Agent",paper:"Paper width",brand:"Brand",model:"Model",enabled:"Enabled",
   source:"Source",inactive:"Inactive",blocked:"Blocked",offline:"Offline",checking:"Checking",agentMissing:"Print Agent missing",unknown:"Unknown",
-  queue:"Queue / Retry",failed:"Failed 30d",latency:"P95 end-to-end",telemetry:"Latest telemetry",diagnose:"Diagnose",queueLatency:"Queue→Agent P95",printLatency:"Agent→Print P95",retry24h:"Retry 24h",staleLease:"Stale lease",slowQueue:"Slow queue ≥3s",slowPrint:"Slow print ≥3s",failureCodes:"Failure codes",transportFailures:"Transport failures"
+  queue:"Queue / Retry",failed:"Failed 30d",latency:"P95 end-to-end",telemetry:"Latest telemetry",diagnose:"Diagnose",overview:"Overview / Diagnostics",queueLatency:"Queue→Agent P95",printLatency:"Agent→Print P95",retry24h:"Retry 24h",staleLease:"Stale lease",slowQueue:"Slow queue ≥3s",slowPrint:"Slow print ≥3s",failureCodes:"Failure codes",transportFailures:"Transport failures"
  }
 } as const;
 
@@ -99,6 +99,7 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
  const [kind,setKind]=useState<"all"|ResourceType>("all");
  const [status,setStatus]=useState("all");
  const [editing,setEditing]=useState<Row|null>(null);
+ const [diagnosticsOpen,setDiagnosticsOpen]=useState(false);
  const [form,setForm]=useState({name:"",brand:"",model:"",paper_width_mm:"80",status:"active",active:true});
 
  const load=useCallback(async(silent=false)=>{
@@ -209,6 +210,7 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
   <div className="flex flex-wrap items-start justify-between gap-4">
    <div><div className="text-xs font-black uppercase tracking-[.18em] text-blue-600">{t.eyebrow}</div><h1 className="mt-2 text-3xl font-black text-slate-950">{t.title}</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{t.desc}</p></div>
    <div className="flex flex-wrap gap-2">
+    <button onClick={()=>setDiagnosticsOpen(true)} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700">{t.overview}</button>
     <button onClick={()=>void discover()} disabled={busy==="discover:all"} className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-black text-blue-700 disabled:opacity-50">{t.discover}</button>
     <button onClick={()=>void load()} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-black text-slate-700">{t.refresh}</button>
    </div>
@@ -217,44 +219,56 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
   {notice?<div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{notice}</div>:null}
   {error?<div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>:null}
 
-  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-   {[
-    [t.all,summary?.total??"—"],[t.printers,summary?.printers??"—"],[t.agents,summary?.agents??"—"],
-    [t.runtimes,summary?.runtimes??"—"],[t.active,summary?.active??"—"],[t.online,summary?.online??"—"]
-   ].map(([label,value])=><div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-2xl font-black text-slate-950">{value}</div></div>)}
-  </div>
+  {diagnosticsOpen?<div className="fixed inset-0 z-[500] grid place-items-center bg-slate-950/50 p-4" onMouseDown={event=>{if(event.target===event.currentTarget)setDiagnosticsOpen(false);}}>
+   <section role="dialog" aria-modal="true" aria-label={t.overview} className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-slate-50 shadow-2xl">
+    <div className="flex items-start justify-between border-b border-slate-200 bg-white px-6 py-5">
+     <div><div className="text-xs font-black uppercase tracking-[.16em] text-blue-600">{t.eyebrow}</div><h2 className="mt-1 text-2xl font-black text-slate-950">{t.overview}</h2><p className="mt-1 text-sm text-slate-500">{language==="th"?"สถานะเครื่องพิมพ์, Print Agent, Queue, Latency และสาเหตุผิดพลาด":"Printer, Print Agent, queue, latency and failure diagnostics"}</p></div>
+     <button type="button" aria-label={t.close} onClick={()=>setDiagnosticsOpen(false)} className="grid h-10 w-10 place-items-center rounded-full border border-slate-300 bg-white text-xl font-black text-slate-600 hover:bg-slate-100">×</button>
+    </div>
+    <div className="overflow-y-auto p-5 sm:p-6">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+       {[
+        [t.all,summary?.total??"—"],[t.printers,summary?.printers??"—"],[t.agents,summary?.agents??"—"],
+        [t.runtimes,summary?.runtimes??"—"],[t.active,summary?.active??"—"],[t.online,summary?.online??"—"]
+       ].map(([label,value])=><div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-2xl font-black text-slate-950">{value}</div></div>)}
+      </div>
 
-  <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-   {[
-    [t.queue,`${data?.print_health.pending??0} / ${data?.print_health.retrying??0}`],
-    [t.queueLatency,duration(data?.print_health.p95_queue_to_claim_ms)],
-    [t.printLatency,duration(data?.print_health.p95_claim_to_print_ms)],
-    [t.latency,duration(data?.print_health.p95_total_ms)],
-    [t.retry24h,data?.print_health.retried_24h??0],
-    [t.staleLease,data?.print_health.stale_claims??0],
-    [t.slowQueue,data?.print_health.slow_queue_24h??0],
-    [t.slowPrint,data?.print_health.slow_transport_24h??0]
-   ].map(([label,value])=><div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-xl font-black text-slate-950">{value}</div></div>)}
-  </div>
-  <div className="mt-3 grid gap-3 lg:grid-cols-2">
-   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="text-xs font-black uppercase tracking-[.12em] text-slate-500">{t.failureCodes}</div>
-    <div className="mt-3 flex flex-wrap gap-2">
-     {(data?.print_health.top_failures??[]).length
-      ? (data?.print_health.top_failures??[]).map(item=><span key={item.code} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700">{item.code} · {item.count}</span>)
-      : <span className="text-xs text-slate-400">—</span>}
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+       {[
+        [t.queue,`${data?.print_health.pending??0} / ${data?.print_health.retrying??0}`],
+        [t.queueLatency,duration(data?.print_health.p95_queue_to_claim_ms)],
+        [t.printLatency,duration(data?.print_health.p95_claim_to_print_ms)],
+        [t.latency,duration(data?.print_health.p95_total_ms)],
+        [t.retry24h,data?.print_health.retried_24h??0],
+        [t.staleLease,data?.print_health.stale_claims??0],
+        [t.slowQueue,data?.print_health.slow_queue_24h??0],
+        [t.slowPrint,data?.print_health.slow_transport_24h??0]
+       ].map(([label,value])=><div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-xl font-black text-slate-950">{value}</div></div>)}
+      </div>
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="text-xs font-black uppercase tracking-[.12em] text-slate-500">{t.failureCodes}</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+         {(data?.print_health.top_failures??[]).length
+          ? (data?.print_health.top_failures??[]).map(item=><span key={item.code} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700">{item.code} · {item.count}</span>)
+          : <span className="text-xs text-slate-400">—</span>}
+        </div>
+       </div>
+       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="text-xs font-black uppercase tracking-[.12em] text-slate-500">{t.transportFailures}</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+         {(data?.print_health.transport_failures??[]).length
+          ? (data?.print_health.transport_failures??[]).map(item=><span key={item.transport} className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">{item.transport} · {item.count}</span>)
+          : <span className="text-xs text-slate-400">—</span>}
+        </div>
+       </div>
+      </div>
+      {data?.print_health.telemetry_stale?<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">{language==="th"?"Telemetry งานพิมพ์ไม่สด: ไม่มี print job ใหม่เกิน 30 นาที ให้กด “ค้นหา / ดึง Diagnostics” และตรวจ Print Agent binding":"Print telemetry is stale: no new print job for more than 30 minutes. Pull diagnostics and verify Print Agent binding."}</div>:null}
+
+
     </div>
-   </div>
-   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="text-xs font-black uppercase tracking-[.12em] text-slate-500">{t.transportFailures}</div>
-    <div className="mt-3 flex flex-wrap gap-2">
-     {(data?.print_health.transport_failures??[]).length
-      ? (data?.print_health.transport_failures??[]).map(item=><span key={item.transport} className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">{item.transport} · {item.count}</span>)
-      : <span className="text-xs text-slate-400">—</span>}
-    </div>
-   </div>
-  </div>
-  {data?.print_health.telemetry_stale?<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">{language==="th"?"Telemetry งานพิมพ์ไม่สด: ไม่มี print job ใหม่เกิน 30 นาที ให้กด “ค้นหา / ดึง Diagnostics” และตรวจ Print Agent binding":"Print telemetry is stale: no new print job for more than 30 minutes. Pull diagnostics and verify Print Agent binding."}</div>:null}
+   </section>
+  </div>:null}
 
   <div className="mt-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
    <input value={query} onChange={e=>setQuery(e.target.value)} placeholder={t.search} className="min-w-[260px] flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm" />

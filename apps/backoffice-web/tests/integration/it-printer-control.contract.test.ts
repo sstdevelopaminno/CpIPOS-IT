@@ -37,6 +37,15 @@ describe("IT printer control",()=>{
   expect(ui).toContain("removeFromSnapshot(row)");
  });
 
+ it("keeps support tables visible and moves printer health into a diagnostics popup",()=>{
+  expect(ui).toContain('overview:"ภาพรวม / Diagnostics"');
+  expect(ui).toContain("diagnosticsOpen");
+  expect(ui).toContain("setDiagnosticsOpen(true)");
+  expect(ui).toContain('role="dialog"');
+  expect(ui).toContain("data?.print_health.p95_total_ms");
+  expect(ui).toContain("rows.map(row=>");
+ });
+
  it("reports queue health and latency with explicit millisecond/second units",()=>{
   expect(api).toContain("p95_queue_to_claim_ms");
   expect(api).toContain("p95_claim_to_print_ms");
