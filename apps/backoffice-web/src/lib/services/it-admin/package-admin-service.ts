@@ -203,7 +203,7 @@ async function syncPackageFeatures(context: ItAdminContext, packageId: string, f
 
 export async function listPackagesForAdmin() {
   const context = (await import("@/lib/supabase-admin")).getPrimarySupabaseServiceClient();
-  const [packagesResult, featuresResult, linksResult] = await Promise.all([
+  const [packagesResult, featuresResult, linksResult, aiQuotaResult] = await Promise.all([
     context.from("subscription_packages").select(PACKAGE_SELECT)
       .order("display_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
@@ -214,13 +214,17 @@ export async function listPackagesForAdmin() {
       .order("name", { ascending: true }),
     context.from("subscription_package_features")
       .select("package_id,feature_code,included")
-      .eq("included", true)
+      .eq("included", true),
+    context.from("pos_ai_package_quotas")
+      .select("package_id,is_enabled,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days")
   ]);
   if (packagesResult.error) throw new Error(packagesResult.error.message);
   if (featuresResult.error) throw new Error(featuresResult.error.message);
   if (linksResult.error) throw new Error(linksResult.error.message);
+  if (aiQuotaResult.error) throw new Error(aiQuotaResult.error.message);
 
   const links = linksResult.data ?? [];
+  const aiQuotaByPackage = new Map((aiQuotaResult.data ?? []).map((item) => [item.package_id, item]));
   return {
     generated_at: new Date().toISOString(),
     packages: (packagesResult.data ?? []).map((row) => ({
@@ -228,7 +232,8 @@ export async function listPackagesForAdmin() {
       effective_monthly_price: effectivePrice(row.monthly_price, row.monthly_discount_percent),
       effective_yearly_price: row.yearly_price == null ? null : effectivePrice(row.yearly_price, row.yearly_discount_percent),
       feature_codes: links.filter((item) => item.package_id === row.id).map((item) => item.feature_code),
-      custom_per_store: row.quota_mode === "custom" || row.code === "custom"
+      custom_per_store: row.quota_mode === "custom" || row.code === "custom",
+      ai_quota: aiQuotaByPackage.get(row.id) ?? null
     })),
     features: featuresResult.data ?? []
   };
