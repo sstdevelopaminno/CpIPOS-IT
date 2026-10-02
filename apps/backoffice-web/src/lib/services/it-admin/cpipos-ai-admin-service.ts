@@ -238,7 +238,7 @@ export async function listCpiposAiPackageQuotas(context: ItAdminContext) {
   const db = context.supabase;
   const [packages, quotas] = await Promise.all([
     db.from("subscription_packages")
-      .select("id,code,name,monthly_price,is_active,status,display_order")
+      .select("id,code,name,monthly_price,is_active,status,display_order,metadata")
       .eq("is_active", true)
       .order("display_order", { ascending: true, nullsFirst: false }),
     db.from("pos_ai_package_quotas")
