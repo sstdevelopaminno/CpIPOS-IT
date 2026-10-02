@@ -43,7 +43,9 @@ function friendlySettlementError(message: string) {
     bank_reference_invalid: ["กรุณาระบุเลขอ้างอิงธุรกรรมธนาคารที่ถูกต้อง", 422],
     bank_received_at_invalid: ["กรุณาตรวจสอบวันและเวลาที่ธนาคารรับเงิน", 422],
     amount_received_invalid: ["ยอดเงินเข้าที่ตรวจสอบแล้วไม่ถูกต้อง", 422],
-    bank_reference_already_used: ["เลขอ้างอิงธนาคารนี้ถูกใช้ยืนยันรายการอื่นแล้ว", 409]
+    bank_reference_already_used: ["เลขอ้างอิงธนาคารนี้ถูกใช้ยืนยันรายการอื่นแล้ว", 409],
+    ai_addon_payment_required: ["รายการนี้ไม่ใช่คำขอชำระ CpiPOS AI Add-on", 422],
+    ai_addon_quota_missing: ["AI Add-on รายการนี้ไม่มีโควตาที่เชื่อถือได้", 422]
   };
   const key = Object.keys(map).find((item) => message.includes(item));
   return key ? { code: key, message: map[key][0], status: map[key][1] } : null;
@@ -79,6 +81,75 @@ export async function POST(request: Request, { params }: Params) {
 
     if (!reference || !Number.isFinite(parsedReceivedAt) || !Number.isFinite(amount) || amount <= 0) {
       return fail("settlement_fields_required", "กรอกเลขอ้างอิงธนาคาร วันเวลาเงินเข้า และยอดเงินที่ตรวจสอบแล้วให้ครบ", 422);
+    }
+
+    const requestRow = await supabase.from("tenant_subscription_payment_requests")
+      .select("tenant_id,metadata")
+      .eq("id", requestId)
+      .maybeSingle<{ tenant_id: string; metadata: Record<string, unknown> | null }>();
+    if (requestRow.error) throw requestRow.error;
+    if (!requestRow.data) return fail("request_not_found", "ไม่พบคำขอชำระแพ็กเกจ", 404);
+
+    if (requestRow.data.metadata?.kind === "ai_addon_payment") {
+      const aiResult = await supabase.rpc("settle_ai_addon_payment", {
+        p_request_id: requestId,
+        p_actor_id: auth.userId,
+        p_bank_transaction_reference: reference,
+        p_bank_received_at: new Date(parsedReceivedAt).toISOString(),
+        p_amount_received: Number(amount.toFixed(2)),
+        p_note: note || null
+      });
+      if (aiResult.error) {
+        const friendly = friendlySettlementError(aiResult.error.message || "");
+        if (friendly) return fail(friendly.code, friendly.message, friendly.status);
+        throw new Error(aiResult.error.message);
+      }
+
+      const purchase = (aiResult.data ?? {}) as {
+        already_settled?: boolean;
+        purchase_id?: string;
+        quota_month_key?: string;
+        extra_requests?: number | null;
+        extra_tokens?: number | null;
+        extra_cost_usd?: number | null;
+      };
+
+      await appendAuditLog({
+        tenantId: requestRow.data.tenant_id,
+        actorUserId: auth.userId,
+        actorRole: "it_admin",
+        action: purchase.already_settled ? "ai_addon_settlement_reopened" : "ai_addon_payment_settled",
+        targetTable: "pos_ai_tenant_addon_purchases",
+        targetId: purchase.purchase_id,
+        metadata: {
+          request_id: requestId,
+          quota_month_key: purchase.quota_month_key ?? null,
+          extra_requests: purchase.extra_requests ?? null,
+          extra_tokens: purchase.extra_tokens ?? null,
+          extra_cost_usd: purchase.extra_cost_usd ?? null,
+          bank_reference_suffix: reference.slice(-6)
+        },
+        ipAddress: requestMeta.ipAddress ?? undefined,
+        userAgent: requestMeta.userAgent ?? undefined
+      });
+
+      await dispatchSupportPush({
+        audience:"store",
+        tenant_id:requestRow.data.tenant_id,
+        kind:"request",
+        title:"CpiPOS AI Add-on พร้อมใช้งานแล้ว",
+        body:`เพิ่มโควตา AI สำหรับรอบ ${purchase.quota_month_key ?? "ปัจจุบัน"} เรียบร้อยแล้ว`,
+        url:"/preview/pos/ai-assistant",
+        tag:`ai-addon-request:${requestId}`
+      }).catch(()=>null);
+
+      const response = ok({
+        settlement: purchase,
+        ai_addon: true,
+        email_delivery: { status: "not_applicable", message: "AI Add-on activated; no subscription receipt generated." }
+      });
+      response.headers.set("cache-control", "private, no-store");
+      return response;
     }
 
     const result = await supabase.rpc("settle_subscription_payment", {

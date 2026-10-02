@@ -124,7 +124,11 @@ export async function GET() {
           reviewed_at: payment.reviewed_at,
           has_evidence: Boolean(payment.evidence_url),
           source: typeof payment.metadata?.source === "string" ? payment.metadata.source : "unknown",
-          kind: payment.metadata?.kind === "payment_notice" ? "payment_notice" : "renewal_intent",
+          kind: payment.metadata?.kind === "ai_addon_payment"
+            ? "ai_addon_payment"
+            : payment.metadata?.kind === "payment_notice"
+              ? "payment_notice"
+              : "renewal_intent",
           billing_interval: payment.metadata?.billing_interval === "yearly" ? "yearly" : "monthly",
           expected_amount: payment.metadata?.expected_amount == null ||
             !Number.isFinite(Number(payment.metadata.expected_amount))

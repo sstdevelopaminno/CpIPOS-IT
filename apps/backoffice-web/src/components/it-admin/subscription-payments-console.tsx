@@ -14,7 +14,7 @@ type Row = {
   billing_cycle: { id: string; status: string; amount_due: number; amount_paid: number;
     period_start: string; period_end: string } | null;
   payment: { id: string; status: string; amount_reported: number | null; submitted_at: string | null;
-    reviewed_at: string | null; has_evidence: boolean; source: string; kind: "payment_notice" | "renewal_intent";
+    reviewed_at: string | null; has_evidence: boolean; source: string; kind: "payment_notice" | "renewal_intent" | "ai_addon_payment";
     billing_interval: "monthly" | "yearly"; expected_amount: number | null } | null;
   has_paid_cycle: boolean;
   receipt: { id: string; payment_request_id: string; number: string; issued_at: string;
@@ -266,7 +266,8 @@ export function SubscriptionPaymentsConsole() {
                   {row.payment ? <span className="mt-1 block text-xs font-semibold text-blue-700">
                     {row.payment.source === "pos_subscription_center" ? "POS → IT" : "ระบบ"}
                     {" · "}
-                    {row.payment.kind === "payment_notice" ? "แจ้งโอน" : "ขอต่ออายุ"}
+                    {row.payment.kind === "ai_addon_payment" ? "CpiPOS AI Add-on" :
+                      row.payment.kind === "payment_notice" ? "แจ้งโอน" : "ขอต่ออายุ"}
                     {" · "}
                     {row.payment.billing_interval === "yearly" ? "รายปี" : "รายเดือน"}
                   </span> : null}
