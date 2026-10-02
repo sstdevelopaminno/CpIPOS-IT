@@ -26,6 +26,13 @@ describe("CpIPOS IT AI control center", () => {
     expect(listUi).toContain("ต้นทุน AI เดือนนี้");
   });
 
+  it("includes approved monthly AI Add-ons in IT effective quota views", () => {
+    expect(service).toContain('from("pos_ai_tenant_addon_purchases")');
+    expect(service).toContain("quotaWithAddons");
+    expect(service).toContain("addonTotals");
+    expect(listUi).toContain("Add-on เดือนนี้");
+  });
+
   it("supports package/per-store quota and chat retention", () => {
     expect(migration).toContain("pos_ai_package_quotas");
     expect(migration).toContain("pos_ai_tenant_quota_overrides");
