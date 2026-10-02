@@ -70,6 +70,7 @@ export function CpiPosAiAdminConsole() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [quotaOpen, setQuotaOpen] = useState(false);
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState<Record<string, {
     is_enabled: boolean;
@@ -152,9 +153,14 @@ export function CpiPosAiAdminConsole() {
           <h2>CpiPOS AI</h2>
           <p>ติดตามร้านที่เปิดใช้งาน AI, token, ค่าใช้จ่าย, Conversation ID และกำหนด AI Quota ต่อแพ็กเกจ/ต่อร้าน</p>
         </div>
-        <button type="button" className={styles.primaryButton} onClick={() => void load(true)} disabled={refreshing}>
-          {refreshing ? "กำลังรีเฟรช…" : "รีเฟรช"}
-        </button>
+        <div className={styles.headerActions}>
+          <button type="button" className={styles.secondaryButton} onClick={() => setQuotaOpen(true)}>
+            ตั้งค่า AI Quota
+          </button>
+          <button type="button" className={styles.primaryButton} onClick={() => void load(true)} disabled={refreshing}>
+            {refreshing ? "กำลังรีเฟรช…" : "รีเฟรช"}
+          </button>
+        </div>
       </header>
 
       <section className={styles.summaryGrid}>
@@ -166,44 +172,6 @@ export function CpiPosAiAdminConsole() {
       </section>
 
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
-
-      <section className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div><span className={styles.eyebrow}>PACKAGE QUOTA</span><h3>AI Quota ต่อแพ็กเกจ / ต่อเดือน</h3></div>
-          <small>เว้นช่องว่าง = ไม่จำกัด · ร้านสามารถ Override ได้ในหน้ารายละเอียด</small>
-        </div>
-        <div className={styles.packageGrid}>
-          {(data?.packages ?? []).map((pkg) => {
-            const draft = drafts[pkg.id] ?? { is_enabled: true, monthly_request_limit: "", monthly_token_limit: "", monthly_cost_limit_usd: "", history_retention_days: "" };
-            return (
-              <article className={styles.packageCard} key={pkg.id}>
-                <div className={styles.packageTitle}>
-                  <div><strong>{pkg.name}</strong><span>{pkg.code}</span></div>
-                  <label className={styles.toggleLabel}>
-                    <input type="checkbox" checked={draft.is_enabled}
-                      onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, is_enabled: event.target.checked } }))} />
-                    <span>{draft.is_enabled ? "เปิด AI" : "ปิด AI"}</span>
-                  </label>
-                </div>
-                <div className={styles.formGrid}>
-                  <label><span>จำนวนคำขอ / เดือน</span><input inputMode="numeric" value={draft.monthly_request_limit}
-                    onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_request_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
-                  <label><span>Token / เดือน</span><input inputMode="numeric" value={draft.monthly_token_limit}
-                    onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_token_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
-                  <label><span>เก็บประวัติแชท (วัน)</span><input inputMode="numeric" value={draft.history_retention_days}
-                    onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, history_retention_days: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="IT / สัญญากำหนด" /></label>
-                  <label><span>ที่เก็บข้อความ</span><input value="OpenAI Conversations" disabled /></label>
-                  <label className={styles.span2}><span>งบ AI / เดือน (USD)</span><input inputMode="decimal" value={draft.monthly_cost_limit_usd}
-                    onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_cost_limit_usd: event.target.value.replace(/[^0-9.]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
-                </div>
-                <button type="button" className={styles.secondaryButton} disabled={saving !== null} onClick={() => void savePackage(pkg)}>
-                  {saving === pkg.id ? "กำลังบันทึก…" : "บันทึก AI Quota"}
-                </button>
-              </article>
-            );
-          })}
-        </div>
-      </section>
 
       <section className={styles.panel}>
         <div className={styles.toolbar}>
@@ -241,6 +209,56 @@ export function CpiPosAiAdminConsole() {
           </table>
         </div>
       </section>
+
+      {quotaOpen ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setQuotaOpen(false);
+        }}>
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="package-quota-title">
+            <div className={styles.modalHeader}>
+              <div>
+                <span className={styles.eyebrow}>PACKAGE QUOTA</span>
+                <h3 id="package-quota-title">AI Quota ต่อแพ็กเกจ / ต่อเดือน</h3>
+                <p>เว้นช่องว่าง = ไม่จำกัด · ร้านสามารถ Override ได้ในหน้ารายละเอียด</p>
+              </div>
+              <button type="button" className={styles.modalClose} aria-label="ปิด" onClick={() => setQuotaOpen(false)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.packageGrid}>
+                {(data?.packages ?? []).map((pkg) => {
+                  const draft = drafts[pkg.id] ?? { is_enabled: true, monthly_request_limit: "", monthly_token_limit: "", monthly_cost_limit_usd: "", history_retention_days: "" };
+                  return (
+                    <article className={styles.packageCard} key={pkg.id}>
+                      <div className={styles.packageTitle}>
+                        <div><strong>{pkg.name}</strong><span>{pkg.code}</span></div>
+                        <label className={styles.toggleLabel}>
+                          <input type="checkbox" checked={draft.is_enabled}
+                            onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, is_enabled: event.target.checked } }))} />
+                          <span>{draft.is_enabled ? "เปิด AI" : "ปิด AI"}</span>
+                        </label>
+                      </div>
+                      <div className={styles.formGrid}>
+                        <label><span>จำนวนคำขอ / เดือน</span><input inputMode="numeric" value={draft.monthly_request_limit}
+                          onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_request_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
+                        <label><span>Token / เดือน</span><input inputMode="numeric" value={draft.monthly_token_limit}
+                          onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_token_limit: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
+                        <label><span>เก็บประวัติแชท (วัน)</span><input inputMode="numeric" value={draft.history_retention_days}
+                          onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, history_retention_days: event.target.value.replace(/[^0-9]/g, "") } }))} placeholder="IT / สัญญากำหนด" /></label>
+                        <label><span>ที่เก็บข้อความ</span><input value="OpenAI Conversations" disabled /></label>
+                        <label className={styles.span2}><span>งบ AI / เดือน (USD)</span><input inputMode="decimal" value={draft.monthly_cost_limit_usd}
+                          onChange={(event) => setDrafts((current) => ({ ...current, [pkg.id]: { ...draft, monthly_cost_limit_usd: event.target.value.replace(/[^0-9.]/g, "") } }))} placeholder="ไม่จำกัด" /></label>
+                      </div>
+                      <button type="button" className={styles.secondaryButton} disabled={saving !== null} onClick={() => void savePackage(pkg)}>
+                        {saving === pkg.id ? "กำลังบันทึก…" : "บันทึก AI Quota"}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
