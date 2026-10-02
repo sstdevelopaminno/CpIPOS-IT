@@ -39,6 +39,14 @@ describe("CpIPOS IT AI control center", () => {
     expect(detailUi).toContain("เก็บประวัติแชท (วัน)");
   });
 
+  it("cross-checks Subscription Add-on metadata beside authoritative package quotas", () => {
+    expect(service).toContain('select("id,code,name,monthly_price,is_active,status,display_order,metadata")');
+    expect(listUi).toContain("Add-on จาก Subscription");
+    expect(listUi).toContain("ai_addon_monthly_price");
+    expect(listUi).toContain("ai_addon_monthly_requests");
+    expect(listUi).toContain("ai_addon_monthly_tokens");
+  });
+
   it("shows chat-room IDs, command usage and daily/monthly/yearly summaries", () => {
     expect(detailUi).toContain("ห้องแชทและ OpenAI Conversation ID");
     expect(detailUi).toContain("Room ID");
