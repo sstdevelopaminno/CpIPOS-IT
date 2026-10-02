@@ -40,6 +40,13 @@ type UsageAgg = {
   total_cost_usd: number | string | null;
 };
 
+type AiAddonPurchase = {
+  tenant_id: string;
+  extra_request_limit: number | null;
+  extra_token_limit: number | string | null;
+  extra_cost_limit_usd: number | string | null;
+};
+
 function numberValue(value: unknown) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -95,6 +102,29 @@ function effectiveQuota(packageQuota: PackageQuota | null, override: TenantOverr
   };
 }
 
+function addonTotals(rows: AiAddonPurchase[]) {
+  return rows.reduce((sum, row) => ({
+    purchases: sum.purchases + 1,
+    requests: sum.requests + Math.max(0, Math.trunc(numberValue(row.extra_request_limit))),
+    tokens: sum.tokens + Math.max(0, Math.trunc(numberValue(row.extra_token_limit))),
+    cost_usd: Number((sum.cost_usd + Math.max(0, numberValue(row.extra_cost_limit_usd))).toFixed(6))
+  }), { purchases: 0, requests: 0, tokens: 0, cost_usd: 0 });
+}
+
+function quotaWithAddons(base: ReturnType<typeof effectiveQuota>, rows: AiAddonPurchase[]) {
+  const addons = addonTotals(rows);
+  if (base.mode === "unlimited") return { ...base, addons };
+  return {
+    ...base,
+    limits: {
+      requests: base.limits.requests === null ? null : base.limits.requests + addons.requests,
+      tokens: base.limits.tokens === null ? null : base.limits.tokens + addons.tokens,
+      cost_usd: base.limits.cost_usd === null ? null : Number((base.limits.cost_usd + addons.cost_usd).toFixed(6))
+    },
+    addons
+  };
+}
+
 function usageShape(row?: Partial<UsageAgg> | null) {
   return {
     requests: Math.max(0, Math.trunc(numberValue(row?.request_count))),
@@ -147,7 +177,7 @@ async function syncTenantAiFeatureOverride(
 export async function listCpiposAiStores(context: ItAdminContext) {
   const db = context.supabase;
   const bounds = monthBoundsBangkok();
-  const [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, links] = await Promise.all([
+  const [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, links, addonPurchases] = await Promise.all([
     db.from("tenants").select("id,code,name,display_name,is_active,package_id").order("name"),
     db.from("tenant_subscription_contracts")
       .select("tenant_id,package_id,status,created_at")
@@ -162,9 +192,12 @@ export async function listCpiposAiStores(context: ItAdminContext) {
     db.from("pos_ai_tenant_quota_overrides")
       .select("tenant_id,quota_mode,is_enabled_override,monthly_request_limit,monthly_token_limit,monthly_cost_limit_usd,history_retention_days"),
     db.rpc("pos_ai_admin_tenant_usage", { p_started_at: bounds.start, p_ended_at: bounds.end }),
-    db.from("pos_ai_chat_rooms").select("id,tenant_id,user_id,branch_id,title,openai_conversation_id,updated_at,last_message_at")
+    db.from("pos_ai_chat_rooms").select("id,tenant_id,user_id,branch_id,title,openai_conversation_id,updated_at,last_message_at"),
+    db.from("pos_ai_tenant_addon_purchases")
+      .select("tenant_id,extra_request_limit,extra_token_limit,extra_cost_limit_usd")
+      .eq("quota_month_key", bounds.month_key)
   ]);
-  for (const result of [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, links]) {
+  for (const result of [tenants, contracts, packages, policies, packageQuotas, tenantOverrides, usage, links, addonPurchases]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -176,6 +209,12 @@ export async function listCpiposAiStores(context: ItAdminContext) {
   const packageQuotaMap = new Map((packageQuotas.data ?? []).map((row) => [row.package_id, row as PackageQuota]));
   const overrideMap = new Map((tenantOverrides.data ?? []).map((row) => [row.tenant_id, row as TenantOverride]));
   const usageMap = new Map(((usage.data ?? []) as UsageAgg[]).map((row) => [row.tenant_id, row]));
+  const addonsByTenant = new Map<string, AiAddonPurchase[]>();
+  for (const row of (addonPurchases.data ?? []) as AiAddonPurchase[]) {
+    const current = addonsByTenant.get(row.tenant_id) ?? [];
+    current.push(row);
+    addonsByTenant.set(row.tenant_id, current);
+  }
   const linksByTenant = new Map<string, Array<Record<string, unknown>>>();
   for (const row of links.data ?? []) {
     const current = linksByTenant.get(row.tenant_id) ?? [];
@@ -193,7 +232,10 @@ export async function listCpiposAiStores(context: ItAdminContext) {
     const contract = latestContract.get(tenant.id) ?? null;
     const packageId = contract?.package_id ?? tenant.package_id ?? null;
     const pkg = packageId ? packageMap.get(packageId) ?? null : null;
-    const quota = effectiveQuota(packageId ? packageQuotaMap.get(packageId) ?? null : null, overrideMap.get(tenant.id) ?? null);
+    const quota = quotaWithAddons(
+      effectiveQuota(packageId ? packageQuotaMap.get(packageId) ?? null : null, overrideMap.get(tenant.id) ?? null),
+      addonsByTenant.get(tenant.id) ?? []
+    );
     const tenantPolicy = policyMap.get(tenant.id);
     const menuEnabled = tenantPolicy?.has("main.ai_assistant")
       ? tenantPolicy.get("main.ai_assistant") !== false
@@ -301,7 +343,7 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
   const yearStart = new Date(Date.UTC(now.getUTCFullYear() - 4, 0, 1)).toISOString();
   const monthSeriesStart = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1)).toISOString();
 
-  const [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage] = await Promise.all([
+  const [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage, addonPurchases] = await Promise.all([
     db.from("tenants").select("id,code,name,display_name,is_active,package_id").eq("id", tenantId).maybeSingle(),
     db.from("tenant_subscription_contracts")
       .select("package_id,status,created_at")
@@ -322,9 +364,13 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: dayStart, p_ended_at: now.toISOString(), p_grain: "day" }),
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: monthSeriesStart, p_ended_at: now.toISOString(), p_grain: "month" }),
     db.rpc("pos_ai_admin_usage_series", { p_tenant_id: tenantId, p_started_at: yearStart, p_ended_at: now.toISOString(), p_grain: "year" }),
-    db.rpc("pos_ai_usage_summary", { p_tenant_id: tenantId, p_started_at: month.start, p_ended_at: month.end })
+    db.rpc("pos_ai_usage_summary", { p_tenant_id: tenantId, p_started_at: month.start, p_ended_at: month.end }),
+    db.from("pos_ai_tenant_addon_purchases")
+      .select("tenant_id,extra_request_limit,extra_token_limit,extra_cost_limit_usd")
+      .eq("tenant_id", tenantId)
+      .eq("quota_month_key", month.month_key)
   ]);
-  for (const result of [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage]) {
+  for (const result of [tenant, contract, policy, override, links, events, daily, monthly, yearly, monthUsage, addonPurchases]) {
     if (result.error) throw new Error(result.error.message);
   }
   if (!tenant.data) return null;
@@ -344,7 +390,10 @@ export async function getCpiposAiTenantDetail(context: ItAdminContext, tenantId:
   const profileMap = new Map((profiles.data ?? []).map((row) => [row.id, row]));
   const branchMap = new Map((branches.data ?? []).map((row) => [row.id, row]));
   const roleMap = new Map((roles.data ?? []).map((row) => [`${row.user_id}:${row.branch_id}`, row.role]));
-  const quota = effectiveQuota((packageQuota.data ?? null) as PackageQuota | null, (override.data ?? null) as TenantOverride | null);
+  const quota = quotaWithAddons(
+    effectiveQuota((packageQuota.data ?? null) as PackageQuota | null, (override.data ?? null) as TenantOverride | null),
+    (addonPurchases.data ?? []) as AiAddonPurchase[]
+  );
   const monthUsageShape = usageShape(((monthUsage.data ?? []) as UsageAgg[])[0] ?? null);
   const menuPolicy = new Map((policy.data ?? []).map((row) => [row.menu_key, row.is_enabled]));
   const menuEnabled = menuPolicy.has("main.ai_assistant")
