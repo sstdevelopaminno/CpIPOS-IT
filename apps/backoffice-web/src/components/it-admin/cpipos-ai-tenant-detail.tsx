@@ -124,6 +124,7 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [detailModal, setDetailModal] = useState<"overview" | "quota" | "usage" | "series" | null>(null);
   const [quotaMode, setQuotaMode] = useState<"inherit" | "custom" | "unlimited">("inherit");
   const [enabledMode, setEnabledMode] = useState<"inherit" | "enabled" | "disabled">("inherit");
   const [requests, setRequests] = useState("");
@@ -240,6 +241,10 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
           <p>{data?.tenant.code ?? "—"} · Tenant ID: {data?.tenant.id ?? tenantId}</p>
         </div>
         <div className={styles.headerActions}>
+          <button type="button" className={styles.secondaryButton} onClick={() => setDetailModal("overview")}>ภาพรวม AI</button>
+          <button type="button" className={styles.secondaryButton} onClick={() => setDetailModal("quota")}>AI Quota ร้าน</button>
+          <button type="button" className={styles.secondaryButton} onClick={() => setDetailModal("usage")}>Command Log</button>
+          <button type="button" className={styles.secondaryButton} onClick={() => setDetailModal("series")}>สรุปการใช้งาน</button>
           <span className={data?.menu_enabled ? styles.goodBadge : styles.offBadge}>{data?.menu_enabled ? "เมนู AI เปิด" : "เมนู AI ปิด"}</span>
           <button type="button" className={styles.dangerButton} disabled={Boolean(busy)} onClick={() => void clearHistory()}>
             {busy === "history:all" ? "กำลังล้าง…" : "ล้างประวัติทั้งร้าน"}
@@ -265,20 +270,43 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
         </div>
       ) : null}
 
-      <section className={styles.summaryGrid}>
-        <article><span>แพ็กเกจ</span><strong className={styles.smallStrong}>{data?.package?.name ?? "—"}</strong><small>{data?.contract_status ?? "—"}</small></article>
-        <article><span>AI Users / ห้องแชท</span><strong>{fmt(data?.users.length)} / {fmt(data?.rooms.length)}</strong><small>Owner / Manager · OpenAI Conversations</small></article>
-        <article><span>คำขอเดือนนี้</span><strong>{fmt(usage?.requests)}</strong><small>{data?.quota.month ?? "—"}</small></article>
-        <article><span>Token เดือนนี้</span><strong>{fmt(usage?.total_tokens)}</strong><small>Input {fmt(usage?.input_tokens)} · Output {fmt(usage?.output_tokens)}</small></article>
-        <article><span>ต้นทุนเดือนนี้</span><strong className={styles.smallStrong}>{usd(usage?.cost_usd)}</strong><small>Estimated OpenAI cost</small></article>
-      </section>
-
-      <section className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div><span className={styles.eyebrow}>STORE QUOTA</span><h3>AI Quota ของร้านนี้</h3></div>
-          <small>Package default → Tenant override → usage เดือนปัจจุบัน</small>
+      {detailModal === "overview" ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setDetailModal(null);
+        }}>
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="ai-overview-title">
+            <div className={styles.modalHeader}>
+              <div><span className={styles.eyebrow}>AI STORE OVERVIEW</span><h3 id="ai-overview-title">ภาพรวม CpiPOS AI ของร้าน</h3></div>
+              <button type="button" className={styles.modalClose} aria-label="ปิด" onClick={() => setDetailModal(null)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <section className={styles.summaryGrid}>
+                <article><span>แพ็กเกจ</span><strong className={styles.smallStrong}>{data?.package?.name ?? "—"}</strong><small>{data?.contract_status ?? "—"}</small></article>
+                <article><span>AI Users / ห้องแชท</span><strong>{fmt(data?.users.length)} / {fmt(data?.rooms.length)}</strong><small>Owner / Manager · OpenAI Conversations</small></article>
+                <article><span>คำขอเดือนนี้</span><strong>{fmt(usage?.requests)}</strong><small>{data?.quota.month ?? "—"}</small></article>
+                <article><span>Token เดือนนี้</span><strong>{fmt(usage?.total_tokens)}</strong><small>Input {fmt(usage?.input_tokens)} · Output {fmt(usage?.output_tokens)}</small></article>
+                <article><span>ต้นทุนเดือนนี้</span><strong className={styles.smallStrong}>{usd(usage?.cost_usd)}</strong><small>Estimated OpenAI cost</small></article>
+              </section>
+            </div>
+          </section>
         </div>
-        <div className={styles.quotaLayout}>
+      ) : null}
+
+      {detailModal === "quota" ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setDetailModal(null);
+        }}>
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="store-quota-title">
+            <div className={styles.modalHeader}>
+              <div>
+                <span className={styles.eyebrow}>STORE QUOTA</span>
+                <h3 id="store-quota-title">AI Quota ของร้านนี้</h3>
+                <p>Package default → Tenant override → usage เดือนปัจจุบัน</p>
+              </div>
+              <button type="button" className={styles.modalClose} aria-label="ปิด" onClick={() => setDetailModal(null)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.quotaLayout}>
           <div className={styles.quotaForm}>
             <label><span>โหมด Quota</span><select value={quotaMode} onChange={(event) => setQuotaMode(event.target.value as typeof quotaMode)}>
               <option value="inherit">ตามแพ็กเกจ</option><option value="custom">กำหนดเฉพาะร้าน</option><option value="unlimited">ไม่จำกัด</option>
@@ -302,8 +330,11 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
             <p>เก็บประวัติ: {data?.quota.history_retention_days ? `${fmt(data.quota.history_retention_days)} วัน` : "ตามสัญญา / ไม่กำหนด"}</p>
             {limits?.requests ? <div className={styles.progress}><i style={{ width: `${requestPercent}%` }} /></div> : null}
           </div>
+              </div>
+            </div>
+          </section>
         </div>
-      </section>
+      ) : null}
 
       <section className={styles.panel}>
         <div className={styles.panelHeader}>
@@ -327,8 +358,21 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
         </table></div>
       </section>
 
-      <section className={styles.panel}>
-        <div className={styles.panelHeader}><div><span className={styles.eyebrow}>COMMAND LOG</span><h3>คำสั่งที่ผู้ใช้พิมพ์และ Token ต่อคำขอ</h3></div><small>เก็บเฉพาะคำสั่ง + usage ledger; AI reply เต็มยังอยู่ใน OpenAI Conversation</small></div>
+      {detailModal === "usage" ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setDetailModal(null);
+        }}>
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="command-log-title">
+            <div className={styles.modalHeader}>
+              <div>
+                <span className={styles.eyebrow}>COMMAND LOG</span>
+                <h3 id="command-log-title">คำสั่งที่ผู้ใช้พิมพ์และ Token ต่อคำขอ</h3>
+                <p>เก็บเฉพาะคำสั่ง + usage ledger; AI reply เต็มยังอยู่ใน OpenAI Conversation</p>
+              </div>
+              <button type="button" className={styles.modalClose} aria-label="ปิด" onClick={() => setDetailModal(null)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <section className={styles.panel}>
         <div className={styles.tableWrap}><table>
           <thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>คำสั่ง</th><th>Model</th><th>Input</th><th>Output</th><th>Total</th><th>Cost</th><th>Response ID</th></tr></thead>
           <tbody>{(data?.events ?? []).length ? data!.events.map((event) => {
@@ -346,9 +390,23 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
             </tr>;
           }) : <tr><td colSpan={9} className={styles.empty}>ยังไม่มีการใช้งาน AI ที่บันทึก usage</td></tr>}</tbody>
         </table></div>
-      </section>
+              </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
-      <section className={styles.seriesGrid}>
+      {detailModal === "series" ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setDetailModal(null);
+        }}>
+          <section className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="usage-series-title">
+            <div className={styles.modalHeader}>
+              <div><span className={styles.eyebrow}>USAGE SUMMARY</span><h3 id="usage-series-title">สรุปการใช้งาน AI</h3></div>
+              <button type="button" className={styles.modalClose} aria-label="ปิด" onClick={() => setDetailModal(null)}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <section className={styles.seriesGrid}>
         {(["daily","monthly","yearly"] as const).map((kind) => (
           <article className={styles.panel} key={kind}>
             <div className={styles.panelHeader}><div><span className={styles.eyebrow}>{kind.toUpperCase()}</span><h3>{kind === "daily" ? "สรุปรายวัน" : kind === "monthly" ? "สรุปรายเดือน" : "สรุปรายปี"}</h3></div></div>
@@ -356,7 +414,11 @@ export function CpiPosAiTenantDetail({ tenantId }: { tenantId: string }) {
             <tbody>{(data?.series[kind] ?? []).length ? data!.series[kind].map((row) => <tr key={row.bucket_start}><td>{row.bucket_start}</td><td>{fmt(row.request_count)}</td><td>{fmt(row.total_tokens)}</td><td>{usd(row.total_cost_usd)}</td></tr>) : <tr><td colSpan={4}>ยังไม่มีข้อมูล</td></tr>}</tbody></table></div>
           </article>
         ))}
-      </section>
+              </section>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
