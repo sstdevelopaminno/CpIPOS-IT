@@ -27,6 +27,14 @@ type PackageRow = {
   feature_codes: string[];
   custom_per_store: boolean;
   metadata?: Record<string, unknown> | null;
+  ai_quota?: {
+    package_id: string;
+    is_enabled: boolean;
+    monthly_request_limit: number | null;
+    monthly_token_limit: number | null;
+    monthly_cost_limit_usd: number | string | null;
+    history_retention_days: number | null;
+  } | null;
 };
 
 type Payload = {
@@ -100,6 +108,17 @@ function numberOrNull(value: string) {
   const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : null;
 }
+function aiQuotaSummary(row: PackageRow) {
+  if (row.custom_per_store) return "AI ตามสัญญา";
+  if (!row.ai_quota?.is_enabled) return "AI ปิด";
+  const requests = row.ai_quota.monthly_request_limit == null
+    ? "ไม่จำกัดคำขอ"
+    : new Intl.NumberFormat("th-TH").format(row.ai_quota.monthly_request_limit) + " ครั้ง/เดือน";
+  const tokens = row.ai_quota.monthly_token_limit == null
+    ? "ไม่จำกัด Token"
+    : new Intl.NumberFormat("th-TH").format(row.ai_quota.monthly_token_limit) + " tokens/เดือน";
+  return "AI " + requests + " · " + tokens;
+}
 
 function draftFrom(row: PackageRow): Draft {
   return {
@@ -159,6 +178,7 @@ export function PackageCatalogManager() {
 
   const rows = useMemo(() => (data?.packages ?? []).filter((row) => showRetired || row.status !== "retired"), [data, showRetired]);
   const activeCount = data?.packages.filter((row) => row.is_active && row.status === "active").length ?? 0;
+  const editingPackage = draft?.id ? data?.packages.find((row) => row.id === draft.id) ?? null : null;
 
   function update<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => current ? { ...current, [key]: value } : current);
@@ -297,10 +317,11 @@ export function PackageCatalogManager() {
                 <span>{row.max_branches} สาขา · {row.max_devices ?? "—"} เครื่อง · {row.max_users ?? "—"} ผู้ใช้</span>}</td>
               <td>{row.custom_per_store ? "ตามสัญญา" : <span>{row.max_products ?? "ไม่จำกัด"} สินค้า · {row.monthly_bill_limit ?? "ไม่จำกัด"} บิล/เดือน</span>}</td>
               <td>{row.custom_per_store ? <span className={styles.customBadge}>IT กำหนด</span> : <span>
-                {metaBoolean(row,"ai_included") ? `AI รวม ${metaNumber(row,"ai_monthly_requests") ?? "ตามโควตา"}` :
-                  metaBoolean(row,"ai_addon_available") ? `AI Add-on ฿${metaNumber(row,"ai_addon_monthly_price") ?? 299}` : "ไม่รวม AI"}
-                {" · "}
-                {metaNumber(row,"sales_mode_limit") ? `${metaNumber(row,"sales_mode_limit")} โหมด` : "โหมดตามสัญญา"}
+                <strong>{aiQuotaSummary(row)}</strong>
+                {metaBoolean(row,"ai_addon_available") ? <small>
+                  Add-on {money(metaNumber(row,"ai_addon_monthly_price"))} · +{metaNumber(row,"ai_addon_monthly_requests") ?? "—"} ครั้ง · +{metaNumber(row,"ai_addon_monthly_tokens") ?? "—"} tokens
+                </small> : null}
+                <small>{metaNumber(row,"sales_mode_limit") ? String(metaNumber(row,"sales_mode_limit")) + " โหมดขาย" : "โหมดตามสัญญา"}</small>
               </span>}</td>
               <td><strong>{row.custom_per_store ? "ตามสัญญา" : row.retention_months ? `${row.retention_months} เดือน` : "ไม่กำหนด"}</strong></td>
               <td><span className={row.is_active && row.status === "active" ? styles.active : styles.retired}>{row.status}</span></td>
@@ -349,7 +370,11 @@ export function PackageCatalogManager() {
             <label><span>โหมดขายสูงสุด</span><input type="number" min="1" max="3" value={draft.sales_mode_limit} onChange={(e) => update("sales_mode_limit",e.target.value)} /></label>
           </div>
 
-          <h4>CpiPOS AI Add-on</h4>
+          <h4>CpiPOS AI / Add-on</h4>
+          {editingPackage ? <div className={styles.customNote}>
+            <strong>AI Quota หลักของแพ็กเกจ</strong>
+            <span>{aiQuotaSummary(editingPackage)} · ค่า Quota หลักแก้ไขที่เมนู CpiPOS AI → AI Quota ต่อแพ็กเกจ / ต่อเดือน</span>
+          </div> : null}
           <div className={styles.formGrid}>
             <label className={styles.switch}><input type="checkbox" checked={draft.ai_addon_available} onChange={(e) => update("ai_addon_available",e.target.checked)} /><span>เปิดขาย AI Add-on</span></label>
             <label><span>ราคา Add-on / เดือน (บาท)</span><input type="number" min="0" step="0.01" placeholder="เช่น 299" value={draft.ai_addon_monthly_price} disabled={!draft.ai_addon_available} onChange={(e) => update("ai_addon_monthly_price",e.target.value)} /></label>
