@@ -39,9 +39,17 @@ describe("IT printer control",()=>{
   expect(api).toContain("p95_total_ms");
   expect(api).toContain("telemetry_stale");
   expect(api).toContain("top_failures");
+  expect(api).toContain("stale_claims");
+  expect(api).toContain("retried_24h");
+  expect(api).toContain("slow_queue_24h");
+  expect(api).toContain("slow_transport_24h");
+  expect(api).toContain("transport_failures");
   expect(ui).toContain('return `\${Math.round(value)} ms`');
   expect(ui).toContain('return `\${(value/1000).toFixed');
   expect(ui).toContain("data?.print_health.p95_total_ms");
+  expect(ui).toContain("data?.print_health.p95_queue_to_claim_ms");
+  expect(ui).toContain("data?.print_health.p95_claim_to_print_ms");
+  expect(ui).toContain("data?.print_health.stale_claims");
   expect(ui).toContain("Telemetry งานพิมพ์ไม่สด");
  });
 

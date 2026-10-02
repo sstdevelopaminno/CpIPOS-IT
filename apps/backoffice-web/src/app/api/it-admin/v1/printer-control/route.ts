@@ -27,8 +27,8 @@ type HealthRow = {
   pos_device_id:string|null;status:string;last_seen_at:string;metadata:JsonRecord|null;
 };
 type PrintJobMetricRow = {
-  id:string;status:string;created_at:string;claimed_at:string|null;printed_at:string|null;failed_at:string|null;
-  retry_count:number;last_error:string|null;agent_error_code:string|null;
+  id:string;status:string;created_at:string;claimed_at:string|null;claim_expires_at:string|null;printed_at:string|null;failed_at:string|null;
+  retry_count:number;last_error:string|null;agent_error_code:string|null;connection_type:string|null;printer_role:string|null;
 };
 
 function text(value:unknown,max=180){
@@ -88,7 +88,7 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
     db.from("pos_device_health_latest").select("pos_device_id,status,last_seen_at,metadata").order("last_seen_at",{ascending:false}).limit(1000).returns<HealthRow[]>(),
     db.from("printer_profiles").select("id,printer_name,printer_role,connection_type,paper_width_mm,enabled,metadata").limit(500),
     db.from("device_commands").select("id,pos_device_id,command_type,status,issued_at,delivered_at,result").in("command_type",["request_diagnostics","test_printer"]).order("issued_at",{ascending:false}).limit(300),
-    db.from("print_jobs").select("id,status,created_at,claimed_at,printed_at,failed_at,retry_count,last_error,agent_error_code").order("created_at",{ascending:false}).limit(1000).returns<PrintJobMetricRow[]>()
+    db.from("print_jobs").select("id,status,created_at,claimed_at,claim_expires_at,printed_at,failed_at,retry_count,last_error,agent_error_code,connection_type,printer_role").order("created_at",{ascending:false}).limit(1000).returns<PrintJobMetricRow[]>()
   ]);
   for(const result of [printers,agents,tenants,branches,devices,health,profiles,commands,printJobs]){
     if(result.error) throw new Error(result.error.message);
@@ -215,6 +215,26 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
   const lastJobMs=lastJobAt?Date.parse(lastJobAt):NaN;
   const jobs24h=metricRows.filter(row=>Date.parse(row.created_at)>=nowMs-24*60*60_000);
   const jobs30d=metricRows.filter(row=>Date.parse(row.created_at)>=nowMs-30*24*60*60_000);
+  const staleClaims=metricRows.filter(row=>
+    row.status==="printing" &&
+    row.claim_expires_at!==null &&
+    Number.isFinite(Date.parse(row.claim_expires_at)) &&
+    Date.parse(row.claim_expires_at)<=nowMs
+  );
+  const retried24h=jobs24h.filter(row=>Number(row.retry_count)>0);
+  const slowQueue24h=jobs24h.filter(row=>{
+    const value=elapsedMs(row.created_at,row.claimed_at);
+    return value!==null && value>=3000;
+  });
+  const slowTransport24h=jobs24h.filter(row=>{
+    const value=elapsedMs(row.claimed_at,row.printed_at);
+    return value!==null && value>=3000;
+  });
+  const transportFailures=new Map<string,number>();
+  for(const row of jobs30d.filter(row=>row.status==="failed"||row.status==="retrying")){
+    const transport=text(row.connection_type,60)||"unknown";
+    transportFailures.set(transport,(transportFailures.get(transport)??0)+1);
+  }
   const failuresByCode=new Map<string,number>();
   for(const row of jobs30d.filter(row=>row.status==="failed"||row.status==="retrying")){
     const code=text(row.agent_error_code)||text(row.last_error,80)||"unknown";
@@ -242,6 +262,10 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
       failed_24h:jobs24h.filter(row=>row.status==="failed").length,
       failed_30d:jobs30d.filter(row=>row.status==="failed").length,
       retried_30d:jobs30d.filter(row=>Number(row.retry_count)>0).length,
+      retried_24h:retried24h.length,
+      stale_claims:staleClaims.length,
+      slow_queue_24h:slowQueue24h.length,
+      slow_transport_24h:slowTransport24h.length,
       last_job_at:lastJobAt,
       telemetry_stale:!Number.isFinite(lastJobMs)||nowMs-lastJobMs>30*60_000,
       p50_queue_to_claim_ms:percentile(queueToClaim,.5),
@@ -250,11 +274,15 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
       p95_claim_to_print_ms:percentile(claimToPrint,.95),
       p50_total_ms:percentile(totalPrint,.5),
       p95_total_ms:percentile(totalPrint,.95),
-      top_failures:topFailures
+      top_failures:topFailures,
+      transport_failures:Array.from(transportFailures.entries())
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0,5)
+        .map(([transport,count])=>({transport,count}))
     },
     rows,
     remote_targets:remoteTargets,
-    note:"IT combines printer registry, Print Agent, POS runtime heartbeat and print queue telemetry. Browser USB/Bluetooth still requires local user permission once by browser security design."
+    note:"IT separates queue→claim latency from claim→print latency, stale leases, retries and transport failures. Browser USB/Bluetooth still requires local user permission once by browser security design."
   };
 }
 

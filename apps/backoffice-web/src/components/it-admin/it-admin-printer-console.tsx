@@ -15,12 +15,12 @@ type Snapshot={
   checked_at:string;
   summary:{total:number;printers:number;agents:number;runtimes:number;missing_agents:number;active:number;online:number;remote_targets:number};
   print_health:{
-    sample_jobs:number;pending:number;retrying:number;failed_24h:number;failed_30d:number;retried_30d:number;
+    sample_jobs:number;pending:number;retrying:number;failed_24h:number;failed_30d:number;retried_30d:number;retried_24h:number;stale_claims:number;slow_queue_24h:number;slow_transport_24h:number;
     last_job_at:string|null;telemetry_stale:boolean;
     p50_queue_to_claim_ms:number|null;p95_queue_to_claim_ms:number|null;
     p50_claim_to_print_ms:number|null;p95_claim_to_print_ms:number|null;
     p50_total_ms:number|null;p95_total_ms:number|null;
-    top_failures:Array<{code:string;count:number}>;
+    top_failures:Array<{code:string;count:number}>;transport_failures:Array<{transport:string;count:number}>;
   };
   rows:Row[];remote_targets:Array<{id:string;tenant:string;branch:string;device_code:string;device_name:string;surface:string;last_seen_at:string|null;print_agent_bound?:boolean}>;
   note:string;
@@ -40,7 +40,7 @@ const COPY={
   noRows:"ไม่พบรายการตามเงื่อนไข",loading:"กำลังโหลด...",error:"โหลดข้อมูลไม่สำเร็จ",
   printer:"เครื่องพิมพ์",agent:"Print Agent",paper:"ขนาดกระดาษ",brand:"ยี่ห้อ",model:"รุ่น",enabled:"เปิดใช้งาน",
   source:"แหล่งข้อมูล",inactive:"ไม่ใช้งาน",blocked:"ถูกบล็อก",offline:"ออฟไลน์",checking:"กำลังตรวจ",agentMissing:"ยังไม่มี Print Agent",unknown:"ไม่ทราบ",
-  queue:"คิวรอ/Retry",failed:"ล้มเหลว 30 วัน",latency:"P95 พิมพ์ครบ",telemetry:"Telemetry ล่าสุด",diagnose:"ตรวจใหม่"
+  queue:"คิวรอ/Retry",failed:"ล้มเหลว 30 วัน",latency:"P95 พิมพ์ครบ",telemetry:"Telemetry ล่าสุด",diagnose:"ตรวจใหม่",queueLatency:"คิว→Agent P95",printLatency:"Agent→พิมพ์ P95",retry24h:"Retry 24 ชม.",staleLease:"Lease ค้าง",slowQueue:"คิวช้า ≥3s",slowPrint:"พิมพ์ช้า ≥3s",failureCodes:"สาเหตุล้มเหลว",transportFailures:"ปัญหาตามการเชื่อมต่อ"
  },
  en:{
   eyebrow:"PRINT / REMOTE OPERATIONS",title:"Printer / Print Agent",
@@ -53,7 +53,7 @@ const COPY={
   noRows:"No matching records",loading:"Loading...",error:"Unable to load data",
   printer:"Printer",agent:"Print Agent",paper:"Paper width",brand:"Brand",model:"Model",enabled:"Enabled",
   source:"Source",inactive:"Inactive",blocked:"Blocked",offline:"Offline",checking:"Checking",agentMissing:"Print Agent missing",unknown:"Unknown",
-  queue:"Queue / Retry",failed:"Failed 30d",latency:"P95 end-to-end",telemetry:"Latest telemetry",diagnose:"Diagnose"
+  queue:"Queue / Retry",failed:"Failed 30d",latency:"P95 end-to-end",telemetry:"Latest telemetry",diagnose:"Diagnose",queueLatency:"Queue→Agent P95",printLatency:"Agent→Print P95",retry24h:"Retry 24h",staleLease:"Stale lease",slowQueue:"Slow queue ≥3s",slowPrint:"Slow print ≥3s",failureCodes:"Failure codes",transportFailures:"Transport failures"
  }
 } as const;
 
@@ -224,10 +224,32 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
   <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
    {[
     [t.queue,`${data?.print_health.pending??0} / ${data?.print_health.retrying??0}`],
-    [t.failed,data?.print_health.failed_30d??"—"],
+    [t.queueLatency,duration(data?.print_health.p95_queue_to_claim_ms)],
+    [t.printLatency,duration(data?.print_health.p95_claim_to_print_ms)],
     [t.latency,duration(data?.print_health.p95_total_ms)],
-    [t.telemetry,fmt(data?.print_health.last_job_at??null,language)]
+    [t.retry24h,data?.print_health.retried_24h??0],
+    [t.staleLease,data?.print_health.stale_claims??0],
+    [t.slowQueue,data?.print_health.slow_queue_24h??0],
+    [t.slowPrint,data?.print_health.slow_transport_24h??0]
    ].map(([label,value])=><div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-xl font-black text-slate-950">{value}</div></div>)}
+  </div>
+  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="text-xs font-black uppercase tracking-[.12em] text-slate-500">{t.failureCodes}</div>
+    <div className="mt-3 flex flex-wrap gap-2">
+     {(data?.print_health.top_failures??[]).length
+      ? (data?.print_health.top_failures??[]).map(item=><span key={item.code} className="rounded-full bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700">{item.code} · {item.count}</span>)
+      : <span className="text-xs text-slate-400">—</span>}
+    </div>
+   </div>
+   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="text-xs font-black uppercase tracking-[.12em] text-slate-500">{t.transportFailures}</div>
+    <div className="mt-3 flex flex-wrap gap-2">
+     {(data?.print_health.transport_failures??[]).length
+      ? (data?.print_health.transport_failures??[]).map(item=><span key={item.transport} className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">{item.transport} · {item.count}</span>)
+      : <span className="text-xs text-slate-400">—</span>}
+    </div>
+   </div>
   </div>
   {data?.print_health.telemetry_stale?<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">{language==="th"?"Telemetry งานพิมพ์ไม่สด: ไม่มี print job ใหม่เกิน 30 นาที ให้กด “ค้นหา / ดึง Diagnostics” และตรวจ Print Agent binding":"Print telemetry is stale: no new print job for more than 30 minutes. Pull diagnostics and verify Print Agent binding."}</div>:null}
 
