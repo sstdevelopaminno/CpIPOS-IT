@@ -40,8 +40,10 @@ describe("IT Business package control plane", () => {
     expect(navigation).toContain('{ href: "/it-admin/packages", label: text.items.packages');
     expect(manager).toContain("Starter · Growth · Business · CUSTOM");
     expect(manager).toContain("AI / โหมดขาย");
-    expect(manager).toContain('metaBoolean(row,"ai_included")');
+    expect(manager).toContain("aiQuotaSummary(row)");
     expect(manager).toContain("AI Quota");
+    expect(service).toContain('from("pos_ai_package_quotas")');
+    expect(service).toContain("ai_quota: aiQuotaByPackage.get(row.id)");
     expect(aiAdmin).toContain("syncPackageAiFeature");
     expect(aiAdmin).toContain("syncTenantAiFeatureOverride");
     expect(aiAdmin).toContain('"cpipos_ai"');
