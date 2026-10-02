@@ -6,7 +6,7 @@ import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
 export const dynamic = "force-dynamic";
 
 type JsonRecord = Record<string, unknown>;
-type ResourceType = "printer" | "agent";
+type ResourceType = "printer" | "agent" | "runtime";
 
 type PrinterRow = {
   id:string;tenant_id:string;branch_id:string;printer_profile_id:string|null;
@@ -26,6 +26,10 @@ type DeviceRow = {
 type HealthRow = {
   pos_device_id:string|null;status:string;last_seen_at:string;metadata:JsonRecord|null;
 };
+type PrintJobMetricRow = {
+  id:string;status:string;created_at:string;claimed_at:string|null;printed_at:string|null;failed_at:string|null;
+  retry_count:number;last_error:string|null;agent_error_code:string|null;
+};
 
 function text(value:unknown,max=180){
   return typeof value==="string" ? value.trim().slice(0,max) : "";
@@ -36,6 +40,17 @@ function asRecord(value:unknown):JsonRecord{
 function isOnline(lastSeen:string|null,status:string){
   const seen=lastSeen ? Date.parse(lastSeen) : NaN;
   return status==="active" && Number.isFinite(seen) && Date.now()-seen<=5*60_000;
+}
+function elapsedMs(start:string|null,end:string|null){
+  if(!start||!end)return null;
+  const a=Date.parse(start); const b=Date.parse(end);
+  return Number.isFinite(a)&&Number.isFinite(b)&&b>=a ? b-a : null;
+}
+function percentile(values:number[],ratio:number){
+  if(!values.length)return null;
+  const sorted=[...values].sort((a,b)=>a-b);
+  const index=Math.min(sorted.length-1,Math.max(0,Math.ceil(sorted.length*ratio)-1));
+  return Math.round(sorted[index]??0);
 }
 function surfaceFromMetadata(metadata:JsonRecord|null){
   const source=text(metadata?.source).toLowerCase();
@@ -64,7 +79,7 @@ function normalizePrinterStatus(requested:unknown,current:unknown,active:boolean
 
 async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
   const db=context.supabase;
-  const [printers,agents,tenants,branches,devices,health,profiles,commands]=await Promise.all([
+  const [printers,agents,tenants,branches,devices,health,profiles,commands,printJobs]=await Promise.all([
     db.from("printer_devices").select("id,tenant_id,branch_id,printer_profile_id,display_name,brand,model,connection_mode,paper_width_mm,runtime_device_code,status,is_active,last_seen_at,metadata,created_at,updated_at").eq("is_active",true).neq("status","disabled").order("updated_at",{ascending:false}).limit(500).returns<PrinterRow[]>(),
     db.from("print_agents").select("id,tenant_id,branch_id,device_id,device_code,agent_name,status,last_seen_at,last_claim_at,app_version,metadata,created_at,updated_at").order("updated_at",{ascending:false}).limit(500).returns<AgentRow[]>(),
     db.from("tenants").select("id,name").limit(500),
@@ -72,9 +87,10 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
     db.from("branch_devices").select("id,tenant_id,branch_id,device_code,device_name,device_type,status,is_active,last_seen_at,metadata").eq("is_active",true).limit(500).returns<DeviceRow[]>(),
     db.from("pos_device_health_latest").select("pos_device_id,status,last_seen_at,metadata").order("last_seen_at",{ascending:false}).limit(1000).returns<HealthRow[]>(),
     db.from("printer_profiles").select("id,printer_name,printer_role,connection_type,paper_width_mm,enabled,metadata").limit(500),
-    db.from("device_commands").select("id,pos_device_id,command_type,status,issued_at,delivered_at,result").in("command_type",["request_diagnostics","test_printer"]).order("issued_at",{ascending:false}).limit(300)
+    db.from("device_commands").select("id,pos_device_id,command_type,status,issued_at,delivered_at,result").in("command_type",["request_diagnostics","test_printer"]).order("issued_at",{ascending:false}).limit(300),
+    db.from("print_jobs").select("id,status,created_at,claimed_at,printed_at,failed_at,retry_count,last_error,agent_error_code").order("created_at",{ascending:false}).limit(1000).returns<PrintJobMetricRow[]>()
   ]);
-  for(const result of [printers,agents,tenants,branches,devices,health,profiles,commands]){
+  for(const result of [printers,agents,tenants,branches,devices,health,profiles,commands,printJobs]){
     if(result.error) throw new Error(result.error.message);
   }
 
@@ -145,34 +161,100 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
     };
   });
 
+  const agentRuntimeKeys=new Set(agentRows.flatMap(row=>[
+    row.remote_device_id ? `id:${row.remote_device_id}` : "",
+    row.device_code ? `code:${row.tenant_id}:${row.branch_id}:${String(row.device_code).toUpperCase()}` : ""
+  ].filter(Boolean)));
+
   const remoteTargets=(devices.data??[]).map(device=>{
     const healthRow=latestHealth.get(device.id);
     const metadata=asRecord(healthRow?.metadata ?? device.metadata);
+    const observedAt=healthRow?.last_seen_at??device.last_seen_at;
+    const agentBound=
+      agentRuntimeKeys.has(`id:${device.id}`) ||
+      agentRuntimeKeys.has(`code:${device.tenant_id}:${device.branch_id}:${device.device_code.toUpperCase()}`);
     return {
       id:device.id,tenant_id:device.tenant_id,branch_id:device.branch_id,
       tenant:tenantName.get(device.tenant_id)??device.tenant_id,
       branch:branchName.get(device.branch_id)??device.branch_id,
       device_code:device.device_code,device_name:device.device_name,
-      device_type:device.device_type,status:device.status,last_seen_at:healthRow?.last_seen_at??device.last_seen_at,
+      device_type:device.device_type,status:device.status,last_seen_at:observedAt,
+      online:isOnline(observedAt,device.status),
       surface:text(metadata.telemetry_profile)||text(metadata.native_android_bridge)||"web",
+      print_agent_bound:agentBound,
       latest_command:latestCommand.get(device.id)??null
     };
   });
 
-  const rows=[...printerRows,...agentRows];
+  const runtimeRows=remoteTargets.map(target=>({
+    resource_type:"runtime" as const,
+    id:target.id,tenant_id:target.tenant_id,branch_id:target.branch_id,
+    tenant:target.tenant,branch:target.branch,
+    name:target.device_name,
+    device_code:target.device_code,
+    status:target.print_agent_bound ? target.status : "agent_missing",
+    active:true,
+    online:target.online,
+    last_seen_at:target.last_seen_at,
+    source:target.surface==="android"||target.surface==="CpiposMdm" ? "android_mdm" : target.surface==="browser" ? "browser" : "registered",
+    app_version:null,
+    remote_device_id:target.id,
+    remote_device_name:target.device_name,
+    print_agent_bound:target.print_agent_bound,
+    latest_command:target.latest_command,
+    editable:false,deletable:false
+  }));
+
+  const metricRows=printJobs.data??[];
+  const nowMs=Date.now();
+  const printed=metricRows.filter(row=>row.status==="printed");
+  const queueToClaim=printed.map(row=>elapsedMs(row.created_at,row.claimed_at)).filter((value):value is number=>value!==null);
+  const claimToPrint=printed.map(row=>elapsedMs(row.claimed_at,row.printed_at)).filter((value):value is number=>value!==null);
+  const totalPrint=printed.map(row=>elapsedMs(row.created_at,row.printed_at)).filter((value):value is number=>value!==null);
+  const lastJobAt=metricRows[0]?.created_at??null;
+  const lastJobMs=lastJobAt?Date.parse(lastJobAt):NaN;
+  const jobs24h=metricRows.filter(row=>Date.parse(row.created_at)>=nowMs-24*60*60_000);
+  const jobs30d=metricRows.filter(row=>Date.parse(row.created_at)>=nowMs-30*24*60*60_000);
+  const failuresByCode=new Map<string,number>();
+  for(const row of jobs30d.filter(row=>row.status==="failed"||row.status==="retrying")){
+    const code=text(row.agent_error_code)||text(row.last_error,80)||"unknown";
+    failuresByCode.set(code,(failuresByCode.get(code)??0)+1);
+  }
+  const topFailures=Array.from(failuresByCode.entries()).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([code,count])=>({code,count}));
+
+  const rows=[...printerRows,...agentRows,...runtimeRows];
   return {
     checked_at:new Date().toISOString(),
     summary:{
       total:rows.length,
       printers:printerRows.length,
       agents:agentRows.length,
+      runtimes:runtimeRows.length,
+      missing_agents:runtimeRows.filter(row=>row.status==="agent_missing").length,
       active:rows.filter(row=>row.active).length,
       online:rows.filter(row=>row.online).length,
       remote_targets:remoteTargets.length
     },
+    print_health:{
+      sample_jobs:metricRows.length,
+      pending:metricRows.filter(row=>row.status==="pending").length,
+      retrying:metricRows.filter(row=>row.status==="retrying").length,
+      failed_24h:jobs24h.filter(row=>row.status==="failed").length,
+      failed_30d:jobs30d.filter(row=>row.status==="failed").length,
+      retried_30d:jobs30d.filter(row=>Number(row.retry_count)>0).length,
+      last_job_at:lastJobAt,
+      telemetry_stale:!Number.isFinite(lastJobMs)||nowMs-lastJobMs>30*60_000,
+      p50_queue_to_claim_ms:percentile(queueToClaim,.5),
+      p95_queue_to_claim_ms:percentile(queueToClaim,.95),
+      p50_claim_to_print_ms:percentile(claimToPrint,.5),
+      p95_claim_to_print_ms:percentile(claimToPrint,.95),
+      p50_total_ms:percentile(totalPrint,.5),
+      p95_total_ms:percentile(totalPrint,.95),
+      top_failures:topFailures
+    },
     rows,
     remote_targets:remoteTargets,
-    note:"Remote discovery uses the existing POS heartbeat/MDM diagnostics and registered Print Agent inventory. Browser USB/Bluetooth still requires local user permission once by browser security design."
+    note:"IT combines printer registry, Print Agent, POS runtime heartbeat and print queue telemetry. Browser USB/Bluetooth still requires local user permission once by browser security design."
   };
 }
 
@@ -217,10 +299,14 @@ export async function POST(request:Request){
     if(action==="test"){
       const resourceType=text(body?.resource_type,20) as ResourceType;
       const id=text(body?.id,80);
-      if(!id || (resourceType!=="printer"&&resourceType!=="agent")) return fail("resource_required","Printer or Print Agent is required.",422);
+      if(!id || (resourceType!=="printer"&&resourceType!=="agent"&&resourceType!=="runtime")) return fail("resource_required","Printer, Print Agent, or POS runtime is required.",422);
 
       let target:{tenant_id:string;branch_id:string;device_code:string|null;device_id:string|null}|null=null;
-      if(resourceType==="printer"){
+      if(resourceType==="runtime"){
+        const found=await db.from("branch_devices").select("id,tenant_id,branch_id,device_code").eq("id",id).eq("is_active",true).maybeSingle();
+        if(found.error) throw found.error;
+        if(found.data) target={tenant_id:String(found.data.tenant_id),branch_id:String(found.data.branch_id),device_code:String(found.data.device_code??""),device_id:String(found.data.id)};
+      }else if(resourceType==="printer"){
         const found=await db.from("printer_devices").select("tenant_id,branch_id,runtime_device_code").eq("id",id).maybeSingle();
         if(found.error) throw found.error;
         if(found.data) target={tenant_id:String(found.data.tenant_id),branch_id:String(found.data.branch_id),device_code:found.data.runtime_device_code?String(found.data.runtime_device_code):null,device_id:null};
@@ -301,7 +387,7 @@ export async function PATCH(request:Request){
     }|null;
     const resourceType=text(body?.resource_type,20) as ResourceType;
     const id=text(body?.id,80);
-    if(!id || (resourceType!=="printer"&&resourceType!=="agent")) return fail("resource_required","Printer or Print Agent is required.",422);
+    if(!id || (resourceType!=="printer"&&resourceType!=="agent")) return fail("resource_required","Only Printer or Print Agent can be edited.",422);
     const db=context.supabase;
 
     if(resourceType==="printer"){
@@ -370,7 +456,7 @@ export async function DELETE(request:Request){
     const body=await request.json().catch(()=>null) as {resource_type?:unknown;id?:unknown}|null;
     const resourceType=text(body?.resource_type,20) as ResourceType;
     const id=text(body?.id,80);
-    if(!id || (resourceType!=="printer"&&resourceType!=="agent")) return fail("resource_required","Printer or Print Agent is required.",422);
+    if(!id || (resourceType!=="printer"&&resourceType!=="agent")) return fail("resource_required","Only Printer or Print Agent can be removed.",422);
     const db=context.supabase;
 
     if(resourceType==="printer"){
