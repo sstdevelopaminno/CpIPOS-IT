@@ -188,7 +188,11 @@ async function loadOverview(context: Awaited<ReturnType<typeof requireItAdmin>>)
     sent_latest: rows.filter((row) => row.latest_delivery?.status === "sent").length,
     failed_latest: rows.filter((row) => row.latest_delivery?.status === "failed").length,
     blocked_latest: rows.filter((row) => row.latest_delivery?.status === "blocked").length,
-    retryable: rows.filter((row) => row.latest_delivery?.retryable).length
+    retryable: rows.filter((row) => row.latest_delivery?.retryable).length,
+    needs_attention: rows.filter((row) =>
+      (row.enabled && !row.owner.ready)
+      || ["failed", "blocked"].includes(row.latest_delivery?.status ?? "")
+    ).length
   };
 
   return {
