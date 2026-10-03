@@ -19,15 +19,16 @@ function isTransientDatabaseError(error: unknown) {
   return /timeout|timed out|fetch failed|connection|socket|gateway|warp server/i.test(message);
 }
 
-async function runCleanupRpc(
+async function runRpcWithRetry(
   context: Awaited<ReturnType<typeof requireItAdmin>>,
-  args: Record<string, unknown>
+  fn: string,
+  args?: Record<string, unknown>
 ) {
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const result = await context.supabase.rpc("it_run_operational_cleanup_7d", args);
+      const result = args ? await context.supabase.rpc(fn, args) : await context.supabase.rpc(fn);
       if (!result.error) return result;
       lastError = result.error;
       if (!isTransientDatabaseError(result.error)) return result;
@@ -47,22 +48,20 @@ async function runCleanupRpc(
 export async function GET() {
   try {
     const context = await requireItAdmin();
-    const [previewResult, runs] = await Promise.all([
-      context.supabase.rpc("it_operational_cleanup_preview_7d"),
-      context.supabase.from("it_data_cleanup_runs")
-        .select("id,scope,mode,cutoff_at,source,actor_user_id,actor_role,deleted_counts,created_at")
-        .order("created_at", { ascending: false })
-        .limit(20)
-    ]);
+    const previewResult = await runRpcWithRetry(context, "it_operational_cleanup_preview_7d");
 
-    if (previewResult.error) throw previewResult.error;
-    if (runs.error) throw runs.error;
+    if (previewResult.error) {
+      if (isTransientDatabaseError(previewResult.error)) {
+        return fail(
+          "cleanup_preview_temporarily_unavailable",
+          "ฐานข้อมูลตอบสนองชั่วคราว กรุณารีเฟรชอีกครั้ง",
+          503
+        );
+      }
+      throw previewResult.error;
+    }
 
-    const preview = (previewResult.data ?? {}) as Record<string, unknown>;
-    return ok({
-      ...preview,
-      recent_runs: runs.data ?? []
-    });
+    return ok(previewResult.data ?? {});
   } catch (error) {
     return guardItAdminError(error);
   }
@@ -87,7 +86,7 @@ export async function POST(request: Request) {
       return fail("cleanup_confirmation_required", "กรุณายืนยัน CLEANUP_7D", 422);
     }
 
-    const result = await runCleanupRpc(context, {
+    const result = await runRpcWithRetry(context, "it_run_operational_cleanup_7d", {
       p_scope: scope,
       p_mode: mode,
       p_actor_user_id: context.auth.userId,
