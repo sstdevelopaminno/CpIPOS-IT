@@ -49,6 +49,7 @@ type Overview = {
     failed_latest: number;
     blocked_latest: number;
     retryable: number;
+    needs_attention: number;
   };
   stores: StoreRow[];
 };
@@ -289,7 +290,7 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
           [t.total, stats?.total_stores ?? 0, "text-slate-950"],
           [t.enabled, stats?.enabled ?? 0, "text-emerald-700"],
           [t.disabled, stats?.disabled ?? 0, "text-slate-700"],
-          [t.attention, (stats?.owner_not_ready ?? 0) + (stats?.failed_latest ?? 0) + (stats?.blocked_latest ?? 0), "text-red-600"],
+          [t.attention, stats?.needs_attention ?? 0, "text-red-600"],
           [t.retryable, stats?.retryable ?? 0, "text-amber-700"]
         ].map(([label, value, tone]) => (
           <div key={String(label)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
