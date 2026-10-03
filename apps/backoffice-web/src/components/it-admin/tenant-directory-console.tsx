@@ -119,7 +119,7 @@ export function TenantDirectoryConsole({ language }: { language: Language }) {
   }, [load]);
 
   useEffect(() => {
-    if (selected) return;
+    if (selected || provisioningOpen) return;
 
     const refreshIfVisible = () => {
       if (document.visibilityState === "visible") void load(true);
@@ -135,7 +135,16 @@ export function TenantDirectoryConsole({ language }: { language: Language }) {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [load, selected]);
+  }, [load, provisioningOpen, selected]);
+
+  useEffect(() => {
+    if (!provisioningOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setProvisioningOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [provisioningOpen]);
 
   const filteredRows = useMemo(() => {
     const normalized = query.trim().toLowerCase();
