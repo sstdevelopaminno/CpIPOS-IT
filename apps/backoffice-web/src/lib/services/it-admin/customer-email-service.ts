@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "sales_retention_export" | "daily_sales_summary";
+export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "sales_retention_export" | "daily_sales_summary" | "daily_sales_summary_test";
 export type CustomerEmailTriggerMode = "automatic" | "manual";
 export type CustomerEmailDeliveryStatus =
   | "sent"
@@ -149,16 +149,20 @@ function brandMessage(
     ? "ยืนยันการรับชำระเงินเรียบร้อย"
     : eventType === "sales_retention_export"
       ? "ไฟล์ประวัติการขายพร้อมดาวน์โหลด"
-      : eventType === "daily_sales_summary"
-        ? "สรุปยอดขายประจำวัน"
-        : "เปิดใช้งานระบบสำเร็จแล้ว";
+      : eventType === "daily_sales_summary_test"
+        ? "ทดสอบ · สรุปยอดขายประจำวัน"
+        : eventType === "daily_sales_summary"
+          ? "สรุปยอดขายประจำวัน"
+          : "เปิดใช้งานระบบสำเร็จแล้ว";
   const subtitle = eventType === "payment_confirmation"
     ? "บริษัทได้รับและตรวจสอบการชำระเงินเรียบร้อยแล้ว ระบบได้เปิด/ต่ออายุแพ็กเกจ CpIPOS ให้แล้ว"
     : eventType === "sales_retention_export"
       ? "ระบบได้จัดเก็บประวัติการขายที่พ้นระยะเก็บข้อมูลออนไลน์เป็นไฟล์ส่วนตัวเรียบร้อยแล้ว"
-      : eventType === "daily_sales_summary"
-        ? "ภาพรวมยอดขายของร้านจากระบบ CpIPOS สำหรับวันก่อนหน้า สรุปให้อ่านง่ายทั้งคอมพิวเตอร์ แท็บเล็ต และมือถือ"
-        : "ร้านค้าของคุณพร้อมเริ่มใช้งานระบบ CpIPOS แล้ว";
+      : eventType === "daily_sales_summary_test"
+        ? "อีเมลทดสอบสำหรับ IT เท่านั้น ข้อมูลและหน้าตาเหมือนอีเมลสรุปยอดขายจริง แต่ไม่ส่งถึงลูกค้า"
+        : eventType === "daily_sales_summary"
+          ? "ภาพรวมยอดขายของร้านจากระบบ CpIPOS สำหรับวันก่อนหน้า สรุปให้อ่านง่ายทั้งคอมพิวเตอร์ แท็บเล็ต และมือถือ"
+          : "ร้านค้าของคุณพร้อมเริ่มใช้งานระบบ CpIPOS แล้ว";
   const website = escapeHtml(settings.website_url);
   const footerNote = escapeHtml(settings.email_footer_note);
 
@@ -508,6 +512,22 @@ export function buildSalesRetentionExportEmail(input: {
   return { subject, textBody: lines.join("\n"), htmlBody: html };
 }
 
+
+export async function prepareCustomerEmailPreview(input: {
+  db: SupabaseClient;
+  eventType: CustomerEmailEventType;
+  message: CustomerEmailMessage;
+}): Promise<{
+  message: CustomerEmailMessage;
+  companyTestEmail: string;
+}> {
+  const settings = await loadSettings(input.db);
+  return {
+    message: brandMessage(input.message, settings, input.eventType),
+    companyTestEmail: settings.support_email.trim().toLowerCase()
+  };
+}
+
 export async function deliverCustomerEmail(input: {
   db: SupabaseClient;
   eventType: CustomerEmailEventType;
@@ -525,7 +545,7 @@ export async function deliverCustomerEmail(input: {
     ? settings.auto_send_store_activation
     : input.eventType === "payment_confirmation"
       ? settings.auto_send_payment_confirmation
-      : input.eventType === "daily_sales_summary"
+      : input.eventType === "daily_sales_summary" || input.eventType === "daily_sales_summary_test"
         ? settings.auto_send_daily_sales_summary
         : settings.auto_send_sales_retention_export;
   if (input.triggerMode === "automatic" && !automaticEnabled) {
