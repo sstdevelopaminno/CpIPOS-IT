@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "sales_retention_export";
+export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "sales_retention_export" | "daily_sales_summary";
 export type CustomerEmailTriggerMode = "automatic" | "manual";
 export type CustomerEmailDeliveryStatus =
   | "sent"
@@ -20,6 +20,7 @@ type CommunicationSettings = {
   auto_send_store_activation: boolean;
   auto_send_payment_confirmation: boolean;
   auto_send_sales_retention_export: boolean;
+  auto_send_daily_sales_summary: boolean;
   company_thai_name: string;
   company_english_name: string;
   contact_phone: string;
@@ -69,6 +70,7 @@ const DEFAULT_SETTINGS: CommunicationSettings = {
   auto_send_store_activation: true,
   auto_send_payment_confirmation: true,
   auto_send_sales_retention_export: true,
+  auto_send_daily_sales_summary: true,
   company_thai_name: "บริษัท คัตติ้ง พอยท์ อินโนเวชั่น จำกัด",
   company_english_name: "CUTTING POINT INNOVATION CO., LTD.",
   contact_phone: "098-5460-355",
@@ -147,29 +149,33 @@ function brandMessage(
     ? "ยืนยันการรับชำระเงินเรียบร้อย"
     : eventType === "sales_retention_export"
       ? "ไฟล์ประวัติการขายพร้อมดาวน์โหลด"
-      : "เปิดใช้งานระบบสำเร็จแล้ว";
+      : eventType === "daily_sales_summary"
+        ? "สรุปยอดขายประจำวัน"
+        : "เปิดใช้งานระบบสำเร็จแล้ว";
   const subtitle = eventType === "payment_confirmation"
     ? "บริษัทได้รับและตรวจสอบการชำระเงินเรียบร้อยแล้ว ระบบได้เปิด/ต่ออายุแพ็กเกจ CpIPOS ให้แล้ว"
     : eventType === "sales_retention_export"
       ? "ระบบได้จัดเก็บประวัติการขายที่พ้นระยะเก็บข้อมูลออนไลน์เป็นไฟล์ส่วนตัวเรียบร้อยแล้ว"
-      : "ร้านค้าของคุณพร้อมเริ่มใช้งานระบบ CpIPOS แล้ว";
+      : eventType === "daily_sales_summary"
+        ? "ภาพรวมยอดขายของร้านจากระบบ CpIPOS สำหรับวันก่อนหน้า สรุปให้อ่านง่ายทั้งคอมพิวเตอร์ แท็บเล็ต และมือถือ"
+        : "ร้านค้าของคุณพร้อมเริ่มใช้งานระบบ CpIPOS แล้ว";
   const website = escapeHtml(settings.website_url);
   const footerNote = escapeHtml(settings.email_footer_note);
 
   const htmlBody = [
-    '<!doctype html><html><body style="margin:0;padding:0;background:#f3f6fb;">',
+    '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>@media screen and (max-width:600px){.cp-shell-pad{padding:14px 8px!important}.cp-content-pad{padding:24px 16px 22px!important}.cp-summary-cell{display:block!important;width:100%!important;box-sizing:border-box!important;padding:0 0 10px!important}.cp-summary-gap{display:none!important}.cp-products th,.cp-products td{padding:9px 6px!important;font-size:11px!important}.cp-brand-title{font-size:23px!important}}</style></head><body style="margin:0;padding:0;background:#f3f6fb;">',
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6fb">',
-    '<tr><td align="center" style="padding:28px 12px">',
+    '<tr><td align="center" class="cp-shell-pad" style="padding:28px 12px">',
     '<table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #dbe5f3;border-radius:18px;overflow:hidden;box-shadow:0 12px 32px rgba(25,54,93,.08)">',
     '<tr><td style="padding:24px 30px;background:#165bc4;background:linear-gradient(135deg,#123f86,#2382ef);font-family:Arial,\'Noto Sans Thai\',sans-serif;color:#ffffff">',
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>',
     '<td style="font-size:27px;font-weight:900;letter-spacing:-.5px">CpIPOS</td>',
     '<td align="right" style="font-size:11px;line-height:1.5;color:#dbeafe">ระบบจัดการร้านค้า<br>เพื่อการเติบโตของธุรกิจคุณ</td>',
     '</tr></table></td></tr>',
-    '<tr><td style="padding:34px 34px 28px;font-family:Arial,\'Noto Sans Thai\',sans-serif;color:#142946">',
+    '<tr><td class="cp-content-pad" style="padding:34px 34px 28px;font-family:Arial,\'Noto Sans Thai\',sans-serif;color:#142946">',
     '<div style="text-align:center">',
     '<div style="width:64px;height:64px;line-height:64px;margin:0 auto 16px;border-radius:50%;background:#eaf3ff;color:#176fe8;font-size:36px;font-weight:900">✓</div>',
-    `<div style="font-size:27px;font-weight:900;line-height:1.3;color:#102a50">${escapeHtml(title)}</div>`,
+    `<div class="cp-brand-title" style="font-size:27px;font-weight:900;line-height:1.3;color:#102a50">${escapeHtml(title)}</div>`,
     `<div style="max-width:500px;margin:10px auto 0;font-size:14px;line-height:1.7;color:#66758b">${escapeHtml(subtitle)}</div>`,
     '</div>',
     `<div style="margin-top:24px">${message.htmlBody}</div>`,
@@ -200,7 +206,7 @@ export function customerEmailProblem(value: string) {
 
 async function loadSettings(db: SupabaseClient): Promise<CommunicationSettings> {
   const result = await db.from("it_communication_settings")
-    .select("billing_email,support_email,billing_sender_name,support_sender_name,auto_send_store_activation,auto_send_payment_confirmation,auto_send_sales_retention_export,company_thai_name,company_english_name,contact_phone,website_url,email_footer_note")
+    .select("billing_email,support_email,billing_sender_name,support_sender_name,auto_send_store_activation,auto_send_payment_confirmation,auto_send_sales_retention_export,auto_send_daily_sales_summary,company_thai_name,company_english_name,contact_phone,website_url,email_footer_note")
     .eq("id", "default").maybeSingle<CommunicationSettings>();
   if (result.error) throw new Error("communication_settings_read_failed");
   return result.data ?? DEFAULT_SETTINGS;
@@ -341,6 +347,95 @@ export function buildPaymentConfirmationEmail(input: {
   return { subject, textBody: lines.join("\n"), htmlBody: html };
 }
 
+
+function thaiBusinessDate(value: string) {
+  const parsed = new Date(value + "T12:00:00+07:00");
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "long",
+    timeZone: "Asia/Bangkok"
+  }).format(parsed);
+}
+
+export function buildDailySalesSummaryEmail(input: {
+  storeName: string;
+  ownerName?: string | null;
+  businessDate: string;
+  grossTotal: number;
+  completedCount: number;
+  netTotal: number;
+  cancelledCount: number;
+  cashTotal: number;
+  bankTransferTotal: number;
+  topProducts: Array<{ rank: number; name: string; quantity: number; sales_amount: number }>;
+}): CustomerEmailMessage {
+  const owner = text(input.ownerName, 120) || text(input.storeName, 120);
+  const dateLabel = thaiBusinessDate(input.businessDate);
+  const subject = `สรุปยอดขายประจำวันที่ ${dateLabel} | ${text(input.storeName, 100)} | CpIPOS`;
+  const topProducts = (input.topProducts ?? []).slice(0, 3);
+
+  const lines = [
+    `เรียน ${owner}`,
+    "",
+    `สรุปยอดขายร้าน ${text(input.storeName, 180)} ประจำวันที่ ${dateLabel}`,
+    `ยอดก่อนส่วนลด: ${money(input.grossTotal, "THB")}`,
+    `จำนวนบิลขายสำเร็จ: ${input.completedCount.toLocaleString("th-TH")} บิล`,
+    `ยอดขายสุทธิ: ${money(input.netTotal, "THB")}`,
+    `บิลยกเลิก: ${input.cancelledCount.toLocaleString("th-TH")} บิล`,
+    `ชำระเงินสด: ${money(input.cashTotal, "THB")}`,
+    `ชำระเงินโอน: ${money(input.bankTransferTotal, "THB")}`,
+    "",
+    "สินค้าขายดี 3 อันดับ",
+    ...topProducts.map((product) =>
+      `อันดับ ${product.rank}: ${text(product.name, 160)} · ${Number(product.quantity || 0).toLocaleString("th-TH")} ชิ้น · ${money(Number(product.sales_amount || 0), "THB")}`
+    ),
+    "",
+    "ข้อมูลนี้สรุปตามวันปฏิทินประเทศไทย (Asia/Bangkok) ตั้งแต่ 00:00 ถึงก่อน 00:00 ของวันถัดไป"
+  ];
+
+  const metric = (label: string, value: string, tone = "#102a50") => [
+    '<td class="cp-summary-cell" width="50%" valign="top" style="width:50%;padding:0 5px 10px">',
+    `<div style="min-height:86px;padding:15px;border:1px solid #dbe5f3;border-radius:12px;background:#f8fbff">`,
+    `<div style="font-size:11px;font-weight:700;color:#718198">${escapeHtml(label)}</div>`,
+    `<div style="margin-top:7px;font-size:20px;font-weight:900;line-height:1.25;color:${tone}">${escapeHtml(value)}</div>`,
+    '</div></td>'
+  ].join("");
+
+  const productRows = topProducts.length
+    ? topProducts.map((product, index) => [
+        '<tr>',
+        `<td style="padding:11px 8px;border-top:${index ? "1px solid #edf2f7" : "0"};font-size:12px;font-weight:900;color:#176fe8;width:48px">#${product.rank}</td>`,
+        `<td style="padding:11px 8px;border-top:${index ? "1px solid #edf2f7" : "0"};font-size:12px;font-weight:800;color:#102a50">${escapeHtml(product.name)}</td>`,
+        `<td align="right" style="padding:11px 8px;border-top:${index ? "1px solid #edf2f7" : "0"};font-size:12px;color:#52657f;white-space:nowrap">${Number(product.quantity || 0).toLocaleString("th-TH")} ชิ้น</td>`,
+        `<td align="right" style="padding:11px 8px;border-top:${index ? "1px solid #edf2f7" : "0"};font-size:12px;font-weight:800;color:#102a50;white-space:nowrap">${escapeHtml(money(Number(product.sales_amount || 0), "THB"))}</td>`,
+        '</tr>'
+      ].join("")).join("")
+    : '<tr><td colspan="4" style="padding:16px;text-align:center;font-size:12px;color:#94a3b8">ไม่มีข้อมูลสินค้า</td></tr>';
+
+  const html = [
+    `<p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">${escapeHtml(owner)}</strong></p>`,
+    `<div style="margin-bottom:18px;padding:13px 15px;border-radius:12px;background:#edf5ff;color:#164f9c;font-size:13px;font-weight:800;text-align:center">สรุปยอดขายประจำวันที่ ${escapeHtml(dateLabel)} · รวมทุกสาขา</div>`,
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse"><tr>',
+    metric("ยอดก่อนส่วนลด", money(input.grossTotal, "THB"), "#176fe8"),
+    metric("จำนวนบิลขายสำเร็จ", `${input.completedCount.toLocaleString("th-TH")} บิล`),
+    '</tr><tr>',
+    metric("ยอดขายสุทธิ", money(input.netTotal, "THB"), "#15803d"),
+    metric("บิลยกเลิก", `${input.cancelledCount.toLocaleString("th-TH")} บิล`, input.cancelledCount > 0 ? "#b45309" : "#102a50"),
+    '</tr><tr>',
+    metric("ชำระเงินสด", money(input.cashTotal, "THB")),
+    metric("ชำระเงินโอน", money(input.bankTransferTotal, "THB")),
+    '</tr></table>',
+    '<div style="margin-top:12px;border:1px solid #dbe5f3;border-radius:12px;overflow:hidden;background:#ffffff">',
+    '<div style="padding:14px 16px;background:#f8fbff;border-bottom:1px solid #e5edf7;font-size:13px;font-weight:900;color:#102a50">สินค้าขายดี 3 อันดับ</div>',
+    '<table class="cp-products" role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">',
+    productRows,
+    '</table></div>',
+    '<div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#f8fafc;color:#64748b;font-size:11px;line-height:1.7">ระบบสรุปตามวันปฏิทินประเทศไทย (Asia/Bangkok) ตั้งแต่ 00:00 ถึงก่อน 00:00 ของวันถัดไป และจะส่งเฉพาะวันที่มีบิลขายสำเร็จอย่างน้อย 1 บิล</div>'
+  ].join("");
+
+  return { subject, textBody: lines.join("\n"), htmlBody: html };
+}
+
 export function buildSalesRetentionExportEmail(input: {
   storeName: string;
   ownerName?: string | null;
@@ -430,7 +525,9 @@ export async function deliverCustomerEmail(input: {
     ? settings.auto_send_store_activation
     : input.eventType === "payment_confirmation"
       ? settings.auto_send_payment_confirmation
-      : settings.auto_send_sales_retention_export;
+      : input.eventType === "daily_sales_summary"
+        ? settings.auto_send_daily_sales_summary
+        : settings.auto_send_sales_retention_export;
   if (input.triggerMode === "automatic" && !automaticEnabled) {
     return { status: "automatic_disabled", message: "ปิดการส่งอัตโนมัติไว้ในการตั้งค่า" };
   }
