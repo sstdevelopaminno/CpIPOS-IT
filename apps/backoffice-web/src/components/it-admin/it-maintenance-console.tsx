@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useItAccess } from "@/components/layout/app-shell";
 import type { Language } from "@/lib/i18n";
+import { DailySalesEmailOperations } from "./daily-sales-email-operations";
 
 type CronJob = { jobname: string; schedule: string; active: boolean };
 type PackagePolicy = { code: string; name: string; retention_months: number | null; is_active: boolean; status: string | null };
@@ -205,6 +206,8 @@ export function ItMaintenanceConsole({ language }: { language: Language }) {
           <div className="mt-1 text-xs text-slate-500">{t.jobs}</div>
         </div>
       </section>
+
+      <DailySalesEmailOperations language={language} />
 
       <section className="grid gap-4 xl:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
