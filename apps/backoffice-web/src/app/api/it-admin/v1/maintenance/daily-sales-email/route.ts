@@ -4,7 +4,8 @@ import { assertItSupportAction, guardItAdminError, requireItAdmin } from "@/lib/
 import {
   buildDailySalesSummaryEmail,
   customerEmailProblem,
-  deliverCustomerEmail
+  deliverCustomerEmail,
+  prepareCustomerEmailPreview
 } from "@/lib/services/it-admin/customer-email-service";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +85,50 @@ function previousBangkokDate() {
   const date = new Date(Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day)));
   date.setUTCDate(date.getUTCDate() - 1);
   return date.toISOString().slice(0, 10);
+}
+
+function validUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function validBusinessDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T12:00:00+07:00");
+  if (!Number.isFinite(date.getTime())) return false;
+  return value <= previousBangkokDate();
+}
+
+async function loadPreviewCandidate(
+  context: Awaited<ReturnType<typeof requireItAdmin>>,
+  tenantId: string,
+  businessDate: string
+) {
+  const result = await context.supabase.rpc("daily_sales_summary_preview", {
+    p_tenant_id: tenantId,
+    p_business_date: businessDate
+  });
+  if (result.error) throw new Error("daily_sales_email_preview_candidate_failed:" + result.error.message);
+  return ((result.data ?? []) as CandidateRow[])[0] ?? null;
+}
+
+function buildCandidateMessage(candidate: CandidateRow) {
+  return buildDailySalesSummaryEmail({
+    storeName: candidate.store_name,
+    ownerName: candidate.owner_name,
+    businessDate: candidate.business_date,
+    grossTotal: amount(candidate.gross_total),
+    completedCount: amount(candidate.completed_count),
+    netTotal: amount(candidate.net_total),
+    cancelledCount: amount(candidate.cancelled_count),
+    cashTotal: amount(candidate.cash_total),
+    bankTransferTotal: amount(candidate.bank_transfer_total),
+    topProducts: (candidate.top_products ?? []).slice(0, 3).map((product) => ({
+      rank: amount(product.rank),
+      name: String(product.name ?? ""),
+      quantity: amount(product.quantity),
+      sales_amount: amount(product.sales_amount)
+    }))
+  });
 }
 
 function businessDateFromEventKey(eventKey: string) {
@@ -220,141 +265,253 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const context = await requireItAdmin();
-    assertItSupportAction(context, "การ Retry อีเมลสรุปยอดขายอนุญาตเฉพาะ IT Support");
 
     const body = await request.json().catch(() => null) as {
       action?: unknown;
       delivery_id?: unknown;
+      tenant_id?: unknown;
+      business_date?: unknown;
       confirmation?: unknown;
     } | null;
     const action = String(body?.action ?? "").trim();
     const deliveryId = String(body?.delivery_id ?? "").trim();
+    const tenantId = String(body?.tenant_id ?? "").trim();
+    const requestedDate = String(body?.business_date ?? "").trim();
     const confirmation = String(body?.confirmation ?? "").trim();
 
-    if (action !== "retry_failed_daily_sales_email") {
-      return fail("daily_sales_email_action_invalid", "Action ไม่ถูกต้อง", 422);
-    }
-    if (confirmation !== "RETRY_DAILY_SALES_EMAIL") {
-      return fail("daily_sales_email_retry_confirmation_required", "กรุณายืนยัน RETRY_DAILY_SALES_EMAIL", 422);
-    }
-    if (!/^[0-9a-f-]{36}$/i.test(deliveryId)) {
-      return fail("daily_sales_email_delivery_invalid", "Delivery ID ไม่ถูกต้อง", 422);
-    }
+    if (action === "preview_daily_sales_email" || action === "send_daily_sales_email_test") {
+      if (!validUuid(tenantId)) {
+        return fail("daily_sales_email_tenant_invalid", "Tenant ID ไม่ถูกต้อง", 422);
+      }
+      const businessDate = requestedDate || previousBangkokDate();
+      if (!validBusinessDate(businessDate)) {
+        return fail(
+          "daily_sales_email_business_date_invalid",
+          "วันที่ Preview ต้องเป็นวันที่สิ้นสุดแล้วก่อนวันนี้ ตามเวลา Asia/Bangkok",
+          422
+        );
+      }
 
-    const deliveryResult = await context.supabase
-      .from("customer_email_deliveries")
-      .select("id,event_key,tenant_id,recipient_email,status,attempt_count,last_attempt_at,sent_at,last_error,created_at,updated_at")
-      .eq("id", deliveryId)
-      .eq("event_type", "daily_sales_summary")
-      .maybeSingle<DeliveryRow>();
+      const candidate = await loadPreviewCandidate(context, tenantId, businessDate);
+      if (!candidate) {
+        return fail(
+          "daily_sales_email_preview_no_sales",
+          "วันที่เลือกไม่มีบิลขายสำเร็จ จึงไม่มี Daily Sales Email ให้ Preview หรือส่งทดสอบ",
+          409
+        );
+      }
 
-    if (deliveryResult.error) throw new Error("daily_sales_email_retry_delivery_failed:" + deliveryResult.error.message);
-    const delivery = deliveryResult.data;
-    if (!delivery || !delivery.tenant_id) return fail("daily_sales_email_delivery_not_found", "ไม่พบรายการส่งอีเมล", 404);
-    if (!["failed", "blocked"].includes(delivery.status)) {
-      return fail(
-        "daily_sales_email_not_retryable",
-        delivery.status === "sent" ? "รายการนี้ส่งสำเร็จแล้ว ระบบป้องกันการส่งซ้ำ" : "รายการนี้ยังไม่อยู่ในสถานะที่ Retry ได้",
-        409
-      );
-    }
+      const message = buildCandidateMessage(candidate);
+      const preview = await prepareCustomerEmailPreview({
+        db: context.supabase,
+        eventType: "daily_sales_summary",
+        message
+      });
 
-    const businessDate = businessDateFromEventKey(delivery.event_key);
-    if (!businessDate) return fail("daily_sales_email_business_date_invalid", "ไม่สามารถระบุวันที่ของอีเมลเดิมได้", 409);
+      if (action === "preview_daily_sales_email") {
+        return ok({
+          tenant_id: tenantId,
+          store_name: candidate.store_name,
+          business_date: candidate.business_date,
+          subject: preview.message.subject,
+          html_body: preview.message.htmlBody,
+          text_body: preview.message.textBody,
+          company_test_email: preview.companyTestEmail,
+          metrics: {
+            gross_total: amount(candidate.gross_total),
+            completed_count: amount(candidate.completed_count),
+            net_total: amount(candidate.net_total),
+            cancelled_count: amount(candidate.cancelled_count),
+            cash_total: amount(candidate.cash_total),
+            bank_transfer_total: amount(candidate.bank_transfer_total),
+            top_products: candidate.top_products ?? []
+          }
+        });
+      }
 
-    const settingResult = await context.supabase
-      .from("tenant_daily_sales_email_settings")
-      .select("tenant_id,enabled")
-      .eq("tenant_id", delivery.tenant_id)
-      .maybeSingle<{ tenant_id: string; enabled: boolean }>();
-    if (settingResult.error) throw new Error("daily_sales_email_retry_setting_failed:" + settingResult.error.message);
-    if (!settingResult.data?.enabled) {
-      return fail("daily_sales_email_disabled", "ร้านนี้ปิดการแจ้งสรุปยอดขายอยู่ จึงไม่ Retry", 409);
-    }
+      assertItSupportAction(context, "การส่ง Test Daily Sales Email อนุญาตเฉพาะ IT Support");
+      if (confirmation !== "SEND_DAILY_SALES_TEST") {
+        return fail(
+          "daily_sales_email_test_confirmation_required",
+          "กรุณายืนยัน SEND_DAILY_SALES_TEST",
+          422
+        );
+      }
 
-    const candidateResult = await context.supabase.rpc("daily_sales_summary_candidates", {
-      p_business_date: businessDate
-    });
-    if (candidateResult.error) throw new Error("daily_sales_email_retry_candidate_failed:" + candidateResult.error.message);
+      const companyRecipient = preview.companyTestEmail.trim().toLowerCase();
+      const companyProblem = companyRecipient
+        ? customerEmailProblem(companyRecipient)
+        : "ยังไม่ได้ตั้งค่า Support Email ของบริษัท";
+      if (companyProblem) {
+        return fail("daily_sales_email_company_test_recipient_invalid", companyProblem, 422);
+      }
 
-    const candidate = ((candidateResult.data ?? []) as CandidateRow[])
-      .find((row) => row.tenant_id === delivery.tenant_id);
-    if (!candidate) {
-      return fail("daily_sales_email_retry_candidate_missing", "ไม่พบยอดขายสำเร็จของร้านในวันที่ต้องการ Retry หรือร้านไม่พร้อมส่ง", 409);
-    }
+      const testMessage = {
+        ...message,
+        subject: `[TEST] ${message.subject}`
+      };
+      const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[^0-9]/g, "");
+      const delivery = await deliverCustomerEmail({
+        db: context.supabase,
+        eventType: "daily_sales_summary_test",
+        sourceId: tenantId,
+        tenantId,
+        to: companyRecipient,
+        message: testMessage,
+        triggerMode: "manual",
+        actorUserId: context.auth.userId,
+        eventKeySuffix: `${businessDate.replaceAll("-", "")}_${minuteBucket}`
+      });
 
-    const recipient = String(candidate.owner_email ?? "").trim().toLowerCase();
-    const recipientProblem = recipient ? customerEmailProblem(recipient) : "ยังไม่มีอีเมล Owner";
-    if (recipientProblem) return fail("daily_sales_email_owner_invalid", recipientProblem, 422);
+      await appendAuditLog({
+        tenantId,
+        actorUserId: context.auth.userId,
+        actorRole: context.auth.platformRole,
+        action: "daily_sales_summary_test_email",
+        targetTable: "customer_email_deliveries",
+        targetId: delivery.delivery_id ?? null,
+        module: "it_admin",
+        beforeData: null,
+        afterData: {
+          status: delivery.status,
+          business_date: businessDate,
+          recipient_email: companyRecipient
+        },
+        metadata: {
+          test_only: true,
+          customer_email_used: false,
+          store_name: candidate.store_name
+        },
+        ipAddress: context.requestMeta.ipAddress ?? undefined,
+        userAgent: context.requestMeta.userAgent ?? undefined
+      });
 
-    const message = buildDailySalesSummaryEmail({
-      storeName: candidate.store_name,
-      ownerName: candidate.owner_name,
-      businessDate: candidate.business_date,
-      grossTotal: amount(candidate.gross_total),
-      completedCount: amount(candidate.completed_count),
-      netTotal: amount(candidate.net_total),
-      cancelledCount: amount(candidate.cancelled_count),
-      cashTotal: amount(candidate.cash_total),
-      bankTransferTotal: amount(candidate.bank_transfer_total),
-      topProducts: (candidate.top_products ?? []).slice(0, 3).map((product) => ({
-        rank: amount(product.rank),
-        name: String(product.name ?? ""),
-        quantity: amount(product.quantity),
-        sales_amount: amount(product.sales_amount)
-      }))
-    });
+      if (!["sent", "already_sent"].includes(delivery.status)) {
+        return fail("daily_sales_email_test_failed", delivery.message || "ส่ง Test Email ไม่สำเร็จ", 502);
+      }
 
-    const retry = await deliverCustomerEmail({
-      db: context.supabase,
-      eventType: "daily_sales_summary",
-      sourceId: delivery.tenant_id,
-      tenantId: delivery.tenant_id,
-      to: recipient,
-      message,
-      triggerMode: "manual",
-      actorUserId: context.auth.userId,
-      eventKeySuffix: businessDate.replaceAll("-", "")
-    });
-
-    await appendAuditLog({
-      tenantId: delivery.tenant_id,
-      actorUserId: context.auth.userId,
-      actorRole: context.auth.platformRole,
-      action: "daily_sales_summary_email_retry",
-      targetTable: "customer_email_deliveries",
-      targetId: delivery.id,
-      module: "it_admin",
-      beforeData: {
+      return ok({
         status: delivery.status,
-        recipient_email: delivery.recipient_email,
+        delivery_id: delivery.delivery_id ?? null,
+        tenant_id: tenantId,
+        store_name: candidate.store_name,
         business_date: businessDate,
-        attempt_count: delivery.attempt_count
-      },
-      afterData: {
-        status: retry.status,
-        recipient_email: recipient,
-        business_date: businessDate
-      },
-      metadata: {
-        reason: "manual_retry_from_maintenance",
-        current_owner_email_used: true
-      },
-      ipAddress: context.requestMeta.ipAddress ?? undefined,
-      userAgent: context.requestMeta.userAgent ?? undefined
-    });
-
-    if (!["sent", "already_sent"].includes(retry.status)) {
-      return fail("daily_sales_email_retry_failed", retry.message || "Retry ไม่สำเร็จ", 502);
+        recipient_email: companyRecipient
+      });
     }
 
-    return ok({
-      delivery_id: retry.delivery_id ?? delivery.id,
-      status: retry.status,
-      business_date: businessDate,
-      recipient_email: recipient
-    });
+    if (action === "retry_failed_daily_sales_email") {
+      assertItSupportAction(context, "การ Retry อีเมลสรุปยอดขายอนุญาตเฉพาะ IT Support");
+
+      if (confirmation !== "RETRY_DAILY_SALES_EMAIL") {
+        return fail("daily_sales_email_retry_confirmation_required", "กรุณายืนยัน RETRY_DAILY_SALES_EMAIL", 422);
+      }
+      if (!/^[0-9a-f-]{36}$/i.test(deliveryId)) {
+        return fail("daily_sales_email_delivery_invalid", "Delivery ID ไม่ถูกต้อง", 422);
+      }
+
+      const deliveryResult = await context.supabase
+        .from("customer_email_deliveries")
+        .select("id,event_key,tenant_id,recipient_email,status,attempt_count,last_attempt_at,sent_at,last_error,created_at,updated_at")
+        .eq("id", deliveryId)
+        .eq("event_type", "daily_sales_summary")
+        .maybeSingle<DeliveryRow>();
+
+      if (deliveryResult.error) throw new Error("daily_sales_email_retry_delivery_failed:" + deliveryResult.error.message);
+      const delivery = deliveryResult.data;
+      if (!delivery || !delivery.tenant_id) return fail("daily_sales_email_delivery_not_found", "ไม่พบรายการส่งอีเมล", 404);
+      if (!["failed", "blocked"].includes(delivery.status)) {
+        return fail(
+          "daily_sales_email_not_retryable",
+          delivery.status === "sent" ? "รายการนี้ส่งสำเร็จแล้ว ระบบป้องกันการส่งซ้ำ" : "รายการนี้ยังไม่อยู่ในสถานะที่ Retry ได้",
+          409
+        );
+      }
+
+      const businessDate = businessDateFromEventKey(delivery.event_key);
+      if (!businessDate) return fail("daily_sales_email_business_date_invalid", "ไม่สามารถระบุวันที่ของอีเมลเดิมได้", 409);
+
+      const settingResult = await context.supabase
+        .from("tenant_daily_sales_email_settings")
+        .select("tenant_id,enabled")
+        .eq("tenant_id", delivery.tenant_id)
+        .maybeSingle<{ tenant_id: string; enabled: boolean }>();
+      if (settingResult.error) throw new Error("daily_sales_email_retry_setting_failed:" + settingResult.error.message);
+      if (!settingResult.data?.enabled) {
+        return fail("daily_sales_email_disabled", "ร้านนี้ปิดการแจ้งสรุปยอดขายอยู่ จึงไม่ Retry", 409);
+      }
+
+      const candidateResult = await context.supabase.rpc("daily_sales_summary_candidates", {
+        p_business_date: businessDate
+      });
+      if (candidateResult.error) throw new Error("daily_sales_email_retry_candidate_failed:" + candidateResult.error.message);
+
+      const candidate = ((candidateResult.data ?? []) as CandidateRow[])
+        .find((row) => row.tenant_id === delivery.tenant_id);
+      if (!candidate) {
+        return fail("daily_sales_email_retry_candidate_missing", "ไม่พบยอดขายสำเร็จของร้านในวันที่ต้องการ Retry หรือร้านไม่พร้อมส่ง", 409);
+      }
+
+      const recipient = String(candidate.owner_email ?? "").trim().toLowerCase();
+      const recipientProblem = recipient ? customerEmailProblem(recipient) : "ยังไม่มีอีเมล Owner";
+      if (recipientProblem) return fail("daily_sales_email_owner_invalid", recipientProblem, 422);
+
+      const message = buildCandidateMessage(candidate);
+
+      const retry = await deliverCustomerEmail({
+        db: context.supabase,
+        eventType: "daily_sales_summary",
+        sourceId: delivery.tenant_id,
+        tenantId: delivery.tenant_id,
+        to: recipient,
+        message,
+        triggerMode: "manual",
+        actorUserId: context.auth.userId,
+        eventKeySuffix: businessDate.replaceAll("-", "")
+      });
+
+      await appendAuditLog({
+        tenantId: delivery.tenant_id,
+        actorUserId: context.auth.userId,
+        actorRole: context.auth.platformRole,
+        action: "daily_sales_summary_email_retry",
+        targetTable: "customer_email_deliveries",
+        targetId: delivery.id,
+        module: "it_admin",
+        beforeData: {
+          status: delivery.status,
+          recipient_email: delivery.recipient_email,
+          business_date: businessDate,
+          attempt_count: delivery.attempt_count
+        },
+        afterData: {
+          status: retry.status,
+          recipient_email: recipient,
+          business_date: businessDate
+        },
+        metadata: {
+          reason: "manual_retry_from_maintenance",
+          current_owner_email_used: true
+        },
+        ipAddress: context.requestMeta.ipAddress ?? undefined,
+        userAgent: context.requestMeta.userAgent ?? undefined
+      });
+
+      if (!["sent", "already_sent"].includes(retry.status)) {
+        return fail("daily_sales_email_retry_failed", retry.message || "Retry ไม่สำเร็จ", 502);
+      }
+
+      return ok({
+        delivery_id: retry.delivery_id ?? delivery.id,
+        status: retry.status,
+        business_date: businessDate,
+        recipient_email: recipient
+      });
+    }
+
+    return fail("daily_sales_email_action_invalid", "Action ไม่ถูกต้อง", 422);
   } catch (error) {
     return guardItAdminError(error);
   }
 }
+
