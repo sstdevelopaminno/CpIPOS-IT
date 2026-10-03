@@ -10,6 +10,40 @@ function clean(value: unknown, max = 40) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function isTransientDatabaseError(error: unknown) {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "object" && error && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : String(error ?? "");
+  return /timeout|timed out|fetch failed|connection|socket|gateway|warp server/i.test(message);
+}
+
+async function runCleanupRpc(
+  context: Awaited<ReturnType<typeof requireItAdmin>>,
+  args: Record<string, unknown>
+) {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const result = await context.supabase.rpc("it_run_operational_cleanup_7d", args);
+      if (!result.error) return result;
+      lastError = result.error;
+      if (!isTransientDatabaseError(result.error)) return result;
+    } catch (error) {
+      lastError = error;
+      if (!isTransientDatabaseError(error)) throw error;
+    }
+
+    if (attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+
+  return { data: null, error: lastError };
+}
+
 export async function GET() {
   try {
     const context = await requireItAdmin();
@@ -53,13 +87,23 @@ export async function POST(request: Request) {
       return fail("cleanup_confirmation_required", "กรุณายืนยัน CLEANUP_7D", 422);
     }
 
-    const result = await context.supabase.rpc("it_run_operational_cleanup_7d", {
+    const result = await runCleanupRpc(context, {
       p_scope: scope,
       p_mode: mode,
       p_actor_user_id: context.auth.userId,
       p_actor_role: context.auth.platformRole
     });
-    if (result.error) throw result.error;
+
+    if (result.error) {
+      if (isTransientDatabaseError(result.error)) {
+        return fail(
+          "cleanup_database_temporarily_unavailable",
+          "ฐานข้อมูลตอบสนองชั่วคราว กรุณาลองใหม่อีกครั้ง",
+          503
+        );
+      }
+      throw result.error;
+    }
 
     return ok(result.data ?? { ok: true, scope, mode });
   } catch (error) {
