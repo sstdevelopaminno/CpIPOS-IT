@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Language } from "@/lib/i18n";
 
 type CronJob = { jobname: string; schedule: string; active: boolean };
-type PackagePolicy = { code: string; name: string; retention_months: number; is_active: boolean; status: string | null };
+type PackagePolicy = { code: string; name: string; retention_months: number | null; is_active: boolean; status: string | null };
 type CleanupRun = {
   id: string; scope: string; mode: string; source: string; actor_role: string | null;
   deleted_counts: Record<string, number>; created_at: string;
@@ -46,7 +46,7 @@ const COPY = {
     runOperational: "รัน Cleanup 7 วันตอนนี้", salesTitle: "Sales Retention · ตามแพ็กเกจ",
     salesDesc: "ข้อมูลบิลจะ Export CSV → ส่งอีเมล → ตรวจไฟล์ → Purge ตามอายุแพ็กเกจ และไม่ลบหาก Email/Archive ไม่สำเร็จ",
     runSales: "รัน Sales Retention ตอนนี้", packages: "นโยบายตามแพ็กเกจ", package: "แพ็กเกจ",
-    months: "ระยะเก็บ", status: "สถานะ", monthUnit: "เดือน", recentSales: "Sales Retention ล่าสุด",
+    months: "ระยะเก็บ", status: "สถานะ", monthUnit: "เดือน", customRetention: "ตามสัญญา / รายร้าน", recentSales: "Sales Retention ล่าสุด",
     recentCleanup: "Cleanup Ledger ล่าสุด", counts: "จำนวน", updated: "อัปเดต", result: "ผลลัพธ์",
     noData: "ยังไม่มีข้อมูล", running: "กำลังสั่งงาน...", successOperational: "รัน Operational Retention สำเร็จ",
     successSales: "ส่งคำสั่ง Sales Retention Worker แล้ว", failed: "ดำเนินการไม่สำเร็จ",
@@ -64,7 +64,7 @@ const COPY = {
     runOperational: "Run 7-day cleanup now", salesTitle: "Sales Retention · by package",
     salesDesc: "Expired sales data follows CSV export → email → verification → purge. Purge is blocked if email or archive verification fails.",
     runSales: "Run sales retention now", packages: "Package policies", package: "Package",
-    months: "Retention", status: "Status", monthUnit: "months", recentSales: "Recent sales retention",
+    months: "Retention", status: "Status", monthUnit: "months", customRetention: "Per contract / tenant", recentSales: "Recent sales retention",
     recentCleanup: "Recent cleanup ledger", counts: "Counts", updated: "Updated", result: "Result",
     noData: "No data yet", running: "Running...", successOperational: "Operational retention completed",
     successSales: "Sales retention worker invoked", failed: "Action failed",
@@ -277,7 +277,7 @@ export function ItMaintenanceConsole({ language }: { language: Language }) {
               {(overview?.packages ?? []).map((pkg) => (
                 <tr key={pkg.code}>
                   <td className="px-5 py-3"><div className="font-bold text-slate-900">{pkg.name}</div><div className="text-xs text-slate-500">{pkg.code}</div></td>
-                  <td className="px-5 py-3 font-bold">{pkg.retention_months} {t.monthUnit}</td>
+                  <td className="px-5 py-3 font-bold">{pkg.retention_months == null ? t.customRetention : String(pkg.retention_months) + " " + t.monthUnit}</td>
                   <td className="px-5 py-3"><span className={"rounded-full border px-2.5 py-1 text-xs font-bold " + (pkg.is_active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500")}>{pkg.is_active ? t.active : t.inactive}</span></td>
                 </tr>
               ))}
