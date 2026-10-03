@@ -35,6 +35,18 @@ describe("IT Admin tenant directory", () => {
     expect(controlCenter).toContain("/devices`}");
   });
 
+  it("opens store provisioning as a tenant-directory wizard and pauses background refresh", () => {
+    const provisioningUi = source("../../src/components/it-admin/store-provisioning-console.tsx");
+    const layout = source("../../src/app/(it-admin)/layout.tsx");
+    expect(tenantsUi).toContain("provisioningOpen");
+    expect(tenantsUi).toContain("ConnectedStoreProvisioning");
+    expect(tenantsUi).toContain('event.key === "Escape"');
+    expect(tenantsUi).toContain("if (selected || provisioningOpen) return");
+    expect(provisioningUi).toContain("type Step = 1 | 2 | 3 | 4");
+    expect(provisioningUi).toContain("stepReview");
+    expect(layout).not.toContain('href: "/it-admin/store-provisioning"');
+  });
+
   it("renders owner identity menus as selectable buttons", () => {
     expect(primaryOwnerUi).toContain("OwnerEditorMenu");
     expect(primaryOwnerUi).toContain("styles.menuRail");
