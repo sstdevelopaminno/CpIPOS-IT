@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ItDataCleanupControls } from "@/components/it-admin/it-data-cleanup-controls";
 
 type Language="th"|"en";
 type ResourceType="printer"|"agent"|"runtime";
@@ -299,6 +300,8 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
     {loading?<tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">{t.loading}</td></tr>:null}
    </tbody></table></div>
   </div>
+
+  <div className="mt-4"><ItDataCleanupControls scope="print_history" language={language} onCompleted={load} /></div>
 
   {editing?<div className="fixed inset-0 z-[500] grid place-items-center bg-slate-950/50 p-4"><div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
    <div className="flex items-start justify-between"><div><div className="text-xs font-black text-blue-600">{editing.resource_type==="printer"?t.printer:t.agent}</div><h2 className="mt-1 text-xl font-black">{t.edit}</h2></div><button onClick={()=>setEditing(null)} className="h-9 w-9 rounded-full border">×</button></div>
