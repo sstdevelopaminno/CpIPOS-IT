@@ -20,7 +20,15 @@ function packageOption(row: Record<string, unknown>): ProvisioningPackageOption 
   };
 }
 
-export function ConnectedStoreProvisioning({ language }: { language: Language }) {
+export function ConnectedStoreProvisioning({
+  language,
+  onProvisioned,
+  onFinished
+}: {
+  language: Language;
+  onProvisioned?: () => void;
+  onFinished?: () => void;
+}) {
   const [packages, setPackages] = useState<ProvisioningPackageOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,5 +61,12 @@ export function ConnectedStoreProvisioning({ language }: { language: Language })
     );
   }
 
-  return <StoreProvisioningConsole packages={packages} language={language} />;
+  return (
+    <StoreProvisioningConsole
+      packages={packages}
+      language={language}
+      onProvisioned={onProvisioned}
+      onFinished={onFinished}
+    />
+  );
 }
