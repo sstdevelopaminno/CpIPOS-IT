@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useItAccess } from "@/components/layout/app-shell";
 import type { Language } from "@/lib/i18n";
+import { DailySalesEmailPreviewModal } from "./daily-sales-email-preview-modal";
 
 type Delivery = {
   id: string;
@@ -85,6 +86,7 @@ const COPY = {
     ownerProblem: "Owner ไม่พร้อม",
     retry: "Retry",
     retrying: "กำลัง Retry…",
+    preview: "Preview",
     supportOnly: "IT Support เท่านั้น",
     sent: "ส่งสำเร็จ",
     failed: "ส่งไม่สำเร็จ",
@@ -126,6 +128,7 @@ const COPY = {
     ownerProblem: "Owner not ready",
     retry: "Retry",
     retrying: "Retrying…",
+    preview: "Preview",
     supportOnly: "IT Support only",
     sent: "Sent",
     failed: "Failed",
@@ -186,6 +189,7 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [previewStore, setPreviewStore] = useState<StoreRow | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [message, setMessage] = useState("");
@@ -266,6 +270,7 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
   const locale = language === "th" ? "th-TH" : "en-US";
 
   return (
+    <>
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <div className="border-b border-slate-200 px-5 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -371,13 +376,21 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
                     ) : null}
                   </td>
                   <td className="px-5 py-4 text-right">
-                    {delivery?.retryable ? (
-                      <button type="button" disabled={!canRetry || retrying !== null}
-                        onClick={() => void retry(row)}
-                        className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-black text-amber-900 disabled:opacity-40">
-                        {retrying === delivery.id ? t.retrying : canRetry ? t.retry : t.supportOnly}
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button type="button"
+                        disabled={!row.tenant_active || retrying !== null}
+                        onClick={() => setPreviewStore(row)}
+                        className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 disabled:opacity-40">
+                        {t.preview}
                       </button>
-                    ) : <span className="text-xs text-slate-400">—</span>}
+                      {delivery?.retryable ? (
+                        <button type="button" disabled={!canRetry || retrying !== null}
+                          onClick={() => void retry(row)}
+                          className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-black text-amber-900 disabled:opacity-40">
+                          {retrying === delivery.id ? t.retrying : canRetry ? t.retry : t.supportOnly}
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               );
@@ -392,5 +405,17 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
         </table>
       </div>
     </section>
+
+    {previewStore && data?.target_business_date ? (
+      <DailySalesEmailPreviewModal
+        language={language}
+        tenantId={previewStore.tenant_id}
+        tenantName={previewStore.tenant_name}
+        defaultDate={data.target_business_date}
+        canSendTest={canRetry}
+        onClose={() => setPreviewStore(null)}
+      />
+    ) : null}
+    </>
   );
 }
