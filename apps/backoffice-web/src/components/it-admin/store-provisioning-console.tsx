@@ -106,7 +106,8 @@ const copy = {
     users: "ผู้ใช้",
     required: "กรุณากรอกข้อมูลที่จำเป็นให้ครบก่อนดำเนินการต่อ",
     invalidEmail: "รูปแบบอีเมลไม่ถูกต้อง",
-    invalidPin: "PIN ต้องเป็นตัวเลข 4–8 หลัก"
+    invalidPin: "PIN ต้องเป็นตัวเลข 4–8 หลัก",
+    invalidRequestId: "Request ID ไม่ถูกต้อง กรุณาใช้ UUID เดิมหรือสร้างรายการใหม่"
   },
   en: {
     fast: "FAST PROVISIONING",
@@ -158,7 +159,8 @@ const copy = {
     users: "users",
     required: "Complete all required fields before continuing.",
     invalidEmail: "Email format is invalid",
-    invalidPin: "PIN must contain 4–8 digits"
+    invalidPin: "PIN must contain 4–8 digits",
+    invalidRequestId: "Request ID is invalid. Reuse the original UUID or start a new store."
   }
 } as const;
 
@@ -285,6 +287,10 @@ export function StoreProvisioningConsole({
 
   async function submitProvisioning() {
     if (submitting || packageBlocked || step !== 4) return;
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(requestId)) {
+      setValidation(text.invalidRequestId);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setValidation("");
