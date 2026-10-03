@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useItAccess } from "@/components/layout/app-shell";
 import type { Language } from "@/lib/i18n";
 
 type CronJob = { jobname: string; schedule: string; active: boolean };
@@ -52,7 +53,7 @@ const COPY = {
     successSales: "ส่งคำสั่ง Sales Retention Worker แล้ว", failed: "ดำเนินการไม่สำเร็จ",
     confirmOperational: "ยืนยันรัน Cleanup ข้อมูล Operational ที่เก่ากว่า 7 วันตอนนี้?",
     confirmSales: "ยืนยันรัน Sales Retention Worker ตอนนี้? ระบบจะประมวลผลเฉพาะข้อมูลที่ครบกำหนดตามแพ็กเกจ",
-    scheduleSales: "00:00 น. ไทย", scheduleOps: "00:10 น. ไทย", errorState: "ต้องตรวจสอบ", completed: "ปกติ"
+    scheduleSales: "00:00 น. ไทย", scheduleOps: "00:10 น. ไทย", errorState: "ต้องตรวจสอบ", completed: "ปกติ", supportOnly: "สั่งงานได้เฉพาะ IT Support"
   },
   en: {
     eyebrow: "SYSTEM MAINTENANCE", title: "Data Retention & Maintenance",
@@ -70,7 +71,7 @@ const COPY = {
     successSales: "Sales retention worker invoked", failed: "Action failed",
     confirmOperational: "Run cleanup for operational records older than 7 days now?",
     confirmSales: "Run the sales retention worker now? Only package-expired data will be processed.",
-    scheduleSales: "00:00 Bangkok", scheduleOps: "00:10 Bangkok", errorState: "Needs attention", completed: "Healthy"
+    scheduleSales: "00:00 Bangkok", scheduleOps: "00:10 Bangkok", errorState: "Needs attention", completed: "Healthy", supportOnly: "Actions require IT Support"
   }
 } as const;
 
@@ -96,6 +97,8 @@ function statusClass(status: string) {
 
 export function ItMaintenanceConsole({ language }: { language: Language }) {
   const t = COPY[language];
+  const access = useItAccess();
+  const canRun = access.role === "it_support";
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"operational" | "sales" | null>(null);
@@ -210,10 +213,10 @@ export function ItMaintenanceConsole({ language }: { language: Language }) {
               <h3 className="text-lg font-black text-slate-950">{t.operationalTitle}</h3>
               <p className="mt-1 text-xs leading-5 text-slate-500">{t.operationalDesc}</p>
             </div>
-            <button type="button" disabled={busy !== null || expiredTotal === 0}
+            <button type="button" disabled={!canRun || busy !== null || expiredTotal === 0}
               onClick={() => void run("run_operational_retention")}
               className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900 disabled:opacity-40">
-              {busy === "operational" ? t.running : t.runOperational}
+              {busy === "operational" ? t.running : !canRun ? t.supportOnly : t.runOperational}
             </button>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -244,9 +247,9 @@ export function ItMaintenanceConsole({ language }: { language: Language }) {
               <h3 className="text-lg font-black text-slate-950">{t.salesTitle}</h3>
               <p className="mt-1 text-xs leading-5 text-slate-500">{t.salesDesc}</p>
             </div>
-            <button type="button" disabled={busy !== null} onClick={() => void run("run_sales_retention")}
+            <button type="button" disabled={!canRun || busy !== null} onClick={() => void run("run_sales_retention")}
               className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-800 disabled:opacity-40">
-              {busy === "sales" ? t.running : t.runSales}
+              {busy === "sales" ? t.running : !canRun ? t.supportOnly : t.runSales}
             </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
