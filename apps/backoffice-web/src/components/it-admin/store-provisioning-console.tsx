@@ -90,6 +90,7 @@ const copy = {
     invalidPackage: "แพ็กเกจนี้ยังไม่พร้อมสำหรับ Fast Provisioning",
     successTitle: "เปิดร้านสำเร็จ",
     successMessage: "สร้าง Tenant, Trial, สาขาหลัก และ Owner เรียบร้อยแล้ว",
+    nextStep: "ขั้นถัดไป: Device Enrollment / Android / Print Agent",
     storeCode: "Store Code สำหรับลูกค้า",
     openNext: "เปิดร้านถัดไป",
     viewStores: "ดูร้านค้าทั้งหมด",
@@ -141,6 +142,7 @@ const copy = {
     invalidPackage: "This package is not eligible for Fast Provisioning",
     successTitle: "Store provisioned",
     successMessage: "Tenant, Trial, main branch and Owner were created successfully.",
+    nextStep: "Next: Device Enrollment / Android / Print Agent",
     storeCode: "Customer Store Code",
     openNext: "Provision another store",
     viewStores: "View all stores",
@@ -547,6 +549,7 @@ export function StoreProvisioningConsole({
                 <span>{text.successTitle}</span>
                 <h2>{text.successTitle}</h2>
                 <p>{text.successMessage}</p>
+                <small>{text.nextStep}</small>
               </div>
             </div>
             <div className={styles.successStoreCode}>
