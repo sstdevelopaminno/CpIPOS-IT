@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Language } from "@/lib/i18n";
 import styles from "./store-provisioning-console.module.css";
 
@@ -18,6 +18,7 @@ export type ProvisioningPackageOption = {
 };
 
 type BillingInterval = "monthly" | "yearly";
+type Step = 1 | 2 | 3 | 4;
 
 type ProvisioningResult = {
   request_id: string;
@@ -56,18 +57,21 @@ type FormState = {
 
 const copy = {
   th: {
-    flow: "Tenant → Store Code → Trial Package → สาขาหลัก → Owner → Login Policy → Device Enrollment",
-    request: "Request ID",
-    sectionStore: "1. ร้านและแพ็กเกจ",
-    sectionBranch: "2. สาขาหลัก",
-    sectionOwner: "3. Owner คนแรก",
+    fast: "FAST PROVISIONING",
+    trial: "TRIAL",
+    recovery: "Recovery Request ID",
+    recoveryHint: "ใช้ ID เดิมเฉพาะกรณีกู้คืนร้านที่เปิดค้าง",
+    stepStore: "ร้านและแพ็กเกจ",
+    stepBranch: "สาขาหลัก",
+    stepOwner: "Owner",
+    stepReview: "ตรวจสอบ",
     storeName: "ชื่อร้าน",
     package: "แพ็กเกจ",
     billing: "รอบราคาอ้างอิง",
     monthly: "รายเดือน",
     yearly: "รายปี",
-    trialOnly: "เปิดร้านใหม่เป็น Trial เท่านั้น",
-    paidApproval: "การเปิดใช้งานแบบชำระเงินต้องผ่าน approval flow เดิมหลังจากสร้างร้านแล้ว",
+    trialOnly: "ร้านใหม่เริ่มต้นเป็น Trial เท่านั้น",
+    paidApproval: "การเปิดใช้งานแบบชำระเงินยังต้องผ่าน approval flow หลังสร้างร้าน",
     branchCode: "รหัสสาขา",
     branchName: "ชื่อสาขา",
     branchAddress: "ที่อยู่สาขา",
@@ -76,47 +80,49 @@ const copy = {
     phone: "โทรศัพท์",
     employeeCode: "รหัสพนักงาน",
     pin: "PIN 4–8 หลัก",
-    pinNote: "PIN จะถูก hash ด้วย bcrypt ฝั่ง server และไม่ถูกเก็บเป็น plaintext ใน provisioning ledger",
-    create: "ตรวจสอบก่อนเปิดร้าน",
+    pinNote: "PIN จะถูก hash ด้วย bcrypt ฝั่ง server และไม่เก็บเป็น plaintext",
+    next: "ถัดไป",
+    back: "ย้อนกลับ",
+    create: "ยืนยันและเปิดร้าน",
     submitting: "กำลังเปิดร้าน…",
     emptyTitle: "ยังไม่มีแพ็กเกจที่เปิดร้านได้",
-    emptyDesc: "Fast Provisioning ใช้เฉพาะแพ็กเกจ standard ที่ Active และมีราคาสำหรับรอบบิลอย่างน้อยหนึ่งแบบ",
+    emptyDesc: "Fast Provisioning ใช้เฉพาะแพ็กเกจ standard ที่ Active และมีราคาอย่างน้อยหนึ่งรอบบิล",
     invalidPackage: "แพ็กเกจนี้ยังไม่พร้อมสำหรับ Fast Provisioning",
     successTitle: "เปิดร้านสำเร็จ",
+    successMessage: "สร้าง Tenant, Trial, สาขาหลัก และ Owner เรียบร้อยแล้ว",
     storeCode: "Store Code สำหรับลูกค้า",
-    nextStep: "ขั้นถัดไป",
-    deviceEnrollment: "Device Enrollment / Android / Print Agent",
     openNext: "เปิดร้านถัดไป",
     viewStores: "ดูร้านค้าทั้งหมด",
-    retrySame: "หากเกิด network error หรือ Owner step ล้มเหลว ให้ใช้ Request ID เดิมเพื่อป้องกัน Tenant ซ้ำ",
-    confirmTitle: "ยืนยันการเปิดร้านใหม่",
-    confirmDesc: "การยืนยันจะสร้างข้อมูลจริงใน CpiPOS-001 รวม Tenant, Store Code, Trial contract, สาขาหลัก และ Owner account",
-    confirmStore: "ร้าน",
-    confirmPackage: "แพ็กเกจ / Trial",
-    confirmBranch: "สาขาหลัก",
-    confirmOwner: "Owner",
-    confirmPin: "PIN",
+    retrySame: "หาก network error หรือ Owner step ล้มเหลว ให้ใช้ Request ID เดิมเพื่อป้องกัน Tenant ซ้ำ",
+    reviewTitle: "ตรวจสอบก่อนสร้างร้านจริง",
+    reviewDesc: "ข้อมูลด้านล่างจะถูกสร้างใน CpiPOS-001 เมื่อกดยืนยัน",
+    store: "ร้าน",
+    branch: "สาขาหลัก",
+    owner: "Owner",
     pinHidden: "กำหนดแล้ว · ไม่แสดงค่า",
-    cancel: "ยกเลิก",
-    confirm: "ยืนยันและสร้างร้าน",
-    standardOnly: "Fast Provisioning",
     branches: "สาขา",
     devices: "อุปกรณ์",
-    users: "ผู้ใช้"
+    users: "ผู้ใช้",
+    required: "กรุณากรอกข้อมูลที่จำเป็นให้ครบก่อนดำเนินการต่อ",
+    invalidEmail: "รูปแบบอีเมลไม่ถูกต้อง",
+    invalidPin: "PIN ต้องเป็นตัวเลข 4–8 หลัก"
   },
   en: {
-    flow: "Tenant → Store Code → Trial Package → Main Branch → Owner → Login Policy → Device Enrollment",
-    request: "Request ID",
-    sectionStore: "1. Store & package",
-    sectionBranch: "2. Main branch",
-    sectionOwner: "3. First Owner",
+    fast: "FAST PROVISIONING",
+    trial: "TRIAL",
+    recovery: "Recovery Request ID",
+    recoveryHint: "Reuse only when recovering a partially provisioned store",
+    stepStore: "Store & package",
+    stepBranch: "Main branch",
+    stepOwner: "Owner",
+    stepReview: "Review",
     storeName: "Store name",
     package: "Package",
     billing: "Reference billing interval",
     monthly: "Monthly",
     yearly: "Yearly",
-    trialOnly: "New stores start as Trial only",
-    paidApproval: "Paid activation remains behind the existing approval flow after the store is provisioned.",
+    trialOnly: "New stores always start as Trial",
+    paidApproval: "Paid activation still requires the existing approval flow after provisioning.",
     branchCode: "Branch code",
     branchName: "Branch name",
     branchAddress: "Branch address",
@@ -125,33 +131,32 @@ const copy = {
     phone: "Phone",
     employeeCode: "Employee code",
     pin: "PIN · 4–8 digits",
-    pinNote: "The PIN is bcrypt-hashed on the server and is never stored as plaintext in the provisioning ledger.",
-    create: "Review before provisioning",
+    pinNote: "The PIN is bcrypt-hashed on the server and is never stored as plaintext.",
+    next: "Next",
+    back: "Back",
+    create: "Confirm & provision",
     submitting: "Provisioning…",
     emptyTitle: "No package is eligible for provisioning",
-    emptyDesc: "Fast Provisioning only accepts active standard packages with at least one priced billing interval.",
+    emptyDesc: "Fast Provisioning accepts active standard packages with at least one priced billing interval.",
     invalidPackage: "This package is not eligible for Fast Provisioning",
     successTitle: "Store provisioned",
+    successMessage: "Tenant, Trial, main branch and Owner were created successfully.",
     storeCode: "Customer Store Code",
-    nextStep: "Next step",
-    deviceEnrollment: "Device Enrollment / Android / Print Agent",
     openNext: "Provision another store",
     viewStores: "View all stores",
     retrySame: "For a network error or Owner-step failure, retry with the same Request ID to prevent duplicate tenants.",
-    confirmTitle: "Confirm new store provisioning",
-    confirmDesc: "Confirmation creates real CpiPOS-001 records for the Tenant, Store Code, Trial contract, main branch, and Owner account.",
-    confirmStore: "Store",
-    confirmPackage: "Package / Trial",
-    confirmBranch: "Main branch",
-    confirmOwner: "Owner",
-    confirmPin: "PIN",
+    reviewTitle: "Review before creating the store",
+    reviewDesc: "The following records will be created in CpiPOS-001 after confirmation.",
+    store: "Store",
+    branch: "Main branch",
+    owner: "Owner",
     pinHidden: "Configured · value hidden",
-    cancel: "Cancel",
-    confirm: "Confirm and provision",
-    standardOnly: "Fast Provisioning",
     branches: "branches",
     devices: "devices",
-    users: "users"
+    users: "users",
+    required: "Complete all required fields before continuing.",
+    invalidEmail: "Email format is invalid",
+    invalidPin: "PIN must contain 4–8 digits"
   }
 } as const;
 
@@ -198,16 +203,25 @@ function initialForm(packages: ProvisioningPackageOption[]): FormState {
   };
 }
 
-export function StoreProvisioningConsole({ packages, language }: { packages: ProvisioningPackageOption[]; language: Language }) {
+export function StoreProvisioningConsole({
+  packages,
+  language,
+  onProvisioned
+}: {
+  packages: ProvisioningPackageOption[];
+  language: Language;
+  onProvisioned?: () => void;
+}) {
   const text = copy[language];
   const eligiblePackages = useMemo(
     () => packages.filter((item) => item.quota_mode === "standard" && eligibleIntervals(item).length > 0),
     [packages]
   );
   const [requestId, setRequestId] = useState(newRequestId);
+  const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  const [validation, setValidation] = useState("");
   const [result, setResult] = useState<ProvisioningResult | null>(null);
   const [form, setForm] = useState<FormState>(() => initialForm(packages));
 
@@ -217,37 +231,59 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
     form.billingInterval === "yearly" ? selectedPackage?.yearly_price ?? 0 : selectedPackage?.monthly_price ?? 0;
   const packageBlocked = !selectedPackage || !intervals.includes(form.billingInterval) || billingPrice <= 0;
 
-  useEffect(() => {
-    if (!result) return;
-    const timeoutId = window.setTimeout(() => setResult(null), 4200);
-    return () => window.clearTimeout(timeoutId);
-  }, [result]);
-
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setValidation("");
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function updatePackage(packageId: string) {
     const nextPackage = eligiblePackages.find((item) => item.id === packageId) ?? null;
     const nextIntervals = eligibleIntervals(nextPackage);
+    setValidation("");
     setForm((current) => ({
       ...current,
       packageId,
-      billingInterval: nextIntervals.includes(current.billingInterval) ? current.billingInterval : nextIntervals[0] ?? "monthly"
+      billingInterval: nextIntervals.includes(current.billingInterval)
+        ? current.billingInterval
+        : nextIntervals[0] ?? "monthly"
     }));
   }
 
-  function beginReview(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submitting || packageBlocked) return;
-    setError(null);
-    setReviewOpen(true);
+  function validateStep(current: Step) {
+    if (current === 1) {
+      if (!form.storeName.trim() || packageBlocked) return text.required;
+    }
+    if (current === 2) {
+      if (!form.branchCode.trim() || !form.branchName.trim()) return text.required;
+    }
+    if (current === 3) {
+      if (!form.ownerName.trim() || !form.ownerEmail.trim() || !form.employeeCode.trim() || !form.pin.trim()) return text.required;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.ownerEmail.trim())) return text.invalidEmail;
+      if (!/^\d{4,8}$/.test(form.pin)) return text.invalidPin;
+    }
+    return "";
+  }
+
+  function nextStep() {
+    const message = validateStep(step);
+    if (message) {
+      setValidation(message);
+      return;
+    }
+    setValidation("");
+    setStep((current) => Math.min(4, current + 1) as Step);
+  }
+
+  function previousStep() {
+    setValidation("");
+    setStep((current) => Math.max(1, current - 1) as Step);
   }
 
   async function submitProvisioning() {
-    if (submitting || packageBlocked) return;
+    if (submitting || packageBlocked || step !== 4) return;
     setSubmitting(true);
     setError(null);
+    setValidation("");
     try {
       const response = await fetch("/api/it-admin/v1/store-provisioning", {
         method: "POST",
@@ -270,16 +306,12 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
       });
       const payload = (await response.json().catch(() => null)) as ApiPayload | null;
       if (!response.ok || !payload?.data) {
-        setReviewOpen(false);
         setError(payload?.error ?? { code: "store_provisioning_failed", message: "Store provisioning failed." });
         return;
       }
-      setReviewOpen(false);
       setResult(payload.data);
-      setRequestId(newRequestId());
-      setForm(initialForm(packages));
+      onProvisioned?.();
     } catch {
-      setReviewOpen(false);
       setError({
         code: "store_provisioning_network_failed",
         message:
@@ -294,9 +326,10 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
 
   function reset() {
     setRequestId(newRequestId());
+    setStep(1);
     setError(null);
+    setValidation("");
     setResult(null);
-    setReviewOpen(false);
     setForm(initialForm(packages));
   }
 
@@ -312,229 +345,221 @@ export function StoreProvisioningConsole({ packages, language }: { packages: Pro
     );
   }
 
-  function dismissSuccess() {
-    setResult(null);
-  }
+  const steps = [
+    [1, text.stepStore],
+    [2, text.stepBranch],
+    [3, text.stepOwner],
+    [4, text.stepReview]
+  ] as const;
 
   return (
     <>
-      <form className={styles.console} onSubmit={beginReview}>
-        <div className={styles.flowHeader}>
+      <section className={styles.console}>
+        <div className={styles.compactHeader}>
           <div>
-            <span className={styles.flowBadge}>{text.standardOnly}</span>
-            <p>{text.flow}</p>
-          </div>
-          <label className={styles.requestIdField}>
-            <span>{text.request} · {language === "th" ? "ใช้ ID เดิมเมื่อกู้คืนร้านที่เปิดค้าง" : "Reuse the original ID to recover a partial store"}</span>
-            <input
-              aria-label={text.request}
-              required
-              spellCheck={false}
-              autoComplete="off"
-              pattern="[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"
-              title={requestId}
-              value={requestId}
-              disabled={submitting}
-              onChange={(event) => setRequestId(event.target.value.trim())}
-            />
-          </label>
-        </div>
-
-        <section className={styles.formSection}>
-          <div className={styles.sectionHeading}>
-            <h2>{text.sectionStore}</h2>
-            <span className={styles.trialBadge}>Trial</span>
-          </div>
-          <div className={styles.formGrid}>
-            <label>
-              <span>{text.storeName}</span>
-              <input required maxLength={180} value={form.storeName} onChange={(event) => update("storeName", event.target.value)} />
-            </label>
-            <label>
-              <span>{text.package}</span>
-              <select required value={form.packageId} onChange={(event) => updatePackage(event.target.value)}>
-                {eligiblePackages.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} · {item.code}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>{text.billing}</span>
-              <select
-                value={form.billingInterval}
-                onChange={(event) => update("billingInterval", event.target.value as BillingInterval)}
-              >
-                <option value="monthly" disabled={!intervals.includes("monthly")}>{text.monthly}</option>
-                <option value="yearly" disabled={!intervals.includes("yearly")}>{text.yearly}</option>
-              </select>
-            </label>
-          </div>
-
-          {selectedPackage ? (
-            <div className={styles.packageSummary}>
-              <div><span>{selectedPackage.name}</span><strong>{money(billingPrice, language)}</strong></div>
-              <div><span>{text.branches}</span><strong>{selectedPackage.max_branches}</strong></div>
-              <div><span>{text.devices}</span><strong>{selectedPackage.max_devices}</strong></div>
-              <div><span>{text.users}</span><strong>{selectedPackage.max_users}</strong></div>
+            <div className={styles.headerBadges}>
+              <span className={styles.flowBadge}>{text.fast}</span>
+              <span className={styles.trialBadge}>{text.trial}</span>
             </div>
-          ) : (
-            <div className={styles.inlineError}>{text.invalidPackage}</div>
-          )}
-
-          <div className={styles.policyNotice}>
-            <strong>{text.trialOnly}</strong>
-            <span>{text.paidApproval}</span>
+            <p>{text.trialOnly}</p>
           </div>
-        </section>
-
-        <section className={styles.formSection}>
-          <div className={styles.sectionHeading}><h2>{text.sectionBranch}</h2></div>
-          <div className={styles.formGrid}>
+          <details className={styles.recoveryDetails}>
+            <summary>{text.recovery}</summary>
             <label>
-              <span>{text.branchCode}</span>
-              <input required maxLength={40} value={form.branchCode} onChange={(event) => update("branchCode", event.target.value)} />
-            </label>
-            <label>
-              <span>{text.branchName}</span>
-              <input required maxLength={180} value={form.branchName} onChange={(event) => update("branchName", event.target.value)} />
-            </label>
-            <label className={styles.fullField}>
-              <span>{text.branchAddress}</span>
-              <textarea maxLength={500} rows={3} value={form.branchAddress} onChange={(event) => update("branchAddress", event.target.value)} />
-            </label>
-          </div>
-        </section>
-
-        <section className={styles.formSection}>
-          <div className={styles.sectionHeading}><h2>{text.sectionOwner}</h2></div>
-          <div className={styles.formGrid}>
-            <label>
-              <span>{text.ownerName}</span>
-              <input required maxLength={180} value={form.ownerName} onChange={(event) => update("ownerName", event.target.value)} />
-            </label>
-            <label>
-              <span>{text.email}</span>
-              <input required type="email" maxLength={254} autoComplete="email" value={form.ownerEmail} onChange={(event) => update("ownerEmail", event.target.value)} />
-            </label>
-            <label>
-              <span>{text.phone}</span>
-              <input maxLength={40} inputMode="tel" autoComplete="tel" value={form.ownerPhone} onChange={(event) => update("ownerPhone", event.target.value)} />
-            </label>
-            <label>
-              <span>{text.employeeCode}</span>
+              <span>{text.recoveryHint}</span>
               <input
+                aria-label={text.recovery}
                 required
-                inputMode="numeric"
-                pattern="[0-9]{1,32}"
-                value={form.employeeCode}
-                onChange={(event) => update("employeeCode", event.target.value.replace(/\D/g, "").slice(0, 32))}
+                spellCheck={false}
+                autoComplete="off"
+                pattern="[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"
+                value={requestId}
+                disabled={submitting}
+                onChange={(event) => setRequestId(event.target.value.trim())}
               />
             </label>
-            <label>
-              <span>{text.pin}</span>
-              <input
-                required
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                pattern="[0-9]{4,8}"
-                value={form.pin}
-                onChange={(event) => update("pin", event.target.value.replace(/\D/g, "").slice(0, 8))}
-              />
-            </label>
-          </div>
-          <p className={styles.securityNote}>{text.pinNote}</p>
-        </section>
-
-        {error ? (
-          <div className={styles.errorState} role="alert">
-            <strong>{error.code}</strong>
-            <span>{error.message}</span>
-            <small>{text.retrySame}</small>
-          </div>
-        ) : null}
-
-        <div className={styles.formFooter}>
-          <span>{text.retrySame}</span>
-          <button disabled={submitting || packageBlocked} type="submit">
-            {submitting ? text.submitting : text.create}
-          </button>
+          </details>
         </div>
-      </form>
 
+        <nav className={styles.stepper} aria-label="Store provisioning steps">
+          {steps.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={step === value ? styles.stepActive : step > value ? styles.stepDone : ""}
+              onClick={() => value < step && setStep(value)}
+              disabled={value > step || submitting}
+            >
+              <span>{step > value ? "✓" : value}</span>
+              <strong>{label}</strong>
+            </button>
+          ))}
+        </nav>
+
+        <div className={styles.stepBody}>
+          {step === 1 ? (
+            <section className={styles.stepPanel}>
+              <div className={styles.stepHeading}>
+                <div><span>01</span><h2>{text.stepStore}</h2></div>
+                <small>{text.paidApproval}</small>
+              </div>
+              <div className={styles.formGrid}>
+                <label>
+                  <span>{text.storeName}</span>
+                  <input autoFocus required maxLength={180} value={form.storeName} onChange={(event) => update("storeName", event.target.value)} />
+                </label>
+                <label>
+                  <span>{text.package}</span>
+                  <select required value={form.packageId} onChange={(event) => updatePackage(event.target.value)}>
+                    {eligiblePackages.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name} · {item.code}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>{text.billing}</span>
+                  <select value={form.billingInterval} onChange={(event) => update("billingInterval", event.target.value as BillingInterval)}>
+                    <option value="monthly" disabled={!intervals.includes("monthly")}>{text.monthly}</option>
+                    <option value="yearly" disabled={!intervals.includes("yearly")}>{text.yearly}</option>
+                  </select>
+                </label>
+              </div>
+              {selectedPackage ? (
+                <div className={styles.packageSummary}>
+                  <div><span>{selectedPackage.name}</span><strong>{money(billingPrice, language)}</strong></div>
+                  <div><span>{text.branches}</span><strong>{selectedPackage.max_branches}</strong></div>
+                  <div><span>{text.devices}</span><strong>{selectedPackage.max_devices}</strong></div>
+                  <div><span>{text.users}</span><strong>{selectedPackage.max_users}</strong></div>
+                </div>
+              ) : <div className={styles.inlineError}>{text.invalidPackage}</div>}
+            </section>
+          ) : null}
+
+          {step === 2 ? (
+            <section className={styles.stepPanel}>
+              <div className={styles.stepHeading}>
+                <div><span>02</span><h2>{text.stepBranch}</h2></div>
+              </div>
+              <div className={styles.formGrid}>
+                <label>
+                  <span>{text.branchCode}</span>
+                  <input autoFocus required maxLength={40} value={form.branchCode} onChange={(event) => update("branchCode", event.target.value)} />
+                </label>
+                <label>
+                  <span>{text.branchName}</span>
+                  <input required maxLength={180} value={form.branchName} onChange={(event) => update("branchName", event.target.value)} />
+                </label>
+                <label className={styles.fullField}>
+                  <span>{text.branchAddress}</span>
+                  <textarea maxLength={500} rows={3} value={form.branchAddress} onChange={(event) => update("branchAddress", event.target.value)} />
+                </label>
+              </div>
+            </section>
+          ) : null}
+
+          {step === 3 ? (
+            <section className={styles.stepPanel}>
+              <div className={styles.stepHeading}>
+                <div><span>03</span><h2>{text.stepOwner}</h2></div>
+              </div>
+              <div className={styles.formGrid}>
+                <label>
+                  <span>{text.ownerName}</span>
+                  <input autoFocus required maxLength={180} value={form.ownerName} onChange={(event) => update("ownerName", event.target.value)} />
+                </label>
+                <label>
+                  <span>{text.email}</span>
+                  <input required type="email" maxLength={254} autoComplete="email" value={form.ownerEmail} onChange={(event) => update("ownerEmail", event.target.value)} />
+                </label>
+                <label>
+                  <span>{text.phone}</span>
+                  <input maxLength={40} inputMode="tel" autoComplete="tel" value={form.ownerPhone} onChange={(event) => update("ownerPhone", event.target.value)} />
+                </label>
+                <label>
+                  <span>{text.employeeCode}</span>
+                  <input required inputMode="numeric" pattern="[0-9]{1,32}" value={form.employeeCode}
+                    onChange={(event) => update("employeeCode", event.target.value.replace(/\D/g, "").slice(0, 32))} />
+                </label>
+                <label>
+                  <span>{text.pin}</span>
+                  <input required type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{4,8}" value={form.pin}
+                    onChange={(event) => update("pin", event.target.value.replace(/\D/g, "").slice(0, 8))} />
+                </label>
+              </div>
+              <p className={styles.securityNote}>{text.pinNote}</p>
+            </section>
+          ) : null}
+
+          {step === 4 && selectedPackage ? (
+            <section className={styles.stepPanel}>
+              <div className={styles.stepHeading}>
+                <div><span>04</span><h2>{text.reviewTitle}</h2></div>
+                <small>{text.reviewDesc}</small>
+              </div>
+              <div className={styles.reviewCards}>
+                <article><span>{text.store}</span><strong>{form.storeName}</strong><small>{selectedPackage.name} · Trial · {money(billingPrice, language)} / {form.billingInterval}</small></article>
+                <article><span>{text.branch}</span><strong>{form.branchCode} · {form.branchName}</strong><small>{form.branchAddress || "—"}</small></article>
+                <article><span>{text.owner}</span><strong>{form.ownerName}</strong><small>{form.ownerEmail} · #{form.employeeCode}</small></article>
+                <article><span>PIN</span><strong>{text.pinHidden}</strong><small>{text.recovery}: {requestId.slice(0, 8)}…</small></article>
+              </div>
+            </section>
+          ) : null}
+
+          {validation ? <div className={styles.validationState}>{validation}</div> : null}
+          {error ? (
+            <div className={styles.errorState} role="alert">
+              <strong>{error.code}</strong>
+              <span>{error.message}</span>
+              <small>{text.retrySame}</small>
+            </div>
+          ) : null}
+        </div>
+
+        <footer className={styles.wizardFooter}>
+          <div className={styles.progressText}>Step {step} / 4</div>
+          <div className={styles.wizardActions}>
+            {step > 1 ? (
+              <button type="button" className={styles.secondaryButton} onClick={previousStep} disabled={submitting}>
+                {text.back}
+              </button>
+            ) : null}
+            {step < 4 ? (
+              <button type="button" className={styles.primaryButton} onClick={nextStep} disabled={submitting || (step === 1 && packageBlocked)}>
+                {text.next}
+              </button>
+            ) : (
+              <button type="button" className={styles.primaryButton} onClick={() => void submitProvisioning()} disabled={submitting || packageBlocked}>
+                {submitting ? text.submitting : text.create}
+              </button>
+            )}
+          </div>
+        </footer>
+      </section>
 
       {result ? (
-        <div className={styles.successBackdrop} role="presentation" onMouseDown={dismissSuccess}>
-          <section
-            className={styles.successDialog}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="store-provisioning-success-title"
-            onMouseDown={(event) => event.stopPropagation()}
-            data-store-provisioning-success
-          >
+        <div className={styles.successBackdrop} role="presentation">
+          <section className={styles.successDialog} role="dialog" aria-modal="true" data-store-provisioning-success>
             <div className={styles.successDialogHeader}>
               <span className={styles.successMark}>✓</span>
               <div>
                 <span>{text.successTitle}</span>
-                <h2 id="store-provisioning-success-title">บันทึกและเปิดร้านใหม่สำเร็จ</h2>
-                <p>ระบบเคลียร์ฟอร์มแล้ว พร้อมเปิดร้านใหม่ต่อได้ทันที</p>
+                <h2>{text.successTitle}</h2>
+                <p>{text.successMessage}</p>
               </div>
             </div>
-
             <div className={styles.successStoreCode}>
               <span>{text.storeCode}</span>
               <strong>{result.store_code}</strong>
             </div>
-
             <div className={styles.successMiniGrid}>
-              <div><span>{text.confirmStore}</span><strong>{result.tenant.name}</strong></div>
-              <div><span>{text.confirmBranch}</span><strong>{result.branch.code} · {result.branch.name}</strong></div>
+              <div><span>{text.store}</span><strong>{result.tenant.name}</strong></div>
+              <div><span>{text.branch}</span><strong>{result.branch.code} · {result.branch.name}</strong></div>
               <div><span>{text.package}</span><strong>{result.package.name}</strong></div>
-              <div><span>{text.confirmOwner}</span><strong>{result.owner.employee_code}</strong></div>
+              <div><span>{text.owner}</span><strong>{result.owner.employee_code}</strong></div>
             </div>
-
             <div className={styles.successDialogFooter}>
               <button type="button" className={styles.secondaryButton} onClick={reset}>{text.openNext}</button>
               <Link href="/it-admin/tenants">{text.viewStores}</Link>
-            </div>
-          </section>
-        </div>
-      ) : null}
-      {reviewOpen && selectedPackage ? (
-        <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => !submitting && setReviewOpen(false)}>
-          <section
-            className={styles.confirmDialog}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="store-provisioning-confirm-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className={styles.confirmHeader}>
-              <span className={styles.confirmIcon}>!</span>
-              <div>
-                <h2 id="store-provisioning-confirm-title">{text.confirmTitle}</h2>
-                <p>{text.confirmDesc}</p>
-              </div>
-            </div>
-
-            <dl className={styles.reviewList}>
-              <div><dt>{text.confirmStore}</dt><dd>{form.storeName}</dd></div>
-              <div><dt>{text.confirmPackage}</dt><dd>{selectedPackage.name} · Trial · {money(billingPrice, language)} / {form.billingInterval}</dd></div>
-              <div><dt>{text.confirmBranch}</dt><dd>{form.branchCode} · {form.branchName}</dd></div>
-              <div><dt>{text.confirmOwner}</dt><dd>{form.ownerName} · {form.ownerEmail} · #{form.employeeCode}</dd></div>
-              <div><dt>{text.confirmPin}</dt><dd>{text.pinHidden}</dd></div>
-            </dl>
-
-            <div className={styles.confirmFooter}>
-              <button type="button" className={styles.secondaryButton} disabled={submitting} onClick={() => setReviewOpen(false)}>
-                {text.cancel}
-              </button>
-              <button type="button" className={styles.primaryButton} disabled={submitting} onClick={() => void submitProvisioning()}>
-                {submitting ? text.submitting : text.confirm}
-              </button>
             </div>
           </section>
         </div>
