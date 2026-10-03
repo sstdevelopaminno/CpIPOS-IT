@@ -7,6 +7,7 @@ import { POS_SALES_MODE_KEYS, type PosSalesModeKey, type PosSalesModeView } from
 import { useTenantActionConfirm } from "./tenant-action-confirm";
 import { TenantPrimaryOwnerCard } from "./tenant-primary-owner-card";
 import { TenantSalesSummary } from "./tenant-sales-summary";
+import { TenantDailySalesEmailSettings } from "./tenant-daily-sales-email-settings";
 import { TenantCashierDevices } from "./tenant-cashier-devices";
 import { TenantPosMenuPolicies } from "./tenant-pos-menu-policies";
 import dashboardStyles from "./tenant-control-center-dashboard.module.css";
@@ -152,7 +153,7 @@ type ControlData = {
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "customPackage" | "salesSummary" | "danger";
+type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "customPackage" | "salesSummary" | "dailySalesEmail" | "danger";
 type BillingCycle = "monthly" | "yearly";
 type ContractPeriod = "trial_7d" | "monthly" | "yearly";
 
@@ -537,6 +538,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
 
   const detailCopy = tab === "salesSummary"
     ? { eyebrow: "STORE SALES INTELLIGENCE", title: "สรุปยอดขาย", description: "รายวัน · รายเดือน · รายปี · รายบิล · รายสินค้า · ทุกสาขาหรือเฉพาะสาขา" }
+    : tab === "dailySalesEmail"
+      ? { eyebrow: "DAILY SALES EMAIL", title: "แจ้งสรุปยอดขายไปอีเมล์", description: "เปิดหรือปิดการส่งสรุปยอดขายรายวันไปยังอีเมล Owner ของร้าน" }
     : tab === "profile"
     ? { eyebrow: "STORE PROFILE", title: "ข้อมูลร้าน", description: "แก้ไขชื่อร้าน ข้อมูลติดต่อ ที่อยู่ และโลโก้" }
     : tab === "branches"
@@ -646,6 +649,12 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                   <div className={dashboardStyles.cardBottom}><span>ข้อมูลจาก CpiPOS-001 · อ่านอย่างเดียว</span><strong>ดูรายงาน →</strong></div>
                 </button>
 
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("dailySalesEmail")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>@</div><span className={dashboardStyles.cardBadge}>DAILY EMAIL</span></div>
+                  <div className={dashboardStyles.cardText}><span>SALES EMAIL SUMMARY</span><strong>แจ้งสรุปยอดขายไปอีเมล์</strong><small>ส่งยอดเมื่อวานให้ Owner · เฉพาะวันที่มีบิลขายสำเร็จ</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>ตัดวัน 00:00 · ส่ง 00:15 น.</span><strong>ตั้งค่าการส่ง →</strong></div>
+                </button>
+
                 <Link className={dashboardStyles.settingsCard} href={`/tenants/${tenantId}/devices`}>
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>MDM</div><span className={dashboardStyles.cardBadge}>{data.usage.online_devices_5m} online</span></div>
                   <div className={dashboardStyles.cardText}><span>DEVICES / MDM</span><strong>อุปกรณ์ POS</strong><small>ดูอุปกรณ์ที่ผูกกับร้าน สถานะ Active และ Heartbeat</small></div>
@@ -692,6 +701,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
               {success ? <div className={styles.controlAlertSuccess}>{success}</div> : null}
 
               {tab === "salesSummary" ? <TenantSalesSummary tenantId={tenantId} /> : null}
+              {tab === "dailySalesEmail" ? <TenantDailySalesEmailSettings tenantId={tenantId} /> : null}
               {tab === "menuPolicies" ? (
                 <TenantPosMenuPolicies tenantId={tenantId} storeName={storeName} />
               ) : null}
