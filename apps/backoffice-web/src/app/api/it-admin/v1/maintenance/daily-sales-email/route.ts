@@ -369,9 +369,9 @@ export async function POST(request: Request) {
         actorRole: context.auth.platformRole,
         action: "daily_sales_summary_test_email",
         targetTable: "customer_email_deliveries",
-        targetId: delivery.delivery_id ?? null,
+        targetId: delivery.delivery_id ?? undefined,
         module: "it_admin",
-        beforeData: null,
+        beforeData: {},
         afterData: {
           status: delivery.status,
           business_date: businessDate,
