@@ -21,11 +21,15 @@ type Batch = {
   order_count: number;
   item_count: number;
   payment_count: number;
+  shift_count: number;
+  stock_movement_count: number;
   gross_total: number;
   paid_total: number;
   orders_object_path: string | null;
   items_object_path: string | null;
   payments_object_path: string | null;
+  shifts_object_path: string | null;
+  stock_movements_object_path: string | null;
   manifest_object_path: string | null;
   status: string;
   exported_at: string | null;
@@ -71,7 +75,7 @@ export async function POST(request: Request) {
 
     const batchResult = await db
       .from("sales_retention_batches")
-      .select("id,tenant_id,package_code,retention_months,range_start_at,range_end_at,order_count,item_count,payment_count,gross_total,paid_total,orders_object_path,items_object_path,payments_object_path,manifest_object_path,status,exported_at")
+      .select("id,tenant_id,package_code,retention_months,range_start_at,range_end_at,order_count,item_count,payment_count,shift_count,stock_movement_count,gross_total,paid_total,orders_object_path,items_object_path,payments_object_path,shifts_object_path,stock_movements_object_path,manifest_object_path,status,exported_at")
       .eq("id", batchId)
       .maybeSingle<Batch>();
     if (batchResult.error || !batchResult.data) {
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
     if (!batch.exported_at || !["email_pending","exported","email_failed","email_blocked"].includes(batch.status)) {
       return response(false, 409, { error: "retention_batch_not_ready" });
     }
-    if (!batch.orders_object_path || !batch.items_object_path || !batch.payments_object_path || !batch.manifest_object_path) {
+    if (!batch.orders_object_path || !batch.items_object_path || !batch.payments_object_path || !batch.shifts_object_path || !batch.stock_movements_object_path || !batch.manifest_object_path) {
       return response(false, 409, { error: "retention_archive_paths_missing" });
     }
 
@@ -142,7 +146,9 @@ export async function POST(request: Request) {
     const signed = await Promise.all([
       db.storage.from(BUCKET).createSignedUrl(batch.orders_object_path, SIGNED_URL_SECONDS),
       db.storage.from(BUCKET).createSignedUrl(batch.items_object_path, SIGNED_URL_SECONDS),
-      db.storage.from(BUCKET).createSignedUrl(batch.payments_object_path, SIGNED_URL_SECONDS)
+      db.storage.from(BUCKET).createSignedUrl(batch.payments_object_path, SIGNED_URL_SECONDS),
+      db.storage.from(BUCKET).createSignedUrl(batch.shifts_object_path, SIGNED_URL_SECONDS),
+      db.storage.from(BUCKET).createSignedUrl(batch.stock_movements_object_path, SIGNED_URL_SECONDS)
     ]);
     const signedError = signed.find((entry) => entry.error)?.error;
     if (signedError) {
@@ -165,11 +171,15 @@ export async function POST(request: Request) {
       orderCount: batch.order_count,
       itemCount: batch.item_count,
       paymentCount: batch.payment_count,
+      shiftCount: batch.shift_count,
+      stockMovementCount: batch.stock_movement_count,
       grossTotal: Number(batch.gross_total || 0),
       paidTotal: Number(batch.paid_total || 0),
       ordersUrl: signed[0].data?.signedUrl ?? "",
       itemsUrl: signed[1].data?.signedUrl ?? "",
       paymentsUrl: signed[2].data?.signedUrl ?? "",
+      shiftsUrl: signed[3].data?.signedUrl ?? "",
+      stockMovementsUrl: signed[4].data?.signedUrl ?? "",
       expiresAtLabel: thaiDateTime(expiresAt)
     });
 
@@ -186,7 +196,10 @@ export async function POST(request: Request) {
 
     if (delivery.status === "sent" || delivery.status === "already_sent") {
       const sentAt = new Date();
-      const purgeAfter = new Date(sentAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+      // The package retention boundary is authoritative. Once all CSV files
+      // are verified and the customer email succeeds, the worker may purge
+      // the expired source rows immediately.
+      const purgeAfter = sentAt;
       await db.from("sales_retention_batches").update({
         status: "purge_ready",
         recipient_email: ownerEmail.toLowerCase(),
