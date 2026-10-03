@@ -48,7 +48,7 @@ describe("operational retention controls", () => {
   it("does not call cleanup when there are zero expired rows and retries transient timeouts", () => {
     expect(controls).toContain("total === 0");
     expect(controls).toContain("nothingExpired");
-    expect(route).toContain("runCleanupRpc");
+    expect(route).toContain("runRpcWithRetry");
     expect(route).toContain("cleanup_database_temporarily_unavailable");
   });
 
