@@ -206,11 +206,13 @@ function initialForm(packages: ProvisioningPackageOption[]): FormState {
 export function StoreProvisioningConsole({
   packages,
   language,
-  onProvisioned
+  onProvisioned,
+  onFinished
 }: {
   packages: ProvisioningPackageOption[];
   language: Language;
   onProvisioned?: () => void;
+  onFinished?: () => void;
 }) {
   const text = copy[language];
   const eligiblePackages = useMemo(
@@ -559,7 +561,11 @@ export function StoreProvisioningConsole({
             </div>
             <div className={styles.successDialogFooter}>
               <button type="button" className={styles.secondaryButton} onClick={reset}>{text.openNext}</button>
-              <Link href="/it-admin/tenants">{text.viewStores}</Link>
+              {onFinished ? (
+                <button type="button" className={styles.primaryButton} onClick={onFinished}>{text.viewStores}</button>
+              ) : (
+                <Link href="/it-admin/tenants">{text.viewStores}</Link>
+              )}
             </div>
           </section>
         </div>
