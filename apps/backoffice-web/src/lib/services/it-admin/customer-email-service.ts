@@ -351,11 +351,15 @@ export function buildSalesRetentionExportEmail(input: {
   orderCount: number;
   itemCount: number;
   paymentCount: number;
+  shiftCount: number;
+  stockMovementCount: number;
   grossTotal: number;
   paidTotal: number;
   ordersUrl: string;
   itemsUrl: string;
   paymentsUrl: string;
+  shiftsUrl: string;
+  stockMovementsUrl: string;
   expiresAtLabel: string;
 }): CustomerEmailMessage {
   const subject = `ไฟล์ประวัติการขาย CpIPOS | ${text(input.storeName, 100)} | ${input.retentionMonths} เดือน`;
@@ -369,16 +373,20 @@ export function buildSalesRetentionExportEmail(input: {
     input.packageName ? `แพ็กเกจ: ${text(input.packageName, 120)}` : "",
     `ช่วงข้อมูล: ${range}`,
     `จำนวนบิล: ${input.orderCount.toLocaleString("th-TH")} บิล`,
+    `จำนวนกะที่หมดระยะเก็บ: ${input.shiftCount.toLocaleString("th-TH")} กะ`,
+    `ประวัติ Stock Movement: ${input.stockMovementCount.toLocaleString("th-TH")} รายการ`,
     `ยอดขายรวม: ${money(input.grossTotal, "THB")}`,
     `ยอดรับชำระรวม: ${money(input.paidTotal, "THB")}`,
     "",
     `ไฟล์สรุปบิล: ${input.ordersUrl}`,
     `ไฟล์รายการสินค้าในบิล: ${input.itemsUrl}`,
     `ไฟล์การชำระเงิน: ${input.paymentsUrl}`,
+    `ไฟล์ประวัติกะ: ${input.shiftsUrl}`,
+    `ไฟล์ประวัติ Stock Movement: ${input.stockMovementsUrl}`,
     "",
     `ลิงก์ดาวน์โหลดมีอายุถึง ${input.expiresAtLabel}`,
-    "สินค้า หมวดสินค้า และข้อมูลสต๊อกปัจจุบันไม่ได้ถูกลบจากระบบ",
-    "ระบบจะเก็บไฟล์ Archive ไว้แบบ Private และล้างเฉพาะรายการขายเก่าหลังผ่านช่วงความปลอดภัย"
+    "สินค้า หมวดสินค้า และยอดคงเหลือปัจจุบันไม่ได้ถูกลบจากระบบ",
+    "ระบบจะลบเฉพาะข้อมูลธุรกรรมที่พ้นระยะเก็บของแพ็กเกจ หลังสร้างไฟล์และส่งอีเมลสำเร็จแล้วเท่านั้น"
   ].filter(Boolean);
 
   const html = [
@@ -395,9 +403,11 @@ export function buildSalesRetentionExportEmail(input: {
     `<div style="margin:8px 0"><a href="${escapeHtml(input.ordersUrl)}" style="color:#176fe8;font-size:13px;font-weight:800;text-decoration:none">1. รายการบิล (orders.csv)</a></div>`,
     `<div style="margin:8px 0"><a href="${escapeHtml(input.itemsUrl)}" style="color:#176fe8;font-size:13px;font-weight:800;text-decoration:none">2. รายการสินค้าในบิล (items.csv)</a></div>`,
     `<div style="margin:8px 0"><a href="${escapeHtml(input.paymentsUrl)}" style="color:#176fe8;font-size:13px;font-weight:800;text-decoration:none">3. รายการชำระเงิน (payments.csv)</a></div>`,
+    `<div style="margin:8px 0"><a href="${escapeHtml(input.shiftsUrl)}" style="color:#176fe8;font-size:13px;font-weight:800;text-decoration:none">4. ประวัติกะ (shifts.csv)</a></div>`,
+    `<div style="margin:8px 0"><a href="${escapeHtml(input.stockMovementsUrl)}" style="color:#176fe8;font-size:13px;font-weight:800;text-decoration:none">5. ประวัติ Stock Movement (stock_movements.csv)</a></div>`,
     `<div style="margin-top:12px;font-size:11px;line-height:1.6;color:#64748b">ลิงก์มีอายุถึง ${escapeHtml(input.expiresAtLabel)} หากหมดอายุสามารถติดต่อ Support เพื่อออกลิงก์ใหม่ได้</div>`,
     '</div>',
-    '<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#ecfdf5;color:#166534;font-size:12px;line-height:1.65"><strong>ข้อมูลที่ไม่ถูกลบ:</strong> สินค้า หมวดสินค้า และข้อมูลสต๊อกปัจจุบันยังอยู่ในระบบตามปกติ</div>'
+    '<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#ecfdf5;color:#166534;font-size:12px;line-height:1.65"><strong>ข้อมูลที่ไม่ถูกลบ:</strong> สินค้า หมวดสินค้า และยอดคงเหลือปัจจุบันยังอยู่ในระบบตามปกติ ระบบลบเฉพาะประวัติธุรกรรมที่พ้นระยะเก็บของแพ็กเกจหลังส่งอีเมลสำเร็จ</div>'
   ].join("");
 
   return { subject, textBody: lines.join("\n"), htmlBody: html };
