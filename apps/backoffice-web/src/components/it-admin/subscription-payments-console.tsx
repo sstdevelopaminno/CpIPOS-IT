@@ -264,7 +264,11 @@ export function SubscriptionPaymentsConsole() {
                     {row.payment?.status ? `แจ้งชำระ: ${row.payment.status}` : "ยังไม่มีรายการแจ้งชำระ"}
                   </span>
                   {row.payment ? <span className="mt-1 block text-xs font-semibold text-blue-700">
-                    {row.payment.source === "pos_subscription_center" ? "POS → IT" : "ระบบ"}
+                    {row.payment.source === "pos_subscription_center"
+                      ? "POS → IT"
+                      : row.payment.source === "company_website_package_checkout"
+                        ? "เว็บไซต์ → IT"
+                        : "ระบบ"}
                     {" · "}
                     {row.payment.kind === "ai_addon_payment" ? "CpiPOS AI Add-on" :
                       row.payment.kind === "payment_notice" ? "แจ้งโอน" : "ขอต่ออายุ"}
