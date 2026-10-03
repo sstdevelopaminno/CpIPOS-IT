@@ -41,6 +41,7 @@ const copy = {
       monitoring: "มอนิเตอร์ระบบ",
       incidents: "เหตุขัดข้อง",
       audit: "บันทึกตรวจสอบ",
+      maintenance: "Data Retention / Maintenance",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
       supportChat: "แชท",
       supportMail: "อีเมล Support",
@@ -89,6 +90,7 @@ const copy = {
       monitoring: "Monitoring",
       incidents: "Incidents",
       audit: "Audit Logs",
+      maintenance: "Data Retention / Maintenance",
       emergencyBroadcast: "Emergency Broadcast",
       supportChat: "Chat",
       supportMail: "Support Email",
@@ -149,6 +151,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
         ] },
       { href: "/it-admin/support-mail", label: text.items.supportMail, group: text.groups.operations, icon: "chat" },
       { href: "/it-admin/other-contacts", label: text.items.otherContacts, group: text.groups.operations, icon: "chat" },
+      { href: "/it-admin/maintenance", label: text.items.maintenance, group: text.groups.system, icon: "settings" },
       settings
     ];
   }
@@ -180,6 +183,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
     { href: "/it-admin/support-mail", label: text.items.supportMail, group: text.groups.operations, icon: "chat" },
     { href: "/it-admin/other-contacts", label: text.items.otherContacts, group: text.groups.operations, icon: "chat" },
     { href: "/it-admin/development", label: text.items.development, group: text.groups.development, icon: "code" },
+    { href: "/it-admin/maintenance", label: text.items.maintenance, group: text.groups.system, icon: "settings" },
     settings
   ];
 }
