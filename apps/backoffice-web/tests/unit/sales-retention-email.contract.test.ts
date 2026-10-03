@@ -27,20 +27,25 @@ describe("sales retention archive email", () => {
     expect(route).not.toContain("body?.recipient_email");
   });
 
-  it("sends private signed links for all three CSV exports", () => {
+  it("sends private signed links for all five CSV exports", () => {
     expect(route).toContain("createSignedUrl");
     expect(route).toContain("orders_object_path");
     expect(route).toContain("items_object_path");
     expect(route).toContain("payments_object_path");
+    expect(route).toContain("shifts_object_path");
+    expect(route).toContain("stock_movements_object_path");
     expect(service).toContain("orders.csv");
     expect(service).toContain("items.csv");
     expect(service).toContain("payments.csv");
+    expect(service).toContain("shifts.csv");
+    expect(service).toContain("stock_movements.csv");
   });
 
   it("only marks a batch purge-ready after email success", () => {
     expect(route).toContain('delivery.status === "sent" || delivery.status === "already_sent"');
     expect(route).toContain('status: "purge_ready"');
     expect(route).toContain("purge_after");
+    expect(route).toContain("const purgeAfter = sentAt");
   });
 
   it("blocks purge when an Owner email is missing or invalid", () => {
