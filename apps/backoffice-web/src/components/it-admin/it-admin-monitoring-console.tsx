@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Language } from "@/lib/i18n";
+import { ItDataCleanupControls } from "@/components/it-admin/it-data-cleanup-controls";
 
 type Row={id:string;tenant_id?:string;branch_id?:string;store:string;branch:string;level:string;queued_orders:number;stale_orders:number;print_queue:number;dead_letters:number;api_errors:number;api_5xx:number};
 type Payload={checked_at:string;summary:Record<string,number|string>;rows:Row[];note:string|null};
@@ -71,5 +72,6 @@ export function ItAdminMonitoringConsole({language}:{language:Language}){
         {loading?<tr><td colSpan={10} className="p-8 text-center text-slate-500">{t.loading}</td></tr>:null}
       </tbody></table></div>
     </section>
+    <ItDataCleanupControls scope="monitoring" language={language} onCompleted={load} />
   </div>;
 }
