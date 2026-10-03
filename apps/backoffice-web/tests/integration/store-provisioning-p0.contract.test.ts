@@ -23,13 +23,14 @@ describe("IT Store Provisioning P0", () => {
     expect(route).toContain("x-provisioning-request-id");
     expect(layout).toContain("getAuthContext({ requireBranchScope: false })");
     expect(layout).toContain('auth.platformRole !== "it_admin"');
-    expect(layout).toContain('href: "/it-admin/store-provisioning"');
+    expect(layout).not.toContain('href: "/it-admin/store-provisioning"');
   });
 
-  it("separates the Store directory from the privileged provisioning workflow", () => {
+  it("launches the privileged provisioning workflow from the Tenants / Stores popup", () => {
     expect(tenantsPage).toContain("TenantDirectoryConsole");
-    expect(tenantsPage).not.toContain("StoreProvisioningConsole");
-    expect(tenantDirectory).toContain('href="/it-admin/store-provisioning"');
+    expect(tenantDirectory).toContain("ConnectedStoreProvisioning");
+    expect(tenantDirectory).toContain("setProvisioningOpen(true)");
+    expect(tenantDirectory).not.toContain('href="/it-admin/store-provisioning"');
     expect(provisioningPage).toContain("ConnectedStoreProvisioning");
     expect(connectedProvisioning).toContain("StoreProvisioningConsole");
     expect(connectedProvisioning).toContain("language={language}");
@@ -80,23 +81,25 @@ describe("IT Store Provisioning P0", () => {
   });
 
 
-  it("shows a front-layer success popup, clears the form, and readies the next store", () => {
+  it("shows a front-layer success popup, clears the wizard, and readies the next store", () => {
     expect(consoleUi).toContain("data-store-provisioning-success");
-    expect(consoleUi).toContain("window.setTimeout(() => setResult(null), 4200)");
     expect(consoleUi).toContain("setRequestId(newRequestId())");
+    expect(consoleUi).toContain("setStep(1)");
     expect(consoleUi).toContain("setForm(initialForm(packages))");
-    expect(consoleUi).toContain("บันทึกและเปิดร้านใหม่สำเร็จ");
+    expect(consoleUi).toContain("เปิดร้านสำเร็จ");
   });
 
-  it("keeps the provisioning form readable with larger operational controls", () => {
+  it("keeps provisioning compact with a four-step wizard and responsive controls", () => {
     const consoleCss = source("../../src/components/it-admin/store-provisioning-console.module.css");
-    const pageCss = source("../../src/app/(it-admin)/it-admin/store-provisioning/page.module.css");
-    expect(consoleCss).toContain("Store provisioning readability refresh");
-    expect(consoleCss).toContain(".successBackdrop");
-    expect(consoleCss).toContain("z-index: 1900");
-    expect(consoleCss).toContain("min-height: 54px");
-    expect(pageCss).toContain("font-size: 34px");
-    expect(pageCss).toContain("font-size: 15px");
+    expect(consoleUi).toContain('type Step = 1 | 2 | 3 | 4');
+    expect(consoleUi).toContain("stepStore");
+    expect(consoleUi).toContain("stepBranch");
+    expect(consoleUi).toContain("stepOwner");
+    expect(consoleUi).toContain("stepReview");
+    expect(consoleCss).toContain("Compact 4-step provisioning wizard");
+    expect(consoleCss).toContain(".stepper");
+    expect(consoleCss).toContain(".stepBody");
+    expect(consoleCss).toContain(".reviewCards");
   });
   it("keeps retry identity stable and ends onboarding at Device Enrollment", () => {
     expect(consoleUi).toContain("request_id: requestId");
