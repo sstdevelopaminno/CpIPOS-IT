@@ -44,6 +44,8 @@ describe("IT Admin tenant directory", () => {
     expect(tenantsUi).toContain("if (selected || provisioningOpen) return");
     expect(provisioningUi).toContain("type Step = 1 | 2 | 3 | 4");
     expect(provisioningUi).toContain("stepReview");
+    expect(tenantsUi).toContain("onProvisioned={() => void load(true)}");
+    expect(tenantsUi).toContain("onFinished={() => setProvisioningOpen(false)}");
     expect(layout).not.toContain('href: "/it-admin/store-provisioning"');
   });
 
