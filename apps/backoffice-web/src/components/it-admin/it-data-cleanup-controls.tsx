@@ -26,6 +26,8 @@ const COPY = {
     expiredConfirm: "ยืนยันล้างข้อมูลที่เก่ากว่า 7 วันตามนโยบาย Retention?",
     allPrompt: "การดำเนินการนี้ย้อนกลับไม่ได้\nพิมพ์ DELETE เพื่อยืนยันการลบทั้งหมด",
     failed: "ล้างข้อมูลไม่สำเร็จ",
+    nothingExpired: "ไม่มีข้อมูลเก่ากว่า 7 วันที่ต้องล้าง",
+    temporarilyUnavailable: "ฐานข้อมูลตอบสนองชั่วคราว กรุณาลองใหม่อีกครั้ง",
     noteAudit: "ประวัติ Cleanup จะถูกเก็บแยกไว้ใน Cleanup Ledger แม้ Audit Logs จะถูกล้าง",
     noteMonitoring: "สถานะเครื่องล่าสุด (pos_device_health_latest) จะไม่ถูกลบ",
     noteIncidents: "โหมด 7 วันลบเฉพาะ Incident ที่ปิดแล้วเกิน 7 วัน ส่วน “ลบทั้งหมด” จะลบทั้ง Incident เปิดและปิด",
@@ -44,6 +46,8 @@ const COPY = {
     expiredConfirm: "Clean records older than 7 days according to the retention policy?",
     allPrompt: "This action cannot be undone.\nType DELETE to confirm deleting all history.",
     failed: "Cleanup failed",
+    nothingExpired: "No records older than 7 days need cleanup.",
+    temporarilyUnavailable: "The database is temporarily slow. Please try again.",
     noteAudit: "Cleanup actions remain in a separate Cleanup Ledger even when Audit Logs are cleared.",
     noteMonitoring: "The latest device state (pos_device_health_latest) is never deleted.",
     noteIncidents: "7-day cleanup removes only resolved incidents older than 7 days. Delete all removes open and resolved incidents.",
@@ -90,6 +94,11 @@ export function ItDataCleanupControls({
     setError("");
     setMessage("");
 
+    if (mode === "expired" && Number(payload?.preview?.[scope]?.total ?? 0) === 0) {
+      setMessage(t.nothingExpired);
+      return;
+    }
+
     let confirmation = "CLEANUP_7D";
     if (mode === "expired") {
       if (!window.confirm(t.expiredConfirm)) return;
@@ -107,7 +116,10 @@ export function ItDataCleanupControls({
         body: JSON.stringify({ scope, mode, confirmation })
       });
       const body = await response.json().catch(() => null) as { data?: unknown; error?: { message?: string } } | null;
-      if (!response.ok) throw new Error(body?.error?.message || t.failed);
+      if (!response.ok) {
+        const serverMessage = body?.error?.message || t.failed;
+        throw new Error(response.status === 503 ? t.temporarilyUnavailable : serverMessage);
+      }
       setMessage(t.success);
       await load();
       await onCompleted?.();
@@ -134,11 +146,11 @@ export function ItDataCleanupControls({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={busy !== null}
+            disabled={busy !== null || total === 0}
             onClick={() => void execute("expired")}
             className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900 disabled:opacity-50"
           >
-            {busy === "expired" ? t.running : t.expired}
+            {busy === "expired" ? t.running : total === 0 ? t.nothingExpired : t.expired}
           </button>
           <button
             type="button"
