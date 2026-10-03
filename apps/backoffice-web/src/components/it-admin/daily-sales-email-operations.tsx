@@ -57,6 +57,8 @@ type Overview = {
 
 type Filter = "all" | "enabled" | "disabled" | "needs_attention";
 
+const PAGE_SIZE = 10;
+
 const COPY = {
   th: {
     eyebrow: "DAILY SALES EMAIL OPERATIONS",
@@ -98,7 +100,12 @@ const COPY = {
     loadFailed: "โหลดสถานะ Daily Sales Email ไม่สำเร็จ",
     retryFailed: "Retry ไม่สำเร็จ",
     schedule: "ตัดวัน 00:00 · ส่ง 00:15 น. · Asia/Bangkok",
-    noRows: "ไม่พบร้านตามตัวกรอง"
+    noRows: "ไม่พบร้านตามตัวกรอง",
+    previous: "ก่อนหน้า",
+    next: "ถัดไป",
+    showing: "แสดง",
+    of: "จาก",
+    stores: "ร้าน"
   },
   en: {
     eyebrow: "DAILY SALES EMAIL OPERATIONS",
@@ -140,7 +147,12 @@ const COPY = {
     loadFailed: "Unable to load Daily Sales Email status",
     retryFailed: "Retry failed",
     schedule: "00:00 cutoff · 00:15 delivery · Asia/Bangkok",
-    noRows: "No stores match this filter"
+    noRows: "No stores match this filter",
+    previous: "Previous",
+    next: "Next",
+    showing: "Showing",
+    of: "of",
+    stores: "stores"
   }
 } as const;
 
@@ -191,6 +203,7 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
   const [retrying, setRetrying] = useState<string | null>(null);
   const [previewStore, setPreviewStore] = useState<StoreRow | null>(null);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<Filter>("all");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -217,7 +230,7 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
 
   useEffect(() => { void load(); }, [load]);
 
-  const rows = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (data?.stores ?? []).filter((row) => {
       if (filter === "enabled" && !row.enabled) return false;
@@ -232,6 +245,34 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
         || row.owner.name.toLowerCase().includes(needle);
     });
   }, [data?.stores, filter, query]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const rows = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, page]);
+
+  const pageItems = useMemo(() => {
+    if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1) as Array<number | "…">;
+    const numbers = [...new Set([1, pageCount, page - 1, page, page + 1]
+      .filter((value) => value >= 1 && value <= pageCount))]
+      .sort((a, b) => a - b);
+    const items: Array<number | "…"> = [];
+    numbers.forEach((value, index) => {
+      const previous = numbers[index - 1];
+      if (index > 0 && previous != null && value - previous > 1) items.push("…");
+      items.push(value);
+    });
+    return items;
+  }, [page, pageCount]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, query]);
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
   async function retry(row: StoreRow) {
     const delivery = row.latest_delivery;
@@ -267,45 +308,14 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
   }
 
   const stats = data?.stats;
-  const locale = language === "th" ? "th-TH" : "en-US";
 
   return (
     <>
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-5 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-black tracking-[0.18em] text-blue-600">{t.eyebrow}</div>
-            <h3 className="mt-1 text-xl font-black text-slate-950">{t.title}</h3>
-            <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-500">{t.desc}</p>
-            <div className="mt-2 text-[11px] font-bold text-slate-500">{t.schedule}</div>
-          </div>
-          <button type="button" onClick={() => void load()} disabled={loading || retrying !== null}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 disabled:opacity-50">
-            {t.refresh}
-          </button>
-        </div>
-      </div>
+      {message ? <div className="mx-4 mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{message}</div> : null}
+      {error ? <div className="mx-4 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
 
-      {message ? <div className="mx-5 mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{message}</div> : null}
-      {error ? <div className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
-
-      <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 xl:grid-cols-5">
-        {[
-          [t.total, stats?.total_stores ?? 0, "text-slate-950"],
-          [t.enabled, stats?.enabled ?? 0, "text-emerald-700"],
-          [t.disabled, stats?.disabled ?? 0, "text-slate-700"],
-          [t.attention, stats?.needs_attention ?? 0, "text-red-600"],
-          [t.retryable, stats?.retryable ?? 0, "text-amber-700"]
-        ].map(([label, value, tone]) => (
-          <div key={String(label)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-bold text-slate-500">{String(label)}</div>
-            <div className={"mt-1 text-2xl font-black " + String(tone)}>{Number(value).toLocaleString(locale)}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 border-y border-slate-200 bg-slate-50/60 px-5 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -313,10 +323,10 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
           className="min-w-[240px] flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
         />
         {([
-          ["all", t.all],
-          ["enabled", t.filterEnabled],
-          ["disabled", t.filterDisabled],
-          ["needs_attention", t.filterAttention]
+          ["all", `${t.all} (${stats?.total_stores ?? 0})`],
+          ["enabled", `${t.filterEnabled} (${stats?.enabled ?? 0})`],
+          ["disabled", `${t.filterDisabled} (${stats?.disabled ?? 0})`],
+          ["needs_attention", `${t.filterAttention} (${stats?.needs_attention ?? 0})`]
         ] as Array<[Filter, string]>).map(([key, label]) => (
           <button key={key} type="button" onClick={() => setFilter(key)}
             className={"rounded-xl border px-3 py-2 text-xs font-bold " + (filter === key
@@ -404,6 +414,46 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
           </tbody>
         </table>
       </div>
+
+      {!loading && filteredRows.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-3">
+          <div className="text-xs font-bold text-slate-500">
+            {t.showing} {((page - 1) * PAGE_SIZE) + 1}-{Math.min(page * PAGE_SIZE, filteredRows.length)} {t.of} {filteredRows.length} {t.stores}
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              disabled={page <= 1}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black text-slate-700 disabled:opacity-40"
+            >
+              {t.previous}
+            </button>
+            {pageItems.map((item, index) => item === "…" ? (
+              <span key={`ellipsis-${index}`} className="px-2 text-xs font-bold text-slate-400">…</span>
+            ) : (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setPage(item)}
+                className={"min-w-8 rounded-lg border px-2.5 py-1.5 text-xs font-black " + (page === item
+                  ? "border-blue-500 bg-blue-600 text-white"
+                  : "border-slate-300 bg-white text-slate-700")}
+              >
+                {item}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+              disabled={page >= pageCount}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-black text-slate-700 disabled:opacity-40"
+            >
+              {t.next}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
 
     {previewStore && data?.target_business_date ? (
