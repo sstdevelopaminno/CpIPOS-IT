@@ -28,7 +28,9 @@ describe("IT Admin tenant directory", () => {
   it("keeps POS store login out of the IT Control Plane route surface", () => {
     expect(tenantsUi).not.toContain("/login/store");
     expect(controlCenter).not.toContain("/login/store");
-    expect(tenantsUi).toContain('href="/it-admin/store-provisioning"');
+    expect(tenantsUi).toContain("ConnectedStoreProvisioning");
+    expect(tenantsUi).toContain("setProvisioningOpen(true)");
+    expect(tenantsUi).not.toContain('href="/it-admin/store-provisioning"');
     expect(controlCenter).toContain("/branches`}");
     expect(controlCenter).toContain("/devices`}");
   });
