@@ -14,7 +14,7 @@ function clean(value: unknown, max = 500) {
 async function loadIncidentData(supabase: Awaited<ReturnType<typeof requireItAdmin>>["supabase"]) {
   const [system, manual, tenants, branches, devices] = await Promise.all([
     supabase.from("pos_device_incidents")
-      .select("id,tenant_id,branch_id,pos_device_id,device_code,code,severity,title,message,detected_at,resolved_at")
+      .select("id,tenant_id,branch_id,pos_device_id,device_code,code,severity,title,message,detected_at,last_seen_at,occurrence_count,resolved_at")
       .order("detected_at",{ascending:false}).limit(200),
     supabase.from("it_manual_incidents")
       .select("id,tenant_id,branch_id,severity,code,title,message,status,detected_at,resolved_at,created_by,updated_by")
@@ -34,6 +34,7 @@ async function loadIncidentData(supabase: Awaited<ReturnType<typeof requireItAdm
       branch:branchMap.get(String(row.branch_id))?.name??"—",
       device:deviceMap.get(String(row.pos_device_id))?.device_name??row.device_code??"—",
       severity:row.severity,code:row.code,title:row.title,message:row.message,detected_at:row.detected_at,
+      last_seen_at:row.last_seen_at??row.detected_at,occurrence_count:Number(row.occurrence_count??1),
       status:row.resolved_at?"resolved":"open",editable:false,deletable:false
     })),
     ...(manual.data??[]).map(row=>({
@@ -41,6 +42,7 @@ async function loadIncidentData(supabase: Awaited<ReturnType<typeof requireItAdm
       tenant:row.tenant_id?tenantMap.get(String(row.tenant_id))?.name??"—":"ส่วนกลาง",
       branch:row.branch_id?branchMap.get(String(row.branch_id))?.name??"—":"—",
       device:"—",severity:row.severity,code:row.code,title:row.title,message:row.message,detected_at:row.detected_at,
+      last_seen_at:row.detected_at,occurrence_count:1,
       status:row.status,editable:true,deletable:true
     }))
   ].sort((a,b)=>Date.parse(String(b.detected_at))-Date.parse(String(a.detected_at)));
