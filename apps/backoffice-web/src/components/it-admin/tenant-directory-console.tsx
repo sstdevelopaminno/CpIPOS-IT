@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useItAccess } from "@/components/layout/app-shell";
 import { TenantControlCenter } from "./tenant-control-center";
+import { ConnectedStoreProvisioning } from "./connected-store-provisioning";
+import type { Language } from "@/lib/i18n";
 import styles from "./tenant-directory-console.module.css";
 
 type TenantRow = {
@@ -68,7 +69,7 @@ function contractLabel(status?: string) {
   return normalized || "ยังไม่ระบุ";
 }
 
-export function TenantDirectoryConsole() {
+export function TenantDirectoryConsole({ language }: { language: Language }) {
   const { canDelete } = useItAccess();
   const [data, setData] = useState<TenantPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,6 +78,7 @@ export function TenantDirectoryConsole() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [selected, setSelected] = useState<TenantRow | null>(null);
+  const [provisioningOpen, setProvisioningOpen] = useState(false);
   const [pendingCleanups, setPendingCleanups] = useState<Array<{
     tenant_id: string; file_count: number; created_at: string
   }>>([]);
@@ -179,7 +181,9 @@ export function TenantDirectoryConsole() {
           <p>จัดการร้าน สาขา แพ็กเกจ สิทธิ์การใช้งาน และสถานะ POS จากฐานข้อมูล CpiPOS-001 โดยตรง</p>
         </div>
         <div className={styles.headerActions}>
-          <Link className={styles.secondaryButton} href="/it-admin/store-provisioning">เปิดร้านใหม่</Link>
+          <button className={styles.secondaryButton} type="button" onClick={() => setProvisioningOpen(true)}>
+            เปิดร้านใหม่
+          </button>
           <button className={styles.primaryButton} type="button" onClick={() => void load(true)} disabled={refreshing}>
             {refreshing ? "กำลังรีเฟรช…" : "รีเฟรช"}
           </button>
@@ -293,6 +297,41 @@ export function TenantDirectoryConsole() {
           onChanged={() => void load(true)}
           onDeleted={() => { setSelected(null); void load(true); }}
         />
+      ) : null}
+
+      {provisioningOpen ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setProvisioningOpen(false)}>
+          <section
+            className={`${styles.modal} ${styles.provisioningModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tenant-provisioning-modal-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className={styles.controlHeader}>
+              <div>
+                <span className={styles.modalEyebrow}>STORE PROVISIONING · CPIPOS-001</span>
+                <h3 id="tenant-provisioning-modal-title">เปิดร้านใหม่</h3>
+                <p>กรอกข้อมูลเป็นขั้นตอนสั้น ๆ แล้วตรวจสอบก่อนสร้างร้านจริง</p>
+              </div>
+              <button
+                type="button"
+                className={styles.closeButton}
+                aria-label="ปิด"
+                onClick={() => setProvisioningOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className={styles.provisioningBody}>
+              <ConnectedStoreProvisioning
+                language={language}
+                onProvisioned={() => void load(true)}
+                onFinished={() => setProvisioningOpen(false)}
+              />
+            </div>
+          </section>
+        </div>
       ) : null}
     </div>
   );
