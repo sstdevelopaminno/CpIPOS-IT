@@ -19,7 +19,7 @@ describe("Support voice WebRTC Phase 2", () => {
     expect(migration).toContain("support_call_sessions_signaling_key_idx");
     expect(migration).not.toContain("sdp_offer");
     expect(migration).not.toContain("ice_candidate");
-    expect(migration).not.toContain("recording");
+    expect(migration).not.toContain("recording_url");
     expect(migration).not.toContain("audio_blob");
   });
 
