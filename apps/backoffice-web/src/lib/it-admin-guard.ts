@@ -11,6 +11,13 @@ import { JsonRequestError } from "@/lib/server/limited-json";
 
 export type ItAdminContext = {
   auth: AuthContext;
+  profile: {
+    full_name: string | null;
+    avatar_url: string | null;
+    is_active: boolean | null;
+    archived_at: string | null;
+    platform_role: string | null;
+  };
   supabase: ReturnType<typeof getPrimarySupabaseServiceClient>;
   itSupabase: ReturnType<typeof getItControlPlaneClient>;
   requestMeta: {
@@ -55,9 +62,15 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
   // JWT app_metadata can outlive privilege revocation and account deactivation.
   // Recheck the primary, authoritative profile on every privileged IT request.
   const profileLookup = await getPrimarySupabaseServiceClient()
-    .from("users_profiles").select("is_active,platform_role")
+    .from("users_profiles").select("full_name,avatar_url,is_active,archived_at,platform_role")
     .eq("id", auth.userId)
-    .maybeSingle<{ is_active: boolean | null; platform_role: string | null }>();
+    .maybeSingle<{
+      full_name: string | null;
+      avatar_url: string | null;
+      is_active: boolean | null;
+      archived_at: string | null;
+      platform_role: string | null;
+    }>();
   if (profileLookup.error) {
     throw new ItAdminGuardError("admin_profile_unavailable", "Unable to verify current IT admin privileges.", 503);
   }
@@ -79,6 +92,7 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
   // query through tenant business-data routing.
   return {
     auth,
+    profile: profileLookup.data!,
     get supabase() {
       return getPrimarySupabaseServiceClient();
     },
