@@ -90,6 +90,22 @@ describe("LINE Support Gateway", () => {
     expect(client).toContain("sent.message");
   });
 
+  it("adds a welcome message only when a brand-new canonical conversation is created", () => {
+    expect(communications).toContain("CpIPOS Support ให้บริการแล้วครับ");
+    expect(communications).toContain("ฝ่าย Support จะตอบกลับท่านโดยเร็วที่สุด");
+    expect(communications.indexOf("CpIPOS Support ให้บริการแล้วครับ")).toBeGreaterThan(
+      communications.indexOf('if (open.data)')
+    );
+  });
+
+  it("shows bidirectional typing between LINE customer and IT Support", () => {
+    expect(client).toContain("getSupabaseBrowserClient");
+    expect(client).toContain('event: "typing"');
+    expect(client).toContain('payload: { actor: "store", typing, name: "ลูกค้า" }');
+    expect(client).toContain('event.actor !== "it"');
+    expect(client).toContain("กำลังพิมพ์ตอบกลับ");
+  });
+
   it("uses LIFF only as the entry identity surface and keeps chat on CpIPOS APIs", () => {
     expect(client).toContain("https://static.line-scdn.net/liff/edge/2/sdk.js");
     expect(client).toContain('DEFAULT_LIFF_ID = "2011852850-5tjQo09l"');
