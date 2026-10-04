@@ -232,10 +232,11 @@ export async function getAuthContext(input: AuthContextInput = {}): Promise<Auth
     }
   }
 
+  const isPlatformIt = context.platformRole === "it_admin" || context.platformRole === "it_support";
   const shouldResolveMembership =
     requireBranchScope ||
     Boolean(requestedBranchIdFromCookie) ||
-    (context.platformRole !== "it_admin" && (!context.tenantId || !context.branchId || !context.branchRole));
+    (!isPlatformIt && (!context.tenantId || !context.branchId || !context.branchRole));
 
   if (shouldResolveMembership) {
     const memberships = await loadBranchMemberships(context.userId);
