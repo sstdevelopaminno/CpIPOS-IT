@@ -205,3 +205,40 @@ Follow-up: extend shared request-size and audit-metadata sanitization to the rem
 7. Keep Tenant mutations read-only; do not reset/modify FF0001 or other Production tenants for smoke testing.
 8. PR #21 is still Draft. Do not bypass the Draft gate with force/direct-main changes. When Ready is available, merge only the exact validated head.
 9. After Tenants is accepted, polish the next menu: Branches, reusing the existing CpiPOS-001 branch authority and module bridge.
+
+
+## LINE OA external Support Gateway checkpoint — 2026-10-04
+
+Branch: `feat/line-support-gateway-20261004`.
+
+Purpose:
+- LINE OA is the entry surface only; canonical chat remains CpIPOS Support Chat.
+- Customer LIFF endpoint: `/support/line`.
+- First binding: verified LINE ID token + six-digit store identifier + Owner-email OTP.
+- Store code alone is never authentication.
+- Re-entry after successful binding uses verified LINE identity plus the active binding.
+- External support session is a signed HttpOnly 30-minute cookie and binding state is re-checked server-side.
+- Customer messages use the existing signed cross-project Support Chat bridge and mirror into CpiPOS-001 `support_chat_heads`, preserving the IT inbox/notification path.
+- Canonical message history remains in CpiPOS-Communications.
+
+Source migration:
+- `supabase/migrations/20261004133000_line_support_gateway_identity.sql`
+- adds server-only `line_support_bindings` and `line_support_verification_challenges`.
+- migration is source-only on this checkpoint and must not be treated as applied to Production until PR validation and explicit deployment.
+
+Required deployment configuration:
+- `NEXT_PUBLIC_LINE_LIFF_ID`
+- `LINE_LOGIN_CHANNEL_ID`
+- `LINE_SUPPORT_SESSION_SECRET` (server-only, minimum 32 characters)
+- existing Support Mail bridge configuration for first-binding OTP delivery.
+
+Release gate:
+1. Draft PR from this branch only; no direct `main` write.
+2. Typecheck → Lint → Test → Production Build must pass.
+3. Apply the additive migration to CpiPOS-001 only after code validation.
+4. Run Supabase security/performance advisors after migration.
+5. Configure LINE Login/LIFF and deployment env before production smoke.
+6. Smoke from LINE OA: first OTP bind, repeat one-tap entry, IT receive/reply, customer receive, customer close, IT close, session expiry/logout.
+7. Do not create a replacement Vercel project if connector visibility remains limited; use GitHub exact-commit status as the release gate.
+
+This checkpoint supersedes the older PR #21 immediate-next-action note for the LINE Support task; PR #21 is no longer the active support-gateway work item.
