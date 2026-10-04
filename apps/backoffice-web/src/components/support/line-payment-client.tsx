@@ -35,23 +35,48 @@ type PublicPaymentAccount = {
   promptpay_ready: boolean;
 };
 
+type PaymentRequestSummary = {
+  id: string;
+  status: string;
+  submitted_at: string;
+  review_note: string | null;
+  scan_status: string | null;
+};
+
+type PaymentRequestStatus = PaymentRequestSummary & {
+  reviewed_at?: string | null;
+  amount_reported?: number | null;
+  currency?: string;
+  receipt?: null | {
+    id: string;
+    number: string;
+    issued_at: string;
+    amount: number;
+    currency: string;
+  };
+};
+
 type PackagePayment = {
   store: { code: string; name: string };
   package: {
+    id: string | null;
     code: string | null;
     name: string;
     billing_interval: string | null;
     service_end: string | null;
   };
   due: null | {
-    cycle_id: string;
     amount_due: number;
     amount_paid: number;
     outstanding_amount: number;
     currency: string;
+    due_date: string;
     period_start: string;
     period_end: string;
+    source: "contract_due";
   };
+  open_request: PaymentRequestSummary | null;
+  latest_request: PaymentRequestSummary | null;
   payment_account: PublicPaymentAccount;
   qr_url: string | null;
   qr_page_url: string | null;
@@ -72,7 +97,7 @@ type Envelope<T> = {
   error?: { code?: string; message?: string };
 };
 
-type Stage = "boot" | "home" | "package-store" | "otp" | "package-payment" | "general";
+type Stage = "boot" | "home" | "package-store" | "otp" | "package-payment" | "slip" | "review" | "general";
 
 const LIFF_SCRIPT = "https://static.line-scdn.net/liff/edge/2/sdk.js";
 const DEFAULT_LIFF_ID = "2011852850-5tjQo09l";
@@ -150,6 +175,9 @@ export function LinePaymentClient() {
   const [maskedEmail, setMaskedEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [packagePayment, setPackagePayment] = useState<PackagePayment | null>(null);
+  const [paymentRequest, setPaymentRequest] = useState<PaymentRequestStatus | null>(null);
+  const [slipFile, setSlipFile] = useState<File | null>(null);
+  const [slipNote, setSlipNote] = useState("");
   const [generalAccount, setGeneralAccount] = useState<PublicPaymentAccount | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -179,10 +207,78 @@ export function LinePaymentClient() {
     if (window.liff) void boot();
   }, [boot]);
 
+  async function refreshPaymentStatus(requestId: string) {
+    const result = await api<{ request: PaymentRequestStatus }>(
+      "/api/support/line/payment/status?request_id=" + encodeURIComponent(requestId)
+    );
+    setPaymentRequest(result.request);
+    return result.request;
+  }
+
   async function loadPackagePayment() {
     const result = await api<{ payment: PackagePayment }>("/api/support/line/payment/package");
     setPackagePayment(result.payment);
+
+    if (result.payment.open_request) {
+      setPaymentRequest(result.payment.open_request);
+      setStage("review");
+      return;
+    }
+
+    if (!result.payment.due && result.payment.latest_request?.status === "approved") {
+      try {
+        const latest = await refreshPaymentStatus(result.payment.latest_request.id);
+        if (latest.status === "approved") {
+          setStage("review");
+          return;
+        }
+      } catch {
+        // Fall back to the normal package screen if the previous receipt is unavailable.
+      }
+    }
+
+    setPaymentRequest(null);
     setStage("package-payment");
+  }
+
+  async function submitSlip(event: FormEvent) {
+    event.preventDefault();
+    if (!slipFile) {
+      setError("กรุณาถ่ายรูปหรือเลือกไฟล์สลิปก่อนส่ง");
+      return;
+    }
+
+    setBusy("slip");
+    setError("");
+    try {
+      const form = new FormData();
+      form.set("slip", slipFile);
+      form.set("note", slipNote.trim());
+
+      const response = await fetch("/api/support/line/payment/slip", {
+        method: "POST",
+        body: form,
+        cache: "no-store"
+      });
+      const json = await response.json().catch(() => null) as Envelope<{
+        request: PaymentRequestStatus;
+        scan: { status: string; amount_match: boolean | null; payee_match: boolean; issues: string[] };
+      }> | null;
+      if (!response.ok || !json?.data) {
+        throw new Error(json?.error?.message || "ส่งสลิปไม่สำเร็จ กรุณาลองใหม่");
+      }
+
+      setPaymentRequest(json.data.request);
+      setSlipFile(null);
+      setSlipNote("");
+      setStage("review");
+      await loadPackagePayment().catch(() => null);
+      setStage("review");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ส่งสลิปไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function startPackage(event: FormEvent) {
@@ -243,6 +339,25 @@ export function LinePaymentClient() {
     }
   }
 
+  useEffect(() => {
+    if (stage !== "review" || !paymentRequest?.id) return;
+    if (!["pending", "under_review"].includes(paymentRequest.status)) return;
+
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      void refreshPaymentStatus(paymentRequest.id).catch(() => null);
+    };
+    const id = window.setInterval(refresh, 3_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [stage, paymentRequest?.id, paymentRequest?.status]);
+
   async function openGeneral() {
     if (!idToken) {
       setError("ยังไม่ได้เชื่อม LINE Login กรุณาเปิดเมนูชำระเงินใหม่");
@@ -269,6 +384,9 @@ export function LinePaymentClient() {
     setOtp("");
     setChallengeId("");
     setMaskedEmail("");
+    setSlipFile(null);
+    setSlipNote("");
+    setPaymentRequest(null);
     setStage("home");
   }
 
@@ -394,21 +512,38 @@ export function LinePaymentClient() {
                 <div className="mt-1 text-xs text-slate-500">รหัสร้าน {packagePayment.store.code} · {packagePayment.package.name}</div>
               </div>
 
+              {packagePayment.latest_request?.status === "rejected" && packagePayment.due ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+                  <div className="text-sm font-black text-red-700">รายการก่อนหน้าถูกปฏิเสธ</div>
+                  <div className="mt-1 text-xs leading-5 text-red-600">
+                    {packagePayment.latest_request.review_note || "กรุณาตรวจสอบสลิปและส่งใหม่อีกครั้ง"}
+                  </div>
+                </div>
+              ) : null}
+
               {!packagePayment.due ? (
                 <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-6 text-center">
                   <div className="text-4xl">✓</div>
                   <div className="mt-3 text-xl font-black text-emerald-800">ยังไม่มียอดชำระ</div>
-                  <p className="mt-2 text-sm leading-6 text-emerald-700">ระบบยังไม่พบ Billing Cycle ที่มียอดค้าง จึงยังไม่สร้าง QR ชำระเงิน</p>
+                  <p className="mt-2 text-sm leading-6 text-emerald-700">
+                    ร้านยังไม่ถึงวันครบกำหนดชำระ หรือไม่มีรายการค้างชำระ ระบบจึงยังไม่สร้าง QR
+                  </p>
                   {packagePayment.package.service_end ? (
-                    <div className="mt-4 rounded-2xl bg-white/70 px-4 py-3 text-sm text-emerald-900">วันสิ้นสุดบริการปัจจุบัน: <strong>{thaiDate(packagePayment.package.service_end)}</strong></div>
+                    <div className="mt-4 rounded-2xl bg-white/70 px-4 py-3 text-sm text-emerald-900">
+                      วันครบกำหนดปัจจุบัน: <strong>{thaiDate(packagePayment.package.service_end)}</strong>
+                    </div>
                   ) : null}
                 </div>
               ) : (
                 <>
                   <div className="mt-5 rounded-3xl border border-blue-100 bg-blue-50 p-5 text-center">
-                    <div className="text-xs font-black tracking-[0.14em] text-blue-600">ยอดค้างชำระล่าสุด</div>
-                    <div className="mt-2 text-4xl font-black text-slate-950">{money(packagePayment.due.outstanding_amount, packagePayment.due.currency)}</div>
-                    <div className="mt-2 text-xs text-slate-500">รอบ {thaiDate(packagePayment.due.period_start)} – {thaiDate(packagePayment.due.period_end)}</div>
+                    <div className="text-xs font-black tracking-[0.14em] text-blue-600">ยอดที่ต้องชำระ</div>
+                    <div className="mt-2 text-4xl font-black text-slate-950">
+                      {money(packagePayment.due.outstanding_amount, packagePayment.due.currency)}
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      ครบกำหนด {thaiDate(packagePayment.due.due_date)} · รอบใหม่ {thaiDate(packagePayment.due.period_start)} – {thaiDate(packagePayment.due.period_end)}
+                    </div>
                   </div>
 
                   {packagePayment.qr_url ? (
@@ -424,14 +559,192 @@ export function LinePaymentClient() {
                           className="h-[260px] w-[260px] object-contain"
                         />
                       </div>
-                      <div className="mt-3 text-xs text-slate-500">พร้อมเพย์ {maskPromptPay(packagePayment.payment_account.promptpay_id)}</div>
-                      <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">QR นี้ล็อกจำนวนเงินตามยอดค้างของร้าน ลูกค้าไม่ต้องกรอกยอดเอง</div>
+                      <div className="mt-3 text-xs text-slate-500">
+                        พร้อมเพย์ {maskPromptPay(packagePayment.payment_account.promptpay_id)}
+                      </div>
+                      <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">
+                        QR นี้ล็อกยอดจากระบบ Billing แล้ว PromptPay.io จะไม่แจ้งผลเงินเข้ากลับระบบโดยอัตโนมัติ
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setError("");
+                          setSlipFile(null);
+                          setSlipNote("");
+                          setStage("slip");
+                        }}
+                        className="mt-4 w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-black text-white shadow-sm"
+                      >
+                        📎 ส่งสลิปการชำระเงิน
+                      </button>
+                      <p className="mt-2 text-[11px] leading-5 text-slate-400">
+                        ถ่ายรูปด้วยกล้องหรือเลือกไฟล์จากเครื่อง ระบบจะสแกนข้อมูลเบื้องต้นแล้วส่งให้ฝ่าย IT ตรวจสอบ
+                      </p>
                     </div>
                   ) : (
                     <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-                      พบยอดค้างชำระแล้ว แต่ฝั่ง IT ยังไม่ได้ตั้งค่าหมายเลขพร้อมเพย์ จึงยังไม่สามารถสร้าง QR ได้
+                      พบยอดชำระแล้ว แต่ฝั่ง IT ยังไม่ได้ตั้งค่าหมายเลขพร้อมเพย์ จึงยังไม่สามารถสร้าง QR ได้
                     </div>
                   )}
+                </>
+              )}
+            </div>
+          ) : null}
+
+          {stage === "slip" && packagePayment?.due ? (
+            <div className="flex flex-1 flex-col justify-center overflow-y-auto p-5">
+              <div className="rounded-2xl bg-blue-50 p-4">
+                <div className="text-xs font-black text-blue-600">ยอดอ้างอิง</div>
+                <div className="mt-1 text-2xl font-black text-slate-950">
+                  {money(packagePayment.due.outstanding_amount, packagePayment.due.currency)}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">{packagePayment.store.name} · {packagePayment.package.name}</div>
+              </div>
+
+              <div className="mt-5">
+                <h1 className="text-2xl font-black">ส่งสลิปการชำระเงิน</h1>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  แนบรูปสลิปจากแกลเลอรี หรือกดเลือกกล้องเพื่อถ่ายสลิป ระบบจะสแกนยอด ผู้รับ และเลขอ้างอิงก่อนส่งให้ IT
+                </p>
+              </div>
+
+              <form onSubmit={submitSlip} className="mt-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="cursor-pointer rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-center">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      capture="environment"
+                      onChange={(event) => {
+                        setSlipFile(event.target.files?.[0] ?? null);
+                        setError("");
+                      }}
+                      className="hidden"
+                    />
+                    <span className="block text-3xl">📷</span>
+                    <span className="mt-2 block text-xs font-black text-blue-700">ถ่ายรูปสลิป</span>
+                  </label>
+                  <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(event) => {
+                        setSlipFile(event.target.files?.[0] ?? null);
+                        setError("");
+                      }}
+                      className="hidden"
+                    />
+                    <span className="block text-3xl">🖼️</span>
+                    <span className="mt-2 block text-xs font-black text-slate-700">เลือกไฟล์ / แกลเลอรี</span>
+                  </label>
+                </div>
+                <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-center">
+                  <div className="text-sm font-black text-slate-700">
+                    {slipFile ? "เลือกสลิปแล้ว" : "ยังไม่ได้เลือกสลิป"}
+                  </div>
+                  <div className="mt-1 max-w-full break-all text-xs text-slate-500">
+                    {slipFile ? slipFile.name : "รองรับ JPG, PNG, WebP ขนาดไม่เกิน 4 MB"}
+                  </div>
+                </div>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-black text-slate-600">หมายเหตุ (ถ้ามี)</span>
+                  <textarea
+                    value={slipNote}
+                    onChange={(event) => setSlipNote(event.target.value.slice(0, 500))}
+                    rows={2}
+                    placeholder="เช่น ชื่อผู้โอน หรือข้อมูลเพิ่มเติม"
+                    className="w-full resize-none rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  />
+                </label>
+
+                {error ? <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
+
+                <button
+                  type="submit"
+                  disabled={busy === "slip" || !slipFile}
+                  className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-black text-white disabled:opacity-50"
+                >
+                  {busy === "slip" ? "กำลังสแกนสลิปและส่งให้ IT…" : "ส่งสลิปให้ฝ่ายตรวจสอบ"}
+                </button>
+                {busy === "slip" ? (
+                  <p className="text-center text-xs leading-5 text-slate-500">
+                    กรุณารอสักครู่ ระบบกำลังอ่านข้อมูลจากสลิปและบันทึกรายการ ไม่ต้องกดปิดหน้านี้
+                  </p>
+                ) : null}
+              </form>
+            </div>
+          ) : null}
+
+          {stage === "review" && paymentRequest ? (
+            <div className="flex flex-1 flex-col justify-center overflow-y-auto p-5 text-center">
+              {paymentRequest.status === "approved" ? (
+                <>
+                  <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-100 text-4xl text-emerald-700">✓</div>
+                  <h1 className="mt-5 text-2xl font-black text-emerald-800">อนุมัติการชำระแล้ว</h1>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    ฝ่ายตรวจสอบยืนยันยอดเรียบร้อยแล้ว ระบบได้ต่ออายุแพ็กเกจและดำเนินการใบเสร็จตามระบบ
+                  </p>
+                  {paymentRequest.receipt ? (
+                    <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left">
+                      <div className="text-xs font-bold text-emerald-700">เลขที่ใบเสร็จ</div>
+                      <div className="mt-1 text-lg font-black text-slate-950">{paymentRequest.receipt.number}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {money(paymentRequest.receipt.amount, paymentRequest.receipt.currency)} · {thaiDate(paymentRequest.receipt.issued_at)}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+                    อีเมลยืนยันและใบเสร็จจะดำเนินการตามระบบเดิมของฝ่าย IT
+                  </div>
+                </>
+              ) : paymentRequest.status === "rejected" ? (
+                <>
+                  <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-red-100 text-4xl text-red-700">!</div>
+                  <h1 className="mt-5 text-2xl font-black text-red-700">รายการยังไม่ผ่านการตรวจสอบ</h1>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {paymentRequest.review_note || "กรุณาตรวจสอบสลิปหรือข้อมูลการชำระ แล้วส่งใหม่อีกครั้ง"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void loadPackagePayment()}
+                    className="mt-5 w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-black text-white"
+                  >
+                    กลับไปตรวจยอดและส่งสลิปใหม่
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-blue-100">
+                    <div className="h-9 w-9 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+                  </div>
+                  <h1 className="mt-5 text-2xl font-black">ส่งสลิปเรียบร้อยแล้ว</h1>
+                  <p className="mt-2 text-base font-bold text-blue-700">
+                    {paymentRequest.status === "under_review" ? "ฝ่าย IT กำลังตรวจสอบ" : "ชำระเงินแล้ว · รออนุมัติจากฝ่ายตรวจสอบ"}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    ระบบบันทึกสลิปเข้าฝั่ง IT แล้ว หน้านี้จะตรวจสถานะให้อัตโนมัติโดยไม่ใช้โควตาข้อความ LINE
+                  </p>
+                  <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-bold text-slate-500">ผลสแกนเบื้องต้น</span>
+                      <span className={"rounded-full px-2.5 py-1 text-[11px] font-black " +
+                        (paymentRequest.scan_status === "verified"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : paymentRequest.scan_status === "needs_review"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-200 text-slate-600")}>
+                        {paymentRequest.scan_status === "verified"
+                          ? "ข้อมูลตรงเบื้องต้น"
+                          : paymentRequest.scan_status === "needs_review"
+                            ? "ต้องตรวจเพิ่ม"
+                            : "รอเจ้าหน้าที่ตรวจ"}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs leading-5 text-slate-500">
+                      AI ช่วยอ่านสลิปเพื่อคัดกรองเท่านั้น การอนุมัติสุดท้ายต้องยืนยันเงินเข้าจริงโดยฝ่าย IT
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -480,8 +793,10 @@ export function LinePaymentClient() {
             </div>
           ) : null}
 
-          {store && stage === "package-payment" ? (
-            <footer className="shrink-0 border-t border-slate-100 bg-white px-5 py-3 text-center text-[11px] text-slate-400">ข้อมูลยอดชำระดึงจากระบบ Billing ของ {store.name}</footer>
+          {store && ["package-payment", "slip", "review"].includes(stage) ? (
+            <footer className="shrink-0 border-t border-slate-100 bg-white px-5 py-3 text-center text-[11px] text-slate-400">
+              ข้อมูลยอดชำระและสถานะตรวจสอบเชื่อมกับระบบ Billing / IT ของ {store.name}
+            </footer>
           ) : null}
         </section>
       </main>

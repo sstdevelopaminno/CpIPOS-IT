@@ -6,37 +6,42 @@ const src = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8")
 
 describe("LINE Payment Center", () => {
   const service = src("src/lib/payments/line-payment-service.ts");
+  const slipService = src("src/lib/payments/line-payment-slip-service.ts");
+  const slipScanner = src("src/lib/payments/subscription-slip-ai.ts");
   const paymentClient = src("src/components/support/line-payment-client.tsx");
   const paymentAuth = src("src/app/api/support/line/payment/auth/route.ts");
   const generalRoute = src("src/app/api/support/line/payment/general/route.ts");
   const packageRoute = src("src/app/api/support/line/payment/package/route.ts");
+  const slipRoute = src("src/app/api/support/line/payment/slip/route.ts");
+  const statusRoute = src("src/app/api/support/line/payment/status/route.ts");
   const paymentSettings = src("src/app/api/it-admin/v1/payment-settings/route.ts");
   const itLayout = src("src/app/(it-admin)/layout.tsx");
   const nextConfig = src("next.config.ts");
 
-  it("builds PromptPay QR from IT settings and the outstanding billing amount", () => {
+  it("builds PromptPay QR from IT settings and a server-derived due amount", () => {
     expect(service).toContain("billing_promptpay_id");
-    expect(service).toContain("amount_due");
-    expect(service).toContain("amount_paid");
-    expect(service).toContain("Math.max(0, amountDue - amountPaid)");
+    expect(service).toContain("amount_per_cycle");
+    expect(service).toContain("contract.ended_at");
+    expect(service).toContain("Date.parse(contract.ended_at) <= Date.now()");
     expect(service).toContain("https://promptpay.io/");
     expect(service).toContain('base + ".png"');
+    expect(service).toContain('replace(/[^\\d]/g, "")');
   });
 
-  it("never creates a package QR from contract price alone", () => {
-    expect(service).toContain("const dueCycle = cycles.find");
-    expect(service).toContain('cycle.status !== "paid"');
-    expect(service).toContain("cycle.period_start <= today");
-    expect(service).toContain("if (dueCycle)");
-    expect(service).not.toContain("buildPromptPayUrls(account.promptpay_id, Number(contract");
-  });
-
-  it("returns no QR when there is no due billing cycle or PromptPay is not configured", () => {
-    expect(service).toContain("due: LinePackagePaymentSnapshot");
+  it("does not expose a QR before the current contract reaches its due date", () => {
+    expect(service).toContain('["active", "trial"].includes(contract.status)');
+    expect(service).toContain("contractEndReached");
     expect(service).toContain("let qrUrl: string | null = null");
-    expect(service).toContain("if (account.promptpay_ready)");
+    expect(service).toContain("if (account.promptpay_ready && !openRow)");
     expect(paymentClient).toContain("ยังไม่มียอดชำระ");
-    expect(paymentClient).toContain("ยังไม่ได้ตั้งค่าหมายเลขพร้อมเพย์");
+    expect(paymentClient).toContain("ร้านยังไม่ถึงวันครบกำหนดชำระ");
+  });
+
+  it("suppresses a new QR while a payment request is pending review", () => {
+    expect(service).toContain('row.status === "pending" || row.status === "under_review"');
+    expect(service).toContain("open_request: paymentSummary(openRow)");
+    expect(service).toContain("!openRow");
+    expect(paymentClient).toContain("ชำระเงินแล้ว · รออนุมัติจากฝ่ายตรวจสอบ");
   });
 
   it("requires LINE identity for general payment information", () => {
@@ -54,12 +59,43 @@ describe("LINE Payment Center", () => {
     expect(packageRoute).toContain("requireLineSupportSession");
   });
 
+  it("accepts a camera/gallery slip and stores it in the existing payment-review workflow", () => {
+    expect(paymentClient).toContain('capture="environment"');
+    expect(paymentClient).toContain("ส่งสลิปการชำระเงิน");
+    expect(slipRoute).toContain("request.formData()");
+    expect(slipRoute).toContain("requireLineSupportSession");
+    expect(slipService).toContain('SUBSCRIPTION_SLIP_BUCKET = "subscription-payment-evidence"');
+    expect(slipService).toContain("scanSubscriptionSlipFromPrimary");
+    expect(slipService).toContain('kind: "payment_notice"');
+    expect(slipService).toContain('source: "line_payment_center"');
+    expect(slipService).toContain('status: "pending"');
+    expect(slipService).toContain("tenant_subscription_payment_requests");
+  });
+
+  it("reuses the subscription slip AI checks but keeps IT as the final approver", () => {
+    expect(slipScanner).toContain("scanSubscriptionSlipFromPrimary");
+    expect(slipScanner).toContain("/api/internal/subscription-slip-scan");
+    expect(slipScanner).toContain("CPIPOS_PRODUCTION_URL");
+    expect(slipScanner).toContain('update("cpipos:internal-subscription-slip-scan:v1|")');
+    expect(paymentClient).toContain("AI ช่วยอ่านสลิปเพื่อคัดกรองเท่านั้น");
+    expect(paymentClient).toContain("การอนุมัติสุดท้ายต้องยืนยันเงินเข้าจริงโดยฝ่าย IT");
+  });
+
+  it("polls the IT review state and shows approval or rejection in LIFF without LINE push messages", () => {
+    expect(statusRoute).toContain("getLinePaymentRequestStatus");
+    expect(statusRoute).toContain("requireLineSupportSession");
+    expect(paymentClient).toContain('window.setInterval(refresh, 3_000)');
+    expect(paymentClient).toContain("อนุมัติการชำระแล้ว");
+    expect(paymentClient).toContain("รายการยังไม่ผ่านการตรวจสอบ");
+    expect(paymentClient).toContain("หน้านี้จะตรวจสถานะให้อัตโนมัติโดยไม่ใช้โควตาข้อความ LINE");
+  });
+
   it("provides the two requested mobile payment choices", () => {
     expect(paymentClient).toContain("ชำระแพ็กเกจ CpIPOS");
     expect(paymentClient).toContain("ชำระเงินทั่วไป");
     expect(paymentClient).toContain("ตรวจสอบยอดชำระ");
     expect(paymentClient).toContain("บัญชีรับชำระ");
-    expect(paymentClient).toContain("QR นี้ล็อกจำนวนเงินตามยอดค้างของร้าน");
+    expect(paymentClient).toContain("QR นี้ล็อกยอดจากระบบ Billing");
   });
 
   it("adds an IT payment-account settings menu and audited update API", () => {
