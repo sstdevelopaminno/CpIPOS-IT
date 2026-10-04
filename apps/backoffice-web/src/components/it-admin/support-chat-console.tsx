@@ -950,43 +950,43 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           )}
         </section>
       </section>
+      <SupportVoiceCallOverlay
+            open={Boolean(
+              activeCall &&
+              actor &&
+              ["requested", "accepted", "connecting", "connected"].includes(activeCall.status) &&
+              (
+                activeCall.status === "requested"
+                  ? activeCall.direction === "store_to_it" || activeCall.assigned_it_user_id === actor.user_id
+                  : activeCall.assigned_it_user_id === actor.user_id
+              )
+            )}
+            mode={
+              activeCall?.status === "requested"
+                ? activeCall.direction === "store_to_it"
+                  ? "incoming"
+                  : "outgoing"
+                : "active"
+            }
+            counterpartyName={conversation?.store_name || conversation?.contact_name || "ลูกค้า CpIPOS"}
+            counterpartyDetail={conversation ? `ร้านค้า · ${conversation.store_code}` : "CpIPOS Support"}
+            phase={voice.phase}
+            error={voice.error}
+            busy={busy === "voice"}
+            canStart={voice.canStart}
+            micMuted={voice.micMuted}
+            speakerMuted={voice.speakerMuted}
+            needsAudioResume={voice.needsAudioResume}
+            elapsedSeconds={voice.elapsedSeconds}
+            onAccept={activeCall ? () => void performVoiceAction("voice_accept", activeCall.id) : undefined}
+            onCancel={activeCall ? () => void performVoiceAction("voice_cancel", activeCall.id) : undefined}
+            onStart={() => void voice.start()}
+            onEnd={() => void endVoiceCall()}
+            onToggleMic={voice.toggleMic}
+            onToggleSpeaker={voice.toggleSpeaker}
+            onResumeAudio={() => void voice.resumeAudio()}
+          />
+      
     </main>
-
-    <SupportVoiceCallOverlay
-      open={Boolean(
-        activeCall &&
-        actor &&
-        ["requested", "accepted", "connecting", "connected"].includes(activeCall.status) &&
-        (
-          activeCall.status === "requested"
-            ? activeCall.direction === "store_to_it" || activeCall.assigned_it_user_id === actor.user_id
-            : activeCall.assigned_it_user_id === actor.user_id
-        )
-      )}
-      mode={
-        activeCall?.status === "requested"
-          ? activeCall.direction === "store_to_it"
-            ? "incoming"
-            : "outgoing"
-          : "active"
-      }
-      counterpartyName={conversation?.store_name || conversation?.contact_name || "ลูกค้า CpIPOS"}
-      counterpartyDetail={conversation ? `ร้านค้า · ${conversation.store_code}` : "CpIPOS Support"}
-      phase={voice.phase}
-      error={voice.error}
-      busy={busy === "voice"}
-      canStart={voice.canStart}
-      micMuted={voice.micMuted}
-      speakerMuted={voice.speakerMuted}
-      needsAudioResume={voice.needsAudioResume}
-      elapsedSeconds={voice.elapsedSeconds}
-      onAccept={activeCall ? () => void performVoiceAction("voice_accept", activeCall.id) : undefined}
-      onCancel={activeCall ? () => void performVoiceAction("voice_cancel", activeCall.id) : undefined}
-      onStart={() => void voice.start()}
-      onEnd={() => void endVoiceCall()}
-      onToggleMic={voice.toggleMic}
-      onToggleSpeaker={voice.toggleSpeaker}
-      onResumeAudio={() => void voice.resumeAudio()}
-    />
   );
 }
