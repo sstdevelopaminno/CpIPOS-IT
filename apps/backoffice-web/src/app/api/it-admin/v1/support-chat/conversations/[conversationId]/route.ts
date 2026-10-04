@@ -273,6 +273,6 @@ export async function POST(
 
     return fail("unsupported_action", "คำสั่งแชทไม่ถูกต้อง", 422);
   } catch (error) {
-    return guardItAdminError(error);
+    return supportChatActionError(error);
   }
 }
