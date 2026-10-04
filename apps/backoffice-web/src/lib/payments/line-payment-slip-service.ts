@@ -2,7 +2,7 @@ import "server-only";
 
 import crypto from "node:crypto";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
-import { scanSubscriptionSlip, type SubscriptionSlipScanResult } from "@/lib/payments/subscription-slip-ai";
+import { scanSubscriptionSlipFromPrimary, type SubscriptionSlipScanResult } from "@/lib/payments/subscription-slip-ai";
 import { getLinePackagePaymentSnapshot } from "@/lib/payments/line-payment-service";
 import type { LineSupportSession } from "@/lib/support-chat/line-support-auth";
 import { dispatchSupportPush } from "@/lib/support-chat/support-push";
@@ -61,15 +61,6 @@ export async function submitLinePackagePaymentSlip(input: {
     throw new LinePaymentSlipError("slip_type_invalid", "ไฟล์สลิปไม่ถูกต้อง กรุณาเลือกรูปจากกล้องหรือแกลเลอรีอีกครั้ง", 422);
   }
 
-  const scan: SubscriptionSlipScanResult = await scanSubscriptionSlip({
-    buffer,
-    mimeType: detectedMime as "image/jpeg" | "image/png" | "image/webp",
-    expectedAmount: snapshot.due.outstanding_amount,
-    expectedPayeeName: snapshot.payment_account.account_name,
-    expectedAccountNumber: snapshot.payment_account.account_number,
-    expectedPromptPayId: snapshot.payment_account.promptpay_id
-  });
-
   const db = getPrimarySupabaseServiceClient();
 
   const open = await db.from("tenant_subscription_payment_requests")
@@ -94,6 +85,16 @@ export async function submitLinePackagePaymentSlip(input: {
   if (upload.error) {
     throw new LinePaymentSlipError("slip_upload_failed", "จัดเก็บสลิปไม่สำเร็จ กรุณาลองใหม่", 503);
   }
+
+  const scan: SubscriptionSlipScanResult = await scanSubscriptionSlipFromPrimary({
+    tenantId: input.session.tenantId,
+    requestId,
+    storagePath: filePath,
+    expectedAmount: snapshot.due.outstanding_amount,
+    expectedPayeeName: snapshot.payment_account.account_name,
+    expectedAccountNumber: snapshot.payment_account.account_number,
+    expectedPromptPayId: snapshot.payment_account.promptpay_id
+  });
 
   const amountReported = scan.parsed.amount != null
     && Number.isFinite(scan.parsed.amount)
