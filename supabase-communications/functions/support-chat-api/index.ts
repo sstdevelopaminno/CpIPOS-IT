@@ -386,6 +386,61 @@ Deno.serve(async (request) => {
       });
     }
 
+    if (action === "get_it_voice_call") {
+      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+        return json(403, { error: { code: "it_role_required" } });
+      }
+
+      const assigned = await db.from("support_call_sessions")
+        .select("*")
+        .eq("assigned_it_user_id", actor.uid)
+        .in("status", ACTIVE_CALL_STATUSES)
+        .order("requested_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (assigned.error) throw assigned.error;
+
+      let row = assigned.data as Record<string, unknown> | null;
+      if (!row) {
+        const waiting = await db.from("support_call_sessions")
+          .select("*")
+          .eq("direction", "store_to_it")
+          .eq("status", "requested")
+          .is("assigned_it_user_id", null)
+          .order("requested_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (waiting.error) throw waiting.error;
+        row = waiting.data as Record<string, unknown> | null;
+      }
+
+      if (!row) {
+        return json(200, { data: { call: null, conversation: null, head: null } });
+      }
+
+      if (["accepted", "connecting", "connected"].includes(String(row.status ?? ""))) {
+        row = await ensureCallSignalingKey(db, row);
+      }
+
+      const conversationId = String(row.conversation_id ?? "");
+      const conversation = await db.from("support_conversations")
+        .select("*")
+        .eq("id", conversationId)
+        .maybeSingle();
+      if (conversation.error) throw conversation.error;
+      if (!conversation.data || conversation.data.status === "closed") {
+        return json(200, { data: { call: null, conversation: null, head: null } });
+      }
+
+      return json(200, {
+        data: {
+          call: callForActor(row, actor),
+          conversation: conversationForActor(conversation.data, actor),
+          head: headFromConversation(conversation.data)
+        }
+      });
+    }
+
     if (action === "list_conversations") {
       let query = db.from("support_conversations").select("*").order("last_message_at", { ascending: false }).limit(250);
       if (actor.actor === "store") {
