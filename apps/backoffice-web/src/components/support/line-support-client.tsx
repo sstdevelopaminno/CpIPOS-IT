@@ -18,6 +18,7 @@ type LiffApi = {
   login(input?: { redirectUri?: string }): void;
   getIDToken(): string | null;
   isInClient(): boolean;
+  openWindow(input: { url: string; external?: boolean }): void;
   closeWindow(): void;
 };
 
@@ -232,8 +233,10 @@ export function LineSupportClient() {
       const token = window.liff.getIDToken();
       if (!token) throw new Error("LINE Login ไม่ได้อนุญาต openid กรุณาเปิด Support ใหม่");
       setIdToken(token);
+      const queryStore = new URL(window.location.href).searchParams.get("store") || "";
       const remembered = window.localStorage.getItem("cpipos_line_support_store_code") || "";
-      if (/^\d{6}$/.test(remembered)) setStoreCode(remembered);
+      if (/^\d{6}$/.test(queryStore)) setStoreCode(queryStore);
+      else if (/^\d{6}$/.test(remembered)) setStoreCode(remembered);
       setStage("store");
     } catch (cause) {
       bootedRef.current = false;
@@ -467,6 +470,17 @@ export function LineSupportClient() {
     await performVoiceAction("voice_end", activeCall.id);
   }
 
+  function openVoiceInExternalBrowser() {
+    const url = new URL(window.location.href);
+    if (store?.code) url.searchParams.set("store", store.code);
+    url.searchParams.set("voice", "1");
+    if (window.liff?.openWindow) {
+      window.liff.openWindow({ url: url.toString(), external: true });
+      return;
+    }
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
+  }
+
   async function closeConversation() {
     if (!conversation?.id) return;
     if (!window.confirm("ต้องการจบการสนทนานี้จริงหรือไม่? หากเพียงปิดหรือปัดหน้าต่าง LINE ประวัติแชทจะยังคงอยู่และกลับมาเปิดต่อได้")) return;
@@ -488,9 +502,9 @@ export function LineSupportClient() {
   return (
     <>
       <Script src={LIFF_SCRIPT} strategy="afterInteractive" onLoad={() => void boot()} />
-      <main className="min-h-dvh bg-slate-100 px-4 py-5 text-slate-950">
-        <section className="mx-auto flex min-h-[calc(100dvh-2.5rem)] w-full max-w-md flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl">
-          <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+      <main className="h-dvh overflow-hidden bg-slate-100 px-4 py-5 text-slate-950">
+        <section className="mx-auto flex h-[calc(100dvh-2.5rem)] min-h-0 w-full max-w-md flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl">
+          <header className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-5 py-4">
             <Image
               src="/brand/cpipos-symbol-sidebar.png"
               alt="CpIPOS"
@@ -756,10 +770,12 @@ export function LineSupportClient() {
                 ) : null}
               </div>
 
-              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5">
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
                     const welcome = message.message_body.startsWith("CpIPOS Support ให้บริการ");
+                    const voiceAudit = message.message_body.startsWith("📞") || message.message_body.startsWith("☎");
+                    if (voiceAudit) return null;
                     return welcome ? (
                       <div key={message.id} className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-left">
                         <div className="text-[11px] font-black text-blue-700">CpIPOS Support</div>
@@ -787,7 +803,7 @@ export function LineSupportClient() {
                 <div ref={endRef} />
               </div>
 
-              {error ? <div className="mx-4 mb-2 rounded-xl bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">{error}</div> : null}
+              {error ? <div className="mx-4 mb-2 shrink-0 rounded-xl bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">{error}</div> : null}
 
               {conversation.status === "closed" ? (
                 <div className="border-t border-slate-100 p-4">
@@ -801,7 +817,7 @@ export function LineSupportClient() {
                   </button>
                 </div>
               ) : (
-                <div className="border-t border-slate-100 p-3">
+                <div className="shrink-0 border-t border-slate-100 bg-white p-3">
                   {remoteTyping ? (
                     <div className="mb-2 flex items-center gap-2 text-[11px] font-bold text-slate-500">
                       <span>{remoteTyping} กำลังพิมพ์ตอบกลับ</span>
@@ -871,6 +887,7 @@ export function LineSupportClient() {
         onToggleMic={voice.toggleMic}
         onToggleSpeaker={voice.toggleSpeaker}
         onResumeAudio={() => void voice.resumeAudio()}
+        onOpenExternalBrowser={voice.error ? openVoiceInExternalBrowser : undefined}
       />
     </>
   );
