@@ -6,10 +6,12 @@ import {
 } from "@/lib/support-chat/line-support-auth";
 import {
   closeLineSupportConversation,
+  getLineSupportVoiceIceConfig,
   loadLineSupportConversation,
   openLineSupportConversation,
   performLineSupportVoiceAction,
-  sendLineSupportMessage
+  sendLineSupportMessage,
+  updateLineSupportVoiceState
 } from "@/lib/support-chat/line-support-chat-service";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
 
@@ -52,6 +54,7 @@ export async function POST(request: Request) {
       conversation_id?: string;
       message?: string;
       call_id?: string;
+      state?: string;
     } | null;
     const action = String(body?.action ?? "").trim();
     const ip = getClientIpAddress(request);
@@ -86,6 +89,27 @@ export async function POST(request: Request) {
       return ok(await sendLineSupportMessage(session, conversationId, message));
     }
 
+
+    if (action === "voice_ice") {
+      const callId = String(body?.call_id ?? "").trim();
+      if (!callId) return fail("call_id_required", "ไม่พบคำขอคุยด้วยเสียง", 422);
+      return ok(await getLineSupportVoiceIceConfig(session, conversationId, callId));
+    }
+
+    if (action === "voice_state") {
+      const callId = String(body?.call_id ?? "").trim();
+      const state = String(body?.state ?? "").trim();
+      if (!callId) return fail("call_id_required", "ไม่พบคำขอคุยด้วยเสียง", 422);
+      if (state !== "connecting" && state !== "connected") {
+        return fail("call_state_invalid", "สถานะเสียงไม่ถูกต้อง", 422);
+      }
+      return ok(await updateLineSupportVoiceState(
+        session,
+        conversationId,
+        callId,
+        state
+      ));
+    }
 
     if (["voice_request", "voice_accept", "voice_cancel", "voice_decline", "voice_end"].includes(action)) {
       const rate = await enforceRateLimit({
