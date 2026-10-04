@@ -65,7 +65,7 @@ describe("LINE Payment Center", () => {
     expect(slipRoute).toContain("request.formData()");
     expect(slipRoute).toContain("requireLineSupportSession");
     expect(slipService).toContain('SUBSCRIPTION_SLIP_BUCKET = "subscription-payment-evidence"');
-    expect(slipService).toContain("scanSubscriptionSlip");
+    expect(slipService).toContain("scanSubscriptionSlipFromPrimary");
     expect(slipService).toContain('kind: "payment_notice"');
     expect(slipService).toContain('source: "line_payment_center"');
     expect(slipService).toContain('status: "pending"');
@@ -73,10 +73,10 @@ describe("LINE Payment Center", () => {
   });
 
   it("reuses the subscription slip AI checks but keeps IT as the final approver", () => {
-    expect(slipScanner).toContain("amount_match");
-    expect(slipScanner).toContain("payee_match");
-    expect(slipScanner).toContain("transfer_datetime");
-    expect(slipScanner).toContain("OPENAI_API_KEY");
+    expect(slipScanner).toContain("scanSubscriptionSlipFromPrimary");
+    expect(slipScanner).toContain("/api/internal/subscription-slip-scan");
+    expect(slipScanner).toContain("CPIPOS_PRODUCTION_URL");
+    expect(slipScanner).toContain('update("cpipos:internal-subscription-slip-scan:v1|")');
     expect(paymentClient).toContain("AI ช่วยอ่านสลิปเพื่อคัดกรองเท่านั้น");
     expect(paymentClient).toContain("การอนุมัติสุดท้ายต้องยืนยันเงินเข้าจริงโดยฝ่าย IT");
   });
