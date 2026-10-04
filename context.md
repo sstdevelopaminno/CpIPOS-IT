@@ -242,3 +242,17 @@ Release gate:
 7. Do not create a replacement Vercel project if connector visibility remains limited; use GitHub exact-commit status as the release gate.
 
 This checkpoint supersedes the older PR #21 immediate-next-action note for the LINE Support task; PR #21 is no longer the active support-gateway work item.
+
+
+### LINE Support production database checkpoint — 2026-10-04
+
+- Applied migration `line_support_gateway_identity` to CpiPOS-001 successfully.
+- `public.line_support_bindings`: RLS enabled; no `anon` or `authenticated` table grants; `service_role` only.
+- `public.line_support_verification_challenges`: RLS enabled; no `anon` or `authenticated` table grants; `service_role` only.
+- Initial row counts after migration: bindings = 0, challenges = 0.
+- Supabase security advisor reports `rls_enabled_no_policy` INFO for these two tables. This is intentional: the tables are server-only and deny client roles by grant boundary + RLS; no client policy should be added.
+- Confirmed LINE Login Channel ID: `2011852850`.
+- Confirmed LIFF ID: `2011852850-5tjQo09l`.
+- Confirmed LIFF endpoint: `https://cp-ipos-it-web-git-feat-line-1ecbd3-sstdevelopaminnos-projects.vercel.app/support/line`.
+- LIFF scopes: `openid profile`; size Full; Scan QR off; Module mode off.
+- Exact-head CI and Vercel deployment were green after wiring the confirmed LINE identifiers.
