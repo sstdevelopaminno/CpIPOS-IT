@@ -3,6 +3,8 @@
 import Image from "next/image";
 import Script from "next/script";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 type LiffApi = {
   init(input: { liffId: string }): Promise<void>;
@@ -104,6 +106,9 @@ export function LineSupportClient() {
   const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID || DEFAULT_LIFF_ID;
   const bootedRef = useRef(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const typingChannelRef = useRef<RealtimeChannel | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
+  const typingSentAtRef = useRef(0);
   const [stage, setStage] = useState<"boot" | "store" | "otp" | "connecting" | "chat">("boot");
   const [idToken, setIdToken] = useState("");
   const [storeCode, setStoreCode] = useState("");
@@ -114,6 +119,7 @@ export function LineSupportClient() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [remoteTyping, setRemoteTyping] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -204,6 +210,46 @@ export function LineSupportClient() {
   }, [stage, conversation?.id, conversation?.status, loadConversation]);
 
   useEffect(() => {
+    if (stage !== "chat" || !conversation?.id || conversation.status === "closed") {
+      setRemoteTyping("");
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const conversationId = conversation.id;
+    const channel = supabase.channel(`support-chat-typing:${conversationId}`)
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        const event = payload as { actor?: string; typing?: boolean; name?: string };
+        if (event.actor !== "it") return;
+        if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+        setRemoteTyping(event.typing ? (event.name || "ฝ่าย Support") : "");
+        if (event.typing) {
+          typingTimerRef.current = window.setTimeout(() => setRemoteTyping(""), 2600);
+        }
+      })
+      .subscribe();
+
+    typingChannelRef.current = channel;
+    return () => {
+      if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+      setRemoteTyping("");
+      typingChannelRef.current = null;
+      void supabase.removeChannel(channel);
+    };
+  }, [stage, conversation?.id, conversation?.status]);
+
+  const announceTyping = useCallback((typing: boolean) => {
+    const now = Date.now();
+    if (typing && now - typingSentAtRef.current < 700) return;
+    typingSentAtRef.current = now;
+    void typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { actor: "store", typing, name: "ลูกค้า" }
+    });
+  }, []);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length]);
 
@@ -290,6 +336,7 @@ export function LineSupportClient() {
       created_at: new Date().toISOString()
     };
 
+    announceTyping(false);
     setBusy("send");
     setError("");
     setDraft("");
@@ -489,7 +536,13 @@ export function LineSupportClient() {
               <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
-                    return (
+                    const welcome = message.message_body.startsWith("CpIPOS Support ให้บริการ");
+                    return welcome ? (
+                      <div key={message.id} className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-left">
+                        <div className="text-[11px] font-black text-blue-700">CpIPOS Support</div>
+                        <div className="mt-1 text-sm leading-6 text-slate-700">{message.message_body}</div>
+                      </div>
+                    ) : (
                       <div key={message.id} className="text-center text-[11px] text-slate-400">
                         {message.message_body}
                       </div>
@@ -526,10 +579,21 @@ export function LineSupportClient() {
                 </div>
               ) : (
                 <div className="border-t border-slate-100 p-3">
+                  {remoteTyping ? (
+                    <div className="mb-2 flex items-center gap-2 text-[11px] font-bold text-slate-500">
+                      <span>{remoteTyping} กำลังพิมพ์ตอบกลับ</span>
+                      <span className="animate-pulse tracking-widest">•••</span>
+                    </div>
+                  ) : null}
                   <form onSubmit={sendMessage} className="flex items-end gap-2">
                     <textarea
                       value={draft}
-                      onChange={(event) => setDraft(event.target.value.slice(0, 4000))}
+                      onChange={(event) => {
+                        const value = event.target.value.slice(0, 4000);
+                        setDraft(value);
+                        announceTyping(Boolean(value.trim()));
+                      }}
+                      onBlur={() => announceTyping(false)}
                       rows={1}
                       placeholder="พิมพ์ข้อความถึงทีม IT…"
                       className="max-h-32 min-h-12 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
