@@ -54,9 +54,22 @@ type Message = {
   created_at: string;
 };
 
+type VoiceCall = {
+  id: string;
+  conversation_id: string;
+  direction: "store_to_it" | "it_to_store";
+  status: "requested" | "accepted" | "connecting" | "connected" | "declined" | "cancelled" | "ended" | "failed";
+  requested_by_name: string;
+  assigned_it_name?: string | null;
+  assigned_it_role?: string | null;
+  requested_at: string;
+  accepted_at?: string | null;
+};
+
 type ChatDetail = {
   conversation: Conversation;
   messages: Message[];
+  active_call: VoiceCall | null;
 };
 
 type Envelope<T> = {
@@ -118,6 +131,7 @@ export function LineSupportClient() {
   const [otp, setOtp] = useState("");
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [activeCall, setActiveCall] = useState<VoiceCall | null>(null);
   const [draft, setDraft] = useState("");
   const [remoteTyping, setRemoteTyping] = useState("");
   const [busy, setBusy] = useState("");
@@ -129,12 +143,14 @@ export function LineSupportClient() {
     );
     setConversation(detail.conversation);
     setMessages(detail.messages);
+    setActiveCall(detail.active_call ?? null);
     return detail;
   }, []);
 
   const applyChat = useCallback((detail: ChatDetail) => {
     setConversation(detail.conversation);
     setMessages(detail.messages);
+    setActiveCall(detail.active_call ?? null);
     setStage("chat");
   }, []);
 
@@ -375,7 +391,32 @@ export function LineSupportClient() {
     }
     setConversation(null);
     setMessages([]);
+    setActiveCall(null);
     setStage("store");
+  }
+
+  async function performVoiceAction(
+    action: "voice_request" | "voice_accept" | "voice_cancel" | "voice_decline" | "voice_end",
+    callId?: string
+  ) {
+    if (!conversation?.id) return;
+    setBusy("voice");
+    setError("");
+    try {
+      await api("/api/support/line/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          action,
+          conversation_id: conversation.id,
+          call_id: callId ?? null
+        })
+      });
+      await loadConversation(conversation.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function closeConversation() {
@@ -529,6 +570,71 @@ export function LineSupportClient() {
                 {conversation.assigned_user_name ? (
                   <div className="mt-1 text-[11px] text-slate-500">
                     ผู้ดูแล: {conversation.assigned_user_name}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="border-b border-slate-100 px-4 py-3">
+                {!activeCall ? (
+                  <button
+                    type="button"
+                    onClick={() => void performVoiceAction("voice_request")}
+                    disabled={busy === "voice"}
+                    className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-black text-blue-700 disabled:opacity-50"
+                  >
+                    📞 ขอคุยด้วยเสียงกับ Support
+                  </button>
+                ) : activeCall.status === "requested" && activeCall.direction === "store_to_it" ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="text-sm font-black text-amber-800">📞 กำลังรอทีม Support รับคำขอ</div>
+                    <div className="mt-1 text-xs leading-5 text-amber-700">คุณยังพิมพ์แชทต่อได้ระหว่างรอ</div>
+                    <button
+                      type="button"
+                      onClick={() => void performVoiceAction("voice_cancel", activeCall.id)}
+                      disabled={busy === "voice"}
+                      className="mt-3 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-800 disabled:opacity-50"
+                    >
+                      ยกเลิกคำขอ
+                    </button>
+                  </div>
+                ) : activeCall.status === "requested" && activeCall.direction === "it_to_store" ? (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                    <div className="text-sm font-black text-blue-800">📞 ฝ่าย Support ขอคุยกับคุณด้วยเสียง</div>
+                    <div className="mt-1 text-xs leading-5 text-blue-700">เลือกตอบรับหรือปฏิเสธได้ โดยระบบยังไม่เปิดไมโครโฟนอัตโนมัติ</div>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void performVoiceAction("voice_accept", activeCall.id)}
+                        disabled={busy === "voice"}
+                        className="flex-1 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50"
+                      >
+                        รับคำขอ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void performVoiceAction("voice_decline", activeCall.id)}
+                        disabled={busy === "voice"}
+                        className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-600 disabled:opacity-50"
+                      >
+                        ปฏิเสธ
+                      </button>
+                    </div>
+                  </div>
+                ) : ["accepted", "connecting", "connected"].includes(activeCall.status) ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="text-sm font-black text-emerald-800">📞 ทีม Support รับคำขอแล้ว</div>
+                    <div className="mt-1 text-xs leading-5 text-emerald-700">
+                      {activeCall.assigned_it_name ? "ผู้ดูแล: " + activeCall.assigned_it_name + " · " : ""}
+                      ระบบกำลังเตรียมขั้นตอนเชื่อมต่อเสียง
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void performVoiceAction("voice_end", activeCall.id)}
+                      disabled={busy === "voice"}
+                      className="mt-3 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-800 disabled:opacity-50"
+                    >
+                      ยุติคำขอเสียง
+                    </button>
                   </div>
                 ) : null}
               </div>
