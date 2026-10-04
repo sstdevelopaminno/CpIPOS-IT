@@ -242,11 +242,14 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   }, [selectedId, activeCall?.id]);
 
   const handleRemoteHangup = useCallback(async () => {
-    if (!selectedId) return;
-    window.setTimeout(() => {
-      void loadConversation(selectedId).catch(() => null);
-    }, 400);
-  }, [selectedId, loadConversation]);
+    if (!selectedId || !activeCall?.id) return;
+    await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "voice_end", call_id: activeCall.id })
+    }).catch(() => null);
+    await loadConversation(selectedId).catch(() => null);
+  }, [selectedId, activeCall?.id, loadConversation]);
 
   const voice = useSupportVoiceCall({
     call: activeCall,
