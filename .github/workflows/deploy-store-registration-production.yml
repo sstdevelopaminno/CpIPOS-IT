@@ -8,6 +8,11 @@ on:
     branches:
       - main
     paths:
+      - "apps/backoffice-web/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/deploy-store-registration-production.yml"
 
 permissions:
