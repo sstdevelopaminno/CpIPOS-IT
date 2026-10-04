@@ -176,11 +176,90 @@ async function activeCallForConversation(
 
 function callForActor(row: Record<string, unknown> | null, actor: Actor) {
   if (!row) return null;
-  if (actor.actor === "it") return row;
   const safe = { ...row };
-  delete safe.requested_by_user_id;
-  delete safe.assigned_it_user_id;
+  const mediaActive = ["accepted", "connecting", "connected"].includes(String(row.status ?? ""));
+  const canSignal = mediaActive && (
+    actor.actor === "store"
+      ? actor.tenant_id === row.tenant_id
+      : row.assigned_it_user_id === actor.uid
+  );
+
+  if (!canSignal) delete safe.signaling_key;
+
+  if (actor.actor === "store") {
+    delete safe.requested_by_user_id;
+    delete safe.assigned_it_user_id;
+  }
   return safe;
+}
+
+function newSignalingKey() {
+  return crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+}
+
+async function ensureCallSignalingKey(
+  db: ReturnType<typeof createClient>,
+  row: Record<string, unknown>
+) {
+  if (row.signaling_key) return row;
+  if (!["accepted", "connecting", "connected"].includes(String(row.status ?? ""))) return row;
+
+  const updated = await db.from("support_call_sessions").update({
+    signaling_key: newSignalingKey(),
+    updated_at: new Date().toISOString()
+  }).eq("id", String(row.id)).is("signaling_key", null)
+    .select("*").maybeSingle();
+  if (updated.error) throw updated.error;
+  if (updated.data) return updated.data as Record<string, unknown>;
+
+  const refreshed = await db.from("support_call_sessions").select("*")
+    .eq("id", String(row.id)).single();
+  if (refreshed.error) throw refreshed.error;
+  return refreshed.data as Record<string, unknown>;
+}
+
+async function turnCredential(secret: string, username: string) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const signature = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, encoder.encode(username))
+  );
+  let binary = "";
+  for (const byte of signature) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+async function voiceIceServers(callId: string) {
+  const servers: Array<Record<string, unknown>> = [{
+    urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"]
+  }];
+
+  const turnUrls = (Deno.env.get("SUPPORT_TURN_URLS") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const sharedSecret = Deno.env.get("SUPPORT_TURN_SHARED_SECRET") ?? "";
+
+  if (turnUrls.length && sharedSecret) {
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60;
+    const username = `${expiresAt}:${callId}`;
+    servers.push({
+      urls: turnUrls,
+      username,
+      credential: await turnCredential(sharedSecret, username)
+    });
+  }
+
+  return {
+    ice_servers: servers,
+    turn_enabled: turnUrls.length > 0 && Boolean(sharedSecret)
+  };
 }
 
 async function appendCallSystemEvent(
@@ -391,7 +470,10 @@ Deno.serve(async (request) => {
       }
 
       const messages = await messagesWithAttachments(db, conversationId);
-      const activeCall = await activeCallForConversation(db, conversationId);
+      let activeCall = await activeCallForConversation(db, conversationId);
+      if (activeCall) {
+        activeCall = await ensureCallSignalingKey(db, activeCall);
+      }
       return json(200, {
         data: {
           conversation: conversationForActor(conversation, actor),
@@ -659,9 +741,18 @@ Deno.serve(async (request) => {
           actor.actor === "it" && selected.data.assigned_it_user_id === actor.uid;
         const storeAccepted = selected.data.direction === "it_to_store" && actor.actor === "store";
         if (sameIt || storeAccepted) {
+          let acceptedRow = selected.data;
+          if (!acceptedRow.signaling_key) {
+            const repaired = await db.from("support_call_sessions").update({
+              signaling_key: newSignalingKey(),
+              updated_at: new Date().toISOString()
+            }).eq("id", callId).eq("status", "accepted").select("*").single();
+            if (repaired.error) throw repaired.error;
+            acceptedRow = repaired.data;
+          }
           return json(200, {
             data: {
-              call: callForActor(selected.data, actor),
+              call: callForActor(acceptedRow, actor),
               conversation: conversationForActor(current.data, actor),
               head: headFromConversation(current.data),
               already_accepted: true
@@ -685,6 +776,7 @@ Deno.serve(async (request) => {
           assigned_it_user_id: actor.uid,
           assigned_it_name: text(actor.name, 120) || "IT Support",
           assigned_it_role: actor.role,
+          signaling_key: newSignalingKey(),
           accepted_at: now,
           updated_at: now
         }).eq("id", callId).eq("status", "requested").is("assigned_it_user_id", null)
@@ -732,6 +824,7 @@ Deno.serve(async (request) => {
 
       const accepted = await db.from("support_call_sessions").update({
         status: "accepted",
+        signaling_key: newSignalingKey(),
         accepted_at: now,
         updated_at: now
       }).eq("id", callId).eq("status", "requested").select("*").maybeSingle();
@@ -839,6 +932,74 @@ Deno.serve(async (request) => {
       });
     }
 
+
+    if (action === "get_voice_ice_config") {
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      if (!["accepted", "connecting", "connected"].includes(String(selected.data.status))) {
+        return json(409, { error: { code: "call_not_active" } });
+      }
+
+      const storeAllowed = actor.actor === "store" && actor.tenant_id === current.data.tenant_id;
+      const itAllowed = actor.actor === "it" && selected.data.assigned_it_user_id === actor.uid;
+      if (!storeAllowed && !itAllowed) {
+        return json(403, { error: { code: "call_ice_forbidden" } });
+      }
+
+      return json(200, { data: await voiceIceServers(callId) });
+    }
+
+    if (action === "update_voice_call_state") {
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+      const nextState = text(input.state, 20);
+      if (!["connecting", "connected"].includes(nextState)) {
+        return json(422, { error: { code: "call_state_invalid" } });
+      }
+
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      if (!["accepted", "connecting", "connected"].includes(String(selected.data.status))) {
+        return json(409, { error: { code: "call_not_active" } });
+      }
+
+      const storeAllowed = actor.actor === "store" && actor.tenant_id === current.data.tenant_id;
+      const itAllowed = actor.actor === "it" && selected.data.assigned_it_user_id === actor.uid;
+      if (!storeAllowed && !itAllowed) {
+        return json(403, { error: { code: "call_state_forbidden" } });
+      }
+
+      const now = new Date().toISOString();
+      const patch: Record<string, unknown> = {
+        status: nextState,
+        updated_at: now
+      };
+      if (nextState === "connected" && !selected.data.connected_at) {
+        patch.connected_at = now;
+      }
+
+      const updated = await db.from("support_call_sessions").update(patch)
+        .eq("id", callId)
+        .in("status", ["accepted", "connecting", "connected"])
+        .select("*").single();
+      if (updated.error) throw updated.error;
+
+      return json(200, {
+        data: {
+          call: callForActor(updated.data, actor),
+          conversation: conversationForActor(current.data, actor),
+          head: headFromConversation(current.data)
+        }
+      });
+    }
+
     if (action === "end_voice_call") {
       const callId = uuid(input.call_id);
       if (!callId) return json(422, { error: { code: "call_id_invalid" } });
@@ -846,14 +1007,24 @@ Deno.serve(async (request) => {
         .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
       if (selected.error) throw selected.error;
       if (!selected.data) return json(404, { error: { code: "call_not_found" } });
-      if (!["accepted", "connecting", "connected"].includes(String(selected.data.status))) {
-        return json(409, { error: { code: "call_not_active", message: "คำขอเสียงนี้ไม่ได้อยู่ในสถานะใช้งาน" } });
-      }
-
       const storeAllowed = actor.actor === "store" && actor.tenant_id === current.data.tenant_id;
       const itAllowed = actor.actor === "it" && selected.data.assigned_it_user_id === actor.uid;
       if (!storeAllowed && !itAllowed) {
         return json(403, { error: { code: "call_end_forbidden" } });
+      }
+
+      if (selected.data.status === "ended") {
+        return json(200, {
+          data: {
+            call: callForActor(selected.data, actor),
+            conversation: conversationForActor(current.data, actor),
+            head: headFromConversation(current.data),
+            already_ended: true
+          }
+        });
+      }
+      if (!["accepted", "connecting", "connected"].includes(String(selected.data.status))) {
+        return json(409, { error: { code: "call_not_active", message: "คำขอเสียงนี้ไม่ได้อยู่ในสถานะใช้งาน" } });
       }
 
       const now = new Date().toISOString();

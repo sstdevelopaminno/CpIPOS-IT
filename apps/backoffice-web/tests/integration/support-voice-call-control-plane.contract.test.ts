@@ -47,8 +47,8 @@ describe("Support voice-call Phase 1 control plane", () => {
 
   it("returns the active call with canonical chat history", () => {
     expect(edge).toContain("active_call: callForActor(activeCall, actor)");
-    expect(lineClient).toContain("active_call: VoiceCall | null");
-    expect(itConsole).toContain("active_call: VoiceCall | null");
+    expect(lineClient).toContain("active_call: SupportVoiceCall | null");
+    expect(itConsole).toContain("active_call: SupportVoiceCall | null");
   });
 
   it("exposes voice control actions through both LINE and IT APIs", () => {
