@@ -275,8 +275,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         });
       }
 
+      const voiceEvent = head.latest_sender_type === "system" &&
+        String(head.latest_message_preview ?? "").startsWith("📞");
       if (
         head.latest_sender_type === "store" ||
+        voiceEvent ||
         head.status !== conversation?.status ||
         head.assigned_user_id !== conversation?.assigned_user_id
       ) {
