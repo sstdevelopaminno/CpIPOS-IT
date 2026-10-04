@@ -1,6 +1,7 @@
-name: One-time deploy store registration fixes to Production
+name: Deploy CpIPOS IT Web to Production
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
