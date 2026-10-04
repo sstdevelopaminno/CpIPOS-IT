@@ -335,14 +335,15 @@ export function useSupportVoiceCall({
         })
         .on("broadcast", { event: "webrtc_offer" }, ({ payload }) => {
           const event = payload as SignalPayload;
-          if (event.side === side || !event.description || isInitiator) return;
+          const description = event.description;
+          if (event.side === side || !description || isInitiator) return;
           void (async () => {
             const activePeer = peerRef.current;
             const activeChannel = channelRef.current;
             if (!activePeer || !activeChannel) return;
             try {
               setPhase("connecting");
-              await activePeer.setRemoteDescription(event.description);
+              await activePeer.setRemoteDescription(description);
               await flushQueuedIce();
               const answer = await activePeer.createAnswer();
               await activePeer.setLocalDescription(answer);
@@ -363,12 +364,13 @@ export function useSupportVoiceCall({
         })
         .on("broadcast", { event: "webrtc_answer" }, ({ payload }) => {
           const event = payload as SignalPayload;
-          if (event.side === side || !event.description || !isInitiator) return;
+          const description = event.description;
+          if (event.side === side || !description || !isInitiator) return;
           void (async () => {
             const activePeer = peerRef.current;
             if (!activePeer) return;
             try {
-              await activePeer.setRemoteDescription(event.description);
+              await activePeer.setRemoteDescription(description);
               await flushQueuedIce();
             } catch (cause) {
               setPhase("failed");
