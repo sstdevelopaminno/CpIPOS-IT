@@ -469,6 +469,19 @@ export function useSupportVoiceCall({
   }, []);
 
   useEffect(() => {
+    const notifyPeerOnPageHide = () => {
+      if (!runningRef.current || !channelRef.current) return;
+      void channelRef.current.send({
+        type: "broadcast",
+        event: "voice_hangup",
+        payload: { side, instance_id: instanceIdRef.current }
+      });
+    };
+    window.addEventListener("pagehide", notifyPeerOnPageHide);
+    return () => window.removeEventListener("pagehide", notifyPeerOnPageHide);
+  }, [side]);
+
+  useEffect(() => {
     return () => {
       void cleanup(false);
     };
