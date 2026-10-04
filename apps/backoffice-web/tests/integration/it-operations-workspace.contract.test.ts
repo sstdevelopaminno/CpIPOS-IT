@@ -31,6 +31,7 @@ describe("IT operations workspace cleanup",()=>{
 
   it("provides localized operational search and immutable audit review",()=>{
     expect(monitoring).toContain("ค้นหาร้านหรือสาขา");
-    expect(audit).toContain("ไม่อนุญาตให้แก้ไขหรือลบย้อนหลัง");
+    expect(audit).toContain("Audit Logs แก้ไขไม่ได้ระหว่างช่วงเก็บรักษา");
+    expect(audit).toContain("ItDataCleanupControls");
   });
 });

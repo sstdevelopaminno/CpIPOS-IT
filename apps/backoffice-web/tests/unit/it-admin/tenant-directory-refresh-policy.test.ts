@@ -13,7 +13,7 @@ describe("Tenant directory refresh policy", () => {
   });
 
   it("does not auto-refresh while the Store Control Center is open", () => {
-    expect(source).toContain("if (selected) return;");
+    expect(source).toContain("if (selected || provisioningOpen) return;");
   });
 
   it("does not fetch while the browser tab is hidden", () => {

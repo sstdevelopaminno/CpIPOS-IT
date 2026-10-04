@@ -36,7 +36,6 @@ describe("IT role access controls", () => {
     expect(layout).toContain('if (role === "it_admin")');
     for (const href of [
       "/it-admin/tenants",
-      "/it-admin/store-provisioning",
       "/it-admin/store-registrations",
       "/it-admin/branches",
       "/it-admin/pos-users",
@@ -47,6 +46,8 @@ describe("IT role access controls", () => {
     ]) expect(layout).toContain(href);
     expect(layout).toContain('role === "it_support"');
     expect(layout).toContain('/it-admin/settings/users');
+    expect(layout).not.toContain('href: "/it-admin/store-provisioning"');
+    expect(src("src/components/it-admin/tenant-directory-console.tsx")).toContain("ConnectedStoreProvisioning");
     expect(layout).toContain('restrictToNavigation={auth.platformRole === "it_admin"}');
   });
 
