@@ -46,10 +46,12 @@ export function SupportChatNotifier() {
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
   const initialized = useRef(false);
   const headSignals = useRef(new Map<string, string>());
+  const snapshotHeads = useRef(new Map<string, Head>());
   const notifiedSignals = useRef(new Set<string>());
 
   useEffect(() => {
     let alive = true;
+    let realtimeHealthy = false;
     const supabase = getSupabaseBrowserClient();
 
     const signalFor = (head: Head) => [
@@ -116,6 +118,11 @@ export function SupportChatNotifier() {
     const refreshSnapshot = async (allowToast: boolean) => {
       const snapshot = await loadInboxSnapshot();
       if (!alive) return;
+      snapshotHeads.current = new Map(
+        snapshot.conversations
+          .filter((head): head is Head & { conversation_id: string } => Boolean(head.conversation_id))
+          .map((head) => [head.conversation_id, head])
+      );
       notifyUnread(snapshot.unread_total);
       for (const head of snapshot.conversations) handleHead(head, allowToast);
       initialized.current = true;
@@ -128,37 +135,47 @@ export function SupportChatNotifier() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "support_chat_heads" },
-        async (payload) => {
+        (payload) => {
           const next = (payload.new ?? {}) as Head;
+          const previous = (payload.old ?? {}) as Head;
           if (!alive) return;
 
-          // Realtime is the fast path; polling below is a safety net for
-          // mobile/browser websocket stalls.
-          handleHead(next, true);
-          void loadInboxSnapshot().then((snapshot) => {
-            if (alive) notifyUnread(snapshot.unread_total);
-          }).catch(() => null);
+          // Realtime is the fast path. Keep the unread aggregate locally so
+          // every message does not trigger another authenticated HTTP snapshot.
+          if (next.conversation_id) {
+            snapshotHeads.current.set(next.conversation_id, next);
+            handleHead(next, true);
+          } else if (previous.conversation_id) {
+            snapshotHeads.current.delete(previous.conversation_id);
+            headSignals.current.delete(previous.conversation_id);
+          }
+          notifyUnread(
+            Array.from(snapshotHeads.current.values())
+              .reduce((sum, head) => sum + Number(head.unread_it_count ?? 0), 0)
+          );
         }
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
+          realtimeHealthy = true;
           initialized.current = true;
           void refreshSnapshot(false).catch(() => null);
           return;
         }
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          realtimeHealthy = false;
           window.setTimeout(() => {
             void refreshSnapshot(true).catch(() => null);
           }, 1200);
         }
       });
 
-    // Fallback poll keeps the IT inbox responsive even if Postgres Realtime
-    // is temporarily disconnected by the browser/network.
+    // Poll only as a disconnected-Realtime safety net. When the websocket is
+    // healthy, updates are event-driven and do not hit the Data API repeatedly.
     const fallbackPoll = window.setInterval(() => {
-      if (document.visibilityState === "hidden") return;
+      if (realtimeHealthy || document.visibilityState === "hidden") return;
       void refreshSnapshot(true).catch(() => null);
-    }, 2500);
+    }, 15000);
 
     const refreshOnFocus = () => {
       if (document.visibilityState === "hidden") return;
