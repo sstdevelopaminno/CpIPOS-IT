@@ -12,7 +12,7 @@ describe("Support voice WebRTC Phase 2", () => {
   const itRoute = src("src/app/api/it-admin/v1/support-chat/conversations/[conversationId]/route.ts");
   const lineClient = src("src/components/support/line-support-client.tsx");
   const itConsole = src("src/components/it-admin/support-chat-console.tsx");
-  const nextConfig = src("../../next.config.ts");
+  const nextConfig = src("next.config.ts");
 
 
   it("allows same-origin microphone access in the browser security policy", () => {
