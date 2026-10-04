@@ -26,6 +26,7 @@ type SupportVoiceCallOverlayProps = {
   onToggleMic?: () => void;
   onToggleSpeaker?: () => void;
   onResumeAudio?: () => void;
+  onOpenExternalBrowser?: () => void;
 };
 
 function phaseText(phase: SupportVoicePhase) {
@@ -94,7 +95,8 @@ export function SupportVoiceCallOverlay({
   onEnd,
   onToggleMic,
   onToggleSpeaker,
-  onResumeAudio
+  onResumeAudio,
+  onOpenExternalBrowser
 }: SupportVoiceCallOverlayProps) {
   if (!open) return null;
 
@@ -146,8 +148,21 @@ export function SupportVoiceCallOverlay({
               <div className="text-sm font-black text-red-100">ยังเปิดเสียงไม่ได้</div>
               <div className="mt-1 text-sm leading-6 text-red-100/90">{error}</div>
               {micBlocked ? (
-                <div className="mt-2 text-xs leading-5 text-white/60">
-                  กรุณาเปิดสิทธิ์ไมโครโฟนให้ LINE หรือเบราว์เซอร์ของอุปกรณ์ แล้วกลับมากด “ลองเชื่อมต่อใหม่”
+                <div className="mt-2 space-y-2 text-xs leading-5 text-white/70">
+                  <div>
+                    Android: การตั้งค่าเครื่อง → แอป → LINE → สิทธิ์ → ไมโครโฟน → อนุญาต
+                    <br />
+                    คอมพิวเตอร์: กดไอคอนด้านซ้ายของ URL → Microphone → Allow
+                  </div>
+                  {onOpenExternalBrowser ? (
+                    <button
+                      type="button"
+                      onClick={onOpenExternalBrowser}
+                      className="mt-2 w-full rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950"
+                    >
+                      เปิดสายเสียงในเบราว์เซอร์
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
