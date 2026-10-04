@@ -165,10 +165,16 @@ export function SupportVoiceCallOverlay({
         </div>
 
         {mode === "incoming" ? (
-          <div className="mx-auto flex w-full max-w-sm items-end justify-around gap-8 pb-4">
-            <RoundButton label="ปฏิเสธ" symbol="✕" tone="red" disabled={busy} onClick={onDecline} />
-            <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
-          </div>
+          onDecline ? (
+            <div className="mx-auto flex w-full max-w-sm items-end justify-around gap-8 pb-4">
+              <RoundButton label="ปฏิเสธ" symbol="✕" tone="red" disabled={busy} onClick={onDecline} />
+              <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
+            </div>
+          ) : (
+            <div className="mx-auto flex w-full max-w-sm justify-center pb-4">
+              <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
+            </div>
+          )
         ) : mode === "outgoing" ? (
           <div className="mx-auto flex w-full max-w-sm justify-center pb-4">
             <RoundButton label="ยกเลิก" symbol="☎" tone="red" disabled={busy} onClick={onCancel} />
