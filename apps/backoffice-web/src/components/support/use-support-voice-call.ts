@@ -75,6 +75,7 @@ export function useSupportVoiceCall({
 }: UseSupportVoiceCallOptions) {
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const realtimeClientRef = useRef<ReturnType<typeof getSupabaseBrowserClient> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -137,8 +138,9 @@ export function useSupportVoiceCall({
           payload: { side, instance_id: instanceIdRef.current }
         }).catch(() => null);
       }
-      const supabase = getSupabaseBrowserClient();
-      await supabase.removeChannel(channel).catch(() => null);
+      const supabase = realtimeClientRef.current;
+      if (supabase) await supabase.removeChannel(channel).catch(() => null);
+      realtimeClientRef.current = null;
     }
 
     peerRef.current?.close();
@@ -241,19 +243,17 @@ export function useSupportVoiceCall({
 
     let localStream: MediaStream | null = null;
     try {
-      const [stream, iceServers] = await Promise.all([
-        navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          },
-          video: false
-        }),
-        loadIceServers()
-      ]);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: false
+      });
       localStream = stream;
       localStreamRef.current = stream;
+      const iceServers = await loadIceServers();
 
       const pc = new RTCPeerConnection({
         iceServers,
@@ -317,6 +317,7 @@ export function useSupportVoiceCall({
       };
 
       const supabase = getSupabaseBrowserClient();
+      realtimeClientRef.current = supabase;
       const topic = `support-voice:${call.id}:${call.signaling_key}`;
       const channel = supabase
         .channel(topic)
