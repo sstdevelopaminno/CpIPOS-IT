@@ -5,6 +5,7 @@ import { getAuthContext } from "@/lib/auth-context";
 import { getCurrentLanguage, t, type Language } from "@/lib/i18n";
 import { SupportChatNotifier } from "@/components/it-admin/support-chat-notifier";
 import { SupportRequestNotifier } from "@/components/it-admin/support-request-notifier";
+import { ItSupportVoiceProvider } from "@/components/it-admin/it-support-voice-provider";
 import "./it-admin-scroll.css";
 
 const copy = {
@@ -210,9 +211,11 @@ export default async function ItAdminLayout({ children }: { children: ReactNode 
       accessRole={auth.platformRole}
       restrictToNavigation={auth.platformRole === "it_admin"}
     >
-      <SupportChatNotifier />
-      <SupportRequestNotifier />
-      {children}
+      <ItSupportVoiceProvider>
+        <SupportChatNotifier />
+        <SupportRequestNotifier />
+        {children}
+      </ItSupportVoiceProvider>
     </AppShell>
   );
 }
