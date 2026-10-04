@@ -983,6 +983,12 @@ Deno.serve(async (request) => {
         .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
       if (selected.error) throw selected.error;
       if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      const storeAllowed = actor.actor === "store" && actor.tenant_id === current.data.tenant_id;
+      const itAllowed = actor.actor === "it" && selected.data.assigned_it_user_id === actor.uid;
+      if (!storeAllowed && !itAllowed) {
+        return json(403, { error: { code: "call_end_forbidden" } });
+      }
+
       if (selected.data.status === "ended") {
         return json(200, {
           data: {
@@ -995,12 +1001,6 @@ Deno.serve(async (request) => {
       }
       if (!["accepted", "connecting", "connected"].includes(String(selected.data.status))) {
         return json(409, { error: { code: "call_not_active", message: "คำขอเสียงนี้ไม่ได้อยู่ในสถานะใช้งาน" } });
-      }
-
-      const storeAllowed = actor.actor === "store" && actor.tenant_id === current.data.tenant_id;
-      const itAllowed = actor.actor === "it" && selected.data.assigned_it_user_id === actor.uid;
-      if (!storeAllowed && !itAllowed) {
-        return json(403, { error: { code: "call_end_forbidden" } });
       }
 
       const now = new Date().toISOString();
