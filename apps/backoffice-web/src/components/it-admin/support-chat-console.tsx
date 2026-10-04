@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useItAccess } from "@/components/layout/app-shell";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { formatVoiceDuration, useSupportVoiceCall, type SupportVoiceCall } from "@/components/support/use-support-voice-call";
 
 type Head = {
   conversation_id: string;
@@ -71,20 +72,7 @@ type InboxResponse = {
   actor: { user_id: string; role: "it_admin" | "it_support" };
 };
 
-type VoiceCall = {
-  id: string;
-  conversation_id: string;
-  direction: "store_to_it" | "it_to_store";
-  status: "requested" | "accepted" | "connecting" | "connected" | "declined" | "cancelled" | "ended" | "failed";
-  requested_by_name: string;
-  assigned_it_user_id?: string | null;
-  assigned_it_name?: string | null;
-  assigned_it_role?: string | null;
-  requested_at: string;
-  accepted_at?: string | null;
-};
-
-type DetailResponse = { conversation: Conversation; messages: Message[]; active_call: VoiceCall | null };
+type DetailResponse = { conversation: Conversation; messages: Message[]; active_call: SupportVoiceCall | null };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string } };
 
 function initials(value: string) {
@@ -153,7 +141,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const [selectedId, setSelectedId] = useState("");
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [activeCall, setActiveCall] = useState<VoiceCall | null>(null);
+  const [activeCall, setActiveCall] = useState<SupportVoiceCall | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "mine" | "active" | "closed">("all");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
@@ -228,6 +216,45 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       setBusy("");
     }
   }, [clearGoneConversation]);
+
+  const loadVoiceIceServers = useCallback(async () => {
+    if (!selectedId || !activeCall?.id) throw new Error("ไม่พบห้องเสียง");
+    const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "voice_ice", call_id: activeCall.id })
+    });
+    const json = await response.json().catch(() => null) as Envelope<{ ice_servers: RTCIceServer[]; turn_enabled: boolean }> | null;
+    if (!response.ok || !json?.data) throw new Error(json?.error?.message || "โหลดการตั้งค่าเครือข่ายเสียงไม่สำเร็จ");
+    return json.data.ice_servers;
+  }, [selectedId, activeCall?.id]);
+
+  const updateVoiceState = useCallback(async (state: "connecting" | "connected") => {
+    if (!selectedId || !activeCall?.id) return;
+    const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "voice_state", call_id: activeCall.id, state })
+    });
+    const json = await response.json().catch(() => null) as Envelope<{ call: SupportVoiceCall }> | null;
+    if (!response.ok || !json?.data) throw new Error(json?.error?.message || "อัปเดตสถานะเสียงไม่สำเร็จ");
+    setActiveCall(json.data.call);
+  }, [selectedId, activeCall?.id]);
+
+  const handleRemoteHangup = useCallback(async () => {
+    if (!selectedId) return;
+    window.setTimeout(() => {
+      void loadConversation(selectedId).catch(() => null);
+    }, 400);
+  }, [selectedId, loadConversation]);
+
+  const voice = useSupportVoiceCall({
+    call: activeCall,
+    side: "it",
+    loadIceServers: loadVoiceIceServers,
+    onState: updateVoiceState,
+    onRemoteHangup: handleRemoteHangup
+  });
 
   useEffect(() => {
     void loadInbox();
@@ -427,6 +454,12 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     } finally {
       setBusy("");
     }
+  }
+
+  async function endVoiceCall() {
+    if (!activeCall?.id) return;
+    await voice.endLocal();
+    await performVoiceAction("voice_end", activeCall.id);
   }
 
   async function setConversationStatus(status: string) {
