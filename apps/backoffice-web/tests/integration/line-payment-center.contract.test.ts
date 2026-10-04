@@ -22,7 +22,7 @@ describe("LINE Payment Center", () => {
     expect(service).toContain("billing_promptpay_id");
     expect(service).toContain("amount_per_cycle");
     expect(service).toContain("contract.ended_at");
-    expect(service).toContain("serviceEnd <= today");
+    expect(service).toContain("Date.parse(contract.ended_at) <= Date.now()");
     expect(service).toContain("https://promptpay.io/");
     expect(service).toContain('base + ".png"');
     expect(service).toContain('replace(/[^\\d]/g, "")');
@@ -30,7 +30,7 @@ describe("LINE Payment Center", () => {
 
   it("does not expose a QR before the current contract reaches its due date", () => {
     expect(service).toContain('["active", "trial"].includes(contract.status)');
-    expect(service).toContain("serviceEnd <= today");
+    expect(service).toContain("contractEndReached");
     expect(service).toContain("let qrUrl: string | null = null");
     expect(service).toContain("if (account.promptpay_ready && !openRow)");
     expect(paymentClient).toContain("ยังไม่มียอดชำระ");
