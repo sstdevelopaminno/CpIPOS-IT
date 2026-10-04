@@ -144,7 +144,8 @@ describe("IT Admin <-> POS single-primary control-plane contract", () => {
   it("keeps IT admin auth session independent from POS branch membership", () => {
     expect(authContext).toContain('.from("users_profiles")');
     expect(authContext).toContain('.eq("id", context.userId)');
-    expect(authContext).toContain('context.platformRole !== "it_admin"');
+    expect(authContext).toContain('context.platformRole === "it_admin" || context.platformRole === "it_support"');
+    expect(authContext).toContain("!isPlatformIt");
     expect(authContext).toContain("requireBranchScope ||");
     expect(authContext).not.toContain("async function loadPlatformRole");
   });
