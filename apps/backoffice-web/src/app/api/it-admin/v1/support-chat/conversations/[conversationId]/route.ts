@@ -96,6 +96,7 @@ export async function POST(
       status?: string;
       internal_note?: string;
       call_id?: string;
+      state?: string;
       attachment?: { name?: string; mime_type?: string; size_bytes?: number; data_base64?: string };
     } | null;
     const action = String(body?.action ?? "").trim();
@@ -207,6 +208,37 @@ export async function POST(
     }
 
 
+    if (action === "voice_ice") {
+      const callId = String(body?.call_id ?? "").trim();
+      if (!callId) return fail("call_id_required", "ไม่พบคำขอคุยด้วยเสียง", 422);
+      const data = await callSupportChat<{ ice_servers: RTCIceServer[]; turn_enabled: boolean }>(
+        bridge,
+        "get_voice_ice_config",
+        { conversation_id: conversationId, call_id: callId }
+      );
+      return ok(data);
+    }
+
+    if (action === "voice_state") {
+      const callId = String(body?.call_id ?? "").trim();
+      const state = String(body?.state ?? "").trim();
+      if (!callId) return fail("call_id_required", "ไม่พบคำขอคุยด้วยเสียง", 422);
+      if (state !== "connecting" && state !== "connected") {
+        return fail("call_state_invalid", "สถานะเสียงไม่ถูกต้อง", 422);
+      }
+      const data = await callSupportChat<{
+        call: Record<string, unknown>;
+        conversation: Conversation;
+        head: SupportChatHead;
+      }>(bridge, "update_voice_call_state", {
+        conversation_id: conversationId,
+        call_id: callId,
+        state
+      });
+      await mirrorSupportChatHead(data.head);
+      return ok(data);
+    }
+
     if (["voice_invite", "voice_accept", "voice_cancel", "voice_end"].includes(action)) {
       const rate = await enforceRateLimit({
         namespace: "it-support-voice-control",
@@ -249,7 +281,7 @@ export async function POST(
         module: "support_chat",
         entityType: "support_voice_call",
         entityId: typeof data.call.id === "string" ? data.call.id : conversationId,
-        metadata: { phase: "control_plane", media_enabled: false },
+        metadata: { phase: "webrtc_audio", media_enabled: true, recording_enabled: false },
         ipAddress: auth.requestMeta.ipAddress ?? undefined,
         userAgent: auth.requestMeta.userAgent ?? undefined
       });
