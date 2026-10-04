@@ -63,6 +63,7 @@ type Envelope<T> = {
 };
 
 const LIFF_SCRIPT = "https://static.line-scdn.net/liff/edge/2/sdk.js";
+const DEFAULT_LIFF_ID = "2011852850-5tjQo09l";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -100,7 +101,7 @@ function statusText(status: string) {
 }
 
 export function LineSupportClient() {
-  const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID || "";
+  const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID || DEFAULT_LIFF_ID;
   const bootedRef = useRef(false);
   const endRef = useRef<HTMLDivElement | null>(null);
   const [stage, setStage] = useState<"boot" | "store" | "otp" | "chat">("boot");
