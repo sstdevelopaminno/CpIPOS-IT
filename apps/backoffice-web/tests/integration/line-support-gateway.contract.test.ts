@@ -14,7 +14,7 @@ describe("LINE Support Gateway", () => {
 
   it("verifies LINE ID tokens server-side against the configured channel", () => {
     expect(auth).toContain("https://api.line.me/oauth2/v2.1/verify");
-    expect(auth).toContain('requiredEnv("LINE_LOGIN_CHANNEL_ID")');
+    expect(auth).toContain('DEFAULT_LINE_LOGIN_CHANNEL_ID = "2011852850"');
     expect(auth).toContain("id_token: token");
     expect(auth).toContain("client_id: clientId");
   });
@@ -36,6 +36,7 @@ describe("LINE Support Gateway", () => {
   });
 
   it("uses an HttpOnly short-lived support session and re-checks the active binding", () => {
+    expect(auth).toContain('cpipos:line-support-session:v1');
     expect(auth).toContain("httpOnly: true");
     expect(auth).toContain("SESSION_TTL_SECONDS = 30 * 60");
     expect(auth).toContain('.eq("is_active", true)');
@@ -58,6 +59,7 @@ describe("LINE Support Gateway", () => {
 
   it("uses LIFF only as the entry identity surface and keeps chat on CpIPOS APIs", () => {
     expect(client).toContain("https://static.line-scdn.net/liff/edge/2/sdk.js");
+    expect(client).toContain('DEFAULT_LIFF_ID = "2011852850-5tjQo09l"');
     expect(client).toContain("getIDToken()");
     expect(client).toContain('"/api/support/line/chat"');
     expect(client).not.toContain("api.line.me/v2/bot/message");
