@@ -18,6 +18,8 @@ const IMAGE_BUCKET = "support-chat-images";
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 const CONVERSATION_STATUSES = new Set(["in_progress", "waiting_store", "waiting_it", "closed"]);
+const ACTIVE_CALL_STATUSES = ["requested", "accepted", "connecting", "connected"];
+const CALL_ORIGINS = new Set(["line_liff", "it_web", "support_mobile", "cpipos_app", "web"]);
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -154,6 +156,70 @@ async function messagesWithAttachments(
     ...message,
     attachments: grouped.get(String(message.id)) ?? []
   }));
+}
+
+
+async function activeCallForConversation(
+  db: ReturnType<typeof createClient>,
+  conversationId: string
+) {
+  const result = await db.from("support_call_sessions")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .in("status", ACTIVE_CALL_STATUSES)
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+function callForActor(row: Record<string, unknown> | null, actor: Actor) {
+  if (!row) return null;
+  if (actor.actor === "it") return row;
+  const safe = { ...row };
+  delete safe.requested_by_user_id;
+  delete safe.assigned_it_user_id;
+  return safe;
+}
+
+async function appendCallSystemEvent(
+  db: ReturnType<typeof createClient>,
+  conversation: Record<string, unknown>,
+  message: string,
+  audience: "it" | "store",
+  extraPatch: Record<string, unknown> = {}
+) {
+  const conversationId = String(conversation.id);
+  const now = new Date().toISOString();
+
+  const inserted = await db.from("support_messages").insert({
+    conversation_id: conversationId,
+    sender_type: "system",
+    sender_name: "CpIPOS Support",
+    sender_role: "system",
+    message_body: message
+  });
+  if (inserted.error) throw inserted.error;
+
+  const patch: Record<string, unknown> = {
+    last_message_at: now,
+    last_message_preview: message.slice(0, 180),
+    last_sender_type: "system",
+    updated_at: now,
+    status: audience === "it" ? "waiting_it" : "waiting_store",
+    unread_it_count: audience === "it" ? Number(conversation.unread_it_count ?? 0) + 1 : 0,
+    unread_store_count: audience === "store" ? Number(conversation.unread_store_count ?? 0) + 1 : 0,
+    ...extraPatch
+  };
+
+  const updated = await db.from("support_conversations")
+    .update(patch)
+    .eq("id", conversationId)
+    .select("*")
+    .single();
+  if (updated.error) throw updated.error;
+  return updated.data as Record<string, unknown>;
 }
 
 Deno.serve(async (request) => {
@@ -325,10 +391,12 @@ Deno.serve(async (request) => {
       }
 
       const messages = await messagesWithAttachments(db, conversationId);
+      const activeCall = await activeCallForConversation(db, conversationId);
       return json(200, {
         data: {
           conversation: conversationForActor(conversation, actor),
           messages,
+          active_call: callForActor(activeCall, actor),
           head: headFromConversation(conversation),
           head_changed: headChanged,
           claimed
@@ -445,6 +513,377 @@ Deno.serve(async (request) => {
       }
     }
 
+
+    if (action === "request_voice_call") {
+      if (actor.actor !== "store" || !actor.tenant_id) {
+        return json(403, { error: { code: "store_required" } });
+      }
+      if (current.data.status === "closed") {
+        return json(409, { error: { code: "conversation_closed", message: "การสนทนานี้จบแล้ว กรุณาเริ่มแชทใหม่" } });
+      }
+
+      const existing = await activeCallForConversation(db, conversationId);
+      if (existing) {
+        return json(200, {
+          data: {
+            call: callForActor(existing, actor),
+            conversation: conversationForActor(current.data, actor),
+            head: headFromConversation(current.data),
+            already_active: true
+          }
+        });
+      }
+
+      const originInput = text(input.origin, 40);
+      const origin = CALL_ORIGINS.has(originInput) ? originInput : "web";
+      const inserted = await db.from("support_call_sessions").insert({
+        conversation_id: conversationId,
+        tenant_id: current.data.tenant_id,
+        direction: "store_to_it",
+        requested_by_type: "store",
+        requested_by_user_id: actor.uid,
+        requested_by_name: text(actor.name, 120) || String(current.data.contact_name),
+        request_origin: origin,
+        status: "requested"
+      }).select("*").single();
+      if (inserted.error) {
+        if (inserted.error.code === "23505") {
+          const active = await activeCallForConversation(db, conversationId);
+          if (active) {
+            return json(200, {
+              data: {
+                call: callForActor(active, actor),
+                conversation: conversationForActor(current.data, actor),
+                head: headFromConversation(current.data),
+                already_active: true
+              }
+            });
+          }
+        }
+        throw inserted.error;
+      }
+
+      const updated = await appendCallSystemEvent(
+        db,
+        current.data,
+        "📞 ลูกค้าขอคุยด้วยเสียง",
+        "it"
+      );
+      return json(201, {
+        data: {
+          call: callForActor(inserted.data, actor),
+          conversation: conversationForActor(updated, actor),
+          head: headFromConversation(updated),
+          already_active: false
+        }
+      });
+    }
+
+    if (action === "invite_voice_call") {
+      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+        return json(403, { error: { code: "it_role_required" } });
+      }
+      if (current.data.status === "closed") {
+        return json(409, { error: { code: "conversation_closed", message: "การสนทนานี้จบแล้ว" } });
+      }
+
+      const existing = await activeCallForConversation(db, conversationId);
+      if (existing) {
+        return json(200, {
+          data: {
+            call: callForActor(existing, actor),
+            conversation: current.data,
+            head: headFromConversation(current.data),
+            already_active: true
+          }
+        });
+      }
+
+      const inserted = await db.from("support_call_sessions").insert({
+        conversation_id: conversationId,
+        tenant_id: current.data.tenant_id,
+        direction: "it_to_store",
+        requested_by_type: "it",
+        requested_by_user_id: actor.uid,
+        requested_by_name: text(actor.name, 120) || "IT Support",
+        request_origin: "it_web",
+        status: "requested",
+        assigned_it_user_id: actor.uid,
+        assigned_it_name: text(actor.name, 120) || "IT Support",
+        assigned_it_role: actor.role
+      }).select("*").single();
+      if (inserted.error) {
+        if (inserted.error.code === "23505") {
+          const active = await activeCallForConversation(db, conversationId);
+          if (active) {
+            return json(200, {
+              data: {
+                call: callForActor(active, actor),
+                conversation: current.data,
+                head: headFromConversation(current.data),
+                already_active: true
+              }
+            });
+          }
+        }
+        throw inserted.error;
+      }
+
+      const updated = await appendCallSystemEvent(
+        db,
+        current.data,
+        "📞 ฝ่าย Support ขอคุยกับคุณด้วยเสียง",
+        "store"
+      );
+      return json(201, {
+        data: {
+          call: callForActor(inserted.data, actor),
+          conversation: updated,
+          head: headFromConversation(updated),
+          already_active: false
+        }
+      });
+    }
+
+    if (action === "accept_voice_call") {
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+
+      if (selected.data.status === "accepted") {
+        const sameIt = selected.data.direction === "store_to_it" &&
+          actor.actor === "it" && selected.data.assigned_it_user_id === actor.uid;
+        const storeAccepted = selected.data.direction === "it_to_store" && actor.actor === "store";
+        if (sameIt || storeAccepted) {
+          return json(200, {
+            data: {
+              call: callForActor(selected.data, actor),
+              conversation: conversationForActor(current.data, actor),
+              head: headFromConversation(current.data),
+              already_accepted: true
+            }
+          });
+        }
+      }
+      if (selected.data.status !== "requested") {
+        return json(409, { error: { code: "call_not_requesting", message: "คำขอคุยด้วยเสียงนี้ไม่อยู่ในสถานะรอรับแล้ว" } });
+      }
+
+      const now = new Date().toISOString();
+
+      if (selected.data.direction === "store_to_it") {
+        if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+          return json(403, { error: { code: "it_role_required" } });
+        }
+
+        const accepted = await db.from("support_call_sessions").update({
+          status: "accepted",
+          assigned_it_user_id: actor.uid,
+          assigned_it_name: text(actor.name, 120) || "IT Support",
+          assigned_it_role: actor.role,
+          accepted_at: now,
+          updated_at: now
+        }).eq("id", callId).eq("status", "requested").is("assigned_it_user_id", null)
+          .select("*").maybeSingle();
+        if (accepted.error) {
+          if (accepted.error.code === "23505") {
+            return json(409, { error: { code: "it_already_in_call", message: "บัญชี Support นี้มีคำขอเสียงที่รับอยู่แล้ว" } });
+          }
+          throw accepted.error;
+        }
+        if (!accepted.data) {
+          const latest = await db.from("support_call_sessions").select("*").eq("id", callId).single();
+          if (latest.error) throw latest.error;
+          return json(409, {
+            error: {
+              code: "call_already_claimed",
+              message: latest.data.assigned_it_name
+                ? "คำขอนี้มีผู้รับแล้วโดย " + latest.data.assigned_it_name
+                : "คำขอนี้มีผู้รับแล้ว"
+            }
+          });
+        }
+
+        const updated = await appendCallSystemEvent(
+          db,
+          current.data,
+          "📞 " + (text(actor.name, 120) || "IT Support") + " รับคำขอคุยด้วยเสียงแล้ว",
+          "store",
+          {
+            status: "in_progress",
+            assigned_role: actor.role,
+            assigned_user_id: actor.uid,
+            assigned_user_name: text(actor.name, 120) || "IT Support",
+            assigned_user_avatar_url: actor.avatar_url
+          }
+        );
+        return json(200, {
+          data: { call: accepted.data, conversation: updated, head: headFromConversation(updated) }
+        });
+      }
+
+      if (actor.actor !== "store" || actor.tenant_id !== current.data.tenant_id) {
+        return json(403, { error: { code: "store_required" } });
+      }
+
+      const accepted = await db.from("support_call_sessions").update({
+        status: "accepted",
+        accepted_at: now,
+        updated_at: now
+      }).eq("id", callId).eq("status", "requested").select("*").maybeSingle();
+      if (accepted.error) throw accepted.error;
+      if (!accepted.data) return json(409, { error: { code: "call_already_answered" } });
+
+      const updated = await appendCallSystemEvent(
+        db,
+        current.data,
+        "📞 ลูกค้ารับคำเชิญคุยด้วยเสียงแล้ว",
+        "it",
+        { status: "in_progress" }
+      );
+      return json(200, {
+        data: {
+          call: callForActor(accepted.data, actor),
+          conversation: conversationForActor(updated, actor),
+          head: headFromConversation(updated)
+        }
+      });
+    }
+
+    if (action === "cancel_voice_call") {
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      if (selected.data.status !== "requested") {
+        return json(409, { error: { code: "call_not_cancellable", message: "คำขอนี้ไม่ได้อยู่ในสถานะรอรับแล้ว" } });
+      }
+
+      const requesterIsStore = selected.data.direction === "store_to_it" && actor.actor === "store";
+      const requesterIsIt = selected.data.direction === "it_to_store" && actor.actor === "it" &&
+        selected.data.requested_by_user_id === actor.uid;
+      if (!requesterIsStore && !requesterIsIt) {
+        return json(403, { error: { code: "call_cancel_forbidden" } });
+      }
+
+      const now = new Date().toISOString();
+      const cancelled = await db.from("support_call_sessions").update({
+        status: "cancelled",
+        ended_at: now,
+        end_reason: "requester_cancelled",
+        updated_at: now
+      }).eq("id", callId).eq("status", "requested").select("*").maybeSingle();
+      if (cancelled.error) throw cancelled.error;
+      if (!cancelled.data) return json(409, { error: { code: "call_already_answered" } });
+
+      const audience = actor.actor === "store" ? "it" : "store";
+      const message = actor.actor === "store"
+        ? "📞 ลูกค้ายกเลิกคำขอคุยด้วยเสียง"
+        : "📞 ฝ่าย Support ยกเลิกคำเชิญคุยด้วยเสียง";
+      const updated = await appendCallSystemEvent(db, current.data, message, audience);
+      return json(200, {
+        data: {
+          call: callForActor(cancelled.data, actor),
+          conversation: conversationForActor(updated, actor),
+          head: headFromConversation(updated)
+        }
+      });
+    }
+
+    if (action === "decline_voice_call") {
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      if (
+        selected.data.direction !== "it_to_store" ||
+        actor.actor !== "store" ||
+        actor.tenant_id !== current.data.tenant_id
+      ) {
+        return json(403, { error: { code: "call_decline_forbidden" } });
+      }
+      if (selected.data.status !== "requested") {
+        return json(409, { error: { code: "call_not_requesting" } });
+      }
+
+      const now = new Date().toISOString();
+      const declined = await db.from("support_call_sessions").update({
+        status: "declined",
+        ended_at: now,
+        end_reason: "store_declined",
+        updated_at: now
+      }).eq("id", callId).eq("status", "requested").select("*").maybeSingle();
+      if (declined.error) throw declined.error;
+      if (!declined.data) return json(409, { error: { code: "call_already_answered" } });
+
+      const updated = await appendCallSystemEvent(
+        db,
+        current.data,
+        "📞 ลูกค้าปฏิเสธคำเชิญคุยด้วยเสียง",
+        "it"
+      );
+      return json(200, {
+        data: {
+          call: callForActor(declined.data, actor),
+          conversation: conversationForActor(updated, actor),
+          head: headFromConversation(updated)
+        }
+      });
+    }
+
+    if (action === "end_voice_call") {
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      if (!["accepted", "connecting", "connected"].includes(String(selected.data.status))) {
+        return json(409, { error: { code: "call_not_active", message: "คำขอเสียงนี้ไม่ได้อยู่ในสถานะใช้งาน" } });
+      }
+
+      const storeAllowed = actor.actor === "store" && actor.tenant_id === current.data.tenant_id;
+      const itAllowed = actor.actor === "it" && selected.data.assigned_it_user_id === actor.uid;
+      if (!storeAllowed && !itAllowed) {
+        return json(403, { error: { code: "call_end_forbidden" } });
+      }
+
+      const now = new Date().toISOString();
+      const ended = await db.from("support_call_sessions").update({
+        status: "ended",
+        ended_at: now,
+        end_reason: actor.actor === "store" ? "store_ended" : "it_ended",
+        updated_at: now
+      }).eq("id", callId)
+        .in("status", ["accepted", "connecting", "connected"])
+        .select("*").maybeSingle();
+      if (ended.error) throw ended.error;
+      if (!ended.data) return json(409, { error: { code: "call_already_ended" } });
+
+      const updated = await appendCallSystemEvent(
+        db,
+        current.data,
+        "📞 สิ้นสุดคำขอคุยด้วยเสียง",
+        actor.actor === "store" ? "it" : "store",
+        { status: "in_progress" }
+      );
+      return json(200, {
+        data: {
+          call: callForActor(ended.data, actor),
+          conversation: conversationForActor(updated, actor),
+          head: headFromConversation(updated)
+        }
+      });
+    }
+
     if (action === "claim_conversation") {
       if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
         return json(403, { error: { code: "it_role_required" } });
@@ -511,7 +950,16 @@ Deno.serve(async (request) => {
         }
         return json(409, { error: { code: "conversation_closed" } });
       }
-      if (nextStatus === "closed") await cleanupAttachments(db, conversationId);
+      if (nextStatus === "closed") {
+        const now = new Date().toISOString();
+        await db.from("support_call_sessions").update({
+          status: "ended",
+          ended_at: now,
+          end_reason: "conversation_closed",
+          updated_at: now
+        }).eq("conversation_id", conversationId).in("status", ACTIVE_CALL_STATUSES);
+        await cleanupAttachments(db, conversationId);
+      }
       const now = new Date().toISOString();
       const updated = await db.from("support_conversations").update({
         status: nextStatus,
@@ -554,8 +1002,14 @@ Deno.serve(async (request) => {
           }
         });
       }
-      await cleanupAttachments(db, conversationId);
       const now = new Date().toISOString();
+      await db.from("support_call_sessions").update({
+        status: "ended",
+        ended_at: now,
+        end_reason: "conversation_closed",
+        updated_at: now
+      }).eq("conversation_id", conversationId).in("status", ACTIVE_CALL_STATUSES);
+      await cleanupAttachments(db, conversationId);
       const updated = await db.from("support_conversations").update({
         status: "closed",
         closed_at: now,
