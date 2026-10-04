@@ -654,7 +654,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   }
 
   return (
-    <main className="grid gap-4">
+    <main className="grid h-[calc(100dvh-8rem)] min-h-[560px] grid-rows-[auto_auto_minmax(0,1fr)] gap-4 overflow-hidden">
       <header className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
           <h2 className="text-2xl font-black text-slate-950">{historyOnly ? "สมุดบันทึกแชท" : "Support Chat"}</h2>
@@ -672,7 +672,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
 
-      <section className="grid min-h-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[360px_minmax(0,1fr)]">
+      <section className="grid min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col border-r border-slate-200 bg-slate-50/60">
           <div className="border-b border-slate-200 p-3">
             <input value={search} onChange={(event) => setSearch(event.target.value)}
@@ -724,7 +724,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         <section className="flex min-h-0 flex-col">
           {conversation ? (
             <>
-              <header className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3">
+              <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3">
                 <StoreAvatar src={conversation.store_logo_url} name={conversation.store_name} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-black text-slate-950">{conversation.store_name} · {conversation.store_code}</div>
@@ -873,6 +873,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 {busy === "conversation" && !messages.length ? <div className="text-center text-xs text-slate-500">กำลังโหลด...</div> : null}
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
+                    const voiceAudit = message.message_body.startsWith("📞") || message.message_body.startsWith("☎");
+                    if (voiceAudit) return null;
                     return <div key={message.id} className="text-center text-[11px] text-slate-400">{message.message_body}</div>;
                   }
                   const mine = message.sender_type === "it";
@@ -893,7 +895,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 })}
               </div>
 
-              <div className="border-t border-slate-200 bg-white px-3 py-2">
+              <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-2">
                 <div className="flex items-center gap-2">
                   <input value={noteDraft} onChange={(event) => setNoteDraft(event.target.value.slice(0,3000))}
                     placeholder="โน้ตภายใน IT (ลูกค้าไม่เห็น)"
@@ -907,7 +909,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                   จบการสนทนาแล้ว · เก็บข้อความไว้ในสมุดบันทึก · รูปภาพถูกลบออกจากระบบ
                 </div>
               ) : (
-                <div className="border-t border-slate-200 bg-white p-3">
+                <div className="shrink-0 border-t border-slate-200 bg-white p-3">
                   {remoteTyping ? <div className="mb-2 text-[11px] font-bold text-slate-500">{remoteTyping} กำลังพิมพ์…</div> : null}
                   {attachment ? <div className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
                     <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
