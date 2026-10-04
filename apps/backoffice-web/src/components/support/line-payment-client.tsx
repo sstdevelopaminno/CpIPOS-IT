@@ -10,6 +10,7 @@ type LiffApi = {
   login(input?: { redirectUri?: string }): void;
   getIDToken(): string | null;
   isInClient(): boolean;
+  openWindow(input: { url: string; external?: boolean }): void;
   closeWindow(): void;
 };
 
