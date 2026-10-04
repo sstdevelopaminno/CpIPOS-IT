@@ -434,7 +434,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         body: JSON.stringify({ action, call_id: callId ?? null })
       });
       const json = await response.json().catch(() => null) as Envelope<{
-        call: VoiceCall;
+        call: SupportVoiceCall;
         conversation: Conversation;
         head: Head;
       }> | null;
