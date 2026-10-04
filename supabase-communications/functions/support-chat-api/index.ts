@@ -197,6 +197,27 @@ function newSignalingKey() {
   return crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
 }
 
+async function ensureCallSignalingKey(
+  db: ReturnType<typeof createClient>,
+  row: Record<string, unknown>
+) {
+  if (row.signaling_key) return row;
+  if (!["accepted", "connecting", "connected"].includes(String(row.status ?? ""))) return row;
+
+  const updated = await db.from("support_call_sessions").update({
+    signaling_key: newSignalingKey(),
+    updated_at: new Date().toISOString()
+  }).eq("id", String(row.id)).is("signaling_key", null)
+    .select("*").maybeSingle();
+  if (updated.error) throw updated.error;
+  if (updated.data) return updated.data as Record<string, unknown>;
+
+  const refreshed = await db.from("support_call_sessions").select("*")
+    .eq("id", String(row.id)).single();
+  if (refreshed.error) throw refreshed.error;
+  return refreshed.data as Record<string, unknown>;
+}
+
 async function turnCredential(secret: string, username: string) {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -449,7 +470,10 @@ Deno.serve(async (request) => {
       }
 
       const messages = await messagesWithAttachments(db, conversationId);
-      const activeCall = await activeCallForConversation(db, conversationId);
+      let activeCall = await activeCallForConversation(db, conversationId);
+      if (activeCall) {
+        activeCall = await ensureCallSignalingKey(db, activeCall);
+      }
       return json(200, {
         data: {
           conversation: conversationForActor(conversation, actor),
