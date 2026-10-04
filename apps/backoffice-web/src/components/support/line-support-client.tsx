@@ -10,6 +10,7 @@ import {
   useSupportVoiceCall,
   type SupportVoiceCall
 } from "@/components/support/use-support-voice-call";
+import { SupportVoiceCallOverlay } from "@/components/support/support-voice-call-overlay";
 
 type LiffApi = {
   init(input: { liffId: string }): Promise<void>;
@@ -842,6 +843,35 @@ export function LineSupportClient() {
           ) : null}
         </section>
       </main>
+
+      <SupportVoiceCallOverlay
+        open={Boolean(activeCall && ["requested", "accepted", "connecting", "connected"].includes(activeCall.status))}
+        mode={
+          activeCall?.status === "requested"
+            ? activeCall.direction === "it_to_store"
+              ? "incoming"
+              : "outgoing"
+            : "active"
+        }
+        counterpartyName={activeCall?.assigned_it_name || "CpIPOS Support"}
+        counterpartyDetail="ทีม IT Support · คุยด้วยเสียงผ่านอินเทอร์เน็ต"
+        phase={voice.phase}
+        error={voice.error}
+        busy={busy === "voice"}
+        canStart={voice.canStart}
+        micMuted={voice.micMuted}
+        speakerMuted={voice.speakerMuted}
+        needsAudioResume={voice.needsAudioResume}
+        elapsedSeconds={voice.elapsedSeconds}
+        onAccept={activeCall ? () => void performVoiceAction("voice_accept", activeCall.id) : undefined}
+        onDecline={activeCall ? () => void performVoiceAction("voice_decline", activeCall.id) : undefined}
+        onCancel={activeCall ? () => void performVoiceAction("voice_cancel", activeCall.id) : undefined}
+        onStart={() => void voice.start()}
+        onEnd={() => void endVoiceCall()}
+        onToggleMic={voice.toggleMic}
+        onToggleSpeaker={voice.toggleSpeaker}
+        onResumeAudio={() => void voice.resumeAudio()}
+      />
     </>
   );
 }
