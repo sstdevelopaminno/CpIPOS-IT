@@ -96,6 +96,13 @@ export function useSupportVoiceCall({
   const [needsAudioResume, setNeedsAudioResume] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
+  const attachAudioElement = useCallback((node: HTMLAudioElement | null) => {
+    remoteAudioRef.current = node;
+    if (node && remoteStreamRef.current) {
+      node.srcObject = remoteStreamRef.current;
+    }
+  }, []);
+
   const isInitiator = Boolean(call) && (
     (call!.direction === "store_to_it" && side === "store") ||
     (call!.direction === "it_to_store" && side === "it")
@@ -494,7 +501,7 @@ export function useSupportVoiceCall({
       if (runningRef.current) void cleanup(false);
       setPhase("idle");
     }
-  }, [call?.id, call?.status, cleanup]);
+  }, [call, cleanup]);
 
   return {
     phase,
@@ -503,7 +510,7 @@ export function useSupportVoiceCall({
     speakerMuted,
     needsAudioResume,
     elapsedSeconds,
-    remoteAudioRef,
+    attachAudioElement,
     start,
     endLocal,
     toggleMic,
