@@ -71,6 +71,17 @@ export async function GET(
   }
 }
 
+function supportChatActionError(error: unknown) {
+  if (error instanceof Error) {
+    const typed = error as Error & { status?: number; code?: string };
+    const status = Number(typed.status ?? 0);
+    if (status >= 400 && status < 500 && typed.code) {
+      return fail(typed.code, typed.message || "ทำรายการ Support Chat ไม่สำเร็จ", status);
+    }
+  }
+  return guardItAdminError(error);
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ conversationId: string }> }
@@ -273,6 +284,6 @@ export async function POST(
 
     return fail("unsupported_action", "คำสั่งแชทไม่ถูกต้อง", 422);
   } catch (error) {
-    return guardItAdminError(error);
+    return supportChatActionError(error);
   }
 }

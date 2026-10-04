@@ -11,6 +11,8 @@ describe("LINE Support Gateway", () => {
   const chatRoute = src("src/app/api/support/line/chat/route.ts");
   const client = src("src/components/support/line-support-client.tsx");
   const migration = src("../../supabase/migrations/20261004133000_line_support_gateway_identity.sql");
+  const communications = src("../../supabase-communications/functions/support-chat-api/index.ts");
+  const notifier = src("src/components/it-admin/support-chat-notifier.tsx");
 
   it("verifies LINE ID tokens server-side against the configured channel", () => {
     expect(auth).toContain("https://api.line.me/oauth2/v2.1/verify");
@@ -63,6 +65,29 @@ describe("LINE Support Gateway", () => {
     expect(client).toContain('"connecting"');
     expect(client).toContain("กำลังเปิดแชท Support");
     expect(client).toContain("applyChat(result.chat)");
+  });
+
+  it("keeps close operations idempotent across network retries", () => {
+    expect(communications).toContain("already_closed: true");
+    expect(communications).toContain('if (nextStatus === "closed")');
+  });
+
+  it("preserves an open chat when the LINE webview is closed accidentally", () => {
+    expect(client).not.toContain('addEventListener("pagehide"');
+    expect(client).toContain("3_000");
+    expect(client).toContain("ต้องการจบการสนทนานี้จริงหรือไม่");
+  });
+
+  it("adds an IT inbox polling fallback when realtime stalls", () => {
+    expect(notifier).toContain("fallbackPoll");
+    expect(notifier).toContain("2500");
+    expect(notifier).toContain("refreshSnapshot(true)");
+  });
+
+  it("updates LINE sends optimistically without a second history request", () => {
+    expect(client).toContain('"line-local:" + Date.now()');
+    expect(client).toContain("setMessages((current) => [...current, optimistic])");
+    expect(client).toContain("sent.message");
   });
 
   it("uses LIFF only as the entry identity surface and keeps chat on CpIPOS APIs", () => {

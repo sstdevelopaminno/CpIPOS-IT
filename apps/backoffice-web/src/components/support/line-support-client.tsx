@@ -187,7 +187,7 @@ export function LineSupportClient() {
     const id = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
       void loadConversation(conversation.id).catch(() => null);
-    }, 10_000);
+    }, 3_000);
 
     const refresh = () => {
       if (document.visibilityState === "visible") {
@@ -207,15 +207,10 @@ export function LineSupportClient() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length]);
 
-  useEffect(() => {
-    const logoutOnExit = () => {
-      if (stage !== "chat") return;
-      const body = new Blob([JSON.stringify({ action: "logout" })], { type: "application/json" });
-      navigator.sendBeacon("/api/support/line/auth", body);
-    };
-    window.addEventListener("pagehide", logoutOnExit);
-    return () => window.removeEventListener("pagehide", logoutOnExit);
-  }, [stage]);
+  // Do not logout on pagehide. Closing/swiping the LINE webview must preserve
+  // the short-lived support session so reopening can resume the same canonical
+  // conversation and history. Explicit "ออก" and "จบการสนทนา" still perform
+  // their own server-side actions.
 
   async function startAccess(event: FormEvent) {
     event.preventDefault();
@@ -286,11 +281,21 @@ export function LineSupportClient() {
     const message = draft.trim();
     if (!conversation?.id || !message || conversation.status === "closed") return;
 
+    const clientId = "line-local:" + Date.now();
+    const optimistic: Message = {
+      id: clientId,
+      sender_type: "store",
+      sender_name: "คุณ",
+      message_body: message,
+      created_at: new Date().toISOString()
+    };
+
     setBusy("send");
     setError("");
     setDraft("");
+    setMessages((current) => [...current, optimistic]);
     try {
-      await api("/api/support/line/chat", {
+      const sent = await api<{ message: Message; conversation: Conversation }>("/api/support/line/chat", {
         method: "POST",
         body: JSON.stringify({
           action: "send",
@@ -298,8 +303,10 @@ export function LineSupportClient() {
           message
         })
       });
-      await loadConversation(conversation.id);
+      setConversation(sent.conversation);
+      setMessages((current) => current.map((item) => item.id === clientId ? sent.message : item));
     } catch (cause) {
+      setMessages((current) => current.filter((item) => item.id !== clientId));
       setDraft(message);
       setError(cause instanceof Error ? cause.message : "ส่งข้อความไม่สำเร็จ");
     } finally {
@@ -326,6 +333,7 @@ export function LineSupportClient() {
 
   async function closeConversation() {
     if (!conversation?.id) return;
+    if (!window.confirm("ต้องการจบการสนทนานี้จริงหรือไม่? หากเพียงปิดหรือปัดหน้าต่าง LINE ประวัติแชทจะยังคงอยู่และกลับมาเปิดต่อได้")) return;
     setBusy("close");
     setError("");
     try {

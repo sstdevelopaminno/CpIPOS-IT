@@ -503,7 +503,14 @@ Deno.serve(async (request) => {
       }
       const nextStatus = text(input.status, 30);
       if (!CONVERSATION_STATUSES.has(nextStatus)) return json(422, { error: { code: "status_invalid" } });
-      if (current.data.status === "closed") return json(409, { error: { code: "conversation_closed" } });
+      // Closing is idempotent. A retry can arrive after the first close already
+      // committed (for example when the UI retries after a slow network response).
+      if (current.data.status === "closed") {
+        if (nextStatus === "closed") {
+          return json(200, { data: { conversation: current.data, head: headFromConversation(current.data), already_closed: true } });
+        }
+        return json(409, { error: { code: "conversation_closed" } });
+      }
       if (nextStatus === "closed") await cleanupAttachments(db, conversationId);
       const now = new Date().toISOString();
       const updated = await db.from("support_conversations").update({
@@ -538,6 +545,15 @@ Deno.serve(async (request) => {
     }
 
     if (action === "close_conversation") {
+      if (current.data.status === "closed") {
+        return json(200, {
+          data: {
+            conversation: conversationForActor(current.data, actor),
+            head: headFromConversation(current.data),
+            already_closed: true
+          }
+        });
+      }
       await cleanupAttachments(db, conversationId);
       const now = new Date().toISOString();
       const updated = await db.from("support_conversations").update({

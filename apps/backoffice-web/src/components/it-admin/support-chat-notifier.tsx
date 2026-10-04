@@ -7,15 +7,31 @@ type Head = {
   conversation_id?: string;
   store_name?: string;
   subject?: string;
+  status?: string;
+  latest_message_at?: string | null;
   latest_message_preview?: string | null;
   latest_sender_type?: string | null;
   unread_it_count?: number | null;
+  updated_at?: string;
 };
 
-async function loadUnreadTotal() {
+type InboxSnapshot = {
+  conversations: Head[];
+  unread_total: number;
+};
+
+async function loadInboxSnapshot(): Promise<InboxSnapshot> {
   const response = await fetch("/api/it-admin/v1/support-chat/conversations", { cache: "no-store" });
-  const json = await response.json().catch(() => null) as { data?: { unread_total?: number } } | null;
-  return response.ok ? Number(json?.data?.unread_total ?? 0) : 0;
+  const json = await response.json().catch(() => null) as {
+    data?: { conversations?: Head[]; unread_total?: number }
+  } | null;
+  if (!response.ok || !json?.data) {
+    return { conversations: [], unread_total: 0 };
+  }
+  return {
+    conversations: json.data.conversations ?? [],
+    unread_total: Number(json.data.unread_total ?? 0)
+  };
 }
 
 function notifyUnread(total: number) {
@@ -29,14 +45,79 @@ function notifyUpdate(head: Head) {
 export function SupportChatNotifier() {
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
   const initialized = useRef(false);
+  const headSignals = useRef(new Map<string, string>());
+  const notifiedSignals = useRef(new Set<string>());
 
   useEffect(() => {
     let alive = true;
     const supabase = getSupabaseBrowserClient();
 
-    void loadUnreadTotal().then((total) => {
-      if (alive) notifyUnread(total);
-    }).catch(() => null);
+    const signalFor = (head: Head) => [
+      head.updated_at ?? "",
+      head.latest_message_at ?? "",
+      head.status ?? "",
+      String(head.unread_it_count ?? 0)
+    ].join("|");
+
+    const handleHead = (next: Head, allowToast = true) => {
+      if (!alive || !next.conversation_id) return;
+      const signal = signalFor(next);
+      const previous = headSignals.current.get(next.conversation_id);
+      headSignals.current.set(next.conversation_id, signal);
+      if (previous === signal) return;
+
+      notifyUpdate(next);
+
+      if (
+        allowToast &&
+        initialized.current &&
+        next.latest_sender_type === "store" &&
+        Number(next.unread_it_count ?? 0) > 0
+      ) {
+        const noticeKey = next.conversation_id + ":" + String(next.latest_message_at ?? signal);
+        if (notifiedSignals.current.has(noticeKey)) return;
+        notifiedSignals.current.add(noticeKey);
+        if (notifiedSignals.current.size > 100) {
+          notifiedSignals.current = new Set(Array.from(notifiedSignals.current).slice(-50));
+        }
+
+        const title = next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่";
+        const message = next.latest_message_preview || next.subject || "ลูกค้าส่งข้อความเข้ามา";
+        setToast({ title, message });
+        window.setTimeout(() => setToast(null), 5000);
+
+        try {
+          const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+          if (AudioCtx) {
+            const ctx = new AudioCtx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            gain.gain.value = 0.04;
+            osc.frequency.value = 760;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.12);
+          }
+        } catch {
+          // Browser may block audio until the user interacts with the page.
+        }
+
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification(title, { body: message, icon: "/brand/cpipos-symbol-sidebar.png", tag: next.conversation_id });
+        }
+      }
+    };
+
+    const refreshSnapshot = async (allowToast: boolean) => {
+      const snapshot = await loadInboxSnapshot();
+      if (!alive) return;
+      notifyUnread(snapshot.unread_total);
+      for (const head of snapshot.conversations) handleHead(head, allowToast);
+      initialized.current = true;
+    };
+
+    void refreshSnapshot(false).catch(() => null);
 
     const channel = supabase
       .channel("it-support-chat-heads")
@@ -47,66 +128,37 @@ export function SupportChatNotifier() {
           const next = (payload.new ?? {}) as Head;
           if (!alive) return;
 
-          // Deliver the chat event immediately. Unread totals can refresh in
-          // parallel and must not block the active conversation UI.
-          notifyUpdate(next);
-          void loadUnreadTotal().then((totalNext) => {
-            if (alive) notifyUnread(totalNext);
+          // Realtime is the fast path; polling below is a safety net for
+          // mobile/browser websocket stalls.
+          handleHead(next, true);
+          void loadInboxSnapshot().then((snapshot) => {
+            if (alive) notifyUnread(snapshot.unread_total);
           }).catch(() => null);
-
-          if (initialized.current && next.latest_sender_type === "store" && Number(next.unread_it_count ?? 0) > 0) {
-            const title = next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่";
-            const message = next.latest_message_preview || next.subject || "ลูกค้าส่งข้อความเข้ามา";
-            setToast({ title, message });
-            window.setTimeout(() => setToast(null), 5000);
-
-            try {
-              const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-              if (AudioCtx) {
-                const ctx = new AudioCtx();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                gain.gain.value = 0.04;
-                osc.frequency.value = 760;
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.12);
-              }
-            } catch {
-              // Browser may block audio until the user interacts with the page.
-            }
-
-            if ("Notification" in window && Notification.permission === "granted") {
-              new Notification(title, { body: message, icon: "/brand/cpipos-symbol-sidebar.png", tag: next.conversation_id });
-            }
-          }
-          initialized.current = true;
         }
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           initialized.current = true;
-          void loadUnreadTotal().then((total) => {
-            if (alive) notifyUnread(total);
-          }).catch(() => null);
+          void refreshSnapshot(false).catch(() => null);
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          initialized.current = false;
           window.setTimeout(() => {
-            void loadUnreadTotal().then((total) => {
-              if (alive) notifyUnread(total);
-            }).catch(() => null);
+            void refreshSnapshot(true).catch(() => null);
           }, 1200);
         }
       });
 
+    // Fallback poll keeps the IT inbox responsive even if Postgres Realtime
+    // is temporarily disconnected by the browser/network.
+    const fallbackPoll = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void refreshSnapshot(true).catch(() => null);
+    }, 2500);
+
     const refreshOnFocus = () => {
       if (document.visibilityState === "hidden") return;
-      void loadUnreadTotal().then((total) => {
-        if (alive) notifyUnread(total);
-      }).catch(() => null);
+      void refreshSnapshot(true).catch(() => null);
     };
     window.addEventListener("focus", refreshOnFocus);
     window.addEventListener("online", refreshOnFocus);
@@ -117,12 +169,13 @@ export function SupportChatNotifier() {
       if (payload?.kind !== "chat") return;
       setToast({ title: payload.title || "มีแชทใหม่", message: payload.body || "" });
       window.setTimeout(() => setToast(null), 5000);
-      void loadUnreadTotal().then((total) => { if (alive) notifyUnread(total); }).catch(() => null);
+      void refreshSnapshot(true).catch(() => null);
     };
     window.addEventListener("cpipos-it-push-notification", onPush);
 
     return () => {
       alive = false;
+      window.clearInterval(fallbackPoll);
       window.removeEventListener("focus", refreshOnFocus);
       window.removeEventListener("online", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshOnFocus);
