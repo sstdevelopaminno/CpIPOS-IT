@@ -219,6 +219,11 @@ export async function getLinePackagePaymentSnapshot(
 
   const today = todayBangkok();
   const serviceEnd = contract?.ended_at ? bangkokDate(contract.ended_at) : "";
+  const contractEndReached = Boolean(
+    contract?.ended_at &&
+    Number.isFinite(Date.parse(contract.ended_at)) &&
+    Date.parse(contract.ended_at) <= Date.now()
+  );
   const interval = contract?.billing_interval === "yearly" ? "yearly"
     : contract?.billing_interval === "monthly" ? "monthly" : "";
   const contractAmount = Number(contract?.amount_per_cycle ?? 0);
@@ -234,7 +239,7 @@ export async function getLinePackagePaymentSnapshot(
     packageRow &&
     ["active", "trial"].includes(contract.status) &&
     serviceEnd &&
-    serviceEnd <= today &&
+    contractEndReached &&
     amountDue > 0
   ) {
     const rounded = Math.round(amountDue * 100) / 100;
