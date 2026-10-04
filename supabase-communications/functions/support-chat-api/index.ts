@@ -983,6 +983,16 @@ Deno.serve(async (request) => {
         .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
       if (selected.error) throw selected.error;
       if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      if (selected.data.status === "ended") {
+        return json(200, {
+          data: {
+            call: callForActor(selected.data, actor),
+            conversation: conversationForActor(current.data, actor),
+            head: headFromConversation(current.data),
+            already_ended: true
+          }
+        });
+      }
       if (!["accepted", "connecting", "connected"].includes(String(selected.data.status))) {
         return json(409, { error: { code: "call_not_active", message: "คำขอเสียงนี้ไม่ได้อยู่ในสถานะใช้งาน" } });
       }
