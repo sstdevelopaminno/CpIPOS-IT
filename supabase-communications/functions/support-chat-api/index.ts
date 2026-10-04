@@ -233,7 +233,7 @@ Deno.serve(async (request) => {
         sender_type: "system",
         sender_name: "CpIPOS Support",
         sender_role: "system",
-        message_body: "เปิดคำขอสนทนา: " + subject
+        message_body: "CpIPOS Support ให้บริการแล้วครับ รบกวนคุณลูกค้าแจ้งปัญหาของท่านลงได้เลย ฝ่าย Support จะตอบกลับท่านโดยเร็วที่สุด"
       });
 
       return json(201, {
