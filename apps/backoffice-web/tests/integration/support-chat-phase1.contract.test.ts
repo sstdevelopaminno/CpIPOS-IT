@@ -28,7 +28,9 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(notifier).toContain('table: "support_chat_heads"');
     expect(notifier).toContain("new Notification");
     expect(notifier).toContain("fallbackPoll");
-    expect(notifier).toContain("2500");
+    expect(notifier).toContain("realtimeHealthy");
+    expect(notifier).toContain("15000");
+    expect(notifier).not.toContain("2500");
     expect(consoleUi).not.toContain("setInterval(");
   });
 
