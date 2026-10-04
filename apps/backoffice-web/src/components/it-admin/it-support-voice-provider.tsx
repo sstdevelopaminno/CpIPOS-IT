@@ -183,9 +183,11 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+    // Support-chat Realtime events and focus/visibility changes are the fast path.
+    // Keep a low-frequency HTTP refresh only as a recovery safety net.
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "hidden") void refresh();
-    }, 2500);
+    }, 30000);
     const onFocus = () => void refresh();
     const onVisibility = () => {
       if (document.visibilityState === "visible") void refresh();
