@@ -669,7 +669,7 @@ export function LineSupportClient() {
                   </div>
                 ) : ["accepted", "connecting", "connected"].includes(activeCall.status) ? (
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                    <audio ref={voice.remoteAudioRef} autoPlay playsInline className="hidden" />
+                    <audio ref={voice.attachAudioElement} autoPlay playsInline className="hidden" />
                     <div className="text-sm font-black text-emerald-800">
                       {voice.phase === "connected"
                         ? "📞 กำลังคุยด้วยเสียง · " + formatVoiceDuration(voice.elapsedSeconds)
