@@ -53,9 +53,10 @@ No second chat system is introduced.
 
 IT web deployment:
 
-- `NEXT_PUBLIC_LINE_LIFF_ID` — public LIFF ID
-- `LINE_LOGIN_CHANNEL_ID` — LINE Login channel ID used to verify ID tokens
-- `LINE_SUPPORT_SESSION_SECRET` — random server-only secret, minimum 32 characters
+- Default LINE Login Channel ID: `2011852850`
+- Default LIFF ID: `2011852850-5tjQo09l`
+- `LINE_LOGIN_CHANNEL_ID` and `NEXT_PUBLIC_LINE_LIFF_ID` remain optional overrides for future channel rotation.
+- `LINE_SUPPORT_SESSION_SECRET` is an optional dedicated override. When absent, the app derives a domain-separated session key from the existing server-only `CPIPOS_COMMUNICATIONS_HMAC_SECRET`; the root secret is never exposed to the browser.
 - existing Support Mail bridge secret/config must remain available for first-use OTP delivery
 - production rate limiter should keep the existing Upstash-backed configuration
 
