@@ -6,6 +6,7 @@ import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import { sendSupportMail } from "@/lib/services/it-admin/support-mail-service";
 
 const LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
+const DEFAULT_LINE_LOGIN_CHANNEL_ID = "2011852850";
 const SESSION_COOKIE = "cpipos_line_support_session";
 const SESSION_TTL_SECONDS = 30 * 60;
 const OTP_TTL_MINUTES = 10;
@@ -79,15 +80,34 @@ function requiredEnv(name: string) {
 }
 
 function sessionSecret() {
-  const value = requiredEnv("LINE_SUPPORT_SESSION_SECRET");
-  if (value.length < 32) {
+  const explicit = String(process.env.LINE_SUPPORT_SESSION_SECRET ?? "").trim();
+  if (explicit) {
+    if (explicit.length < 32) {
+      throw new LineSupportError(
+        "line_support_secret_too_short",
+        "การตั้งค่าความปลอดภัย LINE Support ไม่สมบูรณ์",
+        503
+      );
+    }
+    return explicit;
+  }
+
+  const communicationsRoot = String(process.env.CPIPOS_COMMUNICATIONS_HMAC_SECRET ?? "").trim();
+  if (communicationsRoot.length < 32) {
     throw new LineSupportError(
-      "line_support_secret_too_short",
-      "การตั้งค่าความปลอดภัย LINE Support ไม่สมบูรณ์",
+      "line_support_not_configured",
+      "ระบบ LINE Support ยังไม่ได้ตั้งค่า Secret สำหรับเซสชัน",
       503
     );
   }
-  return value;
+
+  return createHmac("sha256", communicationsRoot)
+    .update("cpipos:line-support-session:v1")
+    .digest("hex");
+}
+
+function lineLoginChannelId() {
+  return String(process.env.LINE_LOGIN_CHANNEL_ID ?? "").trim() || DEFAULT_LINE_LOGIN_CHANNEL_ID;
 }
 
 function text(value: unknown, max: number) {
@@ -162,7 +182,7 @@ export async function verifyLineIdToken(idToken: string): Promise<VerifiedLineId
   const token = text(idToken, 4096);
   if (!token) throw new LineSupportError("line_id_token_required", "ไม่พบ LINE Login กรุณาเปิดจาก LINE อีกครั้ง", 401);
 
-  const clientId = requiredEnv("LINE_LOGIN_CHANNEL_ID");
+  const clientId = lineLoginChannelId();
   let response: Response;
   try {
     response = await fetch(LINE_VERIFY_URL, {
