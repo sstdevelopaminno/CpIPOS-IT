@@ -5,6 +5,11 @@ import Script from "next/script";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import {
+  formatVoiceDuration,
+  useSupportVoiceCall,
+  type SupportVoiceCall
+} from "@/components/support/use-support-voice-call";
 
 type LiffApi = {
   init(input: { liffId: string }): Promise<void>;
@@ -54,22 +59,10 @@ type Message = {
   created_at: string;
 };
 
-type VoiceCall = {
-  id: string;
-  conversation_id: string;
-  direction: "store_to_it" | "it_to_store";
-  status: "requested" | "accepted" | "connecting" | "connected" | "declined" | "cancelled" | "ended" | "failed";
-  requested_by_name: string;
-  assigned_it_name?: string | null;
-  assigned_it_role?: string | null;
-  requested_at: string;
-  accepted_at?: string | null;
-};
-
 type ChatDetail = {
   conversation: Conversation;
   messages: Message[];
-  active_call: VoiceCall | null;
+  active_call: SupportVoiceCall | null;
 };
 
 type Envelope<T> = {
@@ -131,7 +124,7 @@ export function LineSupportClient() {
   const [otp, setOtp] = useState("");
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [activeCall, setActiveCall] = useState<VoiceCall | null>(null);
+  const [activeCall, setActiveCall] = useState<SupportVoiceCall | null>(null);
   const [draft, setDraft] = useState("");
   const [remoteTyping, setRemoteTyping] = useState("");
   const [busy, setBusy] = useState("");
@@ -153,6 +146,48 @@ export function LineSupportClient() {
     setActiveCall(detail.active_call ?? null);
     setStage("chat");
   }, []);
+
+  const loadVoiceIceServers = useCallback(async () => {
+    if (!conversation?.id || !activeCall?.id) throw new Error("ไม่พบห้องเสียง");
+    const result = await api<{ ice_servers: RTCIceServer[]; turn_enabled: boolean }>("/api/support/line/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "voice_ice",
+        conversation_id: conversation.id,
+        call_id: activeCall.id
+      })
+    });
+    return result.ice_servers;
+  }, [conversation?.id, activeCall?.id]);
+
+  const updateVoiceState = useCallback(async (state: "connecting" | "connected") => {
+    if (!conversation?.id || !activeCall?.id) return;
+    const result = await api<{ call: SupportVoiceCall }>("/api/support/line/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "voice_state",
+        conversation_id: conversation.id,
+        call_id: activeCall.id,
+        state
+      })
+    });
+    setActiveCall(result.call);
+  }, [conversation?.id, activeCall?.id]);
+
+  const handleRemoteHangup = useCallback(async () => {
+    if (!conversation?.id) return;
+    window.setTimeout(() => {
+      void loadConversation(conversation.id).catch(() => null);
+    }, 400);
+  }, [conversation?.id, loadConversation]);
+
+  const voice = useSupportVoiceCall({
+    call: activeCall,
+    side: "store",
+    loadIceServers: loadVoiceIceServers,
+    onState: updateVoiceState,
+    onRemoteHangup: handleRemoteHangup
+  });
 
   const openChat = useCallback(async () => {
     setBusy("open");
@@ -419,6 +454,12 @@ export function LineSupportClient() {
     }
   }
 
+  async function endVoiceCall() {
+    if (!activeCall?.id) return;
+    await voice.endLocal();
+    await performVoiceAction("voice_end", activeCall.id);
+  }
+
   async function closeConversation() {
     if (!conversation?.id) return;
     if (!window.confirm("ต้องการจบการสนทนานี้จริงหรือไม่? หากเพียงปิดหรือปัดหน้าต่าง LINE ประวัติแชทจะยังคงอยู่และกลับมาเปิดต่อได้")) return;
@@ -622,18 +663,88 @@ export function LineSupportClient() {
                   </div>
                 ) : ["accepted", "connecting", "connected"].includes(activeCall.status) ? (
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                    <div className="text-sm font-black text-emerald-800">📞 ทีม Support รับคำขอแล้ว</div>
+                    <audio ref={voice.remoteAudioRef} autoPlay playsInline className="hidden" />
+                    <div className="text-sm font-black text-emerald-800">
+                      {voice.phase === "connected"
+                        ? "📞 กำลังคุยด้วยเสียง · " + formatVoiceDuration(voice.elapsedSeconds)
+                        : "📞 ทีม Support รับคำขอแล้ว"}
+                    </div>
                     <div className="mt-1 text-xs leading-5 text-emerald-700">
                       {activeCall.assigned_it_name ? "ผู้ดูแล: " + activeCall.assigned_it_name + " · " : ""}
-                      ระบบกำลังเตรียมขั้นตอนเชื่อมต่อเสียง
+                      {voice.phase === "requesting_mic"
+                        ? "กำลังขอสิทธิ์ใช้ไมโครโฟน"
+                        : voice.phase === "waiting_peer"
+                          ? "ไมโครโฟนพร้อมแล้ว · รอฝ่าย Support เปิดเสียง"
+                          : voice.phase === "connecting"
+                            ? "กำลังเชื่อมต่อเสียง"
+                            : voice.phase === "reconnecting"
+                              ? "สัญญาณสะดุด · กำลังเชื่อมต่อใหม่"
+                              : voice.phase === "connected"
+                                ? "เชื่อมต่อด้วย WebRTC แล้ว"
+                                : "กดเริ่มคุยเพื่อเปิดไมโครโฟน"}
                     </div>
+
+                    {voice.error ? (
+                      <div className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                        {voice.error}
+                      </div>
+                    ) : null}
+
+                    {voice.needsAudioResume ? (
+                      <button
+                        type="button"
+                        onClick={() => void voice.resumeAudio()}
+                        className="mt-3 w-full rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white"
+                      >
+                        🔊 แตะเพื่อเปิดเสียงคู่สนทนา
+                      </button>
+                    ) : null}
+
+                    {voice.phase === "idle" || voice.phase === "failed" ? (
+                      <button
+                        type="button"
+                        onClick={() => void voice.start()}
+                        disabled={busy === "voice" || !voice.canStart}
+                        className="mt-3 w-full rounded-xl bg-emerald-600 px-3 py-3 text-sm font-black text-white disabled:opacity-50"
+                      >
+                        🎙️ {voice.phase === "failed" ? "ลองเชื่อมต่อเสียงใหม่" : "เริ่มคุยด้วยเสียง"}
+                      </button>
+                    ) : null}
+
+                    {voice.phase === "requesting_mic" || voice.phase === "waiting_peer" || voice.phase === "connecting" || voice.phase === "reconnecting" ? (
+                      <div className="mt-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-center text-xs font-bold text-emerald-700">
+                        {voice.phase === "requesting_mic" ? "กำลังเปิดไมโครโฟน…" :
+                          voice.phase === "waiting_peer" ? "รออีกฝ่ายกดเริ่มเสียง…" :
+                            voice.phase === "reconnecting" ? "กำลังเชื่อมต่อใหม่…" : "กำลังเชื่อมต่อ…"}
+                      </div>
+                    ) : null}
+
+                    {voice.phase === "connected" ? (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={voice.toggleMic}
+                          className="rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-800"
+                        >
+                          {voice.micMuted ? "🎙️ เปิดไมค์" : "🔇 ปิดไมค์"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={voice.toggleSpeaker}
+                          className="rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-800"
+                        >
+                          {voice.speakerMuted ? "🔊 เปิดเสียง" : "🔈 ปิดเสียง"}
+                        </button>
+                      </div>
+                    ) : null}
+
                     <button
                       type="button"
-                      onClick={() => void performVoiceAction("voice_end", activeCall.id)}
+                      onClick={() => void endVoiceCall()}
                       disabled={busy === "voice"}
-                      className="mt-3 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-800 disabled:opacity-50"
+                      className="mt-3 w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-700 disabled:opacity-50"
                     >
-                      ยุติคำขอเสียง
+                      📵 วางสาย
                     </button>
                   </div>
                 ) : null}
