@@ -38,11 +38,8 @@ export async function issueItSupportChatBridge(context: ItAdminContext): Promise
     throw new Error("IT support role required.");
   }
   const db = getSupabaseServiceClient();
-  const profile = await db.from("users_profiles")
-    .select("full_name,avatar_url,is_active,archived_at")
-    .eq("id", context.auth.userId)
-    .maybeSingle<{ full_name: string | null; avatar_url: string | null; is_active: boolean | null; archived_at: string | null }>();
-  if (profile.error || !profile.data?.is_active || profile.data.archived_at) {
+  const profile = context.profile;
+  if (!profile.is_active || profile.archived_at) {
     throw new Error("IT support profile unavailable.");
   }
 
@@ -52,8 +49,8 @@ export async function issueItSupportChatBridge(context: ItAdminContext): Promise
     p_tenant_id: null,
     p_branch_id: null,
     p_role: context.auth.platformRole,
-    p_display_name: profile.data.full_name || (context.auth.platformRole === "it_admin" ? "IT Admin" : "IT Support"),
-    p_avatar_url: profile.data.avatar_url
+    p_display_name: profile.full_name || (context.auth.platformRole === "it_admin" ? "IT Admin" : "IT Support"),
+    p_avatar_url: profile.avatar_url
   });
   if (issued.error || !issued.data) throw new Error("Unable to authorize support chat.");
   return issued.data as BridgeToken;
