@@ -12,6 +12,10 @@ describe("Support voice WebRTC Phase 2", () => {
   const itRoute = src("src/app/api/it-admin/v1/support-chat/conversations/[conversationId]/route.ts");
   const lineClient = src("src/components/support/line-support-client.tsx");
   const itConsole = src("src/components/it-admin/support-chat-console.tsx");
+  const itVoiceProvider = src("src/components/it-admin/it-support-voice-provider.tsx");
+  const voiceOverlay = src("src/components/support/support-voice-call-overlay.tsx");
+  const itLayout = src("src/app/(it-admin)/layout.tsx");
+  const activeCallRoute = src("src/app/api/it-admin/v1/support-chat/active-call/route.ts");
   const nextConfig = src("next.config.ts");
 
 
@@ -61,17 +65,28 @@ describe("Support voice WebRTC Phase 2", () => {
   it("requires a local user action before opening the microphone on both surfaces", () => {
     expect(lineClient).toContain("เริ่มคุยด้วยเสียง");
     expect(lineClient).toContain("voice.start()");
-    expect(itConsole).toContain("เริ่มเสียง");
-    expect(itConsole).toContain("voice.start()");
+    expect(itVoiceProvider).toContain("onStart={() => void voice.start()}");
+    expect(voiceOverlay).toContain("เปิดไมค์");
   });
 
   it("supports mute, speaker mute, duration and hangup controls", () => {
     expect(lineClient).toContain("voice.toggleMic");
     expect(lineClient).toContain("voice.toggleSpeaker");
     expect(lineClient).toContain("formatVoiceDuration");
-    expect(itConsole).toContain("voice.toggleMic");
-    expect(itConsole).toContain("voice.toggleSpeaker");
-    expect(itConsole).toContain("endVoiceCall()");
+    expect(itVoiceProvider).toContain("voice.toggleMic");
+    expect(itVoiceProvider).toContain("voice.toggleSpeaker");
+    expect(itVoiceProvider).toContain("voice.endLocal()");
+  });
+
+  it("keeps the IT voice session mounted across backoffice navigation and allows minimization", () => {
+    expect(itLayout).toContain("<ItSupportVoiceProvider>");
+    expect(activeCallRoute).toContain('"get_it_voice_call"');
+    expect(edge).toContain('action === "get_it_voice_call"');
+    expect(itVoiceProvider).toContain('window.setInterval');
+    expect(itVoiceProvider).toContain('allowMinimize={mode === "active"}');
+    expect(voiceOverlay).toContain("ย่อหน้าสาย");
+    expect(voiceOverlay).toContain("สายยังเชื่อมต่ออยู่ สามารถเปิดเมนูอื่นในระบบ IT ได้");
+    expect(itConsole).toContain("สามารถย่อหน้าสายแล้วเปิดเมนูอื่นเพื่อตรวจสอบระบบได้");
   });
 
   it("exposes ICE and media-state endpoints to both LINE and IT", () => {

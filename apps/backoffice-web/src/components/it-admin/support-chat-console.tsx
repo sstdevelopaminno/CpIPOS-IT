@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useItAccess } from "@/components/layout/app-shell";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
-import { formatVoiceDuration, useSupportVoiceCall, type SupportVoiceCall } from "@/components/support/use-support-voice-call";
-import { SupportVoiceCallOverlay } from "@/components/support/support-voice-call-overlay";
+import { formatVoiceDuration, type SupportVoiceCall } from "@/components/support/use-support-voice-call";
+import { useItSupportVoice } from "@/components/it-admin/it-support-voice-provider";
 
 type Head = {
   conversation_id: string;
@@ -142,7 +142,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const [selectedId, setSelectedId] = useState("");
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [activeCall, setActiveCall] = useState<SupportVoiceCall | null>(null);
+  const itVoice = useItSupportVoice();
+  const activeCall = itVoice.call?.conversation_id === selectedId ? itVoice.call : null;
   const [filter, setFilter] = useState<"all" | "new" | "mine" | "active" | "closed">("all");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
@@ -164,7 +165,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     setSelectedId((current) => current === id ? "" : current);
     setConversation((current) => current?.id === id ? null : current);
     setMessages([]);
-    setActiveCall(null);
     setNoteDraft("");
     setRemoteTyping("");
     headSignalRef.current = "";
@@ -210,55 +210,12 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       setConversation(json.data.conversation);
       setNoteDraft(json.data.conversation.internal_note ?? "");
       setMessages(json.data.messages);
-      setActiveCall(json.data.active_call ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
     } finally {
       setBusy("");
     }
   }, [clearGoneConversation]);
-
-  const loadVoiceIceServers = useCallback(async () => {
-    if (!selectedId || !activeCall?.id) throw new Error("ไม่พบห้องเสียง");
-    const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "voice_ice", call_id: activeCall.id })
-    });
-    const json = await response.json().catch(() => null) as Envelope<{ ice_servers: RTCIceServer[]; turn_enabled: boolean }> | null;
-    if (!response.ok || !json?.data) throw new Error(json?.error?.message || "โหลดการตั้งค่าเครือข่ายเสียงไม่สำเร็จ");
-    return json.data.ice_servers;
-  }, [selectedId, activeCall?.id]);
-
-  const updateVoiceState = useCallback(async (state: "connecting" | "connected") => {
-    if (!selectedId || !activeCall?.id) return;
-    const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "voice_state", call_id: activeCall.id, state })
-    });
-    const json = await response.json().catch(() => null) as Envelope<{ call: SupportVoiceCall }> | null;
-    if (!response.ok || !json?.data) throw new Error(json?.error?.message || "อัปเดตสถานะเสียงไม่สำเร็จ");
-    setActiveCall(json.data.call);
-  }, [selectedId, activeCall?.id]);
-
-  const handleRemoteHangup = useCallback(async () => {
-    if (!selectedId || !activeCall?.id) return;
-    await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "voice_end", call_id: activeCall.id })
-    }).catch(() => null);
-    await loadConversation(selectedId).catch(() => null);
-  }, [selectedId, activeCall?.id, loadConversation]);
-
-  const voice = useSupportVoiceCall({
-    call: activeCall,
-    side: "it",
-    loadIceServers: loadVoiceIceServers,
-    onState: updateVoiceState,
-    onRemoteHangup: handleRemoteHangup
-  });
 
   useEffect(() => {
     void loadInbox();
@@ -429,41 +386,21 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     setBusy("voice");
     setError("");
     try {
-      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, call_id: callId ?? null })
-      });
-      const json = await response.json().catch(() => null) as Envelope<{
-        call: SupportVoiceCall;
-        conversation: Conversation;
-        head: Head;
-      }> | null;
-      if (!response.ok || !json?.data) {
-        throw new Error(json?.error?.message || "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
+      if (action === "voice_invite") {
+        await itVoice.invite(selectedId);
+      } else if (action === "voice_accept" && callId) {
+        await itVoice.accept(selectedId, callId);
+      } else if (action === "voice_cancel" && callId) {
+        await itVoice.cancel(selectedId, callId);
+      } else if (action === "voice_end") {
+        await itVoice.end();
       }
-      setConversation(json.data.conversation);
-      setActiveCall(
-        ["requested", "accepted", "connecting", "connected"].includes(json.data.call.status)
-          ? json.data.call
-          : null
-      );
-      setRows((current) => [
-        json.data!.head,
-        ...current.filter((row) => row.conversation_id !== json.data!.head.conversation_id)
-      ]);
       await loadConversation(selectedId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
     } finally {
       setBusy("");
     }
-  }
-
-  async function endVoiceCall() {
-    if (!activeCall?.id) return;
-    await voice.endLocal();
-    await performVoiceAction("voice_end", activeCall.id);
   }
 
   async function setConversationStatus(status: string) {
@@ -573,7 +510,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       setSelectedId("");
       setConversation(null);
       setMessages([]);
-      setActiveCall(null);
       setNoteDraft("");
       await loadInbox();
     } catch (cause) {
@@ -794,76 +730,24 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                       ) : null}
                     </div>
                   ) : ["accepted", "connecting", "connected"].includes(activeCall.status) ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                                            <div className="text-sm font-black text-emerald-800">
-                        {voice.phase === "connected" && activeCall.assigned_it_user_id === actor?.user_id
-                          ? "📞 กำลังคุยด้วยเสียง · " + formatVoiceDuration(voice.elapsedSeconds)
-                          : "📞 คำขอเสียงถูกตอบรับแล้ว"}
+                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-emerald-800">
+                          {itVoice.phase === "connected"
+                            ? "📞 กำลังคุยด้วยเสียง · " + formatVoiceDuration(itVoice.elapsedSeconds)
+                            : "📞 สายเสียงกำลังเชื่อมต่อ"}
+                        </div>
+                        <div className="mt-1 text-[11px] text-emerald-700">
+                          สายนี้ทำงานต่อเนื่องใน IT Control Plane · สามารถย่อหน้าสายแล้วเปิดเมนูอื่นเพื่อตรวจสอบระบบได้
+                        </div>
                       </div>
-                      <div className="mt-1 text-[11px] text-emerald-700">
-                        {activeCall.assigned_it_name ? "ผู้ดูแล: " + activeCall.assigned_it_name + " · " : ""}
-                        {activeCall.assigned_it_user_id !== actor?.user_id
-                          ? "สายนี้ถูกดูแลโดยเจ้าหน้าที่คนอื่น"
-                          : voice.phase === "requesting_mic"
-                            ? "กำลังขอสิทธิ์ใช้ไมโครโฟน"
-                            : voice.phase === "waiting_peer"
-                              ? "ไมโครโฟนพร้อมแล้ว · รอลูกค้าเปิดเสียง"
-                              : voice.phase === "connecting"
-                                ? "กำลังเชื่อมต่อเสียง"
-                                : voice.phase === "reconnecting"
-                                  ? "สัญญาณสะดุด · กำลังเชื่อมต่อใหม่"
-                                  : voice.phase === "connected"
-                                    ? "เชื่อมต่อด้วย WebRTC แล้ว"
-                                    : "กดเริ่มเสียงเพื่อเปิดไมโครโฟน"}
-                      </div>
-
-                      {activeCall.assigned_it_user_id === actor?.user_id ? (
-                        <>
-                          {voice.error ? <div className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{voice.error}</div> : null}
-
-                          {voice.needsAudioResume ? (
-                            <button type="button" onClick={() => void voice.resumeAudio()}
-                              className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white">
-                              🔊 แตะเพื่อเปิดเสียงลูกค้า
-                            </button>
-                          ) : null}
-
-                          {voice.phase === "idle" || voice.phase === "failed" ? (
-                            <button type="button" onClick={() => void voice.start()}
-                              disabled={busy === "voice" || !voice.canStart}
-                              className="mt-3 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">
-                              🎙️ {voice.phase === "failed" ? "ลองเชื่อมต่อเสียงใหม่" : "เริ่มเสียง"}
-                            </button>
-                          ) : null}
-
-                          {voice.phase === "requesting_mic" || voice.phase === "waiting_peer" || voice.phase === "connecting" || voice.phase === "reconnecting" ? (
-                            <div className="mt-3 inline-flex rounded-xl border border-emerald-200 bg-white px-4 py-2 text-xs font-bold text-emerald-700">
-                              {voice.phase === "requesting_mic" ? "กำลังเปิดไมโครโฟน…" :
-                                voice.phase === "waiting_peer" ? "รอลูกค้ากดเริ่มเสียง…" :
-                                  voice.phase === "reconnecting" ? "กำลังเชื่อมต่อใหม่…" : "กำลังเชื่อมต่อ…"}
-                            </div>
-                          ) : null}
-
-                          {voice.phase === "connected" ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <button type="button" onClick={voice.toggleMic}
-                                className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black text-emerald-800">
-                                {voice.micMuted ? "🎙️ เปิดไมค์" : "🔇 ปิดไมค์"}
-                              </button>
-                              <button type="button" onClick={voice.toggleSpeaker}
-                                className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black text-emerald-800">
-                                {voice.speakerMuted ? "🔊 เปิดเสียง" : "🔈 ปิดเสียง"}
-                              </button>
-                            </div>
-                          ) : null}
-
-                          <button type="button" onClick={() => void endVoiceCall()}
-                            disabled={busy === "voice"}
-                            className="mt-3 rounded-xl border border-red-200 bg-white px-4 py-2 text-xs font-black text-red-700 disabled:opacity-50">
-                            📵 วางสาย
-                          </button>
-                        </>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={itVoice.restore}
+                        className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white"
+                      >
+                        เปิดหน้าสาย
+                      </button>
                     </div>
                   ) : null}
                 </div>
@@ -952,42 +836,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           )}
         </section>
       </section>
-      <SupportVoiceCallOverlay
-            open={Boolean(
-              activeCall &&
-              actor &&
-              ["requested", "accepted", "connecting", "connected"].includes(activeCall.status) &&
-              (
-                activeCall.status === "requested"
-                  ? activeCall.direction === "store_to_it" || activeCall.assigned_it_user_id === actor.user_id
-                  : activeCall.assigned_it_user_id === actor.user_id
-              )
-            )}
-            mode={
-              activeCall?.status === "requested"
-                ? activeCall.direction === "store_to_it"
-                  ? "incoming"
-                  : "outgoing"
-                : "active"
-            }
-            counterpartyName={conversation?.store_name || conversation?.contact_name || "ลูกค้า CpIPOS"}
-            counterpartyDetail={conversation ? `ร้านค้า · ${conversation.store_code}` : "CpIPOS Support"}
-            phase={voice.phase}
-            error={voice.error}
-            busy={busy === "voice"}
-            canStart={voice.canStart}
-            micMuted={voice.micMuted}
-            speakerMuted={voice.speakerMuted}
-            needsAudioResume={voice.needsAudioResume}
-            elapsedSeconds={voice.elapsedSeconds}
-            onAccept={activeCall ? () => void performVoiceAction("voice_accept", activeCall.id) : undefined}
-            onCancel={activeCall ? () => void performVoiceAction("voice_cancel", activeCall.id) : undefined}
-            onStart={() => void voice.start()}
-            onEnd={() => void endVoiceCall()}
-            onToggleMic={voice.toggleMic}
-            onToggleSpeaker={voice.toggleSpeaker}
-            onResumeAudio={() => void voice.resumeAudio()}
-          />
+
       
     </main>
   );

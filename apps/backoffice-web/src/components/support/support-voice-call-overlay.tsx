@@ -27,6 +27,10 @@ type SupportVoiceCallOverlayProps = {
   onToggleSpeaker?: () => void;
   onResumeAudio?: () => void;
   onOpenExternalBrowser?: () => void;
+  allowMinimize?: boolean;
+  minimized?: boolean;
+  onMinimize?: () => void;
+  onRestore?: () => void;
 };
 
 function phaseText(phase: SupportVoicePhase) {
@@ -96,20 +100,87 @@ export function SupportVoiceCallOverlay({
   onToggleMic,
   onToggleSpeaker,
   onResumeAudio,
-  onOpenExternalBrowser
+  onOpenExternalBrowser,
+  allowMinimize = false,
+  minimized = false,
+  onMinimize,
+  onRestore
 }: SupportVoiceCallOverlayProps) {
   if (!open) return null;
 
   const connected = phase === "connected";
   const micBlocked = Boolean(error?.includes("ไมโครโฟน") || error?.includes("อนุญาต"));
 
+  if (minimized) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[120] w-[min(92vw,360px)] rounded-3xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
+        <div className="flex items-start gap-3">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white">
+            <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={34} height={34} className="h-8 w-8 object-contain" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-black">{counterpartyName}</div>
+            <div className="mt-0.5 text-xs text-white/50">
+              {connected ? "กำลังคุย · " + formatVoiceDuration(elapsedSeconds) : phaseText(phase)}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onRestore}
+            className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-black text-white"
+          >
+            ขยาย
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={onToggleMic}
+            className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-black"
+          >
+            {micMuted ? "🎙 เปิดไมค์" : "🔇 ปิดไมค์"}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleSpeaker}
+            className="rounded-2xl bg-white/10 px-3 py-3 text-xs font-black"
+          >
+            {speakerMuted ? "🔊 เปิดเสียง" : "🔈 ลำโพง"}
+          </button>
+          <button
+            type="button"
+            onClick={onEnd}
+            disabled={busy}
+            className="rounded-2xl bg-red-500 px-3 py-3 text-xs font-black text-white disabled:opacity-50"
+          >
+            ☎ วางสาย
+          </button>
+        </div>
+
+        <div className="mt-3 text-center text-[10px] text-white/35">
+          สายยังเชื่อมต่ออยู่ สามารถเปิดเมนูอื่นในระบบ IT ได้
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[120] overflow-y-auto bg-slate-950 text-white">
       <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-[max(28px,env(safe-area-inset-top))]">
-        <div className="flex items-center justify-center">
+        <div className="relative flex items-center justify-center">
           <div className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-bold tracking-wide text-white/80">
             CpIPOS Support Voice
           </div>
+          {allowMinimize ? (
+            <button
+              type="button"
+              onClick={onMinimize}
+              className="absolute right-0 rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-black text-white"
+            >
+              ย่อหน้าสาย
+            </button>
+          ) : null}
         </div>
 
         <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
