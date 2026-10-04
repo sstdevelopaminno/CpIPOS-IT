@@ -794,8 +794,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                     </div>
                   ) : ["accepted", "connecting", "connected"].includes(activeCall.status) ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                      <audio ref={voice.attachAudioElement} autoPlay playsInline className="hidden" />
-                      <div className="text-sm font-black text-emerald-800">
+                                            <div className="text-sm font-black text-emerald-800">
                         {voice.phase === "connected" && activeCall.assigned_it_user_id === actor?.user_id
                           ? "📞 กำลังคุยด้วยเสียง · " + formatVoiceDuration(voice.elapsedSeconds)
                           : "📞 คำขอเสียงถูกตอบรับแล้ว"}
