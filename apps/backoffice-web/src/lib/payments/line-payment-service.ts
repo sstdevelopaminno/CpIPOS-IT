@@ -21,23 +21,20 @@ type ContractRow = {
   ended_at: string | null;
 };
 
-type CycleRow = {
-  id: string;
-  package_id: string;
-  period_start: string;
-  period_end: string;
-  amount_due: number | string;
-  amount_paid: number | string;
-  status: string;
-  created_at: string;
-};
-
 type PackageRow = {
   id: string;
   code: string;
   name: string;
   monthly_price: number | string;
   yearly_price: number | string | null;
+};
+
+type PaymentRequestRow = {
+  id: string;
+  status: string;
+  submitted_at: string;
+  review_note: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 export type PublicPaymentAccount = {
@@ -49,26 +46,38 @@ export type PublicPaymentAccount = {
   promptpay_ready: boolean;
 };
 
+export type LinePaymentRequestSummary = {
+  id: string;
+  status: string;
+  submitted_at: string;
+  review_note: string | null;
+  scan_status: string | null;
+};
+
 export type LinePackagePaymentSnapshot = {
   store: {
     code: string;
     name: string;
   };
   package: {
+    id: string | null;
     code: string | null;
     name: string;
     billing_interval: string | null;
     service_end: string | null;
   };
   due: null | {
-    cycle_id: string;
     amount_due: number;
     amount_paid: number;
     outstanding_amount: number;
     currency: string;
+    due_date: string;
     period_start: string;
     period_end: string;
+    source: "contract_due";
   };
+  open_request: LinePaymentRequestSummary | null;
+  latest_request: LinePaymentRequestSummary | null;
   payment_account: PublicPaymentAccount;
   qr_url: string | null;
   qr_page_url: string | null;
@@ -79,23 +88,54 @@ function read(value: unknown, max: number) {
 }
 
 export function normalizePromptPayId(value: unknown) {
-  return read(value, 40).replace(/[^d]/g, "");
+  return read(value, 40).replace(/[^\d]/g, "");
 }
 
-function todayBangkok() {
+function bangkokDate(value: string | Date) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "";
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
-  }).formatToParts(new Date());
+  }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+function todayBangkok() {
+  return bangkokDate(new Date());
+}
+
+function addBillingPeriod(dateText: string, interval: string) {
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(dateText)
+    ? new Date(dateText + "T00:00:00Z")
+    : new Date(dateText);
+  if (Number.isNaN(parsed.getTime())) return dateText;
+  if (interval === "yearly") parsed.setUTCFullYear(parsed.getUTCFullYear() + 1);
+  else parsed.setUTCMonth(parsed.getUTCMonth() + 1);
+  return parsed.toISOString().slice(0, 10);
 }
 
 function amountText(amount: number) {
   const rounded = Math.round(amount * 100) / 100;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+}
+
+function paymentSummary(row: PaymentRequestRow | null | undefined): LinePaymentRequestSummary | null {
+  if (!row) return null;
+  const slipAi = row.metadata?.slip_ai;
+  const scanStatus = slipAi && typeof slipAi === "object" && !Array.isArray(slipAi)
+    ? String((slipAi as Record<string, unknown>).status ?? "") || null
+    : null;
+  return {
+    id: row.id,
+    status: row.status,
+    submitted_at: row.submitted_at,
+    review_note: row.review_note,
+    scan_status: scanStatus
+  };
 }
 
 export function buildPromptPayUrls(promptPayId: string, amount: number) {
@@ -137,7 +177,7 @@ export async function getLinePackagePaymentSnapshot(
 ): Promise<LinePackagePaymentSnapshot> {
   const db = getPrimarySupabaseServiceClient();
 
-  const [account, contractResult, cyclesResult] = await Promise.all([
+  const [account, contractResult, requestsResult] = await Promise.all([
     getPublicPaymentAccount(),
     db.from("tenant_subscription_contracts")
       .select("id,package_id,status,billing_interval,amount_per_cycle,currency,started_at,ended_at")
@@ -145,33 +185,21 @@ export async function getLinePackagePaymentSnapshot(
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<ContractRow>(),
-    db.from("tenant_billing_cycles")
-      .select("id,package_id,period_start,period_end,amount_due,amount_paid,status,created_at")
+    db.from("tenant_subscription_payment_requests")
+      .select("id,status,submitted_at,review_note,metadata")
       .eq("tenant_id", session.tenantId)
-      .order("period_start", { ascending: false })
-      .limit(24)
-      .returns<CycleRow[]>()
+      .order("created_at", { ascending: false })
+      .limit(10)
+      .returns<PaymentRequestRow[]>()
   ]);
 
   if (contractResult.error) throw new Error("subscription_contract_query_failed");
-  if (cyclesResult.error) throw new Error("billing_cycle_query_failed");
+  if (requestsResult.error) throw new Error("subscription_payment_request_query_failed");
 
   const contract = contractResult.data ?? null;
-  const today = todayBangkok();
-  const cycles = cyclesResult.data ?? [];
-
-  const dueCycle = cycles.find((cycle) => {
-    const amountDue = Number(cycle.amount_due ?? 0);
-    const amountPaid = Number(cycle.amount_paid ?? 0);
-    const outstanding = Math.max(0, amountDue - amountPaid);
-    return cycle.status !== "paid"
-      && cycle.period_start <= today
-      && Number.isFinite(outstanding)
-      && outstanding > 0.009;
-  }) ?? null;
-
-  const packageId = dueCycle?.package_id ?? contract?.package_id ?? null;
+  const packageId = contract?.package_id ?? null;
   let packageRow: PackageRow | null = null;
+
   if (packageId) {
     const packageResult = await db.from("subscription_packages")
       .select("id,code,name,monthly_price,yearly_price")
@@ -181,27 +209,48 @@ export async function getLinePackagePaymentSnapshot(
     packageRow = packageResult.data ?? null;
   }
 
+  const requests = requestsResult.data ?? [];
+  const openRow = requests.find((row) => row.status === "pending" || row.status === "under_review") ?? null;
+  const latestRow = requests[0] ?? null;
+
   let due: LinePackagePaymentSnapshot["due"] = null;
   let qrUrl: string | null = null;
   let qrPageUrl: string | null = null;
 
-  if (dueCycle) {
-    const amountDue = Number(dueCycle.amount_due ?? 0);
-    const amountPaid = Number(dueCycle.amount_paid ?? 0);
-    const outstanding = Math.round(Math.max(0, amountDue - amountPaid) * 100) / 100;
+  const today = todayBangkok();
+  const serviceEnd = contract?.ended_at ? bangkokDate(contract.ended_at) : "";
+  const interval = contract?.billing_interval === "yearly" ? "yearly"
+    : contract?.billing_interval === "monthly" ? "monthly" : "";
+  const contractAmount = Number(contract?.amount_per_cycle ?? 0);
+  const fallbackPrice = interval === "yearly"
+    ? Number(packageRow?.yearly_price ?? 0)
+    : Number(packageRow?.monthly_price ?? 0);
+  const amountDue = Number.isFinite(contractAmount) && contractAmount > 0
+    ? contractAmount
+    : Number.isFinite(fallbackPrice) && fallbackPrice > 0 ? fallbackPrice : 0;
 
+  if (
+    contract &&
+    packageRow &&
+    ["active", "trial"].includes(contract.status) &&
+    serviceEnd &&
+    serviceEnd <= today &&
+    amountDue > 0
+  ) {
+    const rounded = Math.round(amountDue * 100) / 100;
     due = {
-      cycle_id: dueCycle.id,
-      amount_due: amountDue,
-      amount_paid: amountPaid,
-      outstanding_amount: outstanding,
-      currency: contract?.currency || "THB",
-      period_start: dueCycle.period_start,
-      period_end: dueCycle.period_end
+      amount_due: rounded,
+      amount_paid: 0,
+      outstanding_amount: rounded,
+      currency: contract.currency || "THB",
+      due_date: serviceEnd,
+      period_start: serviceEnd,
+      period_end: addBillingPeriod(serviceEnd, interval),
+      source: "contract_due"
     };
 
-    if (account.promptpay_ready) {
-      const urls = buildPromptPayUrls(account.promptpay_id, outstanding);
+    if (account.promptpay_ready && !openRow) {
+      const urls = buildPromptPayUrls(account.promptpay_id, rounded);
       qrUrl = urls.qrUrl;
       qrPageUrl = urls.pageUrl;
     }
@@ -213,12 +262,15 @@ export async function getLinePackagePaymentSnapshot(
       name: session.storeName
     },
     package: {
+      id: packageRow?.id ?? null,
       code: packageRow?.code ?? null,
       name: packageRow?.name ?? "ยังไม่กำหนดแพ็กเกจ",
-      billing_interval: contract?.billing_interval ?? null,
+      billing_interval: interval || null,
       service_end: contract?.ended_at ?? null
     },
     due,
+    open_request: paymentSummary(openRow),
+    latest_request: paymentSummary(latestRow),
     payment_account: account,
     qr_url: qrUrl,
     qr_page_url: qrPageUrl
