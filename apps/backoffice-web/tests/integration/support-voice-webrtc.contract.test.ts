@@ -26,6 +26,7 @@ describe("Support voice WebRTC Phase 2", () => {
   it("creates the signaling key only when a call is accepted", () => {
     expect(edge).toContain("function newSignalingKey()");
     expect(edge).toContain("signaling_key: newSignalingKey()");
+    expect(edge).toContain("ensureCallSignalingKey");
     expect(edge).toContain("delete safe.signaling_key");
     expect(edge).toContain('row.assigned_it_user_id === actor.uid');
   });
