@@ -104,10 +104,6 @@ function bangkokDate(value: string | Date) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function todayBangkok() {
-  return bangkokDate(new Date());
-}
-
 function addBillingPeriod(dateText: string, interval: string) {
   const parsed = /^\d{4}-\d{2}-\d{2}$/.test(dateText)
     ? new Date(dateText + "T00:00:00Z")
@@ -217,7 +213,6 @@ export async function getLinePackagePaymentSnapshot(
   let qrUrl: string | null = null;
   let qrPageUrl: string | null = null;
 
-  const today = todayBangkok();
   const serviceEnd = contract?.ended_at ? bangkokDate(contract.ended_at) : "";
   const contractEndReached = Boolean(
     contract?.ended_at &&
