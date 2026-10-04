@@ -36,8 +36,10 @@ export type SupportVoiceCall = Record<string, unknown> & {
   requested_by_name: string;
   assigned_it_name?: string | null;
   assigned_it_role?: string | null;
+  signaling_key?: string | null;
   requested_at: string;
   accepted_at?: string | null;
+  connected_at?: string | null;
 };
 
 async function issueLineSupportBridge(session: LineSupportSession): Promise<BridgeToken> {
@@ -175,5 +177,40 @@ export async function performLineSupportVoiceAction(
     origin: "line_liff"
   });
   await mirrorSupportChatHead(data.head);
+  return data;
+}
+
+
+export async function getLineSupportVoiceIceConfig(
+  session: LineSupportSession,
+  conversationId: string,
+  callId: string
+) {
+  const bridge = await issueLineSupportBridge(session);
+  return callSupportChat<{
+    ice_servers: RTCIceServer[];
+    turn_enabled: boolean;
+  }>(bridge, "get_voice_ice_config", {
+    conversation_id: conversationId,
+    call_id: callId
+  });
+}
+
+export async function updateLineSupportVoiceState(
+  session: LineSupportSession,
+  conversationId: string,
+  callId: string,
+  state: "connecting" | "connected"
+) {
+  const bridge = await issueLineSupportBridge(session);
+  const data = await callSupportChat<{
+    call: SupportVoiceCall;
+    conversation: Conversation;
+    head: SupportChatHead;
+  }>(bridge, "update_voice_call_state", {
+    conversation_id: conversationId,
+    call_id: callId,
+    state
+  });
   return data;
 }
