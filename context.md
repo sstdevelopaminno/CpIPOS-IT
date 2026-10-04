@@ -256,3 +256,10 @@ This checkpoint supersedes the older PR #21 immediate-next-action note for the L
 - Confirmed LIFF endpoint: `https://cp-ipos-it-web-git-feat-line-1ecbd3-sstdevelopaminnos-projects.vercel.app/support/line`.
 - LIFF scopes: `openid profile`; size Full; Scan QR off; Module mode off.
 - Exact-head CI and Vercel deployment were green after wiring the confirmed LINE identifiers.
+
+
+### LINE Support env reload checkpoint — 2026-10-04
+
+- Vercel project `cp-ipos-it-web` now has server-only `LINE_SUPPORT_SESSION_SECRET` configured for Production and Preview.
+- Production redeployment is required so the merged LINE Support gateway loads the new secret at runtime.
+- No application behavior change is introduced by this checkpoint.
