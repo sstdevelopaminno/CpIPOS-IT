@@ -36,6 +36,7 @@ export async function GET(
     const data = await callSupportChat<{
       conversation: Conversation;
       messages: Array<Record<string, unknown>>;
+      active_call: Record<string, unknown> | null;
       head: SupportChatHead;
       head_changed?: boolean;
       claimed?: boolean;
@@ -65,7 +66,7 @@ export async function GET(
       });
     }
 
-    return ok({ conversation: data.conversation, messages: data.messages });
+    return ok({ conversation: data.conversation, messages: data.messages, active_call: data.active_call ?? null });
   } catch (error) {
     return guardItAdminError(error);
   }
@@ -94,6 +95,7 @@ export async function POST(
       message?: string;
       status?: string;
       internal_note?: string;
+      call_id?: string;
       attachment?: { name?: string; mime_type?: string; size_bytes?: number; data_base64?: string };
     } | null;
     const action = String(body?.action ?? "").trim();
@@ -201,6 +203,57 @@ export async function POST(
         ipAddress: auth.requestMeta.ipAddress ?? undefined,
         userAgent: auth.requestMeta.userAgent ?? undefined
       });
+      return ok(data);
+    }
+
+
+    if (["voice_invite", "voice_accept", "voice_cancel", "voice_end"].includes(action)) {
+      const rate = await enforceRateLimit({
+        namespace: "it-support-voice-control",
+        key: `${auth.auth.userId}:${conversationId}:${getClientIpAddress(request)}`,
+        max: 30,
+        windowMs: 10 * 60_000,
+        failClosedOnBackendError: true
+      });
+      if (!rate.ok) return fail("voice_control_rate_limited", "ทำรายการเสียงถี่เกินไป กรุณารอสักครู่", 429);
+
+      const map = {
+        voice_invite: "invite_voice_call",
+        voice_accept: "accept_voice_call",
+        voice_cancel: "cancel_voice_call",
+        voice_end: "end_voice_call"
+      } as const;
+      const target = map[action as keyof typeof map];
+      const callId = String(body?.call_id ?? "").trim();
+      if (action !== "voice_invite" && !callId) {
+        return fail("call_id_required", "ไม่พบคำขอคุยด้วยเสียง", 422);
+      }
+
+      const data = await callSupportChat<{
+        call: Record<string, unknown>;
+        conversation: Conversation;
+        head: SupportChatHead;
+      }>(bridge, target, {
+        conversation_id: conversationId,
+        call_id: callId || null
+      });
+      await mirrorSupportChatHead(data.head);
+
+      await appendAuditLog({
+        tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
+        actorUserId: auth.auth.userId,
+        actorRole: auth.auth.platformRole,
+        action: `support_voice_${action.replace("voice_", "")}`,
+        targetTable: "support_chat_heads",
+        targetId: conversationId,
+        module: "support_chat",
+        entityType: "support_voice_call",
+        entityId: typeof data.call.id === "string" ? data.call.id : conversationId,
+        metadata: { phase: "control_plane", media_enabled: false },
+        ipAddress: auth.requestMeta.ipAddress ?? undefined,
+        userAgent: auth.requestMeta.userAgent ?? undefined
+      });
+
       return ok(data);
     }
 

@@ -71,7 +71,20 @@ type InboxResponse = {
   actor: { user_id: string; role: "it_admin" | "it_support" };
 };
 
-type DetailResponse = { conversation: Conversation; messages: Message[] };
+type VoiceCall = {
+  id: string;
+  conversation_id: string;
+  direction: "store_to_it" | "it_to_store";
+  status: "requested" | "accepted" | "connecting" | "connected" | "declined" | "cancelled" | "ended" | "failed";
+  requested_by_name: string;
+  assigned_it_user_id?: string | null;
+  assigned_it_name?: string | null;
+  assigned_it_role?: string | null;
+  requested_at: string;
+  accepted_at?: string | null;
+};
+
+type DetailResponse = { conversation: Conversation; messages: Message[]; active_call: VoiceCall | null };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string } };
 
 function initials(value: string) {
@@ -140,6 +153,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const [selectedId, setSelectedId] = useState("");
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [activeCall, setActiveCall] = useState<VoiceCall | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "mine" | "active" | "closed">("all");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
@@ -161,6 +175,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     setSelectedId((current) => current === id ? "" : current);
     setConversation((current) => current?.id === id ? null : current);
     setMessages([]);
+    setActiveCall(null);
     setNoteDraft("");
     setRemoteTyping("");
     headSignalRef.current = "";
@@ -206,6 +221,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       setConversation(json.data.conversation);
       setNoteDraft(json.data.conversation.internal_note ?? "");
       setMessages(json.data.messages);
+      setActiveCall(json.data.active_call ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
     } finally {
@@ -259,8 +275,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         });
       }
 
+      const voiceEvent = head.latest_sender_type === "system" &&
+        String(head.latest_message_preview ?? "").startsWith("📞");
       if (
         head.latest_sender_type === "store" ||
+        voiceEvent ||
         head.status !== conversation?.status ||
         head.assigned_user_id !== conversation?.assigned_user_id
       ) {
@@ -366,6 +385,45 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       setDraft((current) => current || message);
       setAttachment((current) => current ?? pendingAttachment);
       setError(cause instanceof Error ? cause.message : "ส่งข้อความไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function performVoiceAction(
+    action: "voice_invite" | "voice_accept" | "voice_cancel" | "voice_end",
+    callId?: string
+  ) {
+    if (!selectedId) return;
+    setBusy("voice");
+    setError("");
+    try {
+      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${selectedId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, call_id: callId ?? null })
+      });
+      const json = await response.json().catch(() => null) as Envelope<{
+        call: VoiceCall;
+        conversation: Conversation;
+        head: Head;
+      }> | null;
+      if (!response.ok || !json?.data) {
+        throw new Error(json?.error?.message || "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
+      }
+      setConversation(json.data.conversation);
+      setActiveCall(
+        ["requested", "accepted", "connecting", "connected"].includes(json.data.call.status)
+          ? json.data.call
+          : null
+      );
+      setRows((current) => [
+        json.data!.head,
+        ...current.filter((row) => row.conversation_id !== json.data!.head.conversation_id)
+      ]);
+      await loadConversation(selectedId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
     } finally {
       setBusy("");
     }
@@ -478,6 +536,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       setSelectedId("");
       setConversation(null);
       setMessages([]);
+      setActiveCall(null);
       setNoteDraft("");
       await loadInbox();
     } catch (cause) {
@@ -653,6 +712,73 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                   disabled={busy === "delete"}
                   className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-700">ลบถาวร</button> : null}
               </header>
+
+              {conversation.status !== "closed" ? (
+                <div className="border-b border-slate-200 bg-white px-4 py-3">
+                  {!activeCall ? (
+                    <button
+                      type="button"
+                      onClick={() => void performVoiceAction("voice_invite")}
+                      disabled={busy === "voice"}
+                      className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-700 disabled:opacity-50"
+                    >
+                      📞 เชิญลูกค้าคุยด้วยเสียง
+                    </button>
+                  ) : activeCall.status === "requested" && activeCall.direction === "store_to_it" ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-amber-800">📞 ลูกค้าขอคุยด้วยเสียง</div>
+                        <div className="mt-1 text-[11px] text-amber-700">เจ้าหน้าที่คนแรกที่กดรับ จะได้สิทธิ์ดูแลคำขอนี้</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void performVoiceAction("voice_accept", activeCall.id)}
+                        disabled={busy === "voice"}
+                        className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50"
+                      >
+                        รับคำขอ
+                      </button>
+                    </div>
+                  ) : activeCall.status === "requested" && activeCall.direction === "it_to_store" ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-blue-800">📞 ส่งคำเชิญคุยด้วยเสียงแล้ว</div>
+                        <div className="mt-1 text-[11px] text-blue-700">กำลังรอลูกค้าตอบรับจาก LINE Support</div>
+                      </div>
+                      {activeCall.assigned_it_user_id === actor?.user_id ? (
+                        <button
+                          type="button"
+                          onClick={() => void performVoiceAction("voice_cancel", activeCall.id)}
+                          disabled={busy === "voice"}
+                          className="rounded-xl border border-blue-300 bg-white px-4 py-2 text-xs font-black text-blue-700 disabled:opacity-50"
+                        >
+                          ยกเลิกคำเชิญ
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : ["accepted", "connecting", "connected"].includes(activeCall.status) ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-emerald-800">📞 คำขอเสียงถูกตอบรับแล้ว</div>
+                        <div className="mt-1 text-[11px] text-emerald-700">
+                          {activeCall.assigned_it_name ? "ผู้ดูแล: " + activeCall.assigned_it_name + " · " : ""}
+                          Control Plane พร้อมแล้ว ขั้นต่อไปคือเชื่อม WebRTC
+                        </div>
+                      </div>
+                      {activeCall.assigned_it_user_id === actor?.user_id ? (
+                        <button
+                          type="button"
+                          onClick={() => void performVoiceAction("voice_end", activeCall.id)}
+                          disabled={busy === "voice"}
+                          className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-xs font-black text-emerald-800 disabled:opacity-50"
+                        >
+                          ยุติคำขอเสียง
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f7faff] p-4">
                 {busy === "conversation" && !messages.length ? <div className="text-center text-xs text-slate-500">กำลังโหลด...</div> : null}

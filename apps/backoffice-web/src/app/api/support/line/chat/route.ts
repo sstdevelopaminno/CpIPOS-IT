@@ -8,6 +8,7 @@ import {
   closeLineSupportConversation,
   loadLineSupportConversation,
   openLineSupportConversation,
+  performLineSupportVoiceAction,
   sendLineSupportMessage
 } from "@/lib/support-chat/line-support-chat-service";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
       action?: string;
       conversation_id?: string;
       message?: string;
+      call_id?: string;
     } | null;
     const action = String(body?.action ?? "").trim();
     const ip = getClientIpAddress(request);
@@ -82,6 +84,37 @@ export async function POST(request: Request) {
       });
       if (!rate.ok) return fail("support_chat_rate_limited", "ส่งข้อความถี่เกินไป กรุณารอสักครู่", 429);
       return ok(await sendLineSupportMessage(session, conversationId, message));
+    }
+
+
+    if (["voice_request", "voice_accept", "voice_cancel", "voice_decline", "voice_end"].includes(action)) {
+      const rate = await enforceRateLimit({
+        namespace: "line-support-voice-control",
+        key: [session.bindingId, conversationId, ip].join(":"),
+        max: 20,
+        windowMs: 10 * 60_000,
+        failClosedOnBackendError: true
+      });
+      if (!rate.ok) return fail("voice_control_rate_limited", "ทำรายการเสียงถี่เกินไป กรุณารอสักครู่", 429);
+
+      const map = {
+        voice_request: "request_voice_call",
+        voice_accept: "accept_voice_call",
+        voice_cancel: "cancel_voice_call",
+        voice_decline: "decline_voice_call",
+        voice_end: "end_voice_call"
+      } as const;
+      const target = map[action as keyof typeof map];
+      const callId = String(body?.call_id ?? "").trim();
+      if (action !== "voice_request" && !callId) {
+        return fail("call_id_required", "ไม่พบคำขอคุยด้วยเสียง", 422);
+      }
+      return ok(await performLineSupportVoiceAction(
+        session,
+        conversationId,
+        target,
+        callId || undefined
+      ));
     }
 
     if (action === "close") {

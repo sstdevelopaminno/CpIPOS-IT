@@ -68,10 +68,12 @@ export function SupportChatNotifier() {
 
       notifyUpdate(next);
 
+      const voiceRequest = next.latest_sender_type === "system" &&
+        String(next.latest_message_preview ?? "").includes("ลูกค้าขอคุยด้วยเสียง");
       if (
         allowToast &&
         initialized.current &&
-        next.latest_sender_type === "store" &&
+        (next.latest_sender_type === "store" || voiceRequest) &&
         Number(next.unread_it_count ?? 0) > 0
       ) {
         const noticeKey = next.conversation_id + ":" + String(next.latest_message_at ?? signal);
@@ -81,7 +83,9 @@ export function SupportChatNotifier() {
           notifiedSignals.current = new Set(Array.from(notifiedSignals.current).slice(-50));
         }
 
-        const title = next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่";
+        const title = voiceRequest
+          ? (next.store_name ? `📞 ขอคุยด้วยเสียง · ${next.store_name}` : "📞 ลูกค้าขอคุยด้วยเสียง")
+          : (next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่");
         const message = next.latest_message_preview || next.subject || "ลูกค้าส่งข้อความเข้ามา";
         setToast({ title, message });
         window.setTimeout(() => setToast(null), 5000);

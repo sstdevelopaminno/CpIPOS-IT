@@ -28,6 +28,18 @@ type Message = Record<string, unknown> & {
   created_at: string;
 };
 
+export type SupportVoiceCall = Record<string, unknown> & {
+  id: string;
+  conversation_id: string;
+  direction: "store_to_it" | "it_to_store";
+  status: "requested" | "accepted" | "connecting" | "connected" | "declined" | "cancelled" | "ended" | "failed";
+  requested_by_name: string;
+  assigned_it_name?: string | null;
+  assigned_it_role?: string | null;
+  requested_at: string;
+  accepted_at?: string | null;
+};
+
 async function issueLineSupportBridge(session: LineSupportSession): Promise<BridgeToken> {
   const db = getPrimarySupabaseServiceClient();
   const issued = await db.rpc("issue_support_chat_bridge_token", {
@@ -86,6 +98,7 @@ export async function loadLineSupportConversation(
   const data = await callSupportChat<{
     conversation: Conversation;
     messages: Message[];
+    active_call: SupportVoiceCall | null;
     head: SupportChatHead;
     head_changed?: boolean;
   }>(bridge, "get_messages", {
@@ -97,7 +110,7 @@ export async function loadLineSupportConversation(
     await mirrorSupportChatHead(data.head);
   }
 
-  return { conversation: data.conversation, messages: data.messages };
+  return { conversation: data.conversation, messages: data.messages, active_call: data.active_call ?? null };
 }
 
 export async function sendLineSupportMessage(
@@ -137,6 +150,29 @@ export async function closeLineSupportConversation(
     head: SupportChatHead;
   }>(bridge, "close_conversation", {
     conversation_id: conversationId
+  });
+  await mirrorSupportChatHead(data.head);
+  return data;
+}
+
+
+export async function performLineSupportVoiceAction(
+  session: LineSupportSession,
+  conversationId: string,
+  action: "request_voice_call" | "accept_voice_call" | "cancel_voice_call" | "decline_voice_call" | "end_voice_call",
+  callId?: string
+) {
+  const bridge = await issueLineSupportBridge(session);
+  const data = await callSupportChat<{
+    call: SupportVoiceCall;
+    conversation: Conversation;
+    head: SupportChatHead;
+    already_active?: boolean;
+    already_accepted?: boolean;
+  }>(bridge, action, {
+    conversation_id: conversationId,
+    call_id: callId ?? null,
+    origin: "line_liff"
   });
   await mirrorSupportChatHead(data.head);
   return data;
