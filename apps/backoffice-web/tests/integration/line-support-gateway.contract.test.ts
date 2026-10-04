@@ -57,6 +57,14 @@ describe("LINE Support Gateway", () => {
     expect(chatRoute).toContain("failClosedOnBackendError: true");
   });
 
+  it("opens the canonical chat in the same auth response and shows an immediate transition screen", () => {
+    expect(authRoute).toContain("openLineSupportConversation");
+    expect(authRoute).toContain("chat");
+    expect(client).toContain('"connecting"');
+    expect(client).toContain("กำลังเปิดแชท Support");
+    expect(client).toContain("applyChat(result.chat)");
+  });
+
   it("uses LIFF only as the entry identity surface and keeps chat on CpIPOS APIs", () => {
     expect(client).toContain("https://static.line-scdn.net/liff/edge/2/sdk.js");
     expect(client).toContain('DEFAULT_LIFF_ID = "2011852850-5tjQo09l"');
