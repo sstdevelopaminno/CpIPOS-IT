@@ -26,7 +26,7 @@ type Store = {
 };
 
 type AuthResult =
-  | { state: "ready"; store: Store }
+  | { state: "ready"; store: Store; chat: ChatDetail }
   | {
       state: "verification_required";
       challenge_id: string;
@@ -104,7 +104,7 @@ export function LineSupportClient() {
   const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID || DEFAULT_LIFF_ID;
   const bootedRef = useRef(false);
   const endRef = useRef<HTMLDivElement | null>(null);
-  const [stage, setStage] = useState<"boot" | "store" | "otp" | "chat">("boot");
+  const [stage, setStage] = useState<"boot" | "store" | "otp" | "connecting" | "chat">("boot");
   const [idToken, setIdToken] = useState("");
   const [storeCode, setStoreCode] = useState("");
   const [store, setStore] = useState<Store | null>(null);
@@ -126,23 +126,29 @@ export function LineSupportClient() {
     return detail;
   }, []);
 
+  const applyChat = useCallback((detail: ChatDetail) => {
+    setConversation(detail.conversation);
+    setMessages(detail.messages);
+    setStage("chat");
+  }, []);
+
   const openChat = useCallback(async () => {
     setBusy("open");
     setError("");
+    setStage("connecting");
     try {
       const detail = await api<ChatDetail>("/api/support/line/chat", {
         method: "POST",
         body: JSON.stringify({ action: "open" })
       });
-      setConversation(detail.conversation);
-      setMessages(detail.messages);
-      setStage("chat");
+      applyChat(detail);
     } catch (cause) {
+      setStage("chat");
       setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
     } finally {
       setBusy("");
     }
-  }, []);
+  }, [applyChat]);
 
   const boot = useCallback(async () => {
     if (bootedRef.current) return;
@@ -238,7 +244,7 @@ export function LineSupportClient() {
         setStage("otp");
         return;
       }
-      await openChat();
+      applyChat(result.chat);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ตรวจสอบร้านค้าไม่สำเร็จ");
     } finally {
@@ -250,6 +256,7 @@ export function LineSupportClient() {
     event.preventDefault();
     setBusy("verify");
     setError("");
+    setStage("connecting");
     try {
       const result = await api<AuthResult>("/api/support/line/auth", {
         method: "POST",
@@ -262,8 +269,12 @@ export function LineSupportClient() {
         })
       });
       setStore(result.store);
-      await openChat();
+      if (result.state !== "ready") {
+        throw new Error("ยืนยัน OTP สำเร็จ แต่ยังเปิดห้องแชทไม่ได้ กรุณาลองใหม่");
+      }
+      applyChat(result.chat);
     } catch (cause) {
+      setStage("otp");
       setError(cause instanceof Error ? cause.message : "ยืนยัน OTP ไม่สำเร็จ");
     } finally {
       setBusy("");
@@ -365,6 +376,22 @@ export function LineSupportClient() {
               <div>
                 <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
                 <div className="mt-4 text-sm font-bold">กำลังเชื่อมต่อ LINE…</div>
+              </div>
+            </div>
+          ) : null}
+
+          {stage === "connecting" ? (
+            <div className="flex flex-1 items-center justify-center p-8 text-center">
+              <div className="w-full max-w-xs">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
+                  <div className="h-9 w-9 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" />
+                </div>
+                <div className="mt-5 text-2xl font-black">กำลังเปิดแชท Support</div>
+                <div className="mt-2 text-sm leading-6 text-slate-500">
+                  กำลังยืนยันสิทธิ์และเตรียมห้องสนทนา
+                  <br />
+                  กรุณารอสักครู่ ไม่ต้องกดปิดหน้านี้
+                </div>
               </div>
             </div>
           ) : null}
