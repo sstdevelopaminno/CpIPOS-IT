@@ -78,7 +78,7 @@ export function useSupportVoiceCall({
   const realtimeClientRef = useRef<ReturnType<typeof getSupabaseBrowserClient> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const readyIntervalRef = useRef<number | null>(null);
   const disconnectTimerRef = useRef<number | null>(null);
   const elapsedTimerRef = useRef<number | null>(null);
@@ -95,13 +95,6 @@ export function useSupportVoiceCall({
   const [speakerMuted, setSpeakerMuted] = useState(false);
   const [needsAudioResume, setNeedsAudioResume] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-  const attachAudioElement = useCallback((node: HTMLAudioElement | null) => {
-    remoteAudioRef.current = node;
-    if (node && remoteStreamRef.current) {
-      node.srcObject = remoteStreamRef.current;
-    }
-  }, []);
 
   const isInitiator = Boolean(call) && (
     (call!.direction === "store_to_it" && side === "store") ||
@@ -158,9 +151,9 @@ export function useSupportVoiceCall({
     remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
     remoteStreamRef.current = null;
 
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.pause();
-      remoteAudioRef.current.srcObject = null;
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+      audioElementRef.current.srcObject = null;
     }
 
     setMicMuted(false);
@@ -171,8 +164,10 @@ export function useSupportVoiceCall({
 
   const attachRemoteStream = useCallback((stream: MediaStream) => {
     remoteStreamRef.current = stream;
-    const audio = remoteAudioRef.current;
-    if (!audio) return;
+    const audio = audioElementRef.current ?? new Audio();
+    audio.autoplay = true;
+    audio.preload = "auto";
+    audioElementRef.current = audio;
     audio.srcObject = stream;
     audio.muted = speakerMuted;
     void audio.play().then(() => {
@@ -463,14 +458,14 @@ export function useSupportVoiceCall({
 
   const toggleSpeaker = useCallback(() => {
     const nextMuted = !speakerMuted;
-    if (remoteAudioRef.current) remoteAudioRef.current.muted = nextMuted;
+    if (audioElementRef.current) audioElementRef.current.muted = nextMuted;
     setSpeakerMuted(nextMuted);
   }, [speakerMuted]);
 
   const resumeAudio = useCallback(async () => {
-    if (!remoteAudioRef.current) return;
+    if (!audioElementRef.current) return;
     try {
-      await remoteAudioRef.current.play();
+      await audioElementRef.current.play();
       setNeedsAudioResume(false);
     } catch {
       setNeedsAudioResume(true);
@@ -510,7 +505,6 @@ export function useSupportVoiceCall({
     speakerMuted,
     needsAudioResume,
     elapsedSeconds,
-    attachAudioElement,
     start,
     endLocal,
     toggleMic,
