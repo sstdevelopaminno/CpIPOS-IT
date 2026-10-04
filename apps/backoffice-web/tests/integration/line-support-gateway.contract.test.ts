@@ -78,9 +78,11 @@ describe("LINE Support Gateway", () => {
     expect(client).toContain("ต้องการจบการสนทนานี้จริงหรือไม่");
   });
 
-  it("adds an IT inbox polling fallback when realtime stalls", () => {
+  it("adds a bounded IT inbox polling fallback only when realtime stalls", () => {
     expect(notifier).toContain("fallbackPoll");
-    expect(notifier).toContain("2500");
+    expect(notifier).toContain("realtimeHealthy");
+    expect(notifier).toContain("15000");
+    expect(notifier).not.toContain("2500");
     expect(notifier).toContain("refreshSnapshot(true)");
   });
 
