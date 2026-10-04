@@ -164,12 +164,13 @@ export function useSupportVoiceCall({
 
   const attachRemoteStream = useCallback((stream: MediaStream) => {
     remoteStreamRef.current = stream;
-    const audio = audioElementRef.current ?? new Audio();
+    audioElementRef.current?.pause();
+    const audio = new Audio();
     audio.autoplay = true;
     audio.preload = "auto";
-    audioElementRef.current = audio;
     audio.srcObject = stream;
     audio.muted = speakerMuted;
+    audioElementRef.current = audio;
     void audio.play().then(() => {
       setNeedsAudioResume(false);
     }).catch(() => {
