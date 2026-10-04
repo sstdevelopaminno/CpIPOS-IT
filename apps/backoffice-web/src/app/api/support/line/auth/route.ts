@@ -10,6 +10,7 @@ import {
   verifyLineSupportOtp
 } from "@/lib/support-chat/line-support-auth";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
+import { openLineSupportConversation } from "@/lib/support-chat/line-support-chat-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,10 +50,23 @@ export async function POST(request: Request) {
     if (action === "start") {
       const binding = await findActiveLineSupportBinding(identity, store);
       if (binding) {
-        await establishLineSupportSession({ binding, store, identity });
+        const openRate = await enforceRateLimit({
+          namespace: "line-support-auth-open",
+          key: [identity.userId, store.storeCode, ip].join(":"),
+          max: 10,
+          windowMs: 10 * 60_000,
+          failClosedOnBackendError: true
+        });
+        if (!openRate.ok) {
+          return fail("chat_open_rate_limited", "เปิดแชทถี่เกินไป กรุณารอสักครู่", 429);
+        }
+
+        const session = await establishLineSupportSession({ binding, store, identity });
+        const chat = await openLineSupportConversation(session);
         return ok({
           state: "ready",
-          store: { code: store.storeCode, name: store.storeName, logo_url: store.storeLogoUrl }
+          store: { code: store.storeCode, name: store.storeName, logo_url: store.storeLogoUrl },
+          chat
         });
       }
 
@@ -94,11 +108,13 @@ export async function POST(request: Request) {
       challengeId: String(body?.challenge_id ?? ""),
       otp: body?.otp
     });
-    await establishLineSupportSession({ binding, store, identity });
+    const session = await establishLineSupportSession({ binding, store, identity });
+    const chat = await openLineSupportConversation(session);
 
     return ok({
       state: "ready",
-      store: { code: store.storeCode, name: store.storeName, logo_url: store.storeLogoUrl }
+      store: { code: store.storeCode, name: store.storeName, logo_url: store.storeLogoUrl },
+      chat
     });
   } catch (error) {
     return errorResponse(error);
