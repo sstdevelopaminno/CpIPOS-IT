@@ -627,7 +627,7 @@ export function LineSupportClient() {
 
           {stage === "chat" && conversation ? (
             <>
-              <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
+              <div className="shrink-0 border-b border-slate-100 bg-slate-50 px-5 py-3">
                 <div className="text-xs font-black text-blue-700">{statusText(conversation.status)}</div>
                 {conversation.assigned_user_name ? (
                   <div className="mt-1 text-[11px] text-slate-500">
@@ -636,7 +636,7 @@ export function LineSupportClient() {
                 ) : null}
               </div>
 
-              <div className="border-b border-slate-100 px-4 py-3">
+              <div className="shrink-0 border-b border-slate-100 px-4 py-3">
                 {!activeCall ? (
                   <button
                     type="button"
@@ -770,7 +770,7 @@ export function LineSupportClient() {
                 ) : null}
               </div>
 
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-5">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-5 pb-6 [scrollbar-gutter:stable]">
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
                     const welcome = message.message_body.startsWith("CpIPOS Support ให้บริการ");
@@ -803,58 +803,60 @@ export function LineSupportClient() {
                 <div ref={endRef} />
               </div>
 
-              {error ? <div className="mx-4 mb-2 shrink-0 rounded-xl bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">{error}</div> : null}
+              <div className="sticky bottom-0 z-20 shrink-0 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
+                {error ? <div className="mx-4 mb-2 rounded-xl bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">{error}</div> : null}
 
-              {conversation.status === "closed" ? (
-                <div className="border-t border-slate-100 p-4">
-                  <button
-                    type="button"
-                    onClick={() => void openChat()}
-                    disabled={busy === "open"}
-                    className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-black text-white"
-                  >
-                    เริ่มสนทนาใหม่
-                  </button>
-                </div>
-              ) : (
-                <div className="shrink-0 border-t border-slate-100 bg-white p-3">
-                  {remoteTyping ? (
-                    <div className="mb-2 flex items-center gap-2 text-[11px] font-bold text-slate-500">
-                      <span>{remoteTyping} กำลังพิมพ์ตอบกลับ</span>
-                      <span className="animate-pulse tracking-widest">•••</span>
-                    </div>
-                  ) : null}
-                  <form onSubmit={sendMessage} className="flex items-end gap-2">
-                    <textarea
-                      value={draft}
-                      onChange={(event) => {
-                        const value = event.target.value.slice(0, 4000);
-                        setDraft(value);
-                        announceTyping(Boolean(value.trim()));
-                      }}
-                      onBlur={() => announceTyping(false)}
-                      rows={1}
-                      placeholder="พิมพ์ข้อความถึงทีม IT…"
-                      className="max-h-32 min-h-12 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                    />
+                {conversation.status === "closed" ? (
+                  <div className="border-t border-slate-100 p-4">
                     <button
-                      type="submit"
-                      disabled={busy === "send" || !draft.trim()}
-                      className="h-12 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white disabled:opacity-50"
+                      type="button"
+                      onClick={() => void openChat()}
+                      disabled={busy === "open"}
+                      className="w-full rounded-2xl bg-blue-600 px-4 py-4 text-sm font-black text-white"
                     >
-                      ส่ง
+                      เริ่มสนทนาใหม่
                     </button>
-                  </form>
-                  <button
-                    type="button"
-                    onClick={() => void closeConversation()}
-                    disabled={busy === "close"}
-                    className="mt-2 w-full py-2 text-xs font-bold text-slate-400"
-                  >
-                    จบการสนทนา
-                  </button>
-                </div>
-              )}
+                  </div>
+                ) : (
+                  <div className="border-t border-slate-100 bg-white p-3">
+                    {remoteTyping ? (
+                      <div className="mb-2 flex items-center gap-2 text-[11px] font-bold text-slate-500">
+                        <span>{remoteTyping} กำลังพิมพ์ตอบกลับ</span>
+                        <span className="animate-pulse tracking-widest">•••</span>
+                      </div>
+                    ) : null}
+                    <form onSubmit={sendMessage} className="flex items-end gap-2">
+                      <textarea
+                        value={draft}
+                        onChange={(event) => {
+                          const value = event.target.value.slice(0, 4000);
+                          setDraft(value);
+                          announceTyping(Boolean(value.trim()));
+                        }}
+                        onBlur={() => announceTyping(false)}
+                        rows={1}
+                        placeholder="พิมพ์ข้อความถึงทีม IT…"
+                        className="max-h-28 min-h-12 min-w-0 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy === "send" || !draft.trim()}
+                        className="h-12 shrink-0 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white disabled:opacity-50"
+                      >
+                        ส่ง
+                      </button>
+                    </form>
+                    <button
+                      type="button"
+                      onClick={() => void closeConversation()}
+                      disabled={busy === "close"}
+                      className="mt-2 w-full py-2 text-xs font-bold text-slate-400"
+                    >
+                      จบการสนทนา
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           ) : null}
         </section>

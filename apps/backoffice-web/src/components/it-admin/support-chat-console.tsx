@@ -657,7 +657,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           </div>
         </aside>
 
-        <section className="flex min-h-0 flex-col">
+        <section className="relative flex min-h-0 flex-col overflow-hidden">
           {conversation ? (
             <>
               <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3">
@@ -753,7 +753,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 </div>
               ) : null}
 
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f7faff] p-4">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f7faff] p-4 pb-6 [scrollbar-gutter:stable]">
                 {busy === "conversation" && !messages.length ? <div className="text-center text-xs text-slate-500">กำลังโหลด...</div> : null}
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
@@ -779,51 +779,53 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 })}
               </div>
 
-              <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <input value={noteDraft} onChange={(event) => setNoteDraft(event.target.value.slice(0,3000))}
-                    placeholder="โน้ตภายใน IT (ลูกค้าไม่เห็น)"
-                    className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
-                  <button type="button" onClick={() => void saveNote()} disabled={busy === "note"}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">บันทึกโน้ต</button>
-                </div>
-              </div>
-              {conversation.status === "closed" ? (
-                <div className="border-t border-slate-200 bg-slate-50 px-4 py-4 text-center text-xs font-black text-slate-500">
-                  จบการสนทนาแล้ว · เก็บข้อความไว้ในสมุดบันทึก · รูปภาพถูกลบออกจากระบบ
-                </div>
-              ) : (
-                <div className="shrink-0 border-t border-slate-200 bg-white p-3">
-                  {remoteTyping ? <div className="mb-2 text-[11px] font-bold text-slate-500">{remoteTyping} กำลังพิมพ์…</div> : null}
-                  {attachment ? <div className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                    <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
-                    <button type="button" onClick={() => setAttachment(null)} className="font-black">ลบ</button>
-                  </div> : null}
-                  <div className="flex gap-2">
-                    <label className="grid h-[50px] w-[50px] shrink-0 cursor-pointer place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-600" title="แนบรูปภาพ">
-                      📎
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-                        onChange={(event) => setAttachment(event.target.files?.[0] ?? null)} />
-                    </label>
-                    <textarea value={draft}
-                      onChange={(event) => { const value = event.target.value.slice(0,4000); setDraft(value); announceTyping(Boolean(value.trim())); }}
-                      onBlur={() => announceTyping(false)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          void sendMessage();
-                        }
-                      }}
-                      rows={2} placeholder="พิมพ์ข้อความถึงร้านค้า..."
-                      className="min-h-[50px] flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
-                    <button type="button" onClick={() => void sendMessage()} disabled={busy === "send" || (!draft.trim() && !attachment)}
-                      className="rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-40">
-                      {busy === "send" ? "..." : "ส่ง"}
-                    </button>
+              <div className="sticky bottom-0 z-20 shrink-0 border-t border-slate-200 bg-white shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
+                <div className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <input value={noteDraft} onChange={(event) => setNoteDraft(event.target.value.slice(0,3000))}
+                      placeholder="โน้ตภายใน IT (ลูกค้าไม่เห็น)"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
+                    <button type="button" onClick={() => void saveNote()} disabled={busy === "note"}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-black text-slate-700">บันทึกโน้ต</button>
                   </div>
-                  <div className="mt-1 text-[10px] text-slate-400">รูปภาพ JPG/PNG/WEBP ไม่เกิน 2 MB · รูปจะถูกลบเมื่อจบการสนทนา</div>
                 </div>
-              )}
+                {conversation.status === "closed" ? (
+                  <div className="border-t border-slate-200 bg-slate-50 px-4 py-4 text-center text-xs font-black text-slate-500">
+                    จบการสนทนาแล้ว · เก็บข้อความไว้ในสมุดบันทึก · รูปภาพถูกลบออกจากระบบ
+                  </div>
+                ) : (
+                  <div className="border-t border-slate-200 bg-white p-3">
+                    {remoteTyping ? <div className="mb-2 text-[11px] font-bold text-slate-500">{remoteTyping} กำลังพิมพ์…</div> : null}
+                    {attachment ? <div className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                      <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+                      <button type="button" onClick={() => setAttachment(null)} className="font-black">ลบ</button>
+                    </div> : null}
+                    <div className="flex gap-2">
+                      <label className="grid h-[50px] w-[50px] shrink-0 cursor-pointer place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-600" title="แนบรูปภาพ">
+                        📎
+                        <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                          onChange={(event) => setAttachment(event.target.files?.[0] ?? null)} />
+                      </label>
+                      <textarea value={draft}
+                        onChange={(event) => { const value = event.target.value.slice(0,4000); setDraft(value); announceTyping(Boolean(value.trim())); }}
+                        onBlur={() => announceTyping(false)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            void sendMessage();
+                          }
+                        }}
+                        rows={2} placeholder="พิมพ์ข้อความถึงร้านค้า..."
+                        className="max-h-28 min-h-[50px] min-w-0 flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
+                      <button type="button" onClick={() => void sendMessage()} disabled={busy === "send" || (!draft.trim() && !attachment)}
+                        className="shrink-0 rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-40">
+                        {busy === "send" ? "..." : "ส่ง"}
+                      </button>
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-400">รูปภาพ JPG/PNG/WEBP ไม่เกิน 2 MB · รูปจะถูกลบเมื่อจบการสนทนา</div>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <div className="grid flex-1 place-items-center p-8 text-center">
