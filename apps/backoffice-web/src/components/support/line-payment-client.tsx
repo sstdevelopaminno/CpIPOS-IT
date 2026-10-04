@@ -609,27 +609,43 @@ export function LinePaymentClient() {
               </div>
 
               <form onSubmit={submitSlip} className="mt-5 space-y-4">
-                <label className="block">
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    capture="environment"
-                    onChange={(event) => {
-                      setSlipFile(event.target.files?.[0] ?? null);
-                      setError("");
-                    }}
-                    className="hidden"
-                  />
-                  <span className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-blue-200 bg-blue-50 px-5 py-6 text-center">
-                    <span className="text-4xl">📷</span>
-                    <span className="mt-3 text-sm font-black text-blue-700">
-                      {slipFile ? "เลือกไฟล์แล้ว" : "ถ่ายรูป / เลือกสลิป"}
-                    </span>
-                    <span className="mt-1 max-w-full break-all text-xs text-slate-500">
-                      {slipFile ? slipFile.name : "รองรับ JPG, PNG, WebP ขนาดไม่เกิน 4 MB"}
-                    </span>
-                  </span>
-                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="cursor-pointer rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-center">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      capture="environment"
+                      onChange={(event) => {
+                        setSlipFile(event.target.files?.[0] ?? null);
+                        setError("");
+                      }}
+                      className="hidden"
+                    />
+                    <span className="block text-3xl">📷</span>
+                    <span className="mt-2 block text-xs font-black text-blue-700">ถ่ายรูปสลิป</span>
+                  </label>
+                  <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(event) => {
+                        setSlipFile(event.target.files?.[0] ?? null);
+                        setError("");
+                      }}
+                      className="hidden"
+                    />
+                    <span className="block text-3xl">🖼️</span>
+                    <span className="mt-2 block text-xs font-black text-slate-700">เลือกไฟล์ / แกลเลอรี</span>
+                  </label>
+                </div>
+                <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-center">
+                  <div className="text-sm font-black text-slate-700">
+                    {slipFile ? "เลือกสลิปแล้ว" : "ยังไม่ได้เลือกสลิป"}
+                  </div>
+                  <div className="mt-1 max-w-full break-all text-xs text-slate-500">
+                    {slipFile ? slipFile.name : "รองรับ JPG, PNG, WebP ขนาดไม่เกิน 4 MB"}
+                  </div>
+                </div>
 
                 <label className="block">
                   <span className="mb-1.5 block text-xs font-black text-slate-600">หมายเหตุ (ถ้ามี)</span>
