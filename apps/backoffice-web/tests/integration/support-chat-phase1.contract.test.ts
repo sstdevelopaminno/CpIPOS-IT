@@ -23,11 +23,12 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(shell).toContain('"chat"');
   });
 
-  it("subscribes to realtime heads without polling", () => {
+  it("uses realtime heads as the fast path with a bounded polling safety net", () => {
     expect(notifier).toContain('"postgres_changes"');
     expect(notifier).toContain('table: "support_chat_heads"');
     expect(notifier).toContain("new Notification");
-    expect(notifier).not.toContain("setInterval(");
+    expect(notifier).toContain("fallbackPoll");
+    expect(notifier).toContain("2500");
     expect(consoleUi).not.toContain("setInterval(");
   });
 
@@ -85,9 +86,10 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(detail.indexOf("publishOptimisticSupportChatHead")).toBeLessThan(detail.indexOf('callSupportChat<{\n          message: Record<string, unknown>'));
   });
 
-  it("keeps live delivery off the slow unread/list request path", () => {
-    expect(notifier).toContain("notifyUpdate(next)");
-    expect(notifier).toContain("void loadUnreadTotal()");
+  it("keeps realtime as the live fast path and uses snapshot polling only as fallback", () => {
+    expect(notifier).toContain("handleHead(next, true)");
+    expect(notifier).toContain("Realtime is the fast path");
+    expect(notifier).toContain("void refreshSnapshot(true)");
     expect(consoleUi).toContain("Optimistic local echo");
     expect(consoleUi).toContain("preview:");
     expect(consoleUi).not.toContain("setMessages(json.data.messages);\n      await loadInbox()");
