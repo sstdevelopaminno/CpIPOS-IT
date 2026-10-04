@@ -1,5 +1,7 @@
 name: Deploy CpIPOS IT Web to Production
 
+# Manual Production deployment via Vercel CLI.
+
 on:
   workflow_dispatch:
   push:
