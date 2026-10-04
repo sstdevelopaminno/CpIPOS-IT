@@ -175,11 +175,17 @@ export function LineSupportClient() {
   }, [conversation?.id, activeCall?.id]);
 
   const handleRemoteHangup = useCallback(async () => {
-    if (!conversation?.id) return;
-    window.setTimeout(() => {
-      void loadConversation(conversation.id).catch(() => null);
-    }, 400);
-  }, [conversation?.id, loadConversation]);
+    if (!conversation?.id || !activeCall?.id) return;
+    await api("/api/support/line/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "voice_end",
+        conversation_id: conversation.id,
+        call_id: activeCall.id
+      })
+    }).catch(() => null);
+    await loadConversation(conversation.id).catch(() => null);
+  }, [conversation?.id, activeCall?.id, loadConversation]);
 
   const voice = useSupportVoiceCall({
     call: activeCall,
