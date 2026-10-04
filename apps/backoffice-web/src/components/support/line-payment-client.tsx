@@ -35,23 +35,48 @@ type PublicPaymentAccount = {
   promptpay_ready: boolean;
 };
 
+type PaymentRequestSummary = {
+  id: string;
+  status: string;
+  submitted_at: string;
+  review_note: string | null;
+  scan_status: string | null;
+};
+
+type PaymentRequestStatus = PaymentRequestSummary & {
+  reviewed_at?: string | null;
+  amount_reported?: number | null;
+  currency?: string;
+  receipt?: null | {
+    id: string;
+    number: string;
+    issued_at: string;
+    amount: number;
+    currency: string;
+  };
+};
+
 type PackagePayment = {
   store: { code: string; name: string };
   package: {
+    id: string | null;
     code: string | null;
     name: string;
     billing_interval: string | null;
     service_end: string | null;
   };
   due: null | {
-    cycle_id: string;
     amount_due: number;
     amount_paid: number;
     outstanding_amount: number;
     currency: string;
+    due_date: string;
     period_start: string;
     period_end: string;
+    source: "contract_due";
   };
+  open_request: PaymentRequestSummary | null;
+  latest_request: PaymentRequestSummary | null;
   payment_account: PublicPaymentAccount;
   qr_url: string | null;
   qr_page_url: string | null;
@@ -72,7 +97,7 @@ type Envelope<T> = {
   error?: { code?: string; message?: string };
 };
 
-type Stage = "boot" | "home" | "package-store" | "otp" | "package-payment" | "general";
+type Stage = "boot" | "home" | "package-store" | "otp" | "package-payment" | "slip" | "review" | "general";
 
 const LIFF_SCRIPT = "https://static.line-scdn.net/liff/edge/2/sdk.js";
 const DEFAULT_LIFF_ID = "2011852850-5tjQo09l";
@@ -150,6 +175,9 @@ export function LinePaymentClient() {
   const [maskedEmail, setMaskedEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [packagePayment, setPackagePayment] = useState<PackagePayment | null>(null);
+  const [paymentRequest, setPaymentRequest] = useState<PaymentRequestStatus | null>(null);
+  const [slipFile, setSlipFile] = useState<File | null>(null);
+  const [slipNote, setSlipNote] = useState("");
   const [generalAccount, setGeneralAccount] = useState<PublicPaymentAccount | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -179,10 +207,78 @@ export function LinePaymentClient() {
     if (window.liff) void boot();
   }, [boot]);
 
+  async function refreshPaymentStatus(requestId: string) {
+    const result = await api<{ request: PaymentRequestStatus }>(
+      "/api/support/line/payment/status?request_id=" + encodeURIComponent(requestId)
+    );
+    setPaymentRequest(result.request);
+    return result.request;
+  }
+
   async function loadPackagePayment() {
     const result = await api<{ payment: PackagePayment }>("/api/support/line/payment/package");
     setPackagePayment(result.payment);
+
+    if (result.payment.open_request) {
+      setPaymentRequest(result.payment.open_request);
+      setStage("review");
+      return;
+    }
+
+    if (!result.payment.due && result.payment.latest_request?.status === "approved") {
+      try {
+        const latest = await refreshPaymentStatus(result.payment.latest_request.id);
+        if (latest.status === "approved") {
+          setStage("review");
+          return;
+        }
+      } catch {
+        // Fall back to the normal package screen if the previous receipt is unavailable.
+      }
+    }
+
+    setPaymentRequest(null);
     setStage("package-payment");
+  }
+
+  async function submitSlip(event: FormEvent) {
+    event.preventDefault();
+    if (!slipFile) {
+      setError("กรุณาถ่ายรูปหรือเลือกไฟล์สลิปก่อนส่ง");
+      return;
+    }
+
+    setBusy("slip");
+    setError("");
+    try {
+      const form = new FormData();
+      form.set("slip", slipFile);
+      form.set("note", slipNote.trim());
+
+      const response = await fetch("/api/support/line/payment/slip", {
+        method: "POST",
+        body: form,
+        cache: "no-store"
+      });
+      const json = await response.json().catch(() => null) as Envelope<{
+        request: PaymentRequestStatus;
+        scan: { status: string; amount_match: boolean | null; payee_match: boolean; issues: string[] };
+      }> | null;
+      if (!response.ok || !json?.data) {
+        throw new Error(json?.error?.message || "ส่งสลิปไม่สำเร็จ กรุณาลองใหม่");
+      }
+
+      setPaymentRequest(json.data.request);
+      setSlipFile(null);
+      setSlipNote("");
+      setStage("review");
+      await loadPackagePayment().catch(() => null);
+      setStage("review");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "ส่งสลิปไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function startPackage(event: FormEvent) {
@@ -243,6 +339,25 @@ export function LinePaymentClient() {
     }
   }
 
+  useEffect(() => {
+    if (stage !== "review" || !paymentRequest?.id) return;
+    if (!["pending", "under_review"].includes(paymentRequest.status)) return;
+
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      void refreshPaymentStatus(paymentRequest.id).catch(() => null);
+    };
+    const id = window.setInterval(refresh, 3_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [stage, paymentRequest?.id, paymentRequest?.status]);
+
   async function openGeneral() {
     if (!idToken) {
       setError("ยังไม่ได้เชื่อม LINE Login กรุณาเปิดเมนูชำระเงินใหม่");
@@ -269,6 +384,9 @@ export function LinePaymentClient() {
     setOtp("");
     setChallengeId("");
     setMaskedEmail("");
+    setSlipFile(null);
+    setSlipNote("");
+    setPaymentRequest(null);
     setStage("home");
   }
 
