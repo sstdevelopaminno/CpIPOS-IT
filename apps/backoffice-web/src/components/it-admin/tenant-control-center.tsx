@@ -286,6 +286,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const [contractAutoEnd, setContractAutoEnd] = useState(true);
   const [contractAutoRenew, setContractAutoRenew] = useState(false);
   const [contractEditReason, setContractEditReason] = useState("");
+  const [promoReason, setPromoReason] = useState("");
   const [contractEditing, setContractEditing] = useState(false);
 
   const [packageId, setPackageId] = useState("");
@@ -339,6 +340,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
     setContractAutoRenew(Boolean(next.contract?.auto_renew));
     const paidActive = next.contract?.status === "active" && Number(next.contract?.amount ?? 0) > 0;
     setContractEditReason(paidActive ? "แก้ไขข้อมูลสัญญาจากเมนู Tenants / Stores" : "");
+    setPromoReason("");
     setContractEditing(false);
 
     const changeStart = todayLocal();
@@ -456,9 +458,9 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const isPrepaidPendingTrial = isTrial && lifecycleMeta.prepaid_activation_state === "pending_trial_completion" &&
     typeof lifecycleMeta.prepaid_payment_reference === "string";
   const isInternalDemo = data?.lifecycle?.lifecycle_status === "sales_demo";
-  const canEditContract = Boolean(data?.contract) &&
-    !["cancelled", "expired"].includes(currentStatus) && !isPrepaidPendingTrial;
-  const isPaidActiveContract = currentStatus === "active" && Number(data?.contract?.amount ?? 0) > 0;
+  const canEditContract = Boolean(data?.contract) && currentStatus !== "cancelled" && !isPrepaidPendingTrial;
+  const isPaidActiveContract = ["active", "expired"].includes(String(data?.contract?.status ?? "").toLowerCase()) && Number(data?.contract?.amount ?? 0) > 0;
+  const canGrantPromoExtension = Boolean(data?.contract) && !["cancelled", "suspended", "trial"].includes(String(data?.contract?.status ?? "").toLowerCase()) && !isPrepaidPendingTrial;
   const canEditBillingCycle = canEditContract;
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
   const latestBillingRequest = data?.billing.latest_request ?? null;
@@ -502,6 +504,20 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const changeContractStart = (value: string) => {
     setContractStartDate(value);
     if (contractAutoEnd) setContractEndDate(addContractDate(value, contractCycle));
+  };
+  const grantPromoExtension = async (promoUnit: "days" | "months", promoValue: number, label: string) => {
+    const reason = promoReason.trim();
+    if (reason.length < 4) {
+      setError("กรุณาระบุเหตุผลการให้สิทธิ์พิเศษอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit");
+      return;
+    }
+    const result = await mutate({
+      action: "grant_promo_extension",
+      promo_unit: promoUnit,
+      promo_value: promoValue,
+      admin_reason: reason
+    }, `ให้สิทธิ์พิเศษ ${label} เรียบร้อย`, true);
+    if (result) setPromoReason("");
   };
   const resetContractDraft = () => {
     if (!data?.contract) return;
@@ -923,8 +939,10 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                     <section className={styles.controlSection}>
                       <div className={styles.controlSectionHeader}><div><span>CONTRACT PERIOD</span><h4>วันที่สัญญาและรอบบิล</h4></div><div className={styles.sectionActions}><span className={`${styles.controlPill} ${statusClass(currentStatus)}`}>{contractLabel(currentStatus)}</span>{canEditContract && !contractEditing ? <button type="button" className={styles.secondaryButton} onClick={() => { setContractEditing(true); setError(null); }}>แก้ไขสัญญา</button> : null}</div></div>
                       <p className={styles.sectionCopy}>{canEditContract
-                        ? "กด “แก้ไขสัญญา” แล้วเลือก ทดลอง 7 วัน / รายเดือน / รายปี พร้อมวันที่และ Auto renew"
-                        : "สัญญานี้ยังไม่อยู่ในสถานะที่แก้ไขได้"}</p>
+                        ? currentStatus === "expired"
+                          ? "สัญญาหมดอายุแล้ว แต่ IT ยังแก้วันสัญญา/วันหมดอายุ หรือให้สิทธิ์พิเศษเพื่อแก้ปัญหาและจัดโปรโมชั่นรายร้านได้"
+                          : "กด “แก้ไขสัญญา” แล้วเลือก ทดลอง 7 วัน / รายเดือน / รายปี พร้อมวันที่และ Auto renew"
+                        : "สัญญาที่ถูกยกเลิกหรือกำลังรอเริ่มสิทธิ์ชำระล่วงหน้าต้องใช้ขั้นตอนเฉพาะก่อนแก้ไข"}</p>
                       <div className={styles.formGrid}>
                         <label><span>วันที่เปิดสัญญา</span><input type="date" value={contractStartDate} onChange={(e) => changeContractStart(e.target.value)} disabled={!canEditContract || !contractEditing} /></label>
                         <label><span>รอบสัญญา</span><select value={contractCycle} onChange={(e) => changeContractCycle(e.target.value as ContractPeriod)} disabled={!canEditBillingCycle || !contractEditing}><option value="trial_7d">ทดลอง 7 วัน</option><option value="monthly">รายเดือน</option><option value="yearly" disabled={!currentPackageYearlyAvailable}>รายปี{!currentPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select><small>แก้รอบสัญญาได้โดยไม่แก้ Settlement/ใบเสร็จเดิม</small></label>
@@ -936,6 +954,14 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                       {isPrepaidPendingTrial ? <div className={styles.securityNote}>แพ็กเกจชำระล่วงหน้ารอเริ่มหลังครบ Trial ระบบปิดการแก้วันสัญญาชั่วคราวเพื่อไม่ให้สิทธิ์ลูกค้าหาย</div> : null}
                       {!currentPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจนี้ยังไม่ได้กำหนดราคารายปีใน Package / Subscription จึงไม่เปิดให้เปลี่ยนเป็นรายปี เพื่อป้องกันสัญญาราคา 0 บาทโดยไม่ตั้งใจ</div> : null}
                       {isPaidActiveContract ? <div className={styles.securityNote}><strong>สัญญาชำระเงินจริง:</strong> เปลี่ยนระยะสัญญาได้ แต่ประวัติ Settlement และใบเสร็จเดิมจะไม่ถูกแก้ไข</div> : null}
+                      {canGrantPromoExtension ? <div className={styles.promoGrant}>
+                        <div><strong>สิทธิ์พิเศษ / โปรโมชั่นรายร้าน</strong><span>ต่ออายุฟรีโดยไม่สร้าง Settlement หรือใบเสร็จใหม่ ระบบบันทึกผู้แก้ เหตุผล และช่วงสิทธิ์ใน Audit</span></div>
+                        <label><span>เหตุผลการให้สิทธิ์พิเศษ</span><input value={promoReason} onChange={(e) => setPromoReason(e.target.value)} placeholder="เช่น ชดเชยเหตุขัดข้อง หรือโปรโมชั่นฟรี 1 เดือน" disabled={busy} /></label>
+                        <div className={styles.promoButtons}>
+                          <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void grantPromoExtension("days", 7, "ฟรี 7 วัน")}>ฟรี 7 วัน</button>
+                          <button type="button" className={styles.successButton} disabled={busy} onClick={() => void grantPromoExtension("months", 1, "ฟรี 1 เดือน")}>ฟรี 1 เดือน</button>
+                        </div>
+                      </div> : null}
                       <div className={styles.packagePreview}><strong>{contractPeriodLabel(contractCycle)}</strong><span>{contractStartDate || "—"} → {contractEndDate || "—"}</span></div>
                       {contractEditing ? <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy} onClick={resetContractDraft}>ยกเลิกการแก้ไข</button><button className={styles.primaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate || (contractCycle === "yearly" && !currentPackageYearlyAvailable)} onClick={async () => { if (isPaidActiveContract && contractEditReason.trim().length < 4) { setError("กรุณาระบุเหตุผลการแก้ไขสัญญาอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit"); return; } await mutate({ action: "update_contract", contract_period: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew, admin_reason: contractEditReason }, "อัปเดตรอบสัญญาและสิทธิ์เรียบร้อย", true); }}>บันทึกการแก้ไขสัญญา</button></div> : null}
                     </section>
