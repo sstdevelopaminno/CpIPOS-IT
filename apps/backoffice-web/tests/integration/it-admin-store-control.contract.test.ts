@@ -148,8 +148,8 @@ describe("IT Admin Store Control Center contract", () => {
     expect(service).toContain("access_locked: false");
     expect(service).toContain("settlement_rows_unchanged: true");
     expect(service).toContain("receipt_rows_unchanged: true");
-    expect(service).toContain('contract.status === "cancelled"');
-    expect(service).not.toContain('contract.status === "cancelled" || contract.status === "expired"');
+    expect(service).toContain('if (contract.status === "cancelled")');
+    expect(service).toContain('const paidActiveContract = ["active", "expired"].includes(contract.status)');
   });
 
   it("strictly separates customer-visible POS copy from internal IT reasons", () => {
