@@ -160,6 +160,7 @@ export type TenantControlAction =
   | "create_branch"
   | "update_branch"
   | "update_contract"
+  | "grant_promo_extension"
   | "update_custom_package_terms"
   | "approve_custom_package_request"
   | "prepare_paid_package"
@@ -204,6 +205,8 @@ export type TenantControlInput = {
   end_date?: string;
   auto_calculate_end?: boolean;
   auto_renew?: boolean;
+  promo_unit?: string;
+  promo_value?: number;
   admin_reason?: string;
   customer_message?: string;
   customer_title?: string;
@@ -237,6 +240,7 @@ function requireAction(raw: unknown): TenantControlAction {
     "create_branch",
     "update_branch",
     "update_contract",
+    "grant_promo_extension",
     "update_custom_package_terms",
     "approve_custom_package_request",
     "prepare_paid_package",
@@ -313,6 +317,26 @@ function addContractPeriod(startIso: string, period: "trial_7d" | "monthly" | "y
     return new Date(source.getTime() + 7 * DAY_MS).toISOString();
   }
   return addBillingPeriod(startIso, period);
+}
+
+function addPromoExtension(baseIso: string, unit: "days" | "months", value: number): string {
+  const source = new Date(baseIso);
+  if (Number.isNaN(source.getTime())) throw new ItAdminGuardError("invalid_promo_base", "Promotion base date is invalid.", 422);
+  if (unit === "days") return new Date(source.getTime() + value * DAY_MS).toISOString();
+  const targetMonth = source.getUTCMonth() + value;
+  const targetYear = source.getUTCFullYear() + Math.floor(targetMonth / 12);
+  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+  const targetDay = Math.min(source.getUTCDate(), lastDay);
+  return new Date(Date.UTC(
+    targetYear,
+    normalizedMonth,
+    targetDay,
+    source.getUTCHours(),
+    source.getUTCMinutes(),
+    source.getUTCSeconds(),
+    source.getUTCMilliseconds()
+  )).toISOString();
 }
 
 function validateContractWindow(startIso: string, endIso: string) {
@@ -722,11 +746,11 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
   if (action === "update_contract") {
     const contract = await loadCurrentContract(context, tenantId);
     if (!contract) throw new ItAdminGuardError("subscription_not_found", "This store has no subscription contract.", 409);
-    if (contract.status === "cancelled" || contract.status === "expired") {
-      throw new ItAdminGuardError("subscription_closed", "Closed contracts cannot be edited. Activate a package to create a new contract.", 409);
+    if (contract.status === "cancelled") {
+      throw new ItAdminGuardError("subscription_closed", "Cancelled contracts must be reactivated through the package workflow before editing.", 409);
     }
 
-    const paidActiveContract = contract.status === "active" && Number(contract.amount_per_cycle ?? 0) > 0;
+    const paidActiveContract = ["active", "expired"].includes(contract.status) && Number(contract.amount_per_cycle ?? 0) > 0;
     const currentBillingCycle: "monthly" | "yearly" = contract.billing_interval === "yearly" ? "yearly" : "monthly";
     const contractMetadata = asRecord(contract.metadata);
     const storedPeriod = cleanText(contractMetadata.admin_contract_period, 20);
@@ -771,7 +795,10 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     const packageResult = await context.supabase.from("subscription_packages").select(PACKAGE_SELECT).eq("id", contract.package_id).maybeSingle<PackageRow>();
     if (packageResult.error) throw new Error(`package_query_failed:${packageResult.error.message}`);
 
+    const expiresInPast = Date.parse(endIso) <= Date.now();
+    const nextContractStatus = contract.status === "expired" && !expiresInPast ? "active" : contract.status;
     const changes: JsonRecord = {
+      status: nextContractStatus,
       billing_interval: billingCycle,
       amount_per_cycle: paidActiveContract
         ? contract.amount_per_cycle
@@ -805,8 +832,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
 
     const lifecycle = await loadLifecycle(context, tenantId);
     if (lifecycle) {
-      const expiresInPast = Date.parse(endIso) <= Date.now();
-      const lifecyclePatch: JsonRecord = contract.status === "trial"
+      const lifecyclePatch: JsonRecord = nextContractStatus === "trial"
         ? {
             trial_started_at: startIso,
             trial_expires_at: endIso,
@@ -816,9 +842,9 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
         : {
             current_package_started_at: startIso,
             subscription_expires_at: endIso,
-            lifecycle_status: contract.status === "active" ? (expiresInPast ? "expired" : "active") : lifecycle.lifecycle_status,
-            access_locked: contract.status === "suspended" || expiresInPast,
-            lock_reason: contract.status === "suspended" ? lifecycle.lock_reason : expiresInPast ? "subscription_expired" : null
+            lifecycle_status: ["active", "expired"].includes(nextContractStatus) ? (expiresInPast ? "expired" : "active") : lifecycle.lifecycle_status,
+            access_locked: nextContractStatus === "suspended" || expiresInPast,
+            lock_reason: nextContractStatus === "suspended" ? lifecycle.lock_reason : expiresInPast ? "subscription_expired" : null
           };
       await updateLifecycle(context, tenantId, lifecyclePatch);
     }
@@ -836,6 +862,110 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
         admin_reason: correctionReason,
         contract_period: requestedPeriod,
         billing_interval_unchanged_for_paid_contract: paidActiveContract,
+        settlement_rows_unchanged: true,
+        receipt_rows_unchanged: true
+      }
+    );
+  }
+
+  if (action === "grant_promo_extension") {
+    const contract = await loadCurrentContract(context, tenantId);
+    if (!contract) throw new ItAdminGuardError("subscription_not_found", "This store has no subscription contract.", 409);
+
+    const rawStatus = String(contract.status ?? "").toLowerCase();
+    if (["cancelled", "suspended", "trial"].includes(rawStatus)) {
+      throw new ItAdminGuardError(
+        "promo_extension_not_allowed",
+        "สิทธิ์พิเศษใช้ได้กับแพ็กเกจใช้งาน/หมดอายุเท่านั้น หากถูกระงับหรือยกเลิกให้แก้สถานะสัญญาก่อน",
+        409
+      );
+    }
+
+    const promoUnit = cleanText(input.promo_unit, 10);
+    const promoValue = Math.trunc(Number(input.promo_value ?? 0));
+    if (promoUnit !== "days" && promoUnit !== "months") {
+      throw new ItAdminGuardError("invalid_promo_unit", "promo_unit must be days or months.", 422);
+    }
+    const maxValue = promoUnit === "days" ? 365 : 12;
+    if (!Number.isFinite(promoValue) || promoValue < 1 || promoValue > maxValue) {
+      throw new ItAdminGuardError("invalid_promo_value", `Promotion value must be between 1 and ${maxValue}.`, 422);
+    }
+
+    const reason = optionalText(input.admin_reason, 600);
+    if (!reason || reason.length < 4) {
+      throw new ItAdminGuardError(
+        "promo_reason_required",
+        "กรุณาระบุเหตุผลการให้สิทธิ์พิเศษอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit",
+        422
+      );
+    }
+
+    const currentEndMs = contract.ended_at ? Date.parse(contract.ended_at) : Number.NaN;
+    const nowMs = Date.parse(now);
+    const baseIso = Number.isFinite(currentEndMs) && currentEndMs > nowMs ? contract.ended_at as string : now;
+    const newEndIso = addPromoExtension(baseIso, promoUnit, promoValue);
+    const contractMetadata = asRecord(contract.metadata);
+    const existingHistory = Array.isArray(contractMetadata.it_promo_extensions)
+      ? contractMetadata.it_promo_extensions.slice(-19)
+      : [];
+    const grant = {
+      unit: promoUnit,
+      value: promoValue,
+      reason,
+      granted_at: now,
+      granted_by: context.auth.userId,
+      previous_end_at: contract.ended_at,
+      extension_base_at: baseIso,
+      new_end_at: newEndIso,
+      settlement_rows_unchanged: true,
+      receipt_rows_unchanged: true
+    };
+    const changes: JsonRecord = {
+      status: "active",
+      ended_at: newEndIso,
+      metadata: {
+        ...contractMetadata,
+        it_promo_extensions: [...existingHistory, grant],
+        last_it_promo_extension: grant
+      },
+      updated_at: now
+    };
+
+    const contractUpdate = await context.supabase.from("tenant_subscription_contracts")
+      .update(changes).eq("id", contract.id).eq("tenant_id", tenantId);
+    if (contractUpdate.error) throw new Error(`promo_contract_update_failed:${contractUpdate.error.message}`);
+
+    const lifecycle = await loadLifecycle(context, tenantId);
+    if (lifecycle) {
+      const lifecycleMetadata = asRecord(lifecycle.metadata);
+      await updateLifecycle(context, tenantId, {
+        lifecycle_status: "active",
+        current_package_started_at: lifecycle.current_package_started_at ?? contract.started_at,
+        subscription_expires_at: newEndIso,
+        access_locked: false,
+        lock_reason: null,
+        metadata: {
+          ...lifecycleMetadata,
+          last_it_promo_extension: grant
+        }
+      });
+    }
+
+    invalidateTenantFeatureGateCache(tenantId);
+    await audit(
+      context,
+      tenantId,
+      "tenant_promo_extension_granted",
+      "tenant_subscription_contracts",
+      contract.id,
+      asRecord(contract),
+      asRecord(changes),
+      {
+        promo_unit: promoUnit,
+        promo_value: promoValue,
+        admin_reason: reason,
+        previous_end_at: contract.ended_at,
+        new_end_at: newEndIso,
         settlement_rows_unchanged: true,
         receipt_rows_unchanged: true
       }
