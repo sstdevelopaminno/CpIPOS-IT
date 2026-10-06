@@ -92,6 +92,13 @@ const actionCopy: Record<string, Copy> = {
     confirmLabel: "ยืนยันการแก้ไข",
     tone: "info"
   },
+  grant_promo_extension: {
+    eyebrow: "PROMOTION / FREE EXTENSION",
+    title: "ยืนยันการให้สิทธิ์พิเศษ?",
+    description: "ระบบจะต่อวันใช้งานให้ร้านนี้โดยไม่สร้าง Settlement หรือใบเสร็จใหม่ และบันทึกผู้ดำเนินการ เหตุผล และวันหมดอายุใหม่ใน Audit",
+    confirmLabel: "ยืนยันให้สิทธิ์พิเศษ",
+    tone: "info"
+  },
   prepare_paid_package: {
     eyebrow: "PACKAGE BILLING",
     title: "สร้างรายการชำระแพ็กเกจ?",
