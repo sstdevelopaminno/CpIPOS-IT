@@ -8,6 +8,7 @@ describe("IT CpiPOS AI add-on commerce",()=>{
   const paymentsApi=src("src/app/api/it-admin/v1/subscription-payments/route.ts");
   const paymentsUi=src("src/components/it-admin/subscription-payments-console.tsx");
   const settle=src("src/app/api/it-admin/v1/subscription-payments/settle/[requestId]/route.ts");
+  const rpcAcl=src("../../supabase/migrations/20261006053425_restrict_settle_ai_addon_payment_execute.sql");
 
   it("lets IT configure AI add-on price requests and tokens",()=>{
     expect(packageUi).toContain("เปิดขาย AI Add-on");
@@ -26,5 +27,11 @@ describe("IT CpiPOS AI add-on commerce",()=>{
     expect(settle).toContain('rpc("settle_ai_addon_payment"');
     expect(settle).toContain('targetTable: "pos_ai_tenant_addon_purchases"');
     expect(settle).toContain("CpiPOS AI Add-on พร้อมใช้งานแล้ว");
+  });
+
+  it("keeps the privileged AI add-on settlement RPC server-only",()=>{
+    expect(rpcAcl).toContain("from public, anon, authenticated");
+    expect(rpcAcl).toContain("to service_role");
+    expect(rpcAcl).toContain("settle_ai_addon_payment");
   });
 });
