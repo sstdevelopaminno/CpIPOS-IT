@@ -134,6 +134,24 @@ describe("IT Admin Store Control Center contract", () => {
     expect(service).toContain("subscription_expires_at: endIso");
   });
 
+  it("keeps expired contracts editable by IT and supports audited per-store free extensions", () => {
+    expect(controlCenter).toContain('currentStatus !== "cancelled"');
+    expect(controlCenter).toContain('currentStatus === "expired"');
+    expect(controlCenter).toContain('action: "grant_promo_extension"');
+    expect(controlCenter).toContain("ฟรี 7 วัน");
+    expect(controlCenter).toContain("ฟรี 1 เดือน");
+    expect(controlCenter).toContain("เหตุผลการให้สิทธิ์พิเศษ");
+    expect(service).toContain('"grant_promo_extension"');
+    expect(service).toContain('"tenant_promo_extension_granted"');
+    expect(service).toContain("it_promo_extensions");
+    expect(service).toContain("subscription_expires_at: newEndIso");
+    expect(service).toContain("access_locked: false");
+    expect(service).toContain("settlement_rows_unchanged: true");
+    expect(service).toContain("receipt_rows_unchanged: true");
+    expect(service).toContain('contract.status === "cancelled"');
+    expect(service).not.toContain('contract.status === "cancelled" || contract.status === "expired"');
+  });
+
   it("strictly separates customer-visible POS copy from internal IT reasons", () => {
     expect(service).toContain("customer_title");
     expect(service).toContain("customer_message");
