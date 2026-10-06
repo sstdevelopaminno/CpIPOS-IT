@@ -4,16 +4,6 @@ name: Deploy CpIPOS IT Web to Production
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "apps/backoffice-web/**"
-      - "packages/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/deploy-store-registration-production.yml"
 
 permissions:
   contents: read
