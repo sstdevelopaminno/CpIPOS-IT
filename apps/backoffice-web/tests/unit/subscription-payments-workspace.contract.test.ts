@@ -25,6 +25,8 @@ describe("subscription payments IT workspace", () => {
     expect(ui).toContain("CpiPOS-001 · POS ↔ IT");
     expect(ui).toContain("POS → IT");
     expect(api).toContain("effectiveExpiry");
+    expect(api).toContain("subscription_billing_due_states");
+    expect(api).toContain('source: "derived_entitlement"');
     expect(ui).toContain("ยกเว้นการเรียกเก็บ (บัญชีภายใน)");
 
     expect(api).toContain("has_paid_cycle");
@@ -84,6 +86,9 @@ describe("subscription payments IT workspace", () => {
     expect(historyUi).toContain("ยอดชำระแบบรายปี");
     expect(historyUi).toContain("ตารางการชำระและต่อแพ็กเกจแต่ละครั้ง");
     expect(historyUi).toContain("กลับตารางชำระแพ็กเกจ");
+    expect(historyApi).toContain("subscription_billing_due_state");
+    expect(historyUi).toContain("CURRENT / NEXT DUE");
+    expect(historyUi).toContain("ประวัติรอบบิลจาก Settlement");
   });
 
   it("keeps the billing detail compact with closable popup menus and first-payment creation", () => {
@@ -132,6 +137,8 @@ describe("subscription payments IT workspace", () => {
     expect(tenantService).toContain('receipt_policy: "issue_only_after_verified_settlement"');
     expect(tenantService).toContain("paid_activation_requires_settlement");
     expect(tenantUi).toContain("ใบเสร็จออกอัตโนมัติหลัง IT ตรวจเงินเข้าจริง");
+    expect(tenantService).toContain("subscription_billing_due_state");
+    expect(tenantUi).toContain("รอบที่ต้องชำระปัจจุบัน");
     expect(tenantUi).toContain("สร้างรายการชำระรอบแรก");
     expect(tenantUi).toContain("/it-admin/subscription-payments/");
   });
@@ -161,6 +168,10 @@ describe("subscription payments IT workspace", () => {
     expect(settlementMigration).toContain("bank_reference_already_used");
     expect(settlementMigration).toContain("interval '1 month'");
     expect(settlementMigration).toContain("interval '1 year'");
+    const dueMigration = src("../../supabase/migrations/20261007143000_subscription_due_state_and_reminders.sql");
+    expect(dueMigration).toContain("First verified payment starts the first paid service window");
+    expect(dueMigration).toContain("v_base := p_bank_received_at");
+    expect(dueMigration).toContain("subscription_billing_due_state");
     expect(settlementMigration).toContain("trg_subscription_receipts_immutable");
     expect(settlementMigration).toContain("status = 'approved'");
     expect(settlementMigration).toContain("receipt_number");

@@ -511,7 +511,7 @@ async function audit(
 
 export async function loadTenantControlCenter(context: ItAdminContext, tenantId: string) {
   const tenant = await loadTenant(context, tenantId);
-  const [branchesResult, packagesResult, contract, accessCode, lifecycle, paymentRequestResult, receiptResult, customTermsResult, featureCatalogResult] = await Promise.all([
+  const [branchesResult, packagesResult, contract, accessCode, lifecycle, paymentRequestResult, receiptResult, customTermsResult, featureCatalogResult, currentDueResult] = await Promise.all([
     context.supabase.from("branches").select(BRANCH_SELECT).eq("tenant_id", tenantId).order("created_at", { ascending: true }).returns<BranchDbRow[]>(),
     context.supabase
       .from("subscription_packages")
@@ -546,7 +546,8 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
       .from("package_feature_catalog")
       .select("code,name,description,is_active")
       .eq("is_active", true)
-      .order("name", { ascending: true })
+      .order("name", { ascending: true }),
+    context.supabase.rpc("subscription_billing_due_state",{p_tenant_id:tenantId})
   ]);
 
   if (branchesResult.error) throw new Error(`tenant_branches_query_failed:${branchesResult.error.message}`);
@@ -555,6 +556,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   if (receiptResult.error) throw new Error(`subscription_receipt_query_failed:${receiptResult.error.message}`);
   if (customTermsResult.error) throw new Error(`custom_package_terms_query_failed:${customTermsResult.error.message}`);
   if (featureCatalogResult.error) throw new Error(`feature_catalog_query_failed:${featureCatalogResult.error.message}`);
+  if (currentDueResult.error) throw new Error(`subscription_due_state_failed:${currentDueResult.error.message}`);
 
   const packages = packagesResult.data ?? [];
   const currentPackageId = contract?.package_id ?? tenant.package_id;
@@ -620,6 +622,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
     },
     sales_modes: salesModes,
     billing: {
+      current_due: currentDueResult.data ?? null,
       latest_request: paymentRequestResult.data ? {
         id: paymentRequestResult.data.id,
         requested_package_id: paymentRequestResult.data.requested_package_id,

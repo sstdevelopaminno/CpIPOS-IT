@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "sales_retention_export" | "daily_sales_summary" | "daily_sales_summary_test";
+export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "subscription_due_reminder" | "trial_expiry_reminder" | "sales_retention_export" | "daily_sales_summary" | "daily_sales_summary_test";
 export type CustomerEmailTriggerMode = "automatic" | "manual";
 export type CustomerEmailDeliveryStatus =
   | "sent"
@@ -19,6 +19,8 @@ type CommunicationSettings = {
   support_sender_name: string;
   auto_send_store_activation: boolean;
   auto_send_payment_confirmation: boolean;
+  auto_send_subscription_due_reminder: boolean;
+  auto_send_trial_expiry_reminder: boolean;
   auto_send_sales_retention_export: boolean;
   auto_send_daily_sales_summary: boolean;
   company_thai_name: string;
@@ -69,6 +71,8 @@ const DEFAULT_SETTINGS: CommunicationSettings = {
   support_sender_name: "Cutting Point Innovation Support",
   auto_send_store_activation: true,
   auto_send_payment_confirmation: true,
+  auto_send_subscription_due_reminder: true,
+  auto_send_trial_expiry_reminder: true,
   auto_send_sales_retention_export: true,
   auto_send_daily_sales_summary: true,
   company_thai_name: "บริษัท คัตติ้ง พอยท์ อินโนเวชั่น จำกัด",
@@ -147,7 +151,11 @@ function brandMessage(
 ): CustomerEmailMessage {
   const title = eventType === "payment_confirmation"
     ? "ยืนยันการรับชำระเงินเรียบร้อย"
-    : eventType === "sales_retention_export"
+    : eventType === "subscription_due_reminder"
+      ? "แจ้งเตือนรอบชำระแพ็กเกจ CpIPOS"
+      : eventType === "trial_expiry_reminder"
+        ? "ช่วงทดลองใช้ CpIPOS ใกล้สิ้นสุด"
+        : eventType === "sales_retention_export"
       ? "ไฟล์ประวัติการขายพร้อมดาวน์โหลด"
       : eventType === "daily_sales_summary_test"
         ? "ทดสอบ · สรุปยอดขายประจำวัน"
@@ -156,7 +164,11 @@ function brandMessage(
           : "เปิดใช้งานระบบสำเร็จแล้ว";
   const subtitle = eventType === "payment_confirmation"
     ? "บริษัทได้รับและตรวจสอบการชำระเงินเรียบร้อยแล้ว ระบบได้เปิด/ต่ออายุแพ็กเกจ CpIPOS ให้แล้ว"
-    : eventType === "sales_retention_export"
+    : eventType === "subscription_due_reminder"
+      ? "แจ้งเตือนก่อนสิ้นสุดรอบบริการ เพื่อให้ร้านมีเวลาต่อแพ็กเกจก่อนระบบครบกำหนด"
+      : eventType === "trial_expiry_reminder"
+        ? "แจ้งเตือนก่อนสิ้นสุดสิทธิ์ทดลองใช้ เพื่อให้เจ้าของร้านเลือกแพ็กเกจและชำระก่อนสิทธิ์หมด"
+        : eventType === "sales_retention_export"
       ? "ระบบได้จัดเก็บประวัติการขายที่พ้นระยะเก็บข้อมูลออนไลน์เป็นไฟล์ส่วนตัวเรียบร้อยแล้ว"
       : eventType === "daily_sales_summary_test"
         ? "อีเมลทดสอบสำหรับ IT เท่านั้น ข้อมูลและหน้าตาเหมือนอีเมลสรุปยอดขายจริง แต่ไม่ส่งถึงลูกค้า"
@@ -210,7 +222,7 @@ export function customerEmailProblem(value: string) {
 
 async function loadSettings(db: SupabaseClient): Promise<CommunicationSettings> {
   const result = await db.from("it_communication_settings")
-    .select("billing_email,support_email,billing_sender_name,support_sender_name,auto_send_store_activation,auto_send_payment_confirmation,auto_send_sales_retention_export,auto_send_daily_sales_summary,company_thai_name,company_english_name,contact_phone,website_url,email_footer_note")
+    .select("billing_email,support_email,billing_sender_name,support_sender_name,auto_send_store_activation,auto_send_payment_confirmation,auto_send_subscription_due_reminder,auto_send_trial_expiry_reminder,auto_send_sales_retention_export,auto_send_daily_sales_summary,company_thai_name,company_english_name,contact_phone,website_url,email_footer_note")
     .eq("id", "default").maybeSingle<CommunicationSettings>();
   if (result.error) throw new Error("communication_settings_read_failed");
   return result.data ?? DEFAULT_SETTINGS;
@@ -351,6 +363,62 @@ export function buildPaymentConfirmationEmail(input: {
   return { subject, textBody: lines.join("\n"), htmlBody: html };
 }
 
+
+
+export function buildSubscriptionDueReminderEmail(input: {
+  storeName:string; ownerName?:string|null; packageName:string; dueAt:string;
+  daysRemaining:number; amountDue:number; currency?:string|null; billingInterval:string;
+}): CustomerEmailMessage {
+  const due=thaiDate(input.dueAt);
+  const interval=input.billingInterval==="yearly"?"รายปี":"รายเดือน";
+  const subject=`แจ้งเตือนต่อแพ็กเกจ CpIPOS | ${text(input.storeName,100)} | ครบกำหนด ${due}`;
+  const owner=text(input.ownerName,120)||text(input.storeName,120);
+  const lines=[
+    `เรียน ${owner}`,"",
+    `แพ็กเกจ ${text(input.packageName,120)} ของร้านใกล้สิ้นสุดรอบบริการ`,
+    `ครบกำหนด: ${due}`,
+    `คงเหลือ: ${Math.max(0,input.daysRemaining)} วัน`,
+    `ค่าบริการรอบถัดไป: ${money(input.amountDue,input.currency||"THB")} (${interval})`,"",
+    "กรุณาเปิดเมนูแพ็กเกจ/ชำระเงินใน CpIPOS หรือ Customer Portal เพื่อแจ้งชำระก่อนครบกำหนด",
+    "อีเมลฉบับนี้เป็นการแจ้งเตือน ไม่ใช่ใบเสร็จหรือหลักฐานรับชำระเงิน"
+  ];
+  const html=[
+    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">${escapeHtml(owner)}</strong></p>`,
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;border:1px solid #cfe0f5;border-radius:12px;background:#f8fbff;overflow:hidden">',
+    `<tr><td style="padding:13px 16px;font-size:12px;color:#64748b">ร้านค้า</td><td style="padding:13px 16px;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.storeName)}</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">แพ็กเกจ</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.packageName)} · ${escapeHtml(interval)}</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ครบกำหนด</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#b45309">${escapeHtml(due)} · เหลือ ${Math.max(0,input.daysRemaining)} วัน</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">รอบถัดไป</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</td></tr>`,
+    '</table>',
+    '<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#fff8e8;color:#7a5512;font-size:12px;line-height:1.65">กรุณาแจ้งชำระผ่าน CpIPOS หรือ Customer Portal ก่อนครบกำหนด · อีเมลนี้ไม่ใช่หลักฐานรับชำระเงิน</div>'
+  ].join("");
+  return {subject,textBody:lines.join("\n"),htmlBody:html};
+}
+
+export function buildTrialExpiryReminderEmail(input: {
+  storeName:string; ownerName?:string|null; packageName:string; dueAt:string;
+  daysRemaining:number; amountDue:number; currency?:string|null;
+}): CustomerEmailMessage {
+  const due=thaiDate(input.dueAt);
+  const owner=text(input.ownerName,120)||text(input.storeName,120);
+  const subject=`ทดลองใช้ CpIPOS ใกล้สิ้นสุด | ${text(input.storeName,100)} | ${due}`;
+  const lines=[
+    `เรียน ${owner}`,"",
+    `ช่วงทดลองใช้ของร้านจะสิ้นสุดวันที่ ${due}`,
+    `คงเหลือ: ${Math.max(0,input.daysRemaining)} วัน`,
+    `แพ็กเกจที่ตั้งไว้: ${text(input.packageName,120)}`,
+    `ค่าบริการเริ่มต้นรอบแรก: ${money(input.amountDue,input.currency||"THB")}`,"",
+    "หากต้องการใช้งานต่อ กรุณาเปิดเมนูแพ็กเกจ/ชำระเงินและดำเนินการก่อนสิทธิ์ทดลองหมด",
+    "หากชำระล่วงหน้าและ IT ยืนยันแล้ว ระบบจะไม่ส่งอีเมลเตือนชำระซ้ำ"
+  ];
+  const html=[
+    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">${escapeHtml(owner)}</strong></p>`,
+    `<div style="padding:18px;border:1px solid #f3d9a6;border-radius:12px;background:#fff9ee;text-align:center"><div style="font-size:12px;color:#7a5512">สิ้นสุดช่วงทดลองใช้</div><div style="margin-top:5px;font-size:22px;font-weight:900;color:#9a5b08">${escapeHtml(due)}</div><div style="margin-top:5px;font-size:12px;color:#7a5512">เหลือ ${Math.max(0,input.daysRemaining)} วัน</div></div>`,
+    `<div style="margin-top:14px;padding:14px 16px;border:1px solid #dbe5f3;border-radius:12px;background:#f8fbff;font-size:13px;line-height:1.8;color:#52657f">แพ็กเกจ <strong style="color:#102a50">${escapeHtml(input.packageName)}</strong><br>ค่าบริการรอบแรก <strong style="color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</strong></div>`,
+    '<p style="margin:18px 0 0;font-size:12px;line-height:1.65;color:#66758b">หากต้องการใช้งานต่อ กรุณาดำเนินการจากเมนูแพ็กเกจ/ชำระเงินก่อนสิทธิ์ทดลองหมด ระบบจะไม่เตือนชำระซ้ำหากมีการยืนยันชำระล่วงหน้าแล้ว</p>'
+  ].join("");
+  return {subject,textBody:lines.join("\n"),htmlBody:html};
+}
 
 function thaiBusinessDate(value: string) {
   const parsed = new Date(value + "T12:00:00+07:00");
@@ -545,7 +613,11 @@ export async function deliverCustomerEmail(input: {
     ? settings.auto_send_store_activation
     : input.eventType === "payment_confirmation"
       ? settings.auto_send_payment_confirmation
-      : input.eventType === "daily_sales_summary" || input.eventType === "daily_sales_summary_test"
+      : input.eventType === "subscription_due_reminder"
+        ? settings.auto_send_subscription_due_reminder
+        : input.eventType === "trial_expiry_reminder"
+          ? settings.auto_send_trial_expiry_reminder
+          : input.eventType === "daily_sales_summary" || input.eventType === "daily_sales_summary_test"
         ? settings.auto_send_daily_sales_summary
         : settings.auto_send_sales_retention_export;
   if (input.triggerMode === "automatic" && !automaticEnabled) {
@@ -637,9 +709,9 @@ export async function deliverCustomerEmail(input: {
         subject: brandedMessage.subject,
         textBody: brandedMessage.textBody,
         htmlBody: brandedMessage.htmlBody,
-        senderName: input.eventType === "payment_confirmation"
+        senderName: ["payment_confirmation","subscription_due_reminder","trial_expiry_reminder"].includes(input.eventType)
           ? settings.billing_sender_name : settings.support_sender_name,
-        replyTo: input.eventType === "payment_confirmation"
+        replyTo: ["payment_confirmation","subscription_due_reminder","trial_expiry_reminder"].includes(input.eventType)
           ? settings.billing_email : settings.support_email
       }),
       signal: AbortSignal.timeout(8000)

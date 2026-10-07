@@ -57,7 +57,7 @@ export async function GET(_request: Request, { params }: Params) {
     }
 
     const { supabase } = await requireItAdmin();
-    const [store, contract, lifecycle, packages, cycles, requests, approvals, receipts, receiptAnnotations] = await Promise.all([
+    const [store, contract, lifecycle, packages, cycles, requests, approvals, receipts, receiptAnnotations, currentDueResult] = await Promise.all([
       supabase.from("tenants")
         .select("id,code,name,display_name,owner_name,primary_owner_user_id")
         .eq("id", tenantId).maybeSingle<Store>(),
@@ -84,12 +84,13 @@ export async function GET(_request: Request, { params }: Params) {
         .eq("tenant_id", tenantId).order("issued_at", { ascending: false }).limit(200).returns<Receipt[]>(),
       supabase.from("tenant_subscription_receipt_annotations")
         .select("receipt_id,correction_note,voided_at")
-        .eq("tenant_id",tenantId).returns<ReceiptAnnotation[]>()
+        .eq("tenant_id",tenantId).returns<ReceiptAnnotation[]>(),
+      supabase.rpc("subscription_billing_due_state",{p_tenant_id:tenantId})
     ]);
 
     if (store.error) throw new Error("history_store_read_failed");
     if (!store.data) throw new ItAdminGuardError("store_not_found", "Store not found.", 404);
-    if (contract.error || lifecycle.error || packages.error || cycles.error || requests.error || approvals.error || receipts.error || receiptAnnotations.error) {
+    if (contract.error || lifecycle.error || packages.error || cycles.error || requests.error || approvals.error || receipts.error || receiptAnnotations.error || currentDueResult.error) {
       throw new Error("subscription_payment_history_read_failed");
     }
 
@@ -174,6 +175,7 @@ export async function GET(_request: Request, { params }: Params) {
         yearly_price: row.yearly_price == null ? null : numeric(row.yearly_price),
         quota_mode: row.quota_mode ?? "standard"
       })),
+      current_due: currentDueResult.data ?? null,
       cycles: (cycles.data ?? []).map((row) => ({
         ...row,
         package_name: packagesById.get(row.package_id)?.name ?? "",

@@ -78,6 +78,11 @@ type History = {
     access_locked: boolean;
   } | null;
   packages: PackagePrice[];
+  current_due: {
+    kind:string;status:string;payable_now:boolean;days_until_due:number|null;due_at:string|null;
+    next_period_start:string|null;next_period_end:string|null;amount_due:number;amount_paid:number;outstanding:number;
+    currency:string;billing_interval:string;package_name:string;open_request_status:string|null;
+  } | null;
   cycles: {
     id: string;
     period_start: string;
@@ -202,6 +207,10 @@ function formatMoney(value: number | null, currency = "THB") {
   return value == null || !Number.isFinite(Number(value))
     ? "—"
     : new Intl.NumberFormat("th-TH", { style: "currency", currency: currency || "THB" }).format(Number(value));
+}
+function dueStatusLabel(status:string){
+  const labels:Record<string,string>={open:"รอชำระ",overdue:"เกินกำหนด",upcoming:"ยังไม่ถึงกำหนด",pending:"รอดำเนินการ",under_review:"รอตรวจสอบการชำระ",trial:"ทดลองใช้",trial_due:"Trial ใกล้หมด",prepaid:"ชำระล่วงหน้าแล้ว",not_payable:"ไม่เรียกเก็บ"};
+  return labels[status]||status||"—";
 }
 function billingLabel(value: string | null) {
   return value === "yearly" ? "รายปี" : value === "monthly" ? "รายเดือน" : "—";
@@ -1010,6 +1019,18 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           description="ตรวจสอบช่วงบริการ ยอดเรียกเก็บ และยอดชำระของแต่ละรอบ"
           onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-900">รอบบิลแพ็กเกจ</h2>
+          {history.current_due ? <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><p className="text-xs font-bold tracking-wide text-blue-700">CURRENT / NEXT DUE</p>
+                <strong className="mt-1 block text-lg text-slate-900">{history.current_due.package_name || "แพ็กเกจปัจจุบัน"} · {dueStatusLabel(history.current_due.status)}</strong>
+                <p className="mt-1 text-sm text-slate-600">ครบกำหนด {formatDate(history.current_due.due_at)} · รอบถัดไป {formatDate(history.current_due.next_period_start)} → {formatDate(history.current_due.next_period_end)}</p>
+              </div>
+              <div className="text-right"><strong className="block text-xl text-blue-800">{formatMoney(history.current_due.amount_due,history.current_due.currency)}</strong>
+                <span className="text-xs text-slate-500">ยอดชำระรอบนี้ {formatMoney(history.current_due.amount_paid,history.current_due.currency)}</span></div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">สถานะนี้คำนวณจากวันสิ้นสุดสิทธิ์/สัญญาปัจจุบัน ไม่ใช้รายการ Settlement เก่ามาแทนรอบที่กำลังจะถึง</p>
+          </div> : null}
+          <h3 className="mt-5 font-bold text-slate-800">ประวัติรอบบิลจาก Settlement</h3>
           {history.cycles.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ยังไม่มีรอบบิลที่บันทึกไว้</p> :
             <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[820px] text-left text-sm">
               <thead><tr className="border-b text-slate-500">{["แพ็กเกจ","เริ่มรอบ","สิ้นสุดรอบ","ยอดเรียกเก็บ","ยอดชำระ","สถานะ","จัดการ"]
@@ -1020,7 +1041,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                 <td className="p-3">{formatDate(row.period_end)}</td>
                 <td className="p-3">{formatMoney(row.amount_due)}</td>
                 <td className="p-3">{formatMoney(row.amount_paid)}</td>
-                <td className="p-3">{row.status}</td>
+                <td className="p-3">{row.status === "paid" ? "ชำระแล้ว (ประวัติ)" : dueStatusLabel(row.status)}</td>
                 <td className="p-3"><div className="flex gap-1">
                   <button type="button" disabled={busyId===row.id || row.status==="paid" || Number(row.amount_paid)>0}
                     onClick={()=>void editCycleRecord(row)}

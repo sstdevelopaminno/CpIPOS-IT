@@ -13,6 +13,8 @@ describe("transactional customer email delivery", () => {
   const migration = src("../../supabase/migrations/20260927090000_customer_email_delivery.sql");
   const registrationUi = src("src/components/it-admin/store-registrations-console.tsx");
   const paymentUi = src("src/components/it-admin/subscription-payment-history.tsx");
+  const reminderWorker = src("src/app/api/internal/subscription-reminders/run/route.ts");
+  const reminderMigration = src("../../supabase/migrations/20261007143000_subscription_due_state_and_reminders.sql");
 
   it("deduplicates each business event and rate-limits retry attempts", () => {
     expect(migration).toContain("event_key text not null unique");
@@ -65,6 +67,22 @@ describe("transactional customer email delivery", () => {
     expect(service).toContain("เปิดใช้งานระบบสำเร็จแล้ว");
     expect(settings).toContain("company_thai_name");
     expect(settings).toContain("email_footer_note");
+  });
+
+  it("sends idempotent package and trial reminders before expiry", () => {
+    expect(service).toContain('"subscription_due_reminder"');
+    expect(service).toContain('"trial_expiry_reminder"');
+    expect(service).toContain("buildSubscriptionDueReminderEmail");
+    expect(service).toContain("buildTrialExpiryReminderEmail");
+    expect(settings).toContain("auto_send_subscription_due_reminder");
+    expect(settings).toContain("auto_send_trial_expiry_reminder");
+    expect(reminderWorker).toContain("consume_subscription_reminder_worker_token");
+    expect(reminderWorker).toContain("subscription_reminder_candidates");
+    expect(reminderWorker).toContain("eventKeySuffix");
+    expect(reminderMigration).toContain("cpipos_subscription_reminder_email");
+    expect(reminderMigration).toContain("'0 2 * * *'");
+    expect(reminderMigration).toContain("pending_trial_completion");
+    expect(reminderMigration).toContain("not in ('prepaid','pending','under_review','not_payable')");
   });
 
   it("requires an authorized server-side bridge", () => {
