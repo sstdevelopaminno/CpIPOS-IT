@@ -2,7 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "subscription_due_reminder" | "trial_expiry_reminder" | "sales_retention_export" | "daily_sales_summary" | "daily_sales_summary_test";
+export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "subscription_due_reminder" | "trial_expiry_reminder" | "tenant_deletion_warning" | "sales_retention_export" | "daily_sales_summary" | "daily_sales_summary_test";
 export type CustomerEmailTriggerMode = "automatic" | "manual";
 export type CustomerEmailDeliveryStatus =
   | "sent"
@@ -155,6 +155,8 @@ function brandMessage(
       ? "แจ้งเตือนรอบชำระแพ็กเกจ CpIPOS"
       : eventType === "trial_expiry_reminder"
         ? "ช่วงทดลองใช้ CpIPOS ใกล้สิ้นสุด"
+        : eventType === "tenant_deletion_warning"
+          ? "แจ้งเตือนการรักษาข้อมูลก่อนลบร้าน"
         : eventType === "sales_retention_export"
       ? "ไฟล์ประวัติการขายพร้อมดาวน์โหลด"
       : eventType === "daily_sales_summary_test"
@@ -168,6 +170,8 @@ function brandMessage(
       ? "แจ้งเตือนก่อนสิ้นสุดรอบบริการ เพื่อให้ร้านมีเวลาต่อแพ็กเกจก่อนระบบครบกำหนด"
       : eventType === "trial_expiry_reminder"
         ? "แจ้งเตือนก่อนสิ้นสุดสิทธิ์ทดลองใช้ เพื่อให้เจ้าของร้านเลือกแพ็กเกจและชำระก่อนสิทธิ์หมด"
+        : eventType === "tenant_deletion_warning"
+          ? "ระบบกำลังรักษาข้อมูลร้านตามนโยบายหลังสิ้นสุดบริการ ก่อนส่งให้ IT ตรวจสอบการลบถาวร"
         : eventType === "sales_retention_export"
       ? "ระบบได้จัดเก็บประวัติการขายที่พ้นระยะเก็บข้อมูลออนไลน์เป็นไฟล์ส่วนตัวเรียบร้อยแล้ว"
       : eventType === "daily_sales_summary_test"
@@ -420,6 +424,43 @@ export function buildTrialExpiryReminderEmail(input: {
   return {subject,textBody:lines.join("\n"),htmlBody:html};
 }
 
+export function buildTenantDeletionWarningEmail(input: {
+  storeName: string;
+  ownerName?: string | null;
+  lifecycleKind: "trial" | "subscription";
+  deletionReviewAt: string;
+  daysRemaining: number;
+  finalNotice: boolean;
+}): CustomerEmailMessage {
+  const owner = text(input.ownerName, 120) || text(input.storeName, 120);
+  const reviewDate = thaiDate(input.deletionReviewAt);
+  const lifecycleLabel = input.lifecycleKind === "trial" ? "ช่วงทดลองใช้" : "แพ็กเกจที่ชำระเงินจริง";
+  const subject = input.finalNotice
+    ? `แจ้งเตือนครั้งสุดท้ายก่อนตรวจลบร้าน | ${text(input.storeName, 100)} | CpIPOS`
+    : `แจ้งเตือนการรักษาข้อมูลร้าน | ${text(input.storeName, 100)} | CpIPOS`;
+  const timing = input.finalNotice
+    ? "ครบกำหนดรักษาข้อมูลแล้ว วันนี้ระบบจะส่งรายการให้ IT ตรวจสอบก่อนลบถาวร"
+    : `เหลือ ${Math.max(0, input.daysRemaining)} วันก่อนครบกำหนดรักษาข้อมูล`;
+  const lines = [
+    `เรียน ${owner}`,
+    "",
+    `ร้าน ${text(input.storeName, 180)} สิ้นสุด${lifecycleLabel}แล้ว และระบบกำลังรักษาข้อมูลตามนโยบาย CpIPOS`,
+    timing,
+    `วันที่ส่งให้ IT ตรวจสอบการลบ: ${reviewDate}`,
+    "",
+    "หากต้องการใช้งานต่อ กรุณาต่อแพ็กเกจหรือติดต่อ Support ก่อน IT ยืนยันการลบ",
+    "เมื่อ IT ยืนยันลบ ระบบจะตัดการเชื่อมต่อร้าน ลบข้อมูลที่เกี่ยวข้อง และปลดการจัดการอุปกรณ์ที่รองรับก่อนลบถาวร"
+  ];
+  const html = [
+    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">${escapeHtml(owner)}</strong></p>`,
+    `<div style="padding:18px;border:1px solid #fecaca;border-radius:12px;background:#fff7f7;text-align:center"><div style="font-size:12px;color:#991b1b">${input.finalNotice ? "แจ้งเตือนครั้งสุดท้าย" : "ช่วงรักษาข้อมูล"}</div><div style="margin-top:6px;font-size:21px;font-weight:900;color:#7f1d1d">${escapeHtml(reviewDate)}</div><div style="margin-top:6px;font-size:12px;color:#991b1b">${escapeHtml(timing)}</div></div>`,
+    `<div style="margin-top:14px;padding:14px 16px;border:1px solid #dbe5f3;border-radius:12px;background:#f8fbff;font-size:13px;line-height:1.8;color:#52657f">สถานะ: <strong style="color:#102a50">${escapeHtml(lifecycleLabel)}</strong><br>หากต้องการใช้งานต่อ กรุณาต่อแพ็กเกจหรือติดต่อ Support ก่อน IT ยืนยันการลบ</div>`,
+    '<p style="margin:18px 0 0;font-size:12px;line-height:1.65;color:#66758b">ระบบจะไม่ลบร้านอัตโนมัติ การลบถาวรต้องผ่านการยืนยันของ IT และหากเป็นอุปกรณ์ที่อยู่ภายใต้ MDM ระบบจะปลด Device Owner ก่อนเพื่อให้ลูกค้าถอนติดตั้งแอปได้ตามปกติ</p>'
+  ].join("");
+  return { subject, textBody: lines.join("\n"), htmlBody: html };
+}
+
+
 function thaiBusinessDate(value: string) {
   const parsed = new Date(value + "T12:00:00+07:00");
   if (Number.isNaN(parsed.getTime())) return value;
@@ -617,6 +658,8 @@ export async function deliverCustomerEmail(input: {
         ? settings.auto_send_subscription_due_reminder
         : input.eventType === "trial_expiry_reminder"
           ? settings.auto_send_trial_expiry_reminder
+          : input.eventType === "tenant_deletion_warning"
+            ? settings.auto_send_subscription_due_reminder
           : input.eventType === "daily_sales_summary" || input.eventType === "daily_sales_summary_test"
         ? settings.auto_send_daily_sales_summary
         : settings.auto_send_sales_retention_export;
@@ -709,9 +752,9 @@ export async function deliverCustomerEmail(input: {
         subject: brandedMessage.subject,
         textBody: brandedMessage.textBody,
         htmlBody: brandedMessage.htmlBody,
-        senderName: ["payment_confirmation","subscription_due_reminder","trial_expiry_reminder"].includes(input.eventType)
+        senderName: ["payment_confirmation","subscription_due_reminder","trial_expiry_reminder","tenant_deletion_warning"].includes(input.eventType)
           ? settings.billing_sender_name : settings.support_sender_name,
-        replyTo: ["payment_confirmation","subscription_due_reminder","trial_expiry_reminder"].includes(input.eventType)
+        replyTo: ["payment_confirmation","subscription_due_reminder","trial_expiry_reminder","tenant_deletion_warning"].includes(input.eventType)
           ? settings.billing_email : settings.support_email
       }),
       signal: AbortSignal.timeout(8000)
