@@ -163,6 +163,9 @@ async function cleanupCommunications(
     const bucket = text(item.bucket, 120);
     const path = text(item.path, 600);
     if (!bucket || !path) continue;
+    if (!path.startsWith(tenantId + "/")) {
+      return { completed: false, error: "communications_cleanup_path_invalid", removed_files: removed };
+    }
     byBucket.set(bucket, [...(byBucket.get(bucket) ?? []), path]);
   }
   for (const [bucket, paths] of byBucket) {
