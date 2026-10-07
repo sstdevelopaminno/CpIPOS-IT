@@ -1,6 +1,5 @@
 -- CpIPOS lifecycle retention / deletion confirmation policy.
--- Source-of-truth snapshot for the runtime policy introduced 2026-10-07.
--- Trial: 7 days of access, retain until day 15, then IT review.
+-- Trial: 7 days of access, retain data until day 15, then IT review.
 -- Paid: 3 days post-expiry access grace, retain data for 30 days, then IT review.
 -- Permanent deletion is never automatic.
 
@@ -36,7 +35,7 @@ CREATE OR REPLACE FUNCTION app.refresh_tenant_deletion_reviews(p_as_of timestamp
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'app'
-AS $function$;
+AS $function$
 declare
   v_upserted integer := 0;
   v_ready integer := 0;
@@ -196,13 +195,12 @@ begin
 end;
 $function$;
 
-
 CREATE OR REPLACE FUNCTION app.it_decide_tenant_deletion_review(p_tenant_id uuid, p_action text, p_actor_user_id uuid, p_note text DEFAULT NULL::text, p_as_of timestamp with time zone DEFAULT now())
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'app'
-AS $function$;
+AS $function$
 declare
   v_review public.tenant_lifecycle_deletion_reviews%rowtype;
   v_action text:=lower(trim(coalesce(p_action,'')));
@@ -283,13 +281,12 @@ begin
 end;
 $function$;
 
-
 CREATE OR REPLACE FUNCTION app.it_mark_tenant_mdm_release_completed(p_tenant_id uuid, p_actor_user_id uuid, p_note text DEFAULT NULL::text, p_as_of timestamp with time zone DEFAULT now())
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'app'
-AS $function$;
+AS $function$
 declare
   v_review public.tenant_lifecycle_deletion_reviews%rowtype;
 begin
@@ -322,7 +319,6 @@ begin
   );
 end;
 $function$;
-
 
 create or replace view public.it_tenant_deletion_review_queue as
 select
@@ -398,7 +394,7 @@ CREATE OR REPLACE FUNCTION app.refresh_subscription_billing_lifecycle(p_as_of ti
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'app'
-AS $function$;
+AS $function$
 declare
   v_row record;
   v_opened integer:=0;
@@ -583,7 +579,6 @@ begin
   );
 end;
 $function$;
-
 
 drop function if exists public.subscription_reminder_candidates(timestamptz);
 create function public.subscription_reminder_candidates(p_as_of timestamptz default now())
