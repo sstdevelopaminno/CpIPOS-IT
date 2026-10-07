@@ -776,9 +776,10 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       );
     }
 
-    // Contract period is an IT service-window setting. For an already-settled
-    // paid contract it must not rewrite billing_interval, settlement or receipt
-    // history. Monthly/yearly billing changes continue through the payment flow.
+    // Tenants / Stores is the authoritative service-window source. For an
+    // already-settled paid contract the trigger reconciles only period metadata
+    // on the linked first-paid cycle/settlement/receipt; payment amount, bank
+    // reference, receipt number and issued-at remain immutable.
     const billingCycle = paidActiveContract
       ? currentBillingCycle
       : requestedPeriod === "yearly"
@@ -822,8 +823,8 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
           previous_ended_at: contract.ended_at,
           new_started_at: startIso,
           new_ended_at: endIso,
-          settlement_rows_unchanged: true,
-          receipt_rows_unchanged: true
+          billing_period_synced_to_contract: true,
+          payment_facts_unchanged: true
         }
       },
       updated_at: now
@@ -865,8 +866,8 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
         admin_reason: correctionReason,
         contract_period: requestedPeriod,
         billing_interval_unchanged_for_paid_contract: paidActiveContract,
-        settlement_rows_unchanged: true,
-        receipt_rows_unchanged: true
+        billing_period_synced_to_contract: true,
+        payment_facts_unchanged: true
       }
     );
   }

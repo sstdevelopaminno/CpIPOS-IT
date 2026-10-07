@@ -139,6 +139,8 @@ describe("subscription payments IT workspace", () => {
     expect(tenantUi).toContain("ใบเสร็จออกอัตโนมัติหลัง IT ตรวจเงินเข้าจริง");
     expect(tenantService).toContain("subscription_billing_due_state");
     expect(tenantUi).toContain("รอบที่ต้องชำระปัจจุบัน");
+    expect(tenantService).toContain("billing_period_synced_to_contract");
+    expect(tenantService).toContain("payment_facts_unchanged");
     expect(tenantUi).toContain("สร้างรายการชำระรอบแรก");
     expect(tenantUi).toContain("/it-admin/subscription-payments/");
   });
@@ -172,6 +174,12 @@ describe("subscription payments IT workspace", () => {
     expect(dueMigration).toContain("First verified payment starts the first paid service window");
     expect(dueMigration).toContain("v_base := p_bank_received_at");
     expect(dueMigration).toContain("subscription_billing_due_state");
+    const contractSync = src("../../supabase/migrations/20261007154500_contract_billing_period_sync.sql");
+    expect(contractSync).toContain("reconcile_subscription_billing_period_to_contract");
+    expect(contractSync).toContain("trg_sync_admin_contract_billing_period");
+    expect(contractSync).toContain("'period_source','tenant_contract'");
+    expect(contractSync).toContain("first_package_started_at=v_contract.started_at");
+    expect(contractSync).toContain("Payment facts remain immutable");
     expect(settlementMigration).toContain("trg_subscription_receipts_immutable");
     expect(settlementMigration).toContain("status = 'approved'");
     expect(settlementMigration).toContain("receipt_number");
