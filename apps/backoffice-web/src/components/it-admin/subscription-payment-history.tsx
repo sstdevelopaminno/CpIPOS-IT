@@ -34,6 +34,11 @@ type PaymentRequest = {
   transfer_at: string;
   note: string;
   source: string;
+  auto_check_status: string;
+  auto_check_reason: string | null;
+  provisional_access_granted_at: string | null;
+  provisional_access_expires_at: string | null;
+  provisional_access_revoked_at: string | null;
 };
 type Receipt = {
   id: string;
@@ -836,7 +841,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
         </WorkspaceModal> : null}
 
         {activePanel === "pending" ? <WorkspaceModal title="ตรวจสอบรายการรออนุมัติ"
-          description="ตรวจสลิป ยอดตามแพ็กเกจ และรายการเงินจริงจากบัญชีบริษัทก่อนอนุมัติ"
+          description="สลิปที่ Auto Scan ผ่านอาจเปิด POS ชั่วคราวทันที แต่ IT ยังต้องตรวจเงินจริงและอนุมัติภายใน 3 วัน มิฉะนั้นระบบจะล็อกอัตโนมัติ"
           onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -873,6 +878,8 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                       <div><dt className="text-xs text-slate-500">วันที่ร้านแจ้งว่าโอน</dt><dd className="font-semibold">{formatDateTime(row.transfer_at || null)}</dd></div>
                       <div><dt className="text-xs text-slate-500">ชื่อผู้โอน</dt><dd className="font-semibold">{row.payer_name || "—"}</dd></div>
                       <div><dt className="text-xs text-slate-500">อ้างอิงจากร้าน</dt><dd className="break-all font-semibold">{row.transfer_reference || "—"}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Auto Scan</dt><dd className="font-semibold">{row.auto_check_status === "passed" ? "ผ่าน · เปิดชั่วคราวแล้ว" : row.auto_check_status === "needs_review" ? "ต้องตรวจด้วยคน" : row.auto_check_status || "—"}</dd></div>
+                      <div><dt className="text-xs text-slate-500">เส้นตาย IT</dt><dd className="font-semibold">{formatDateTime(row.provisional_access_expires_at)}</dd></div>
                     </dl>
                     {row.note ? <p className="mt-3 rounded-lg bg-white p-3 text-sm text-slate-600">หมายเหตุร้าน: {row.note}</p> : null}
                     <div className="mt-3 flex flex-wrap gap-2">
