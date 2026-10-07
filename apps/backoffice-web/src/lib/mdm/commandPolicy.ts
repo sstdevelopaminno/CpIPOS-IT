@@ -51,6 +51,7 @@ const SENSITIVE_COMMANDS = new Set<MdmCommandType>([
   'install_app',
   'uninstall_app',
   'revoke_device_access',
+  'release_device_owner',
   'financing_lock',
 ]);
 
