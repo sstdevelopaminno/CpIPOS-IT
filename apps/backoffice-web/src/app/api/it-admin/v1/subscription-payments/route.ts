@@ -23,7 +23,12 @@ type Lifecycle = { tenant_id: string; lifecycle_status: string; access_locked: b
   trial_expires_at: string | null; subscription_expires_at: string | null };
 type Receipt = { id: string; tenant_id: string; payment_request_id: string; receipt_number: string;
   issued_at: string; amount: number; currency: string };
-type DueStateRow = { tenant_id:string; state:Record<string,unknown> };
+type DueState = {
+  status?: unknown; amount_due?: unknown; amount_paid?: unknown;
+  next_period_start?: unknown; next_period_end?: unknown; due_at?: unknown;
+  days_until_due?: unknown; payable_now?: unknown; kind?: unknown;
+};
+type DueStateRow = { tenant_id:string; state:DueState };
 
 function daysRemaining(endDate: string | null, now: number): number | null {
   if (!endDate) return null;
@@ -68,7 +73,7 @@ export async function GET() {
       supabase.from("tenant_subscription_receipts")
         .select("id,tenant_id,payment_request_id,receipt_number,issued_at,amount,currency")
         .in("tenant_id", ids).order("issued_at", { ascending: false }).limit(1000).returns<Receipt[]>(),
-      supabase.rpc("subscription_billing_due_states",{ p_tenant_ids: ids }).returns<DueStateRow[]>()
+      supabase.rpc("subscription_billing_due_states",{ p_tenant_ids: ids })
     ]);
     if (contractsResult.error || cyclesResult.error || paymentsResult.error || ownersResult.error ||
         lifecycleResult.error || receiptsResult.error || dueStatesResult.error) {
@@ -87,7 +92,12 @@ export async function GET() {
     const payments = latestByTenant(paymentsResult.data ?? []);
     const receipts = latestByTenant(receiptsResult.data ?? []);
     const lifecycleByTenant = new Map((lifecycleResult.data ?? []).map((item) => [item.tenant_id, item]));
-    const dueByTenant = new Map((dueStatesResult.data ?? []).map((item) => [item.tenant_id,item.state]));
+    const dueStateRows = Array.isArray(dueStatesResult.data)
+      ? (dueStatesResult.data as unknown as DueStateRow[])
+      : [];
+    const dueByTenant = new Map<string,DueState>(
+      dueStateRows.map((item) => [item.tenant_id,item.state])
+    );
     const now = Date.now();
 
     const rows = stores.map((store) => {
