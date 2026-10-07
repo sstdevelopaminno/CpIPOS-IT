@@ -1,6 +1,7 @@
 import { appendItAuditLog } from "@/lib/it-control-plane";
 import { fail, ok } from "@/lib/http";
 import { assertItSupportAction, guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
+import { sanitizeMdmReasonText } from "@/lib/mdm/commandPolicy";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { readBoundedJson } from "@/lib/server/limited-json";
 import { applyTenantControlAction } from "@/lib/services/it-admin/tenant-control-service";
@@ -43,7 +44,10 @@ function isUuid(value: string) {
 }
 
 async function loadRows(admin: Awaited<ReturnType<typeof requireItAdmin>>) {
-  await admin.supabase.rpc("refresh_tenant_deletion_reviews");
+  const refreshed = await admin.supabase.rpc("refresh_tenant_deletion_reviews");
+  if (refreshed.error) {
+    throw new Error(`tenant_deletion_review_refresh_failed:${refreshed.error.message}`);
+  }
 
   const { data, error } = await admin.supabase
     .from("it_tenant_deletion_review_queue")
@@ -71,6 +75,21 @@ async function queueDeviceOwnerRelease(
   tenantId: string,
   note: string
 ) {
+  const review = await admin.supabase
+    .from("tenant_lifecycle_deletion_reviews")
+    .select("review_status,confirmed_at")
+    .eq("tenant_id", tenantId)
+    .maybeSingle<{ review_status: string; confirmed_at: string | null }>();
+  if (review.error) throw new Error(`tenant_mdm_release_review_failed:${review.error.message}`);
+  if (!review.data || review.data.review_status !== "mdm_release_pending" || !review.data.confirmed_at) {
+    throw new Error("tenant_mdm_release_requires_confirmed_offboarding");
+  }
+
+  const sanitizedReason = sanitizeMdmReasonText(
+    note || "IT-confirmed tenant offboarding: release Android Device Owner before permanent deletion."
+  );
+  const commandReason = sanitizedReason.text || "IT-confirmed tenant offboarding: release Android Device Owner before permanent deletion.";
+
   const { data: devices, error } = await admin.supabase
     .from("mdm_devices")
     .select("device_id,display_name,is_device_owner,is_full_mdm_eligible,capabilities,last_heartbeat_at")
@@ -110,12 +129,12 @@ async function queueDeviceOwnerRelease(
     if ((existing.data ?? []).length > 0) continue;
 
     const now = new Date();
-    const { error: insertError } = await admin.supabase.from("mdm_commands").insert({
+    const inserted = await admin.supabase.from("mdm_commands").insert({
       tenant_id: tenantId,
       device_id: device.device_id,
       command_type: "release_device_owner",
       status: "queued",
-      reason: note || "IT-confirmed tenant offboarding: release Android Device Owner before permanent deletion.",
+      reason: commandReason,
       payload: {
         offboarding: true,
         allow_customer_uninstall: true,
@@ -131,8 +150,47 @@ async function queueDeviceOwnerRelease(
       },
       queued_at: now.toISOString(),
       expires_at: new Date(now.getTime() + 24 * 60 * 60_000).toISOString()
+    }).select("id").single<{ id: string }>();
+    if (inserted.error || !inserted.data) {
+      throw new Error(`tenant_mdm_release_queue_failed:${inserted.error?.message ?? "unknown"}`);
+    }
+
+    const auditInsert = await admin.supabase.from("mdm_command_audit").insert({
+      tenant_id: tenantId,
+      device_id: device.device_id,
+      command_id: inserted.data.id,
+      command_type: "release_device_owner",
+      event_type: "queued",
+      decision: "accepted",
+      reason: commandReason,
+      actor_id: admin.auth.userId,
+      actor_role: admin.auth.platformRole,
+      metadata: {
+        source: "tenant_deletion_review",
+        offboarding: true,
+        reason_redactions: sanitizedReason.reasons
+      }
     });
-    if (insertError) throw new Error(`tenant_mdm_release_queue_failed:${insertError.message}`);
+    if (auditInsert.error) {
+      throw new Error(`tenant_mdm_release_audit_failed:${auditInsert.error.message}`);
+    }
+
+    await appendItAuditLog({
+      tenantId: undefined,
+      actorUserId: admin.auth.userId,
+      action: "tenant_offboarding_device_owner_release_queued",
+      targetType: "mdm_device",
+      targetId: device.device_id,
+      ipAddress: admin.requestMeta.ipAddress,
+      userAgent: admin.requestMeta.userAgent,
+      metadata: {
+        deleted_tenant_id: tenantId,
+        command_id: inserted.data.id,
+        command_type: "release_device_owner",
+        offboarding: true,
+        reason_redactions: sanitizedReason.reasons
+      }
+    });
     queued += 1;
   }
 
