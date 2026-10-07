@@ -30,7 +30,9 @@ type RequestRow = {
   id: string; request_type: string; requested_package_id: string | null;
   amount_reported: number | null; currency: string | null; evidence_url: string | null;
   status: string; submitted_at: string | null; reviewed_at: string | null;
-  review_note: string | null; created_at: string; metadata: Record<string,unknown> | null
+  review_note: string | null; created_at: string; metadata: Record<string,unknown> | null;
+  auto_check_status:string; auto_check_reason:string|null;
+  provisional_access_granted_at:string|null; provisional_access_expires_at:string|null; provisional_access_revoked_at:string|null
 };
 type Approval = {
   id: string; payment_request_id: string | null; action: string; from_status: string | null;
@@ -74,7 +76,7 @@ export async function GET(_request: Request, { params }: Params) {
         .select("id,period_start,period_end,amount_due,amount_paid,status,created_at,package_id")
         .eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(200).returns<Cycle[]>(),
       supabase.from("tenant_subscription_payment_requests")
-        .select("id,request_type,requested_package_id,amount_reported,currency,evidence_url,status,submitted_at,reviewed_at,review_note,created_at,metadata")
+        .select("id,request_type,requested_package_id,amount_reported,currency,evidence_url,status,submitted_at,reviewed_at,review_note,created_at,metadata,auto_check_status,auto_check_reason,provisional_access_granted_at,provisional_access_expires_at,provisional_access_revoked_at")
         .eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(200).returns<RequestRow[]>(),
       supabase.from("tenant_subscription_approval_events")
         .select("id,payment_request_id,action,from_status,to_status,created_at")
