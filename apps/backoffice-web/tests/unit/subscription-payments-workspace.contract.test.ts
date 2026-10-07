@@ -89,6 +89,8 @@ describe("subscription payments IT workspace", () => {
     expect(historyApi).toContain("subscription_billing_due_state");
     expect(historyUi).toContain("CURRENT / NEXT DUE");
     expect(historyUi).toContain("ประวัติรอบบิลจาก Settlement");
+    expect(historyApi).toContain("corrected_period_start");
+    expect(historyApi).toContain("period_corrected");
   });
 
   it("keeps the billing detail compact with closable popup menus and first-payment creation", () => {
@@ -177,9 +179,13 @@ describe("subscription payments IT workspace", () => {
     const contractSync = src("../../supabase/migrations/20261007154500_contract_billing_period_sync.sql");
     expect(contractSync).toContain("reconcile_subscription_billing_period_to_contract");
     expect(contractSync).toContain("trg_sync_admin_contract_billing_period");
-    expect(contractSync).toContain("'period_source','tenant_contract'");
     expect(contractSync).toContain("first_package_started_at=v_contract.started_at");
     expect(contractSync).toContain("Payment facts remain immutable");
+    const immutableOverlay = src("../../supabase/migrations/20261007155500_contract_billing_period_immutable_overlay.sql");
+    expect(immutableOverlay).toContain("corrected_period_start");
+    expect(immutableOverlay).toContain("settlement_immutable");
+    expect(immutableOverlay).not.toContain("update public.tenant_subscription_settlements");
+    expect(immutableOverlay).not.toContain("update public.tenant_subscription_receipts");
     expect(settlementMigration).toContain("trg_subscription_receipts_immutable");
     expect(settlementMigration).toContain("status = 'approved'");
     expect(settlementMigration).toContain("receipt_number");

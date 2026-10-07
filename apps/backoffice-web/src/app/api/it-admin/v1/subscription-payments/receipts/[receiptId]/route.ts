@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ receiptId: string }> };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type ReceiptAnnotation = { correction_note:string|null; voided_at:string|null };
+type ReceiptAnnotation = { correction_note:string|null; voided_at:string|null; metadata:Record<string,unknown>|null };
 
 function escapeHtml(value:string){
   return value.replace(/[&<>"']/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char] || char));
@@ -44,9 +44,15 @@ export async function GET(_request: Request, { params }: Params) {
 
     const receipt = result.data;
     const annotationResult = await supabase.from("tenant_subscription_receipt_annotations")
-      .select("correction_note,voided_at").eq("receipt_id",receipt.id).eq("tenant_id",receipt.tenant_id)
+      .select("correction_note,voided_at,metadata").eq("receipt_id",receipt.id).eq("tenant_id",receipt.tenant_id)
       .maybeSingle<ReceiptAnnotation>();
     const annotation = annotationResult.error ? null : annotationResult.data;
+    const correction=annotation?.metadata??{};
+    const packageSnapshot={
+      ...(receipt.package_snapshot??{}),
+      ...(typeof correction.corrected_period_start==="string"?{period_start:correction.corrected_period_start}:{}),
+      ...(typeof correction.corrected_period_end==="string"?{period_end:correction.corrected_period_end}:{})
+    };
     let html = renderSubscriptionReceiptHtml({
       receiptNumber: receipt.receipt_number,
       issuedAt: receipt.issued_at,
@@ -54,7 +60,7 @@ export async function GET(_request: Request, { params }: Params) {
       currency: receipt.currency || "THB",
       issuer: receipt.issuer_snapshot ?? {},
       customer: receipt.customer_snapshot ?? {},
-      packageSnapshot: receipt.package_snapshot ?? {},
+      packageSnapshot,
       paymentSnapshot: receipt.payment_snapshot ?? {}
     });
     if (annotation?.voided_at || annotation?.correction_note) {
