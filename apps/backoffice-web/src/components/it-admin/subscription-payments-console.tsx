@@ -11,8 +11,8 @@ type Row = {
   billing_interval: "monthly" | "yearly" | "other"; service_status: string;
   start_date: string | null; end_date: string | null; days_remaining: number | null;
   amount_per_cycle: number | null; currency: string; contract_id: string | null; is_internal_demo: boolean;
-  billing_cycle: { id: string; status: string; amount_due: number; amount_paid: number;
-    period_start: string; period_end: string } | null;
+  billing_cycle: { id: string|null; status: string; amount_due: number; amount_paid: number;
+    period_start: string; period_end: string; due_at?:string|null; days_until_due?:number|null; payable_now?:boolean; kind?:string; source?:string } | null;
   payment: { id: string; status: string; amount_reported: number | null; submitted_at: string | null;
     reviewed_at: string | null; has_evidence: boolean; source: string; kind: "payment_notice" | "renewal_intent" | "ai_addon_payment";
     billing_interval: "monthly" | "yearly"; expected_amount: number | null } | null;
@@ -58,6 +58,9 @@ function date(value: string | null) {
 function money(value: number | null, currency: string) {
   if (value == null) return "—";
   return new Intl.NumberFormat("th-TH", { style: "currency", currency: currency || "THB" }).format(value);
+}
+function dueStatusText(value:string){
+  return ({open:"รอชำระ",overdue:"เกินกำหนด",upcoming:"ยังไม่ถึงกำหนด",pending:"รอดำเนินการ",under_review:"รอตรวจสอบการชำระ",trial:"ทดลองใช้",trial_due:"Trial ใกล้หมด",prepaid:"ชำระล่วงหน้าแล้ว",not_payable:"ไม่เรียกเก็บ"} as Record<string,string>)[value]||value||"—";
 }
 function intervalText(value: Row["billing_interval"]) {
   return value === "monthly" ? "รายเดือน" : value === "yearly" ? "รายปี" : "ตามสัญญา";
@@ -292,7 +295,7 @@ export function SubscriptionPaymentsConsole() {
                     {row.payment.billing_interval === "yearly" ? "รายปี" : "รายเดือน"}
                   </span> : null}
                   <span className="mt-1 block text-xs text-slate-500">{row.billing_cycle ?
-                    `รอบบิล: ${row.billing_cycle.status}` : "ยังไม่มีรอบบิล"}</span>
+                    `รอบที่ต้องชำระ: ${dueStatusText(row.billing_cycle.status)} · ${money(row.billing_cycle.amount_due,row.currency)}` : "ยังไม่มีรอบที่ต้องชำระ"}</span>
                 </td>
                 <td className="px-4 py-4"><div className="flex min-w-[190px] flex-col items-start gap-2">
                   <Link href={`/tenants/${row.tenant_id}`}
