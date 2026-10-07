@@ -100,6 +100,11 @@ type ControlData = {
   usage: { active_devices: number; cashier_active: number; assigned_users: number; online_devices_5m: number };
   sales_modes: PosSalesModeView[];
   billing: {
+    current_due: {
+      kind:string;status:string;payable_now:boolean;days_until_due:number|null;due_at:string|null;
+      next_period_start:string|null;next_period_end:string|null;amount_due:number;amount_paid:number;outstanding:number;
+      currency:string;billing_interval:string;package_name:string;open_request_status:string|null;
+    } | null;
     latest_request: {
       id: string;
       requested_package_id: string | null;
@@ -465,6 +470,7 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
   const latestBillingRequest = data?.billing.latest_request ?? null;
   const latestReceipt = data?.billing.latest_receipt ?? null;
+  const currentDue = data?.billing.current_due ?? null;
   const customPackageDefinition = data?.packages.find((pkg) => pkg.code === "custom") ?? null;
   const customTerms = data?.custom_package.terms ?? null;
   const customRequestOpen = Boolean(
@@ -951,7 +957,8 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
                         <label className={styles.switchLabel}><input type="checkbox" checked={contractAutoRenew} disabled={!canEditContract || !contractEditing} onChange={(e) => setContractAutoRenew(e.target.checked)} /><span>ต่ออายุอัตโนมัติ</span></label>
                         {isPaidActiveContract ? <label className={styles.span2}><span>เหตุผลการแก้ไขโดย IT (Audit)</span><textarea rows={2} value={contractEditReason} disabled={!contractEditing} onChange={(e) => setContractEditReason(e.target.value)} placeholder="เช่น แก้วันเริ่ม/วันหมดอายุที่บันทึกผิด หรือปรับตามสัญญาที่อนุมัติแล้ว" /><small>ระบบใส่เหตุผลเริ่มต้นไว้ให้แล้ว สามารถแก้ข้อความได้ก่อนบันทึก</small></label> : null}
                       </div>
-                      {isPrepaidPendingTrial ? <div className={styles.securityNote}>แพ็กเกจชำระล่วงหน้ารอเริ่มหลังครบ Trial ระบบปิดการแก้วันสัญญาชั่วคราวเพื่อไม่ให้สิทธิ์ลูกค้าหาย</div> : null}
+                      {currentDue ? <div className={styles.securityNote}><strong>รอบที่ต้องชำระปัจจุบัน:</strong> {currentDue.status === "open" ? "รอชำระ" : currentDue.status === "overdue" ? "เกินกำหนด" : currentDue.status === "under_review" ? "รอตรวจสอบการชำระ" : currentDue.status === "pending" ? "รอดำเนินการ" : currentDue.status === "trial_due" ? "Trial ใกล้หมด" : currentDue.status === "trial" ? "ทดลองใช้" : currentDue.status === "upcoming" ? "ยังไม่ถึงกำหนด" : currentDue.status} · {money(Number(currentDue.amount_due ?? 0))} · ครบกำหนด {formatDate(currentDue.due_at)}</div> : null}
+                    {isPrepaidPendingTrial ? <div className={styles.securityNote}>แพ็กเกจชำระล่วงหน้ารอเริ่มหลังครบ Trial ระบบปิดการแก้วันสัญญาชั่วคราวเพื่อไม่ให้สิทธิ์ลูกค้าหาย</div> : null}
                       {!currentPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจนี้ยังไม่ได้กำหนดราคารายปีใน Package / Subscription จึงไม่เปิดให้เปลี่ยนเป็นรายปี เพื่อป้องกันสัญญาราคา 0 บาทโดยไม่ตั้งใจ</div> : null}
                       {isPaidActiveContract ? <div className={styles.securityNote}><strong>สัญญาชำระเงินจริง:</strong> เปลี่ยนระยะสัญญาได้ แต่ประวัติ Settlement และใบเสร็จเดิมจะไม่ถูกแก้ไข</div> : null}
                       {canGrantPromoExtension ? <div className={styles.promoGrant}>

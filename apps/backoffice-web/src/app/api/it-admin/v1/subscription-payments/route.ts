@@ -23,6 +23,7 @@ type Lifecycle = { tenant_id: string; lifecycle_status: string; access_locked: b
   trial_expires_at: string | null; subscription_expires_at: string | null };
 type Receipt = { id: string; tenant_id: string; payment_request_id: string; receipt_number: string;
   issued_at: string; amount: number; currency: string };
+type DueStateRow = { tenant_id:string; state:Record<string,unknown> };
 
 function daysRemaining(endDate: string | null, now: number): number | null {
   if (!endDate) return null;
@@ -48,7 +49,7 @@ export async function GET() {
     if (!ids.length) return ok({ rows: [], generated_at: new Date().toISOString() });
 
     const ownerIds = [...new Set(stores.map((store) => store.primary_owner_user_id).filter((id): id is string => Boolean(id)))];
-    const [contractsResult, cyclesResult, paymentsResult, ownersResult, lifecycleResult, receiptsResult] = await Promise.all([
+    const [contractsResult, cyclesResult, paymentsResult, ownersResult, lifecycleResult, receiptsResult, dueStatesResult] = await Promise.all([
       supabase.from("tenant_subscription_contracts")
         .select("id,tenant_id,package_id,billing_interval,status,started_at,ended_at,amount_per_cycle,currency,created_at")
         .in("tenant_id", ids).order("created_at", { ascending: false }).limit(1000).returns<Contract[]>(),
@@ -66,10 +67,11 @@ export async function GET() {
         .in("tenant_id", ids).returns<Lifecycle[]>(),
       supabase.from("tenant_subscription_receipts")
         .select("id,tenant_id,payment_request_id,receipt_number,issued_at,amount,currency")
-        .in("tenant_id", ids).order("issued_at", { ascending: false }).limit(1000).returns<Receipt[]>()
+        .in("tenant_id", ids).order("issued_at", { ascending: false }).limit(1000).returns<Receipt[]>(),
+      supabase.rpc("subscription_billing_due_states",{ p_tenant_ids: ids }).returns<DueStateRow[]>()
     ]);
     if (contractsResult.error || cyclesResult.error || paymentsResult.error || ownersResult.error ||
-        lifecycleResult.error || receiptsResult.error) {
+        lifecycleResult.error || receiptsResult.error || dueStatesResult.error) {
       throw new Error("subscription_payment_data_query_failed");
     }
 
@@ -85,6 +87,7 @@ export async function GET() {
     const payments = latestByTenant(paymentsResult.data ?? []);
     const receipts = latestByTenant(receiptsResult.data ?? []);
     const lifecycleByTenant = new Map((lifecycleResult.data ?? []).map((item) => [item.tenant_id, item]));
+    const dueByTenant = new Map((dueStatesResult.data ?? []).map((item) => [item.tenant_id,item.state]));
     const now = Date.now();
 
     const rows = stores.map((store) => {
@@ -94,6 +97,7 @@ export async function GET() {
       const payment = payments.get(store.id);
       const receipt = receipts.get(store.id);
       const lifecycle = lifecycleByTenant.get(store.id);
+      const currentDue = dueByTenant.get(store.id) ?? null;
       const isInternalDemo = lifecycle?.lifecycle_status === "sales_demo";
       const isTrial = lifecycle?.lifecycle_status === "trial" || contract?.status === "trial";
       const effectiveExpiry = isInternalDemo ? null
@@ -114,7 +118,20 @@ export async function GET() {
         days_remaining: daysRemaining(effectiveExpiry, now),
         amount_per_cycle: contract?.amount_per_cycle ?? (interval === "yearly" ? pkg?.yearly_price : pkg?.monthly_price) ?? null,
         currency: contract?.currency ?? "THB",
-        billing_cycle: cycle ? { id: cycle.id, status: cycle.status, amount_due: cycle.amount_due,
+        billing_cycle: currentDue ? {
+          id: null,
+          status: String(currentDue.status ?? "not_payable"),
+          amount_due: Number(currentDue.amount_due ?? 0),
+          amount_paid: Number(currentDue.amount_paid ?? 0),
+          period_start: String(currentDue.next_period_start ?? ""),
+          period_end: String(currentDue.next_period_end ?? ""),
+          due_at: currentDue.due_at ?? null,
+          days_until_due: currentDue.days_until_due ?? null,
+          payable_now: currentDue.payable_now === true,
+          kind: String(currentDue.kind ?? "none"),
+          source: "derived_entitlement"
+        } : null,
+        last_paid_cycle: cycle ? { id: cycle.id, status: cycle.status, amount_due: cycle.amount_due,
           amount_paid: cycle.amount_paid, period_start: cycle.period_start, period_end: cycle.period_end } : null,
         payment: payment ? {
           id: payment.id,
