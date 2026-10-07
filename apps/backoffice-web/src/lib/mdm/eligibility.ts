@@ -33,6 +33,7 @@ export type MdmCapability =
   | 'remote_support'
   | 'app_install'
   | 'app_uninstall'
+  | 'device_owner_release'
   | 'policy_sync';
 
 export type MdmCommandType =
@@ -43,6 +44,7 @@ export type MdmCommandType =
   | 'stop_remote_support'
   | 'install_app'
   | 'uninstall_app'
+  | 'release_device_owner'
   | 'sync_policy'
   | 'revoke_device_access'
   | 'financing_lock'
@@ -87,6 +89,7 @@ const FULL_MDM_COMMANDS: MdmCommandType[] = [
   'stop_remote_support',
   'install_app',
   'uninstall_app',
+  'release_device_owner',
   'sync_policy',
   'revoke_device_access',
   'financing_lock',
@@ -156,6 +159,7 @@ export const evaluateMdmEligibility = (device: MdmDeviceSnapshot): MdmEligibilit
   if (hasCapability(device, 'remote_support')) allowedCommands.push('start_remote_support', 'stop_remote_support');
   if (hasCapability(device, 'app_install')) allowedCommands.push('install_app');
   if (hasCapability(device, 'app_uninstall')) allowedCommands.push('uninstall_app');
+  if (hasCapability(device, 'device_owner_release')) allowedCommands.push('release_device_owner');
 
   const dedupedAllowed = unique(allowedCommands);
   return {
