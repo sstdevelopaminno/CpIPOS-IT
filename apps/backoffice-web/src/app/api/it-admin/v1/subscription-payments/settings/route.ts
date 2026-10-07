@@ -39,14 +39,14 @@ const SELECT = [
 const DEFAULTS: ContactSettings = {
   billing_email: "cuttingpointtech@gmail.com",
   support_email: "cuttingpointtech.support@gmail.com",
-  billing_sender_name: "CUTTING POINTTECH",
-  support_sender_name: "Cutting Point Tech Support",
+  billing_sender_name: "CUTTING POINT INNOVATION",
+  support_sender_name: "Cutting Point Innovation Support",
   auto_send_store_activation: true,
   auto_send_payment_confirmation: true,
   auto_send_subscription_due_reminder: true,
   auto_send_trial_expiry_reminder: true,
-  company_thai_name: "บริษัท คัตติ้งพอยท์ เทค จำกัด",
-  company_english_name: "Cutting Point Tech Co., Ltd.",
+  company_thai_name: "บริษัท คัตติ้ง พอยท์ อินโนเวชั่น จำกัด",
+  company_english_name: "CUTTING POINT INNOVATION CO., LTD.",
   contact_phone: "098-5460-355",
   website_url: "https://cuttingpointinnovation.vercel.app/",
   email_footer_note: "หากต้องการความช่วยเหลือ กรุณาติดต่อ Support"
