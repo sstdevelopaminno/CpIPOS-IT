@@ -101,9 +101,13 @@ export async function POST(req:Request){
   }catch(error){
     const detail=error instanceof Error?error.message:"support_handoff_failed";
     if(UUID.test(requestId)){
-      await db.from("tenant_subscription_support_requests").update({
-        status:"failed",email_status:"failed",email_detail:detail.slice(0,1000),updated_at:new Date().toISOString()
-      }).eq("id",requestId).catch(()=>null);
+      try{
+        await db.from("tenant_subscription_support_requests").update({
+          status:"failed",email_status:"failed",email_detail:detail.slice(0,1000),updated_at:new Date().toISOString()
+        }).eq("id",requestId);
+      }catch{
+        // Best-effort failure marker only; preserve the original handoff error response.
+      }
     }
     return response(false,500,{error:"support_handoff_failed",detail});
   }
