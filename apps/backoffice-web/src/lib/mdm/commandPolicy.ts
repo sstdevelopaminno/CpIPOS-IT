@@ -51,6 +51,7 @@ const SENSITIVE_COMMANDS = new Set<MdmCommandType>([
   'install_app',
   'uninstall_app',
   'revoke_device_access',
+  'release_device_owner',
   'financing_lock',
 ]);
 
@@ -85,6 +86,18 @@ const normalize = (value?: string | null): string => String(value ?? '').trim().
 const textValue = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const pushIfMissing = (reasons: string[], condition: boolean, reason: string): void => {
   if (condition && !reasons.includes(reason)) reasons.push(reason);
+};
+
+export const sanitizeMdmReasonText = (value: unknown): { text: string; reasons: string[] } => {
+  const original = textValue(value);
+  const reasons: string[] = [];
+  const mayContainSecret = SENSITIVE_REASON_TEXT.test(original);
+  pushIfMissing(reasons, original.length > MAX_REASON_LENGTH, 'reason_too_long');
+  pushIfMissing(reasons, mayContainSecret, 'reason_may_contain_secret');
+  return {
+    text: mayContainSecret ? '[redacted: sensitive reason]' : original.slice(0, MAX_REASON_LENGTH),
+    reasons
+  };
 };
 
 const roleCanRequestCommand = (role: string, commandType: MdmCommandType): boolean => {
@@ -185,10 +198,9 @@ export const validateMdmCommandRequest = (
   const payloadResult = sanitizeMdmCommandPayload(request.payload);
   const payload = payloadResult.payload;
   const originalReasonText = textValue(request.reason);
-  const reasonMayContainSecret = SENSITIVE_REASON_TEXT.test(originalReasonText);
-  const reasonText = reasonMayContainSecret ? '[redacted: sensitive reason]' : originalReasonText.slice(0, MAX_REASON_LENGTH);
-  pushIfMissing(reasons, originalReasonText.length > MAX_REASON_LENGTH, 'reason_too_long');
-  pushIfMissing(reasons, reasonMayContainSecret, 'reason_may_contain_secret');
+  const sanitizedReason = sanitizeMdmReasonText(request.reason);
+  const reasonText = sanitizedReason.text;
+  for (const reason of sanitizedReason.reasons) pushIfMissing(reasons, true, reason);
 
   for (const reason of payloadResult.reasons) pushIfMissing(reasons, true, reason);
   pushIfMissing(reasons, !request.tenantId, 'tenant_id_required');

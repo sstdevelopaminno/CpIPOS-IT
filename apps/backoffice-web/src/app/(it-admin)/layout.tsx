@@ -26,6 +26,7 @@ const copy = {
     items: {
       dashboard: "แดชบอร์ด",
       tenants: "Tenants / Stores",
+      deletionReviews: "ร้านรอตรวจสอบการลบ",
       provisioning: "เปิดร้านใหม่",
       registrations: "คำขอเปิดร้าน",
       branches: "สาขา",
@@ -76,6 +77,7 @@ const copy = {
     items: {
       dashboard: "Dashboard",
       tenants: "Tenants / Stores",
+      deletionReviews: "Tenant Deletion Review",
       provisioning: "Store Provisioning",
       registrations: "Store Requests",
       branches: "Branches",
@@ -138,6 +140,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
   if (role === "it_admin") {
     return [
       { href: "/it-admin/tenants", label: text.items.tenants, group: text.groups.customer, icon: "store" },
+      { href: "/it-admin/deletion-reviews", label: text.items.deletionReviews, group: text.groups.customer, icon: "incident" },
       { href: "/it-admin/store-registrations", label: text.items.registrations, group: text.groups.customer, icon: "provision" },
       { href: "/it-admin/branches", label: text.items.branches, group: text.groups.customer, icon: "branch" },
       { href: "/it-admin/pos-users", label: text.items.users, group: text.groups.customer, icon: "users" },
@@ -162,6 +165,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
   return [
     { href: "/it-admin", label: text.items.dashboard, group: text.groups.overview, icon: "dashboard" },
     { href: "/it-admin/tenants", label: text.items.tenants, group: text.groups.customer, icon: "store" },
+    { href: "/it-admin/deletion-reviews", label: text.items.deletionReviews, group: text.groups.customer, icon: "incident" },
     { href: "/it-admin/store-registrations", label: text.items.registrations, group: text.groups.customer, icon: "provision" },
     { href: "/it-admin/branches", label: text.items.branches, group: text.groups.customer, icon: "branch" },
     { href: "/it-admin/pos-users", label: text.items.users, group: text.groups.customer, icon: "users" },
