@@ -36,7 +36,7 @@ CREATE OR REPLACE FUNCTION app.refresh_tenant_deletion_reviews(p_as_of timestamp
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'app'
-AS $function$
+AS $function$;
 declare
   v_upserted integer := 0;
   v_ready integer := 0;
@@ -194,7 +194,7 @@ begin
     'ran_at',p_as_of
   );
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app.it_decide_tenant_deletion_review(p_tenant_id uuid, p_action text, p_actor_user_id uuid, p_note text DEFAULT NULL::text, p_as_of timestamp with time zone DEFAULT now())
@@ -202,7 +202,7 @@ CREATE OR REPLACE FUNCTION app.it_decide_tenant_deletion_review(p_tenant_id uuid
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'app'
-AS $function$
+AS $function$;
 declare
   v_review public.tenant_lifecycle_deletion_reviews%rowtype;
   v_action text:=lower(trim(coalesce(p_action,'')));
@@ -281,7 +281,7 @@ begin
     'mdm_release_completed',v_review.mdm_release_completed_at is not null
   );
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app.it_mark_tenant_mdm_release_completed(p_tenant_id uuid, p_actor_user_id uuid, p_note text DEFAULT NULL::text, p_as_of timestamp with time zone DEFAULT now())
@@ -289,7 +289,7 @@ CREATE OR REPLACE FUNCTION app.it_mark_tenant_mdm_release_completed(p_tenant_id 
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'app'
-AS $function$
+AS $function$;
 declare
   v_review public.tenant_lifecycle_deletion_reviews%rowtype;
 begin
@@ -321,7 +321,7 @@ begin
     'actor_user_id',p_actor_user_id
   );
 end;
-$function$
+$function$;
 
 
 create or replace view public.it_tenant_deletion_review_queue as
@@ -398,7 +398,7 @@ CREATE OR REPLACE FUNCTION app.refresh_subscription_billing_lifecycle(p_as_of ti
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'app'
-AS $function$
+AS $function$;
 declare
   v_row record;
   v_opened integer:=0;
@@ -582,7 +582,7 @@ begin
     'ran_at',p_as_of
   );
 end;
-$function$
+$function$;
 
 
 drop function if exists public.subscription_reminder_candidates(timestamptz);
