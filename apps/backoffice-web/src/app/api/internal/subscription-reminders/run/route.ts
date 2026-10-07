@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { buildSubscriptionDueReminderEmail,buildTrialExpiryReminderEmail,deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
+import { buildSubscriptionDueReminderEmail,buildTenantDeletionWarningEmail,buildTrialExpiryReminderEmail,deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 
 type Body={token?:string};
 type Candidate={
   tenant_id:string;store_name:string;store_code:string;owner_name:string|null;owner_email:string|null;
-  reminder_type:"subscription_due_reminder"|"trial_expiry_reminder";milestone:string;due_at:string;
+  reminder_type:"subscription_due_reminder"|"trial_expiry_reminder"|"tenant_deletion_warning";milestone:string;due_at:string;
   days_remaining:number|string;package_name:string;billing_interval:string;amount_due:number|string;currency:string;
+  lifecycle_kind?: "trial"|"subscription"; final_notice?: boolean;
 };
 function response(ok:boolean,status:number,payload:Record<string,unknown>){
   return NextResponse.json({ok,...payload},{status,headers:{"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
@@ -31,7 +32,16 @@ export async function POST(request:Request){
       const days=num(row.days_remaining),amount=num(row.amount_due);
       const message=row.reminder_type==="trial_expiry_reminder"
         ? buildTrialExpiryReminderEmail({storeName:row.store_name,ownerName:row.owner_name,packageName:row.package_name,dueAt:row.due_at,daysRemaining:days,amountDue:amount,currency:row.currency})
-        : buildSubscriptionDueReminderEmail({storeName:row.store_name,ownerName:row.owner_name,packageName:row.package_name,dueAt:row.due_at,daysRemaining:days,amountDue:amount,currency:row.currency,billingInterval:row.billing_interval});
+        : row.reminder_type==="tenant_deletion_warning"
+          ? buildTenantDeletionWarningEmail({
+              storeName:row.store_name,
+              ownerName:row.owner_name,
+              lifecycleKind:row.lifecycle_kind==="trial"?"trial":"subscription",
+              deletionReviewAt:row.due_at,
+              daysRemaining:days,
+              finalNotice:row.final_notice===true
+            })
+          : buildSubscriptionDueReminderEmail({storeName:row.store_name,ownerName:row.owner_name,packageName:row.package_name,dueAt:row.due_at,daysRemaining:days,amountDue:amount,currency:row.currency,billingInterval:row.billing_interval});
       const dueKey=row.due_at.slice(0,10).replaceAll("-","");
       const delivery=await deliverCustomerEmail({
         db,eventType:row.reminder_type,sourceId:row.tenant_id,tenantId:row.tenant_id,to:String(row.owner_email??""),
