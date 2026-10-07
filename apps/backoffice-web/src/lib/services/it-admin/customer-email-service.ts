@@ -371,28 +371,28 @@ export function buildSubscriptionDueReminderEmail(input: {
 }): CustomerEmailMessage {
   const due=thaiDate(input.dueAt);
   const interval=input.billingInterval==="yearly"?"รายปี":"รายเดือน";
-  const subject=\`แจ้งเตือนต่อแพ็กเกจ CpIPOS | \${text(input.storeName,100)} | ครบกำหนด \${due}\`;
+  const subject=`แจ้งเตือนต่อแพ็กเกจ CpIPOS | ${text(input.storeName,100)} | ครบกำหนด ${due}`;
   const owner=text(input.ownerName,120)||text(input.storeName,120);
   const lines=[
-    \`เรียน \${owner}\`,"",
-    \`แพ็กเกจ \${text(input.packageName,120)} ของร้านใกล้สิ้นสุดรอบบริการ\`,
-    \`ครบกำหนด: \${due}\`,
-    \`คงเหลือ: \${Math.max(0,input.daysRemaining)} วัน\`,
-    \`ค่าบริการรอบถัดไป: \${money(input.amountDue,input.currency||"THB")} (\${interval})\`,"",
+    `เรียน ${owner}`,"",
+    `แพ็กเกจ ${text(input.packageName,120)} ของร้านใกล้สิ้นสุดรอบบริการ`,
+    `ครบกำหนด: ${due}`,
+    `คงเหลือ: ${Math.max(0,input.daysRemaining)} วัน`,
+    `ค่าบริการรอบถัดไป: ${money(input.amountDue,input.currency||"THB")} (${interval})`,"",
     "กรุณาเปิดเมนูแพ็กเกจ/ชำระเงินใน CpIPOS หรือ Customer Portal เพื่อแจ้งชำระก่อนครบกำหนด",
     "อีเมลฉบับนี้เป็นการแจ้งเตือน ไม่ใช่ใบเสร็จหรือหลักฐานรับชำระเงิน"
   ];
   const html=[
-    \`<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">\${escapeHtml(owner)}</strong></p>\`,
+    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">${escapeHtml(owner)}</strong></p>`,
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;border:1px solid #cfe0f5;border-radius:12px;background:#f8fbff;overflow:hidden">',
-    \`<tr><td style="padding:13px 16px;font-size:12px;color:#64748b">ร้านค้า</td><td style="padding:13px 16px;font-size:14px;font-weight:800;color:#102a50">\${escapeHtml(input.storeName)}</td></tr>\`,
-    \`<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">แพ็กเกจ</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">\${escapeHtml(input.packageName)} · \${escapeHtml(interval)}</td></tr>\`,
-    \`<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ครบกำหนด</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#b45309">\${escapeHtml(due)} · เหลือ \${Math.max(0,input.daysRemaining)} วัน</td></tr>\`,
-    \`<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">รอบถัดไป</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#176fe8">\${escapeHtml(money(input.amountDue,input.currency||"THB"))}</td></tr>\`,
+    `<tr><td style="padding:13px 16px;font-size:12px;color:#64748b">ร้านค้า</td><td style="padding:13px 16px;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.storeName)}</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">แพ็กเกจ</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.packageName)} · ${escapeHtml(interval)}</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ครบกำหนด</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#b45309">${escapeHtml(due)} · เหลือ ${Math.max(0,input.daysRemaining)} วัน</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">รอบถัดไป</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</td></tr>`,
     '</table>',
     '<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#fff8e8;color:#7a5512;font-size:12px;line-height:1.65">กรุณาแจ้งชำระผ่าน CpIPOS หรือ Customer Portal ก่อนครบกำหนด · อีเมลนี้ไม่ใช่หลักฐานรับชำระเงิน</div>'
   ].join("");
-  return {subject,textBody:lines.join("\\n"),htmlBody:html};
+  return {subject,textBody:lines.join("\n"),htmlBody:html};
 }
 
 export function buildTrialExpiryReminderEmail(input: {
@@ -401,23 +401,23 @@ export function buildTrialExpiryReminderEmail(input: {
 }): CustomerEmailMessage {
   const due=thaiDate(input.dueAt);
   const owner=text(input.ownerName,120)||text(input.storeName,120);
-  const subject=\`ทดลองใช้ CpIPOS ใกล้สิ้นสุด | \${text(input.storeName,100)} | \${due}\`;
+  const subject=`ทดลองใช้ CpIPOS ใกล้สิ้นสุด | ${text(input.storeName,100)} | ${due}`;
   const lines=[
-    \`เรียน \${owner}\`,"",
-    \`ช่วงทดลองใช้ของร้านจะสิ้นสุดวันที่ \${due}\`,
-    \`คงเหลือ: \${Math.max(0,input.daysRemaining)} วัน\`,
-    \`แพ็กเกจที่ตั้งไว้: \${text(input.packageName,120)}\`,
-    \`ค่าบริการเริ่มต้นรอบแรก: \${money(input.amountDue,input.currency||"THB")}\`,"",
+    `เรียน ${owner}`,"",
+    `ช่วงทดลองใช้ของร้านจะสิ้นสุดวันที่ ${due}`,
+    `คงเหลือ: ${Math.max(0,input.daysRemaining)} วัน`,
+    `แพ็กเกจที่ตั้งไว้: ${text(input.packageName,120)}`,
+    `ค่าบริการเริ่มต้นรอบแรก: ${money(input.amountDue,input.currency||"THB")}`,"",
     "หากต้องการใช้งานต่อ กรุณาเปิดเมนูแพ็กเกจ/ชำระเงินและดำเนินการก่อนสิทธิ์ทดลองหมด",
     "หากชำระล่วงหน้าและ IT ยืนยันแล้ว ระบบจะไม่ส่งอีเมลเตือนชำระซ้ำ"
   ];
   const html=[
-    \`<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">\${escapeHtml(owner)}</strong></p>\`,
-    \`<div style="padding:18px;border:1px solid #f3d9a6;border-radius:12px;background:#fff9ee;text-align:center"><div style="font-size:12px;color:#7a5512">สิ้นสุดช่วงทดลองใช้</div><div style="margin-top:5px;font-size:22px;font-weight:900;color:#9a5b08">\${escapeHtml(due)}</div><div style="margin-top:5px;font-size:12px;color:#7a5512">เหลือ \${Math.max(0,input.daysRemaining)} วัน</div></div>\`,
-    \`<div style="margin-top:14px;padding:14px 16px;border:1px solid #dbe5f3;border-radius:12px;background:#f8fbff;font-size:13px;line-height:1.8;color:#52657f">แพ็กเกจ <strong style="color:#102a50">\${escapeHtml(input.packageName)}</strong><br>ค่าบริการรอบแรก <strong style="color:#176fe8">\${escapeHtml(money(input.amountDue,input.currency||"THB"))}</strong></div>\`,
+    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">${escapeHtml(owner)}</strong></p>`,
+    `<div style="padding:18px;border:1px solid #f3d9a6;border-radius:12px;background:#fff9ee;text-align:center"><div style="font-size:12px;color:#7a5512">สิ้นสุดช่วงทดลองใช้</div><div style="margin-top:5px;font-size:22px;font-weight:900;color:#9a5b08">${escapeHtml(due)}</div><div style="margin-top:5px;font-size:12px;color:#7a5512">เหลือ ${Math.max(0,input.daysRemaining)} วัน</div></div>`,
+    `<div style="margin-top:14px;padding:14px 16px;border:1px solid #dbe5f3;border-radius:12px;background:#f8fbff;font-size:13px;line-height:1.8;color:#52657f">แพ็กเกจ <strong style="color:#102a50">${escapeHtml(input.packageName)}</strong><br>ค่าบริการรอบแรก <strong style="color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</strong></div>`,
     '<p style="margin:18px 0 0;font-size:12px;line-height:1.65;color:#66758b">หากต้องการใช้งานต่อ กรุณาดำเนินการจากเมนูแพ็กเกจ/ชำระเงินก่อนสิทธิ์ทดลองหมด ระบบจะไม่เตือนชำระซ้ำหากมีการยืนยันชำระล่วงหน้าแล้ว</p>'
   ].join("");
-  return {subject,textBody:lines.join("\\n"),htmlBody:html};
+  return {subject,textBody:lines.join("\n"),htmlBody:html};
 }
 
 function thaiBusinessDate(value: string) {
