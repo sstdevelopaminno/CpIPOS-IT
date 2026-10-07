@@ -21,25 +21,26 @@ describe("LINE Payment Center", () => {
   it("builds PromptPay QR from IT settings and a server-derived due amount", () => {
     expect(service).toContain("billing_promptpay_id");
     expect(service).toContain("amount_per_cycle");
-    expect(service).toContain("contract.ended_at");
-    expect(service).toContain("Date.parse(contract.ended_at) <= Date.now()");
+    expect(service).toContain('rpc("ensure_tenant_subscription_billing_cycle"');
+    expect(service).toContain('rpc("subscription_billing_due_state"');
+    expect(service).toContain("automatic_billing_cycle");
     expect(service).toContain("https://promptpay.io/");
     expect(service).toContain('base + ".png"');
     expect(service).toContain('replace(/[^\\d]/g, "")');
   });
 
   it("does not expose a QR before the current contract reaches its due date", () => {
-    expect(service).toContain('["active", "trial"].includes(contract.status)');
-    expect(service).toContain("contractEndReached");
+    expect(service).toContain("self_service_payment_allowed");
+    expect(service).toContain("support_required");
     expect(service).toContain("let qrUrl: string | null = null");
-    expect(service).toContain("if (account.promptpay_ready && !openRow)");
+    expect(service).toContain("!openRow && selfService && !supportRequired");
     expect(paymentClient).toContain("ยังไม่มียอดชำระ");
     expect(paymentClient).toContain("ร้านยังไม่ถึงวันครบกำหนดชำระ");
   });
 
   it("suppresses a new QR while a payment request is pending review", () => {
     expect(service).toContain('row.status === "pending" || row.status === "under_review"');
-    expect(service).toContain("open_request: paymentSummary(openRow)");
+    expect(service).toContain("open_request:paymentSummary(openRow)");
     expect(service).toContain("!openRow");
     expect(paymentClient).toContain("ชำระเงินแล้ว · รออนุมัติจากฝ่ายตรวจสอบ");
   });
