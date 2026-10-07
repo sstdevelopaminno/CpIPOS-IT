@@ -25,7 +25,6 @@ const CONTROL_LABELS: Record<MdmCommandType, string> = {
   install_app: 'Install App',
   uninstall_app: 'Uninstall App',
   release_device_owner: 'Release Device Owner (Offboarding only)',
-  release_device_owner: 'Release Device Owner (Offboarding only)',
   revoke_device_access: 'Revoke Device Access',
   financing_lock: 'Financing Lock',
 };
