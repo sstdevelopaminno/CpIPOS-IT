@@ -15,6 +15,7 @@ const MDM_COMMAND_TYPES: readonly MdmCommandType[] = [
   "stop_remote_support",
   "install_app",
   "uninstall_app",
+  "release_device_owner",
   "sync_policy",
   "revoke_device_access",
   "financing_lock",
