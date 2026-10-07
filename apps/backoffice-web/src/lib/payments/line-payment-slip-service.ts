@@ -43,6 +43,18 @@ export async function submitLinePackagePaymentSlip(input: {
   if (!snapshot.due || !snapshot.package.id) {
     throw new LinePaymentSlipError("payment_not_due", "ร้านนี้ยังไม่มียอดชำระที่ถึงกำหนด", 409);
   }
+  if (snapshot.due.support_required || !snapshot.due.self_service_payment_allowed) {
+    throw new LinePaymentSlipError(
+      "payment_support_required",
+      snapshot.due.support_required
+        ? "รายการนี้เกินช่วงชำระด้วยตนเองแล้ว กรุณาติดต่อฝ่าย Support"
+        : "รอบนี้ยังไม่เปิดให้ส่งสลิปผ่านระบบ",
+      409
+    );
+  }
+  if (!snapshot.due.billing_cycle_id) {
+    throw new LinePaymentSlipError("billing_cycle_missing", "ระบบยังไม่สามารถเปิดรอบบิลได้ กรุณาลองใหม่", 503);
+  }
   if (snapshot.open_request) {
     throw new LinePaymentSlipError("payment_request_exists", "ส่งสลิปแล้ว และรายการกำลังรอตรวจสอบ", 409);
   }
@@ -114,6 +126,7 @@ export async function submitLinePackagePaymentSlip(input: {
     due_date: snapshot.due.due_date,
     service_period_start: snapshot.due.period_start,
     service_period_end: snapshot.due.period_end,
+    billing_cycle_id: snapshot.due.billing_cycle_id,
     payer_name: scan.parsed.payer_name ?? "",
     transfer_reference: scan.parsed.reference_no ?? scan.parsed.transaction_id ?? "",
     transfer_at: scan.parsed.transfer_datetime ?? "",
@@ -132,7 +145,7 @@ export async function submitLinePackagePaymentSlip(input: {
     id: requestId,
     tenant_id: input.session.tenantId,
     requested_package_id: snapshot.package.id,
-    request_type: "renewal",
+    request_type: snapshot.due.kind === "trial" ? "trial_conversion" : "renewal",
     amount_reported: amountReported,
     status: "pending",
     currency: snapshot.due.currency || "THB",
@@ -148,6 +161,23 @@ export async function submitLinePackagePaymentSlip(input: {
     throw new LinePaymentSlipError("payment_request_failed", "ส่งรายการให้ฝ่ายตรวจสอบไม่สำเร็จ กรุณาลองใหม่", 503);
   }
 
+  let provisional: { granted?: boolean; review_deadline?: string; provisional_access_expires_at?: string } | null = null;
+  if (scan.status === "verified" && scan.checks.passed) {
+    const granted = await db.rpc("grant_provisional_subscription_access", {
+      p_request_id: inserted.data.id,
+      p_scan: scan,
+      p_actor_id: null
+    });
+    if (!granted.error && granted.data && typeof granted.data === "object") {
+      provisional = granted.data as { granted?: boolean; review_deadline?: string; provisional_access_expires_at?: string };
+    } else if (granted.error) {
+      await db.from("tenant_subscription_payment_requests").update({
+        auto_check_status: "failed",
+        auto_check_reason: "provisional_grant_failed:" + granted.error.message.slice(0,180)
+      }).eq("id", inserted.data.id);
+    }
+  }
+
   await dispatchSupportPush({
     audience: "it",
     tenant_id: input.session.tenantId,
@@ -161,10 +191,12 @@ export async function submitLinePackagePaymentSlip(input: {
   return {
     request: {
       id: inserted.data.id,
-      status: inserted.data.status,
+      status: provisional?.granted ? "under_review" : inserted.data.status,
       submitted_at: inserted.data.submitted_at,
       review_note: null as string | null,
       scan_status: scan.status,
+      provisional_access: provisional?.granted === true,
+      review_deadline: provisional?.review_deadline ?? provisional?.provisional_access_expires_at ?? null,
       expected_amount: snapshot.due.outstanding_amount,
       currency: snapshot.due.currency || "THB"
     },
@@ -183,7 +215,7 @@ export async function getLinePaymentRequestStatus(input: {
 }) {
   const db = getPrimarySupabaseServiceClient();
   const request = await db.from("tenant_subscription_payment_requests")
-    .select("id,status,submitted_at,reviewed_at,review_note,amount_reported,currency,metadata")
+    .select("id,status,submitted_at,reviewed_at,review_note,amount_reported,currency,metadata,auto_check_status,provisional_access_granted_at,provisional_access_expires_at,provisional_access_revoked_at")
     .eq("id", input.requestId)
     .eq("tenant_id", input.session.tenantId)
     .maybeSingle<{
@@ -195,6 +227,10 @@ export async function getLinePaymentRequestStatus(input: {
       amount_reported: number | null;
       currency: string;
       metadata: Record<string, unknown> | null;
+      auto_check_status: string;
+      provisional_access_granted_at: string | null;
+      provisional_access_expires_at: string | null;
+      provisional_access_revoked_at: string | null;
     }>();
 
   if (request.error) throw new LinePaymentSlipError("payment_status_failed", "ตรวจสอบสถานะการชำระไม่สำเร็จ", 503);
@@ -246,6 +282,16 @@ export async function getLinePaymentRequestStatus(input: {
       amount_reported: request.data.amount_reported,
       currency: request.data.currency,
       scan_status: scanStatus,
+      auto_check_status: request.data.auto_check_status,
+      provisional_access_granted_at: request.data.provisional_access_granted_at,
+      provisional_access_expires_at: request.data.provisional_access_expires_at,
+      provisional_access_active: Boolean(
+        request.data.provisional_access_granted_at
+        && !request.data.provisional_access_revoked_at
+        && request.data.provisional_access_expires_at
+        && Date.parse(request.data.provisional_access_expires_at)>Date.now()
+        && request.data.status==="under_review"
+      ),
       receipt
     }
   };
