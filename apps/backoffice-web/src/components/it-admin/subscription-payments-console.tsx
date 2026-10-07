@@ -28,6 +28,8 @@ type ContactSettings = {
   support_sender_name: string;
   auto_send_store_activation: boolean;
   auto_send_payment_confirmation: boolean;
+  auto_send_subscription_due_reminder: boolean;
+  auto_send_trial_expiry_reminder: boolean;
 };
 type SettingsEnvelope = { data?: { settings: ContactSettings }; error?: { message?: string } };
 const defaultContacts: ContactSettings = {
@@ -36,7 +38,9 @@ const defaultContacts: ContactSettings = {
   billing_sender_name: "CUTTING POINTTECH",
   support_sender_name: "Cutting Point Tech Support",
   auto_send_store_activation: true,
-  auto_send_payment_confirmation: true
+  auto_send_payment_confirmation: true,
+  auto_send_subscription_due_reminder: true,
+  auto_send_trial_expiry_reminder: true
 };
 
 const statusText: Record<string, string> = {
@@ -189,6 +193,18 @@ export function SubscriptionPaymentsConsole() {
               onChange={(event) => setContacts((current) => ({ ...current, auto_send_payment_confirmation: event.target.checked }))}
               className="mt-1" />
             <span>ส่งอัตโนมัติเมื่อยืนยันรับชำระแพ็กเกจ<small className="mt-1 block font-normal text-slate-500">ส่งหลัง Settlement และออกใบเสร็จจริงแล้วเท่านั้น</small></span>
+          </label>
+          <label className="flex items-start gap-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={contacts.auto_send_subscription_due_reminder}
+              onChange={(event) => setContacts((current) => ({ ...current, auto_send_subscription_due_reminder: event.target.checked }))}
+              className="mt-1" />
+            <span>เตือนก่อนรอบชำระแพ็กเกจ<small className="mt-1 block font-normal text-slate-500">แจ้งช่วงประมาณ 7, 3 และ 1 วันก่อนหมดรอบ · ไม่ส่งซ้ำเมื่อมีรายการรอตรวจชำระ</small></span>
+          </label>
+          <label className="flex items-start gap-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={contacts.auto_send_trial_expiry_reminder}
+              onChange={(event) => setContacts((current) => ({ ...current, auto_send_trial_expiry_reminder: event.target.checked }))}
+              className="mt-1" />
+            <span>เตือนก่อน Trial หมดอายุ<small className="mt-1 block font-normal text-slate-500">แจ้งช่วงประมาณ 3 และ 1 วันก่อนหมดสิทธิ์ · งดเตือนหากชำระล่วงหน้าและยืนยันแล้ว</small></span>
           </label>
         </div>
         <p className="mt-3 text-xs text-slate-500">ถ้าปิดอัตโนมัติ ยังสามารถกด “ส่งอีเมลเปิดระบบ” หรือ “ส่งอีเมลยืนยันชำระ” จากหน้ารายการได้เอง</p>

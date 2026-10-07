@@ -11,6 +11,8 @@ type ContactSettings = {
   support_sender_name: string;
   auto_send_store_activation: boolean;
   auto_send_payment_confirmation: boolean;
+  auto_send_subscription_due_reminder: boolean;
+  auto_send_trial_expiry_reminder: boolean;
   company_thai_name: string;
   company_english_name: string;
   contact_phone: string;
@@ -25,6 +27,8 @@ const SELECT = [
   "support_sender_name",
   "auto_send_store_activation",
   "auto_send_payment_confirmation",
+  "auto_send_subscription_due_reminder",
+  "auto_send_trial_expiry_reminder",
   "company_thai_name",
   "company_english_name",
   "contact_phone",
@@ -39,6 +43,8 @@ const DEFAULTS: ContactSettings = {
   support_sender_name: "Cutting Point Tech Support",
   auto_send_store_activation: true,
   auto_send_payment_confirmation: true,
+  auto_send_subscription_due_reminder: true,
+  auto_send_trial_expiry_reminder: true,
   company_thai_name: "บริษัท คัตติ้งพอยท์ เทค จำกัด",
   company_english_name: "Cutting Point Tech Co., Ltd.",
   contact_phone: "098-5460-355",
@@ -57,7 +63,7 @@ function pickText(body: Record<string, unknown>, key: keyof ContactSettings, cur
   return read(body[key], max);
 }
 
-function pickBool(body: Record<string, unknown>, key: "auto_send_store_activation" | "auto_send_payment_confirmation", current: ContactSettings) {
+function pickBool(body: Record<string, unknown>, key: "auto_send_store_activation" | "auto_send_payment_confirmation" | "auto_send_subscription_due_reminder" | "auto_send_trial_expiry_reminder", current: ContactSettings) {
   if (!(key in body)) return current[key];
   return body[key] !== false;
 }
@@ -105,6 +111,8 @@ export async function PATCH(request: Request) {
       support_sender_name: pickText(body, "support_sender_name", current, 120),
       auto_send_store_activation: pickBool(body, "auto_send_store_activation", current),
       auto_send_payment_confirmation: pickBool(body, "auto_send_payment_confirmation", current),
+      auto_send_subscription_due_reminder: pickBool(body, "auto_send_subscription_due_reminder", current),
+      auto_send_trial_expiry_reminder: pickBool(body, "auto_send_trial_expiry_reminder", current),
       company_thai_name: pickText(body, "company_thai_name", current, 180),
       company_english_name: pickText(body, "company_english_name", current, 180),
       contact_phone: pickText(body, "contact_phone", current, 80),
