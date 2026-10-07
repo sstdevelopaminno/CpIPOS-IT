@@ -74,7 +74,12 @@ export type LinePackagePaymentSnapshot = {
     due_date: string;
     period_start: string;
     period_end: string;
-    source: "contract_due";
+    source: string;
+    status: string;
+    kind: string;
+    billing_cycle_id: string | null;
+    self_service_payment_allowed: boolean;
+    support_required: boolean;
   };
   open_request: LinePaymentRequestSummary | null;
   latest_request: LinePaymentRequestSummary | null;
@@ -173,7 +178,12 @@ export async function getLinePackagePaymentSnapshot(
 ): Promise<LinePackagePaymentSnapshot> {
   const db = getPrimarySupabaseServiceClient();
 
-  const [account, contractResult, requestsResult] = await Promise.all([
+  const ensure = await db.rpc("ensure_tenant_subscription_billing_cycle", {
+    p_tenant_id: session.tenantId
+  });
+  if (ensure.error) throw new Error("subscription_billing_cycle_sync_failed");
+
+  const [account, contractResult, requestsResult, dueResult] = await Promise.all([
     getPublicPaymentAccount(),
     db.from("tenant_subscription_contracts")
       .select("id,package_id,status,billing_interval,amount_per_cycle,currency,started_at,ended_at")
@@ -186,11 +196,13 @@ export async function getLinePackagePaymentSnapshot(
       .eq("tenant_id", session.tenantId)
       .order("created_at", { ascending: false })
       .limit(10)
-      .returns<PaymentRequestRow[]>()
+      .returns<PaymentRequestRow[]>(),
+    db.rpc("subscription_billing_due_state", { p_tenant_id: session.tenantId })
   ]);
 
   if (contractResult.error) throw new Error("subscription_contract_query_failed");
   if (requestsResult.error) throw new Error("subscription_payment_request_query_failed");
+  if (dueResult.error) throw new Error("subscription_billing_due_state_failed");
 
   const contract = contractResult.data ?? null;
   const packageId = contract?.package_id ?? null;
@@ -208,71 +220,57 @@ export async function getLinePackagePaymentSnapshot(
   const requests = requestsResult.data ?? [];
   const openRow = requests.find((row) => row.status === "pending" || row.status === "under_review") ?? null;
   const latestRow = requests[0] ?? null;
+  const rawDue=(dueResult.data??{}) as Record<string,unknown>;
+  const dueAmount=Number(rawDue.amount_due??0);
+  const paidAmount=Number(rawDue.amount_paid??0);
+  const outstanding=Number(rawDue.outstanding??Math.max(0,dueAmount-paidAmount));
+  const periodStart=String(rawDue.next_period_start??"");
+  const periodEnd=String(rawDue.next_period_end??"");
+  const dueStatus=String(rawDue.status??"");
+  const selfService=rawDue.self_service_payment_allowed===true;
+  const supportRequired=rawDue.support_required===true;
 
   let due: LinePackagePaymentSnapshot["due"] = null;
   let qrUrl: string | null = null;
   let qrPageUrl: string | null = null;
 
-  const serviceEnd = contract?.ended_at ? bangkokDate(contract.ended_at) : "";
-  const contractEndReached = Boolean(
-    contract?.ended_at &&
-    Number.isFinite(Date.parse(contract.ended_at)) &&
-    Date.parse(contract.ended_at) <= Date.now()
-  );
-  const interval = contract?.billing_interval === "yearly" ? "yearly"
-    : contract?.billing_interval === "monthly" ? "monthly" : "";
-  const contractAmount = Number(contract?.amount_per_cycle ?? 0);
-  const fallbackPrice = interval === "yearly"
-    ? Number(packageRow?.yearly_price ?? 0)
-    : Number(packageRow?.monthly_price ?? 0);
-  const amountDue = Number.isFinite(contractAmount) && contractAmount > 0
-    ? contractAmount
-    : Number.isFinite(fallbackPrice) && fallbackPrice > 0 ? fallbackPrice : 0;
-
-  if (
-    contract &&
-    packageRow &&
-    ["active", "trial"].includes(contract.status) &&
-    serviceEnd &&
-    contractEndReached &&
-    amountDue > 0
-  ) {
-    const rounded = Math.round(amountDue * 100) / 100;
-    due = {
-      amount_due: rounded,
-      amount_paid: 0,
-      outstanding_amount: rounded,
-      currency: contract.currency || "THB",
-      due_date: serviceEnd,
-      period_start: serviceEnd,
-      period_end: addBillingPeriod(serviceEnd, interval),
-      source: "contract_due"
+  if(packageRow && Number.isFinite(outstanding) && outstanding>0 && periodStart && periodEnd && dueStatus!=="not_payable"){
+    due={
+      amount_due:Math.round(dueAmount*100)/100,
+      amount_paid:Math.round(paidAmount*100)/100,
+      outstanding_amount:Math.round(outstanding*100)/100,
+      currency:String(rawDue.currency??contract?.currency??"THB"),
+      due_date:periodStart,
+      period_start:periodStart,
+      period_end:periodEnd,
+      source:String(rawDue.source??"automatic_billing_cycle"),
+      status:dueStatus,
+      kind:String(rawDue.kind??"subscription"),
+      billing_cycle_id:typeof rawDue.billing_cycle_id==="string"?rawDue.billing_cycle_id:null,
+      self_service_payment_allowed:selfService,
+      support_required:supportRequired
     };
-
-    if (account.promptpay_ready && !openRow) {
-      const urls = buildPromptPayUrls(account.promptpay_id, rounded);
-      qrUrl = urls.qrUrl;
-      qrPageUrl = urls.pageUrl;
+    if(account.promptpay_ready && !openRow && selfService && !supportRequired){
+      const urls=buildPromptPayUrls(account.promptpay_id,due.outstanding_amount);
+      qrUrl=urls.qrUrl;
+      qrPageUrl=urls.pageUrl;
     }
   }
 
   return {
-    store: {
-      code: session.storeCode,
-      name: session.storeName
-    },
-    package: {
-      id: packageRow?.id ?? null,
-      code: packageRow?.code ?? null,
-      name: packageRow?.name ?? "ยังไม่กำหนดแพ็กเกจ",
-      billing_interval: interval || null,
-      service_end: contract?.ended_at ?? null
+    store:{code:session.storeCode,name:session.storeName},
+    package:{
+      id:packageRow?.id??null,
+      code:packageRow?.code??null,
+      name:packageRow?.name??"ยังไม่กำหนดแพ็กเกจ",
+      billing_interval:contract?.billing_interval??null,
+      service_end:contract?.ended_at??null
     },
     due,
-    open_request: paymentSummary(openRow),
-    latest_request: paymentSummary(latestRow),
-    payment_account: account,
-    qr_url: qrUrl,
-    qr_page_url: qrPageUrl
+    open_request:paymentSummary(openRow),
+    latest_request:paymentSummary(latestRow),
+    payment_account:account,
+    qr_url:qrUrl,
+    qr_page_url:qrPageUrl
   };
 }
