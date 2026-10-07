@@ -41,7 +41,7 @@ type Receipt = {
   issued_at: string; amount: number; currency: string; package_snapshot: Record<string,unknown> | null
 };
 type ReceiptAnnotation = {
-  receipt_id:string; correction_note:string|null; voided_at:string|null;
+  receipt_id:string; correction_note:string|null; voided_at:string|null; metadata:Record<string,unknown>|null;
 };
 
 function numeric(value: unknown) {
@@ -83,7 +83,7 @@ export async function GET(_request: Request, { params }: Params) {
         .select("id,payment_request_id,billing_cycle_id,receipt_number,issued_at,amount,currency,package_snapshot")
         .eq("tenant_id", tenantId).order("issued_at", { ascending: false }).limit(200).returns<Receipt[]>(),
       supabase.from("tenant_subscription_receipt_annotations")
-        .select("receipt_id,correction_note,voided_at")
+        .select("receipt_id,correction_note,voided_at,metadata")
         .eq("tenant_id",tenantId).returns<ReceiptAnnotation[]>(),
       supabase.rpc("subscription_billing_due_state",{p_tenant_id:tenantId})
     ]);
@@ -139,18 +139,27 @@ export async function GET(_request: Request, { params }: Params) {
     }));
 
     const annotationByReceipt = new Map((receiptAnnotations.data ?? []).map((row)=>[row.receipt_id,row]));
-    const receiptRows = (receipts.data ?? []).map((row) => ({
-      ...row,
-      correction_note: annotationByReceipt.get(row.id)?.correction_note ?? null,
-      voided_at: annotationByReceipt.get(row.id)?.voided_at ?? null,
-      voided: Boolean(annotationByReceipt.get(row.id)?.voided_at),
-      package_id: typeof row.package_snapshot?.package_id === "string" ? row.package_snapshot.package_id : "",
-      package_code: typeof row.package_snapshot?.package_code === "string" ? row.package_snapshot.package_code : "",
-      package_name: typeof row.package_snapshot?.package_name === "string" ? row.package_snapshot.package_name : "",
-      billing_interval: row.package_snapshot?.billing_interval === "yearly" ? "yearly" : "monthly",
-      period_start: typeof row.package_snapshot?.period_start === "string" ? row.package_snapshot.period_start : "",
-      period_end: typeof row.package_snapshot?.period_end === "string" ? row.package_snapshot.period_end : ""
-    }));
+    const receiptRows = (receipts.data ?? []).map((row) => {
+      const annotation=annotationByReceipt.get(row.id);
+      const correction=annotation?.metadata ?? {};
+      return {
+        ...row,
+        correction_note: annotation?.correction_note ?? null,
+        voided_at: annotation?.voided_at ?? null,
+        voided: Boolean(annotation?.voided_at),
+        package_id: typeof row.package_snapshot?.package_id === "string" ? row.package_snapshot.package_id : "",
+        package_code: typeof row.package_snapshot?.package_code === "string" ? row.package_snapshot.package_code : "",
+        package_name: typeof row.package_snapshot?.package_name === "string" ? row.package_snapshot.package_name : "",
+        billing_interval: row.package_snapshot?.billing_interval === "yearly" ? "yearly" : "monthly",
+        period_start: typeof correction.corrected_period_start === "string"
+          ? correction.corrected_period_start
+          : typeof row.package_snapshot?.period_start === "string" ? row.package_snapshot.period_start : "",
+        period_end: typeof correction.corrected_period_end === "string"
+          ? correction.corrected_period_end
+          : typeof row.package_snapshot?.period_end === "string" ? row.package_snapshot.period_end : "",
+        period_corrected: typeof correction.corrected_period_start === "string" || typeof correction.corrected_period_end === "string"
+      };
+    });
 
     const monthlyReceipts = receiptRows.filter((row) => row.billing_interval === "monthly");
     const yearlyReceipts = receiptRows.filter((row) => row.billing_interval === "yearly");
