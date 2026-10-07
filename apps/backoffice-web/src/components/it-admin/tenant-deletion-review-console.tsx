@@ -57,6 +57,8 @@ const copy = {
     notePlaceholder: "ระบุเหตุผล/หมายเหตุสำหรับ Audit",
     confirmDelete: "ยืนยันลบร้านนี้ถาวร? ระบบจะตัดสิทธิ์และลบข้อมูลเมื่อผ่านเงื่อนไข MDM แล้ว",
     working: "กำลังดำเนินการ...",
+    mdmBlocked: "ยังปลด MDM ไม่ได้: อุปกรณ์บางเครื่องต้องอัปเดตแอปที่รองรับ Device Owner Release ก่อน แล้วจึงกดส่งคำสั่งปลด MDM อีกครั้ง",
+    mdmQueued: "ส่งคำสั่งปลด MDM แล้ว ระบบจะรออุปกรณ์ออนไลน์และยืนยันผลก่อนเปิดขั้นตอนลบถาวร",
     mdmRequired: "ต้องปลด Android Device Owner ก่อน เพื่อให้ลูกค้าถอนติดตั้งแอปเองได้",
     mdmDone: "ปลด MDM แล้ว",
     autoRule: "Trial: ใช้งาน 7 วัน → รักษาข้อมูลถึงวันที่ 15 → IT ยืนยันลบ · Paid: หลังหมดแพ็กเกจใช้งานต่อ 3 วัน → รักษาข้อมูล 30 วัน → IT ยืนยันลบ"
@@ -83,6 +85,8 @@ const copy = {
     notePlaceholder: "Reason / audit note",
     confirmDelete: "Permanently delete this store? Access will be revoked and data deleted after MDM release conditions are satisfied.",
     working: "Working...",
+    mdmBlocked: "MDM release is blocked: one or more devices must update to a build that supports Device Owner Release before retrying.",
+    mdmQueued: "MDM release command queued. The workflow will wait for the device to come online and acknowledge release before permanent deletion.",
     mdmRequired: "Android Device Owner must be released first so the customer can uninstall the app normally.",
     mdmDone: "MDM released",
     autoRule: "Trial: 7 days access → retain until day 15 → IT confirms deletion · Paid: 3 days access grace → 30 days data retention → IT confirms deletion"
@@ -123,6 +127,7 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
   const t = copy[language];
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
 
@@ -156,6 +161,7 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
     const key = `${row.tenant_id}:${action}`;
     setBusy(key);
     setError(null);
+    setNotice(null);
     try {
       const response = await fetch("/api/it-admin/v1/deletion-reviews", {
         method: "POST",
@@ -173,6 +179,17 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
         setData({ rows: body.data.rows, counts: body.data.counts });
       } else {
         await load();
+      }
+      const mdm = body?.data?.mdm && typeof body.data.mdm === "object"
+        ? body.data.mdm as { queued?: number; blocked?: Array<{ device_id?: string; reason?: string }>; device_count?: number }
+        : null;
+      if (mdm) {
+        const blocked = Array.isArray(mdm.blocked) ? mdm.blocked : [];
+        if (blocked.length > 0) {
+          setNotice(`${t.mdmBlocked} (${blocked.length}/${mdm.device_count ?? blocked.length})`);
+        } else if ((mdm.queued ?? 0) > 0) {
+          setNotice(t.mdmQueued);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "action_failed");
@@ -204,6 +221,7 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
       </div>
 
       {error ? <div style={errorBox}>{error}</div> : null}
+      {notice ? <div style={noticeBox}>{notice}</div> : null}
       {!data ? <div style={emptyBox}>{t.working}</div> : null}
       {data && data.rows.length === 0 ? <div style={emptyBox}>{t.empty}</div> : null}
 
@@ -318,4 +336,5 @@ const textarea: CSSProperties = { width: "100%", resize: "vertical", border: "1p
 const dangerNote: CSSProperties = { display: "grid", gap: 5, padding: 14, borderRadius: 14, border: "1px solid #fecaca", background: "#fff7f7", color: "#7f1d1d" };
 const mdmBox: CSSProperties = { marginTop: 12, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: 12, borderRadius: 12, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e" };
 const errorBox: CSSProperties = { padding: 12, borderRadius: 12, border: "1px solid #fecaca", background: "#fff1f2", color: "#b91c1c", fontWeight: 700 };
+const noticeBox: CSSProperties = { padding: 12, borderRadius: 12, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", fontWeight: 700 };
 const emptyBox: CSSProperties = { padding: 22, borderRadius: 14, border: "1px dashed #cbd5e1", color: "#64748b", textAlign: "center" };
