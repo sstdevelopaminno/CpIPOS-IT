@@ -22,10 +22,12 @@ describe("PWA service worker cache policy", () => {
     expect(serviceWorker).toContain('request.headers.has("next-router-state-tree")');
   });
 
-  it("only runtime-caches static brand assets needed for offline POS", () => {
+  it("only runtime-caches public IT assets and never protected documents", () => {
     expect(serviceWorker).toContain("function shouldCacheRuntimeRequest");
     expect(serviceWorker).toContain('request.destination === "image"');
     expect(serviceWorker).toContain('request.destination === "font"');
-    expect(serviceWorker).toContain('url.pathname === OFFLINE_POS_URL');
+    expect(serviceWorker).toContain('url.pathname === OFFLINE_IT_URL');
+    expect(serviceWorker).toContain('const OFFLINE_IT_URL = "/offline-it.html"');
+    expect(serviceWorker).not.toContain("offline-pos.html");
   });
 });

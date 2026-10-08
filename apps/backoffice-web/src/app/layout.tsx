@@ -6,8 +6,8 @@ import "./globals.css";
 import "./pos-buffet-ui-polish.css";
 
 export const metadata: Metadata = {
-  title: "CpIPOS",
-  description: "Multi-tenant POS back office and IT admin",
+  title: "CpiPOS IT Control Plane",
+  description: "CpiPOS IT Admin and Support Control Plane",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "CpIPOS",
+    title: "CpiPOS IT",
     statusBarStyle: "default",
   },
 };

@@ -830,7 +830,7 @@
   }
 
   .content {
-    padding: 18px 14px 28px;
+    padding: 18px 14px calc(28px + env(safe-area-inset-bottom));
   }
 }
 
@@ -850,6 +850,33 @@
 
   .breadcrumbs {
     max-width: 42vw;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar {
+    padding-inline: 10px;
+  }
+
+  .topbarLeft {
+    gap: 8px;
+  }
+
+  .topbarActions {
+    gap: 4px;
+  }
+
+  .roleChip {
+    display: none;
+  }
+
+  .breadcrumbs {
+    display: none;
+  }
+
+  .headingBlock h1 {
+    max-width: 46vw;
+    font-size: 16px;
   }
 }
 
