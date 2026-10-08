@@ -1,7 +1,7 @@
-const CACHE_NAME = "cpipos-shell-v6";
-const OFFLINE_POS_URL = "/offline-pos.html";
+const CACHE_NAME = "cpipos-it-shell-v7";
+const OFFLINE_IT_URL = "/offline-it.html";
 const ASSETS_TO_CACHE = [
-  OFFLINE_POS_URL,
+  OFFLINE_IT_URL,
   "/brand/cpipos-logo.png",
   "/icons/cpipos-icon-192.png",
   "/icons/cpipos-icon-512.png",
@@ -32,7 +32,7 @@ function shouldCacheRuntimeRequest(request, url) {
     request.destination === "font" ||
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/brand/") ||
-    url.pathname === OFFLINE_POS_URL
+    url.pathname === OFFLINE_IT_URL
   );
 }
 
@@ -59,7 +59,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request).catch(async () => {
         const cache = await caches.open(CACHE_NAME);
-        return (await cache.match(OFFLINE_POS_URL)) || Response.error();
+        return (await cache.match(OFFLINE_IT_URL)) || Response.error();
       })
     );
     return;
