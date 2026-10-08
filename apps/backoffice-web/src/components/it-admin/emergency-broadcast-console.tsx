@@ -47,6 +47,24 @@ const fallback: Settings = {
   ends_at: null
 };
 
+function resolveBroadcastIcon(settings: Settings): string {
+  const topic = [settings.title_th, settings.title_en, settings.message_th, settings.message_en]
+    .join(" ")
+    .toLowerCase();
+
+  if (/น้ำท่วม|ฝนตก|พายุ|สภาพอากาศ|flood|rain|storm|weather/.test(topic)) return "🌧️";
+  if (/การเชื่อมต่อ|อินเทอร์เน็ต|เครือข่าย|เซิร์ฟเวอร์|ฐานข้อมูล|ระบบล่ม|api|server|database|network|internet|connectivity/.test(topic)) return "🌐";
+  if (/บำรุงรักษา|ปรับปรุงระบบ|อัปเดต|อัพเดท|maintenance|upgrade|update/.test(topic)) return "🛠️";
+  if (/ชำระเงิน|การชำระ|แพ็กเกจ|เรียกเก็บ|payment|billing|package/.test(topic)) return "💳";
+  if (/ความปลอดภัย|รหัสผ่าน|บัญชีผู้ใช้|security|password|account/.test(topic)) return "🔒";
+  if (/ประกาศ|ประชาสัมพันธ์|แจ้งข่าว|announcement|notice|news/.test(topic)) return "📢";
+
+  if (settings.severity === "emergency") return "🚨";
+  if (settings.severity === "danger") return "⛔";
+  if (settings.severity === "warning") return "⚠️";
+  return "ℹ️";
+}
+
 function toLocalDateTime(value: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -216,7 +234,7 @@ export function EmergencyBroadcastConsole() {
           flexWrap: "wrap",
           border: "1px solid rgba(15,23,42,.12)"
         }}>
-          <strong style={{ whiteSpace: "nowrap" }}>⚠ {previewTitle}</strong>
+          <strong style={{ whiteSpace: "nowrap" }}>{resolveBroadcastIcon(settings)} {previewTitle}</strong>
           <span style={{ flex: "1 1 420px", fontWeight: 700 }}>{previewMessage}</span>
           {settings.action_url && previewAction ? (
             <span style={{
