@@ -42,6 +42,8 @@ describe("IT staff uploads forwarded customer chat payment evidence", () => {
     expect(endpoint).toContain("evidence_attached_at: at");
     expect(endpoint).toContain('auto_check_status: "needs_review"');
     expect(endpoint).toContain("scanSubscriptionSlipFromPrimary");
+    expect(endpoint.indexOf("linked = true;")).toBeLessThan(endpoint.indexOf("scanSubscriptionSlipFromPrimary({"));
+    expect(endpoint).toContain(".eq(\"evidence_url\", filePath).in(\"status\", [\"pending\", \"under_review\"])");
     expect(endpoint).toContain("requires_manual_bank_verification: true");
     expect(endpoint).toContain("subscription_customer_chat_slip_attached_by_it");
     expect(endpoint).not.toContain('rpc("grant_provisional_subscription_access"');
