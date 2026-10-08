@@ -106,28 +106,6 @@ export async function POST(request: Request, { params }: Params) {
 
     let linked = false;
     try {
-      const bank = await supabase.from("it_communication_settings")
-        .select("billing_bank_account_name,billing_bank_account_number,billing_promptpay_id")
-        .eq("id", "default").maybeSingle<{
-          billing_bank_account_name: string | null;
-          billing_bank_account_number: string | null;
-          billing_promptpay_id: string | null;
-        }>();
-      const expected = Number(metadata.expected_amount ?? current.amount_reported ?? 0);
-      const scan = await scanSubscriptionSlipFromPrimary({
-        tenantId: current.tenant_id,
-        requestId,
-        storagePath: filePath,
-        expectedAmount: Number.isFinite(expected) && expected > 0 ? expected : 0,
-        expectedPayeeName: bank.data?.billing_bank_account_name ?? "",
-        expectedAccountNumber: bank.data?.billing_bank_account_number ?? "",
-        expectedPromptPayId: bank.data?.billing_promptpay_id ?? ""
-      });
-      const foundAmount = Number(scan.parsed.amount);
-      const amountReported = scan.parsed.amount != null && Number.isFinite(foundAmount) &&
-        foundAmount > 0 && foundAmount <= 10_000_000
-        ? Math.round(foundAmount * 100) / 100 : current.amount_reported;
-
       const at = new Date().toISOString();
       const nextMetadata = {
         ...metadata,
@@ -137,20 +115,11 @@ export async function POST(request: Request, { params }: Params) {
         evidence_submitted_by: auth.userId,
         evidence_submitted_by_role: auth.platformRole,
         evidence_attached_at: at,
-        evidence_source_note: sourceNote,
-        slip_ai: {
-          version: "subscription-slip-ai-v1",
-          status: scan.status,
-          model: scan.model,
-          parsed: scan.parsed,
-          checks: scan.checks,
-          error_message: scan.error_message
-        }
+        evidence_source_note: sourceNote
       };
       const updated = await supabase.from("tenant_subscription_payment_requests")
         .update({
           evidence_url: filePath,
-          amount_reported: amountReported,
           metadata: nextMetadata,
           auto_check_status: "needs_review",
           auto_check_reason: "it_forwarded_chat_evidence_requires_bank_verification",
@@ -166,6 +135,55 @@ export async function POST(request: Request, { params }: Params) {
       if (updated.error) throw new Error("evidence_link_update_failed");
       if (!updated.data) return fail("evidence_conflict", "รายการถูกแก้ไขแล้ว กรุณารีเฟรชข้อมูลก่อนแนบสลิปอีกครั้ง", 409);
       linked = true;
+
+      // The primary scanner requires the request's evidence_url to match the
+      // stored path before it will scan. Link first, then scan. A scan failure
+      // must not discard genuine customer-forwarded evidence or confirm payment.
+      let scanStatus = "not_run";
+      try {
+        const expected = Number(metadata.expected_amount ?? current.amount_reported ?? 0);
+        const scan = await scanSubscriptionSlipFromPrimary({
+          tenantId: current.tenant_id,
+          requestId,
+          storagePath: filePath,
+          expectedAmount: Number.isFinite(expected) && expected > 0 ? expected : 0,
+          expectedPayeeName: "",
+          expectedAccountNumber: "",
+          expectedPromptPayId: ""
+        });
+        scanStatus = scan.status;
+        const foundAmount = Number(scan.parsed.amount);
+        const amountReported = scan.parsed.amount != null && Number.isFinite(foundAmount) &&
+          foundAmount > 0 && foundAmount <= 10_000_000
+          ? Math.round(foundAmount * 100) / 100 : current.amount_reported;
+        const latest = await supabase.from("tenant_subscription_payment_requests")
+          .select("metadata")
+          .eq("id", requestId).eq("tenant_id", current.tenant_id)
+          .eq("evidence_url", filePath).maybeSingle<{ metadata: Record<string, unknown> | null }>();
+        if (!latest.error && latest.data) {
+          const updatedScan = await supabase.from("tenant_subscription_payment_requests")
+            .update({
+              amount_reported: amountReported,
+              metadata: {
+                ...(latest.data.metadata ?? nextMetadata),
+                slip_ai: {
+                  version: "subscription-slip-ai-v1",
+                  status: scan.status,
+                  model: scan.model,
+                  parsed: scan.parsed,
+                  checks: scan.checks,
+                  error_message: scan.error_message
+                }
+              }
+            })
+            .eq("id", requestId).eq("tenant_id", current.tenant_id)
+            .eq("evidence_url", filePath).in("status", ["pending", "under_review"]);
+          if (updatedScan.error) console.error("[it-billing] scan metadata save failed", updatedScan.error.message);
+        }
+      } catch (scanError) {
+        console.error("[it-billing] forwarded-slip scan unavailable", scanError);
+      }
+
       try {
         await appendAuditLog({
           tenantId: current.tenant_id,
@@ -177,7 +195,7 @@ export async function POST(request: Request, { params }: Params) {
           module: "it_admin",
           beforeData: { status: current.status, kind: metadata.kind ?? null, has_evidence: false },
           afterData: { status: updated.data.status, kind: "payment_notice", has_evidence: true },
-          metadata: { evidence_source: "customer_chat", storage_path: filePath, source_note: sourceNote, scan_status: scan.status },
+          metadata: { evidence_source: "customer_chat", storage_path: filePath, source_note: sourceNote, scan_status: scanStatus },
           ipAddress: requestMeta.ipAddress ?? undefined,
           userAgent: requestMeta.userAgent ?? undefined
         });
@@ -192,7 +210,7 @@ export async function POST(request: Request, { params }: Params) {
         evidence_attached: true,
         bank_confirmed: false,
         requires_manual_bank_verification: true,
-        scan_status: scan.status
+        scan_status: scanStatus
       });
       response.headers.set("cache-control", "private, no-store");
       return response;
