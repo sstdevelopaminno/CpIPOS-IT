@@ -34,6 +34,9 @@ type PaymentRequest = {
   transfer_at: string;
   note: string;
   source: string;
+  evidence_source: string;
+  evidence_attached_at: string;
+  evidence_source_note: string;
   auto_check_status: string;
   auto_check_reason: string | null;
   provisional_access_granted_at: string | null;
@@ -232,6 +235,9 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [chatSlipFiles, setChatSlipFiles] = useState<Record<string, File | null>>({});
+  const [chatSlipNotes, setChatSlipNotes] = useState<Record<string, string>>({});
+  const [chatSlipFeedback, setChatSlipFeedback] = useState<{ id: string; message: string; success: boolean } | null>(null);
   const [notes, setNotes] = useState<Record<string,string>>({});
   const [settlementDrafts, setSettlementDrafts] = useState<Record<string,SettlementDraft>>({});
   const [annualPriceDrafts, setAnnualPriceDrafts] = useState<Record<string,string>>({});
@@ -545,6 +551,59 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       setError(cause instanceof Error ? cause.message : "สร้างรายการชำระไม่สำเร็จ");
     } finally {
       setCreatingFirstPayment(false);
+    }
+  }
+
+
+  async function uploadChatSlip(row: PaymentRequest) {
+    const slip = chatSlipFiles[row.id];
+    if (!slip) {
+      setChatSlipFeedback({ id: row.id, message: "กรุณาเลือกรูปสลิปจากแชทของลูกค้าก่อน", success: false });
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(slip.type) ||
+        slip.size === 0 || slip.size > 4 * 1024 * 1024) {
+      setChatSlipFeedback({ id: row.id, message: "รองรับ JPG, PNG หรือ WebP ขนาดไม่เกิน 4 MB", success: false });
+      return;
+    }
+
+    setBusyId(row.id);
+    setChatSlipFeedback(null);
+    let uploaded = false;
+    try {
+      const form = new FormData();
+      form.set("slip", slip);
+      form.set("source_note", chatSlipNotes[row.id] || "");
+      const response = await fetch(
+        "/api/it-admin/v1/subscription-payments/evidence/" + encodeURIComponent(row.id),
+        { method: "POST", body: form }
+      );
+      const json = await response.json() as {
+        data?: { evidence_attached?: boolean; requires_manual_bank_verification?: boolean };
+        error?: { message?: string };
+      };
+      if (!response.ok || !json.data?.evidence_attached) {
+        throw new Error(json.error?.message || "ไม่สามารถแนบสลิปจากแชทได้");
+      }
+      uploaded = true;
+      setChatSlipFiles((current) => ({ ...current, [row.id]: null }));
+      setChatSlipNotes((current) => ({ ...current, [row.id]: "" }));
+      await reload();
+      setChatSlipFeedback({
+        id: row.id,
+        message: "แนบสลิปในคำขอเดิมแล้ว · ยังต้องตรวจเงินเข้าบัญชีบริษัทจริงก่อนอนุมัติและออกใบเสร็จ",
+        success: true
+      });
+    } catch (cause) {
+      setChatSlipFeedback({
+        id: row.id,
+        message: uploaded
+          ? "แนบสลิปสำเร็จแล้ว แต่รีเฟรชข้อมูลไม่สำเร็จ กรุณากดรีเฟรชรายการ (ไม่ต้องส่งไฟล์ซ้ำ)"
+          : cause instanceof Error ? cause.message : "อัปโหลดหลักฐานไม่สำเร็จ",
+        success: uploaded
+      });
+    } finally {
+      setBusyId("");
     }
   }
 
@@ -888,6 +947,62 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                       <div><dt className="text-xs text-slate-500">เส้นตาย IT</dt><dd className="font-semibold">{formatDateTime(row.provisional_access_expires_at)}</dd></div>
                     </dl>
                     {row.note ? <p className="mt-3 rounded-lg bg-white p-3 text-sm text-slate-600">หมายเหตุร้าน: {row.note}</p> : null}
+                    {row.evidence_source === "it_forwarded_customer_chat" ? (
+                      <p className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+                        <strong>ฝ่าย IT แนบสลิปจากแชทลูกค้า</strong>
+                        {row.evidence_attached_at ? " · " + formatDateTime(row.evidence_attached_at) : ""}
+                        {row.evidence_source_note ? " · " + row.evidence_source_note : ""}
+                        <span className="mt-1 block">ยังไม่ใช่การยืนยันว่าได้รับเงินจากธนาคาร</span>
+                      </p>
+                    ) : null}
+
+                    {!row.has_evidence && ["renewal_intent", "payment_notice"].includes(row.kind) ? (
+                      <div className="mt-3 grid gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-3 sm:p-4">
+                        <div>
+                          <p className="text-sm font-black text-blue-950">แนบสลิปแทนลูกค้า (รับจากแชท)</p>
+                          <p className="mt-1 text-xs leading-5 text-blue-900">
+                            ใช้สำหรับกรณีลูกค้าส่งภาพผ่านแชท/LINE · แนบในคำขอเดิม ไม่สร้างยอดรับชำระซ้ำ
+                          </p>
+                        </div>
+                        <label className="grid min-w-0 gap-1 text-xs font-bold text-slate-700">
+                          เลือกรูปสลิป JPG, PNG, WebP (สูงสุด 4 MB)
+                          <input type="file" accept="image/jpeg,image/png,image/webp"
+                            disabled={Boolean(busyId)}
+                            onChange={(event) => setChatSlipFiles((current) => ({
+                              ...current, [row.id]: event.target.files?.[0] ?? null
+                            }))}
+                            className="block min-h-11 w-full min-w-0 rounded-lg border border-blue-200 bg-white p-2 text-sm font-normal file:mr-2 file:rounded-md file:border-0 file:bg-blue-100 file:p-2 file:font-bold file:text-blue-700 disabled:opacity-50"
+                          />
+                        </label>
+                        <label className="grid gap-1 text-xs font-bold text-slate-700">
+                          แหล่งที่มา / หมายเหตุแชท (ถ้ามี)
+                          <input maxLength={500} value={chatSlipNotes[row.id] || ""}
+                            disabled={Boolean(busyId)} placeholder="เช่น ลูกค้าส่งผ่าน LINE OA วันที่ ..."
+                            onChange={(event) => setChatSlipNotes((current) => ({
+                              ...current, [row.id]: event.target.value
+                            }))}
+                            className="min-h-11 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-normal disabled:opacity-50"
+                          />
+                        </label>
+                        <button type="button" disabled={Boolean(busyId) || !chatSlipFiles[row.id]}
+                          onClick={() => void uploadChatSlip(row)}
+                          className="min-h-12 rounded-lg bg-blue-700 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                          {busyId === row.id ? "กำลังแนบหลักฐาน..." : "อัปโหลดสลิปเข้าคำขอเดิม"}
+                        </button>
+                        <p className="text-xs leading-5 text-blue-900">
+                          การแนบสลิปไม่ใช่การรับเงิน ต้องตรวจยอดเข้าบัญชีธนาคารของบริษัทจริงก่อนกดอนุมัติ
+                        </p>
+                      </div>
+                    ) : null}
+                    {chatSlipFeedback?.id === row.id ? (
+                      <p role={chatSlipFeedback.success ? "status" : "alert"}
+                        className={"mt-3 rounded-lg border p-3 text-sm font-semibold " +
+                          (chatSlipFeedback.success
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border-red-200 bg-red-50 text-red-800")}>
+                        {chatSlipFeedback.message}
+                      </p>
+                    ) : null}
                     <div className="mt-3 flex flex-wrap gap-2">
                       {row.slip_url ? <a href={row.slip_url} target="_blank" rel="noopener noreferrer"
                         className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-700">
@@ -934,7 +1049,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                       {row.kind !== "payment_notice" ?
                         <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">
                           <strong className="block text-sm">ยังอนุมัติรับเงินไม่ได้ — รอแนบสลิปในคำขอเดิม</strong>
-                          <span className="mt-1 block">รายการนี้เป็นเพียงคำขอต่ออายุ แม้ IT จะกดรับเรื่องตรวจสอบแล้วก็ตาม ให้เจ้าของร้านเปิด POS → การชำระแพ็กเกจ → แจ้งชำระเงิน → แนบรูปสลิป แล้วกดส่งหลักฐานคำขอเดิม จากนั้นกด “รีเฟรชรายการหลังร้านส่งสลิป” และตรวจเงินเข้าบัญชีบริษัทจริง</span>
+                          <span className="mt-1 block">รายการนี้เป็นเพียงคำขอต่ออายุ สามารถใช้ปุ่ม “อัปโหลดสลิปเข้าคำขอเดิม” ทางซ้าย เมื่อได้รับสลิปจากแชท หรือให้เจ้าของร้านแนบสลิปผ่าน POS จากนั้นตรวจยอดเข้าธนาคารบริษัทจริง</span>
                         </p> :
                         <div className="mt-3 grid gap-2">
                           {!row.has_evidence ? <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
@@ -973,7 +1088,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                           className="min-h-12 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-black text-white disabled:opacity-50">
                           {busyId === row.id ? "กำลังอนุมัติ..." : "อนุมัติ + ต่อแพ็กเกจ + ออกใบเสร็จ"}
                         </button> : <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center text-sm font-bold text-amber-900">
-                          รอสลิป/การแจ้งชำระเงินจริงจาก POS ก่อนอนุมัติ
+                          รอสลิปจาก POS หรือฝ่าย IT ก่อนอนุมัติ
                         </div>}
                         <button type="button" disabled={Boolean(busyId)}
                           onClick={() => void review(row.id,"reject")}

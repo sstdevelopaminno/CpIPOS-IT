@@ -8,12 +8,12 @@ describe("IT subscription review and mobile usability", () => {
     expect(ui).toContain('row.status === "under_review" && row.kind === "payment_notice"');
     expect(ui).toContain("{canApprove ? <button");
     expect(ui).toContain("!draft.confirmed_bank_receipt");
-    expect(ui).toContain("รอสลิป/การแจ้งชำระเงินจริงจาก POS ก่อนอนุมัติ");
+    expect(ui).toContain("รอสลิปจาก POS หรือฝ่าย IT ก่อนอนุมัติ");
   });
 
   it("guides staff to keep the existing open request and refresh the payment evidence", () => {
-    expect(ui).toContain("แนบรูปสลิป");
-    expect(ui).toContain("ส่งหลักฐานคำขอเดิม");
+    expect(ui).toContain("แนบสลิปแทนลูกค้า (รับจากแชท)");
+    expect(ui).toContain("อัปโหลดสลิปเข้าคำขอเดิม");
     expect(ui).toContain("รีเฟรชรายการหลังร้านส่งสลิป");
     expect(ui).toContain("void reload().catch");
   });

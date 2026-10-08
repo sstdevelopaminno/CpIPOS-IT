@@ -135,6 +135,9 @@ export async function GET(_request: Request, { params }: Params) {
         transfer_at: typeof info.transfer_at === "string" ? info.transfer_at : "",
         note: typeof info.note === "string" ? info.note : "",
         source: typeof info.source === "string" ? info.source : "",
+        evidence_source: typeof info.evidence_source === "string" ? info.evidence_source : "",
+        evidence_attached_at: typeof info.evidence_attached_at === "string" ? info.evidence_attached_at : "",
+        evidence_source_note: typeof info.evidence_source_note === "string" ? info.evidence_source_note : "",
         requested_package_name: requestedPackage?.name ?? "",
         requested_package_code: requestedPackage?.code ?? ""
       };
