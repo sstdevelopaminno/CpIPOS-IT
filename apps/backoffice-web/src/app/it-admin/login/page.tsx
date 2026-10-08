@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
+import styles from "./login.module.css";
 import { AppLanguageSwitcher } from "@/components/i18n/app-language-switcher";
 import { useAppLanguage, type AppLanguage } from "@/lib/app-language-client";
 
@@ -159,7 +160,7 @@ export default function ItAdminLoginPage() {
   }
 
   return (
-    <main className="store-v2-page">
+    <main className={`store-v2-page ${styles.page}`}>
       <section className="store-v2-card">
         <div className="store-v2-topbar">
           <AppLanguageSwitcher lang={lang} onChange={setLanguage} />
@@ -172,9 +173,14 @@ export default function ItAdminLoginPage() {
             className="store-v2-logo"
             width={1448}
             height={1086}
-            style={{ width: "220px", height: "165px", objectFit: "contain" }}
+            style={{ width: "min(58vw, 200px)", height: "auto", maxHeight: "150px", objectFit: "contain" }}
             priority
           />
+        </div>
+
+        <div className={styles.brandHeading}>
+          <h1>CpiPOS IT</h1>
+          <p>{copy.subtitle}</p>
         </div>
 
         <form className="store-v2-form" onSubmit={handleSubmit}>
