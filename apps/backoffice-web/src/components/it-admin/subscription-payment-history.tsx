@@ -151,7 +151,7 @@ function WorkspaceModal({ title, description, onClose, children }: {
       if (event.target === event.currentTarget) onClose();
     }}>
     <section role="dialog" aria-modal="true" aria-label={title}
-      className="flex max-h-[92vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      className="flex max-h-[calc(100dvh-24px)] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:max-h-[92dvh]">
       <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
         <div className="min-w-0">
           <h2 className="text-lg font-black text-slate-900 sm:text-xl">{title}</h2>
@@ -162,7 +162,7 @@ function WorkspaceModal({ title, description, onClose, children }: {
           ×
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-6">{children}</div>
       <footer className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-3 sm:px-6">
         <button type="button" onClick={onClose}
           className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
@@ -842,13 +842,19 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
 
         {activePanel === "pending" ? <WorkspaceModal title="ตรวจสอบรายการรออนุมัติ"
           description="สลิปที่ Auto Scan ผ่านอาจเปิด POS ชั่วคราวทันที แต่ IT ยังต้องตรวจเงินจริงและอนุมัติภายใน 3 วัน มิฉะนั้นระบบจะล็อกอัตโนมัติ"
-          onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+          onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-amber-200 bg-white p-3 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-slate-900">ตรวจสอบรายการรออนุมัติ</h2>
               <p className="mt-1 text-sm text-slate-500">สลิปจากร้านเป็นเพียงหลักฐานประกอบ ต้องตรวจยอดเงินจริงในบัญชีบริษัทก่อนออกใบเสร็จ</p>
             </div>
-            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{openRequests.length} รายการเปิดอยู่</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{openRequests.length} รายการเปิดอยู่</span>
+              <button type="button" onClick={() => void reload().catch((cause) => setError(cause instanceof Error ? cause.message : "รีเฟรชรายการไม่สำเร็จ"))}
+                disabled={Boolean(busyId)} className="min-h-10 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 disabled:opacity-40">
+                รีเฟรชรายการหลังร้านส่งสลิป
+              </button>
+            </div>
           </div>
 
           {openRequests.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ไม่มีรายการรอตรวจสอบ</p> :
@@ -927,7 +933,8 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     {row.status === "under_review" ? <>
                       {row.kind !== "payment_notice" ?
                         <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                          รายการนี้ยังเป็นคำขอต่ออายุ ต้องให้ร้านแจ้งชำระจากฝั่ง CpIPOS ก่อนจึงจะอนุมัติรับเงินจริงได้
+                          <strong className="block text-sm">ยังอนุมัติรับเงินไม่ได้ — รอแนบสลิปในคำขอเดิม</strong>
+                          <span className="mt-1 block">รายการนี้เป็นเพียงคำขอต่ออายุ แม้ IT จะกดรับเรื่องตรวจสอบแล้วก็ตาม ให้เจ้าของร้านเปิด POS → การชำระแพ็กเกจ → แจ้งชำระเงิน → แนบรูปสลิป แล้วกดส่งหลักฐานคำขอเดิม จากนั้นกด “รีเฟรชรายการหลังร้านส่งสลิป” และตรวจเงินเข้าบัญชีบริษัทจริง</span>
                         </p> :
                         <div className="mt-3 grid gap-2">
                           {!row.has_evidence ? <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
@@ -960,12 +967,14 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                         </div>}
 
                       <div className="mt-3 grid gap-2">
-                        <button type="button"
-                          disabled={Boolean(busyId) || !canApprove || !draft.confirmed_bank_receipt}
+                        {canApprove ? <button type="button"
+                          disabled={Boolean(busyId) || !draft.confirmed_bank_receipt}
                           onClick={() => void settle(row)}
-                          className="rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-black text-white disabled:opacity-50">
+                          className="min-h-12 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-black text-white disabled:opacity-50">
                           {busyId === row.id ? "กำลังอนุมัติ..." : "อนุมัติ + ต่อแพ็กเกจ + ออกใบเสร็จ"}
-                        </button>
+                        </button> : <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center text-sm font-bold text-amber-900">
+                          รอสลิป/การแจ้งชำระเงินจริงจาก POS ก่อนอนุมัติ
+                        </div>}
                         <button type="button" disabled={Boolean(busyId)}
                           onClick={() => void review(row.id,"reject")}
                           className="rounded-lg border border-red-200 bg-white px-3 py-2.5 text-sm font-bold text-red-700 disabled:opacity-50">
