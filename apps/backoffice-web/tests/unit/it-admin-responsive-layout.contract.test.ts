@@ -5,10 +5,10 @@ function source(path: string) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-const appShell = source("../../../src/components/layout/app-shell.tsx");
-const shellCss = source("../../../src/components/layout/app-shell.module.css");
-const loginPage = source("../../../src/app/it-admin/login/page.tsx");
-const loginCss = source("../../../src/app/it-admin/login/login.module.css");
+const appShell = source("../../src/components/layout/app-shell.tsx");
+const shellCss = source("../../src/components/layout/app-shell.module.css");
+const loginPage = source("../../src/app/it-admin/login/page.tsx");
+const loginCss = source("../../src/app/it-admin/login/login.module.css");
 
 describe("IT Admin desktop, tablet, and phone layout contract", () => {
   it("retains a full workspace and collapsible sidebar on desktop", () => {
