@@ -287,6 +287,11 @@ export function AppShell({
   const [supportUnread, setSupportUnread] = useState(0);
   const [requestUnread, setRequestUnread] = useState(0);
 
+  // Browser back/forward and deep-link navigation must close the mobile drawer.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   useEffect(() => {
     try {
       setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1");
@@ -395,6 +400,7 @@ export function AppShell({
       <aside
         className={`${styles.sidebar} ${sidebarCollapsed ? styles.sidebarCollapsed : ""} ${mobileOpen ? styles.sidebarOpen : ""}`}
         aria-label="IT Admin navigation"
+        id="it-app-sidebar"
       >
         <div className={styles.brandBlock}>
           <Link
@@ -561,9 +567,10 @@ export function AppShell({
             <button
               type="button"
               className={styles.menuButton}
-              aria-label="Open navigation"
+              aria-label={language === "th" ? "เปิดเมนูนำทาง" : "Open navigation"}
+              aria-controls="it-app-sidebar"
               aria-expanded={mobileOpen}
-              onClick={() => setMobileOpen(true)}
+              onClick={() => setMobileOpen((open) => !open)}
             >
               <span />
               <span />
