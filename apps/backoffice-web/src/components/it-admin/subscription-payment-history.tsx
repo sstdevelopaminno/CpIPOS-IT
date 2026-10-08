@@ -1088,7 +1088,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                           className="min-h-12 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-black text-white disabled:opacity-50">
                           {busyId === row.id ? "กำลังอนุมัติ..." : "อนุมัติ + ต่อแพ็กเกจ + ออกใบเสร็จ"}
                         </button> : <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center text-sm font-bold text-amber-900">
-                          รอสลิป/การแจ้งชำระเงินจริงจาก POS ก่อนอนุมัติ
+                          รอสลิปจาก POS หรือฝ่าย IT ก่อนอนุมัติ
                         </div>}
                         <button type="button" disabled={Boolean(busyId)}
                           onClick={() => void review(row.id,"reject")}
