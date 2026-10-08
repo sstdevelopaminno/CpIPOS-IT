@@ -12,8 +12,8 @@ describe("IT subscription review and mobile usability", () => {
   });
 
   it("guides staff to keep the existing open request and refresh the payment evidence", () => {
-    expect(ui).toContain("แนบรูปสลิป");
-    expect(ui).toContain("ส่งหลักฐานคำขอเดิม");
+    expect(ui).toContain("แนบสลิปแทนลูกค้า (รับจากแชท)");
+    expect(ui).toContain("อัปโหลดสลิปเข้าคำขอเดิม");
     expect(ui).toContain("รีเฟรชรายการหลังร้านส่งสลิป");
     expect(ui).toContain("void reload().catch");
   });
