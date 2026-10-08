@@ -43,6 +43,11 @@ function friendlySettlementError(message: string) {
     bank_reference_invalid: ["กรุณาระบุเลขอ้างอิงธุรกรรมธนาคารที่ถูกต้อง", 422],
     bank_received_at_invalid: ["กรุณาตรวจสอบวันและเวลาที่ธนาคารรับเงิน", 422],
     amount_received_invalid: ["ยอดเงินเข้าที่ตรวจสอบแล้วไม่ถูกต้อง", 422],
+    billing_cycle_invalid: ["ข้อมูลอ้างอิงรอบบิลไม่ถูกต้อง กรุณาตรวจสอบรายการอีกครั้ง", 422],
+    billing_cycle_not_found: ["ไม่พบรอบบิลที่อ้างอิง กรุณารีเฟรชรายการ", 409],
+    billing_cycle_package_mismatch: ["แพ็กเกจในรอบบิลไม่ตรงกับรายการแจ้งชำระ", 409],
+    billing_cycle_not_payable: ["รอบบิลนี้ไม่เปิดรับการชำระแล้ว หรือถูกปรับสถานะ กรุณารีเฟรชรายการ", 409],
+    billing_cycle_already_paid: ["รอบบิลนี้มียอดชำระครบแล้ว ไม่สามารถบันทึกรับเงินซ้ำ", 409],
     bank_reference_already_used: ["เลขอ้างอิงธนาคารนี้ถูกใช้ยืนยันรายการอื่นแล้ว", 409],
     ai_addon_payment_required: ["รายการนี้ไม่ใช่คำขอชำระ CpiPOS AI Add-on", 422],
     ai_addon_quota_missing: ["AI Add-on รายการนี้ไม่มีโควตาที่เชื่อถือได้", 422]
