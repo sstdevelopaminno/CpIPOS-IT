@@ -2,14 +2,13 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    id: "/?app=sstipos",
-    name: "CpIPOS",
-    short_name: "CpIPOS",
-    description: "CpIPOS login + POS web app",
-    start_url: "/login/store",
+    id: "/it-admin",
+    name: "CpiPOS IT Control Plane",
+    short_name: "CpiPOS IT",
+    description: "CpiPOS IT Admin and Support Control Plane",
+    start_url: "/it-admin",
     scope: "/",
     display: "standalone",
-    orientation: "portrait",
     background_color: "#071831",
     theme_color: "#0f2a4a",
     icons: [
