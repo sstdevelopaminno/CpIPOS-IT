@@ -584,6 +584,12 @@ export function LineSupportClient() {
               <p className="mt-5 text-center text-[11px] leading-5 text-slate-400">
                 ครั้งแรกระบบจะส่ง OTP ไปยังอีเมล Owner ของร้านเพื่อยืนยันการผูก LINE
               </p>
+              <a
+                href={`https://liff.line.me/${liffId}/payment`}
+                className="mt-4 block rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-center text-sm font-bold text-blue-700"
+              >
+                ต้องการชำระเงิน? ไปยัง Payment Center
+              </a>
             </div>
           ) : null}
 
