@@ -95,14 +95,18 @@ export async function POST(request: Request) {
     }, 1); // Mutating RPC: never retry automatically after an ambiguous network timeout.
 
     if (result.error) {
-      if (result.error.code === "21000" && /DELETE requires a WHERE clause/i.test(result.error.message)) {
+      const dbCode = typeof result.error === "object" && "code" in result.error
+        ? String(result.error.code ?? "") : "";
+      const dbMessage = typeof result.error === "object" && "message" in result.error
+        ? String(result.error.message ?? "") : String(result.error);
+      if (dbCode === "21000" && /DELETE requires a WHERE clause/i.test(dbMessage)) {
         return fail(
           "cleanup_safety_migration_required",
           "ระบบป้องกันฐานข้อมูลปฏิเสธการลบทั้งหมด กรุณาตรวจสอบว่าติดตั้ง Migration ของ Cleanup ล่าสุดแล้ว",
           409
         );
       }
-      if (result.error.code === "23503") {
+      if (dbCode === "23503") {
         return fail(
           "cleanup_referenced_record",
           "ยังมีข้อมูลที่เกี่ยวข้องซึ่งไม่อนุญาตให้ลบ กรุณาตรวจสอบความสัมพันธ์ของข้อมูล",
