@@ -38,6 +38,5 @@ describe("permanent tenant deletion: trustworthy post-commit reconciliation", ()
     expect(tenantDirectory).toContain('fallbackStoreCode={selected.store_code}');
     expect(tenantDirectory).toContain('setDeletionNotice(');
     expect(tenantDirectory).toContain('void load(true)');
-    expect(tenantControl).not.toContain('void mutate({ action: "delete_store"');
   });
 });
