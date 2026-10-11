@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import styles from "./tenant-deletion-review-console.module.css";
 import type { Language } from "@/lib/i18n";
 
 type ReviewRow = {
@@ -50,9 +50,9 @@ const copy = {
     grace: "สิทธิ์ใช้งานถึง",
     deleteReview: "ตรวจลบได้",
     keep: "เก็บร้านไว้",
-    delete: "ยืนยันลบถาวร",
+    delete: "ตรวจสอบและยืนยันลบ",
     releaseMdm: "ส่งคำสั่งปลด MDM อีกครั้ง",
-    finalize: "ลบข้อมูลทั้งหมดต่อ",
+    finalize: "ยืนยันลบข้อมูลถาวร",
     note: "หมายเหตุ IT",
     notePlaceholder: "ระบุเหตุผล/หมายเหตุสำหรับ Audit",
     confirmDelete: "ยืนยันลบร้านนี้ถาวร? ระบบจะตัดสิทธิ์และลบข้อมูลเมื่อผ่านเงื่อนไข MDM แล้ว",
@@ -78,9 +78,9 @@ const copy = {
     grace: "Access until",
     deleteReview: "Deletion review",
     keep: "Keep store",
-    delete: "Confirm permanent deletion",
+    delete: "Review & confirm deletion",
     releaseMdm: "Retry MDM release",
-    finalize: "Finalize all deletion",
+    finalize: "Confirm final deletion",
     note: "IT note",
     notePlaceholder: "Reason / audit note",
     confirmDelete: "Permanently delete this store? Access will be revoked and data deleted after MDM release conditions are satisfied.",
@@ -99,7 +99,8 @@ function fmt(value: string | null, language: Language) {
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(language === "th" ? "th-TH" : "en-US", {
     dateStyle: "medium",
-    timeStyle: "short"
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok"
   }).format(date);
 }
 
@@ -110,6 +111,8 @@ function badge(status: string, language: Language) {
   if (status === "mdm_release_pending") return t.mdm;
   if (status === "ready_to_delete") return t.final;
   if (status === "keep") return language === "th" ? "เก็บร้านไว้" : "Keep";
+  if (status === "watching") return language === "th" ? "ยังไม่หมดอายุ" : "Watching";
+  if (status === "cancelled") return language === "th" ? "ยกเลิกคำขอ" : "Cancelled";
   return status;
 }
 
@@ -123,6 +126,9 @@ async function readQueue(): Promise<Payload> {
   return body.data;
 }
 
+
+type DestructiveAction = "delete" | "finalize";
+
 export function TenantDeletionReviewConsole({ language }: { language: Language }) {
   const t = copy[language];
   const [data, setData] = useState<Payload | null>(null);
@@ -130,6 +136,12 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{ row: ReviewRow; action: DestructiveAction } | null>(null);
+  const [typedCode, setTypedCode] = useState("");
+  const [confirmationNote, setConfirmationNote] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -155,10 +167,30 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
     [data]
   );
 
-  const act = useCallback(async (row: ReviewRow, action: "keep" | "delete" | "release_mdm" | "finalize") => {
+  const visibleRows = useMemo(() => (data?.rows ?? []).filter((row) => {
+    const search = query.trim().toLocaleLowerCase();
+    const matchesQuery = !search ||
+      row.store_name.toLocaleLowerCase().includes(search) ||
+      row.store_code.toLocaleLowerCase().includes(search);
+    const matchesFilter = filter === "all" ||
+      (filter === "actionable" && ["ready_for_it_review", "mdm_release_pending", "ready_to_delete"].includes(row.review_status)) ||
+      row.review_status === filter;
+    return matchesQuery && matchesFilter;
+  }), [data, filter, query]);
+
+  const act = useCallback(async (
+    row: ReviewRow,
+    action: "keep" | "delete" | "release_mdm" | "finalize",
+    note = notes[row.tenant_id] ?? "",
+    confirmationCode?: string
+  ) => {
     if (busy) return;
-    if (action === "delete" && !window.confirm(t.confirmDelete)) return;
-    const key = `${row.tenant_id}:${action}`;
+    if (action === "release_mdm" && !window.confirm(
+      language === "th"
+        ? "ส่งคำสั่งปลด Device Owner สำหรับร้าน " + row.store_name + " ใช่หรือไม่?"
+        : "Queue Device Owner release for " + row.store_name + "?"
+    )) return;
+    const key = row.tenant_id + ":" + action;
     setBusy(key);
     setError(null);
     setNotice(null);
@@ -170,171 +202,234 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
         body: JSON.stringify({
           action,
           tenant_id: row.tenant_id,
-          note: notes[row.tenant_id] ?? ""
+          note,
+          confirmation_code: confirmationCode
         })
       });
       const body = await response.json().catch(() => null) as Envelope<Payload & Record<string, unknown>> | null;
-      if (!response.ok) throw new Error(body?.error?.message ?? `Request failed (${response.status})`);
+      if (!response.ok) throw new Error(body?.error?.message ?? "Request failed (" + response.status + ")");
       if (body?.data?.rows) {
         setData({ rows: body.data.rows, counts: body.data.counts });
       } else {
         await load();
       }
+      setConfirmation(null);
+      setExpanded(null);
       const mdm = body?.data?.mdm && typeof body.data.mdm === "object"
         ? body.data.mdm as { queued?: number; blocked?: Array<{ device_id?: string; reason?: string }>; device_count?: number }
         : null;
       if (mdm) {
         const blocked = Array.isArray(mdm.blocked) ? mdm.blocked : [];
-        if (blocked.length > 0) {
-          setNotice(`${t.mdmBlocked} (${blocked.length}/${mdm.device_count ?? blocked.length})`);
-        } else if ((mdm.queued ?? 0) > 0) {
-          setNotice(t.mdmQueued);
-        }
+        if (blocked.length > 0) setNotice(t.mdmBlocked + " (" + blocked.length + "/" + (mdm.device_count ?? blocked.length) + ")");
+        else if ((mdm.queued ?? 0) > 0) setNotice(t.mdmQueued);
+      } else {
+        setNotice(language === "th" ? "ดำเนินการสำเร็จ ระบบบันทึกผลแล้ว" : "Action completed and recorded.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "action_failed");
     } finally {
       setBusy(null);
     }
-  }, [busy, load, notes, t.confirmDelete]);
+  }, [busy, load, notes, language, t.mdmBlocked, t.mdmQueued]);
+
+  const openConfirmation = (row: ReviewRow, action: DestructiveAction) => {
+    setTypedCode("");
+    setConfirmationNote(notes[row.tenant_id] ?? "");
+    setConfirmation({ row, action });
+  };
+
+  const isConfirmed = confirmation !== null &&
+    confirmation.row.store_code.trim().length > 0 &&
+    typedCode.trim() === confirmation.row.store_code.trim() &&
+    confirmationNote.trim().length > 0;
 
   return (
-    <section style={page}>
-      <header style={header}>
+    <section className={styles.page}>
+      <header className={styles.header}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 28 }}>{t.title}</h1>
-          <p style={{ margin: "8px 0 0", color: "#52657f", maxWidth: 900 }}>{t.subtitle}</p>
+          <span className={styles.eyebrow}>IT ADMIN / TENANT LIFECYCLE</span>
+          <h1>{t.title}</h1>
+          <p>{t.subtitle}</p>
         </div>
-        <button type="button" style={button} onClick={() => void load()} disabled={Boolean(busy)}>{t.refresh}</button>
+        <button type="button" className={styles.secondaryButton} onClick={() => void load()} disabled={Boolean(busy)}>
+          ↻ {t.refresh}
+        </button>
       </header>
 
-      <div style={dangerNote}>
-        <strong>{language === "th" ? "นโยบายปัจจุบัน" : "Current policy"}</strong>
+      <div className={styles.policy}>
+        <strong>{language === "th" ? "นโยบายการรักษาข้อมูล" : "Retention policy"}</strong>
         <span>{t.autoRule}</span>
       </div>
 
-      <div style={stats}>
+      <div className={styles.stats}>
+        <Stat label={language === "th" ? "ทั้งหมด" : "Total"} value={data?.counts.total ?? 0} />
         <Stat label={t.ready} value={data?.counts.ready ?? 0} danger />
         <Stat label={t.retention} value={data?.counts.retention ?? 0} />
         <Stat label={t.mdm} value={data?.counts.mdm_pending ?? 0} danger />
         <Stat label={t.final} value={data?.counts.ready_to_delete ?? 0} danger />
       </div>
 
-      {error ? <div style={errorBox}>{error}</div> : null}
-      {notice ? <div style={noticeBox}>{notice}</div> : null}
-      {!data ? <div style={emptyBox}>{t.working}</div> : null}
-      {data && data.rows.length === 0 ? <div style={emptyBox}>{t.empty}</div> : null}
+      {error ? <div className={styles.error} role="alert">{error}</div> : null}
+      {notice ? <div className={styles.notice} role="status">{notice}</div> : null}
 
-      <div style={{ display: "grid", gap: 14 }}>
-        {(data?.rows ?? []).map((row) => {
-          const isActionable = ["ready_for_it_review", "mdm_release_pending", "ready_to_delete"].includes(row.review_status);
-          return (
-            <article key={row.tenant_id} style={{
-              ...card,
-              borderColor: isActionable ? "#fecaca" : "#dbe5f3",
-              background: isActionable ? "#fffafa" : "#fff"
-            }}>
-              <div style={cardTop}>
-                <div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <h2 style={{ margin: 0, fontSize: 20 }}>{row.store_name}</h2>
-                    <span style={pill}>{row.store_code || row.tenant_id.slice(0, 8)}</span>
-                    <span style={row.review_status.includes("ready") || row.review_status.includes("pending") ? dangerPill : pill}>
-                      {badge(row.review_status, language)}
-                    </span>
-                  </div>
-                  <p style={{ margin: "6px 0 0", color: "#64748b" }}>
-                    {row.lifecycle_kind === "trial" ? t.trial : t.subscription}
-                  </p>
-                </div>
-                <strong style={{ color: actionable > 0 && isActionable ? "#b91c1c" : "#334155" }}>
-                  {fmt(row.deletion_review_at, language)}
-                </strong>
-              </div>
+      <div className={styles.panel}>
+        <div className={styles.toolbar}>
+          <label className={styles.searchGroup}>
+            <span>{language === "th" ? "ค้นหาร้านค้า" : "Search stores"}</span>
+            <input type="search" value={query} onChange={(event) => setQuery(event.target.value)}
+              placeholder={language === "th" ? "ชื่อร้าน หรือรหัสร้าน..." : "Store name or code..."} />
+          </label>
+          <label className={styles.filterGroup}>
+            <span>{language === "th" ? "สถานะ" : "Status"}</span>
+            <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+              <option value="all">{language === "th" ? "ทุกสถานะ" : "All"}</option>
+              <option value="actionable">{language === "th" ? "ต้องดำเนินการ" : "Requires action"}</option>
+              <option value="ready_for_it_review">{t.ready}</option>
+              <option value="retention_window">{t.retention}</option>
+              <option value="mdm_release_pending">{t.mdm}</option>
+              <option value="ready_to_delete">{t.final}</option>
+              <option value="watching">{language === "th" ? "ติดตาม" : "Watching"}</option>
+            </select>
+          </label>
+          <span className={styles.resultCount}>
+            {language === "th" ? "พบ " + visibleRows.length + " รายการ" : visibleRows.length + " results"}
+          </span>
+        </div>
 
-              <div style={dateGrid}>
-                <DateCell label={t.ended} value={fmt(row.service_ended_at, language)} />
-                <DateCell label={t.grace} value={fmt(row.access_grace_until, language)} />
-                <DateCell label={t.deleteReview} value={fmt(row.deletion_review_at, language)} />
-              </div>
-
-              {row.mdm_release_required ? (
-                <div style={mdmBox}>
-                  <strong>{row.mdm_release_completed_at ? t.mdmDone : t.mdmRequired}</strong>
-                  {row.mdm_release_completed_at ? <span>{fmt(row.mdm_release_completed_at, language)}</span> : null}
-                </div>
-              ) : null}
-
-              {isActionable ? (
-                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                  <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>{t.note}</span>
-                    <textarea
-                      rows={2}
-                      value={notes[row.tenant_id] ?? ""}
-                      onChange={(event) => setNotes((current) => ({ ...current, [row.tenant_id]: event.target.value }))}
-                      placeholder={t.notePlaceholder}
-                      style={textarea}
-                      disabled={Boolean(busy)}
-                    />
-                  </label>
-                  <div style={actions}>
-                    {row.review_status === "ready_for_it_review" ? (
-                      <>
-                        <button type="button" style={button} disabled={Boolean(busy)} onClick={() => void act(row, "keep")}>{t.keep}</button>
-                        <button type="button" style={dangerButton} disabled={Boolean(busy)} onClick={() => void act(row, "delete")}>{t.delete}</button>
-                      </>
+        <div className={styles.tableScroll}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>{language === "th" ? "ร้านค้า / รหัส" : "Store / Code"}</th>
+                <th>{language === "th" ? "ประเภท" : "Plan"}</th>
+                <th>{t.ended}</th>
+                <th>{t.grace}</th>
+                <th>{t.deleteReview}</th>
+                <th>{language === "th" ? "สถานะ" : "Status"}</th>
+                <th>MDM</th>
+                <th className={styles.actionsCell}>{language === "th" ? "จัดการ" : "Actions"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((row) => {
+                const isActionable = ["ready_for_it_review", "mdm_release_pending", "ready_to_delete"].includes(row.review_status);
+                const isExpanded = expanded === row.tenant_id;
+                return (
+                  <FragmentRow key={row.tenant_id}>
+                    <tr className={isActionable ? styles.actionRow : undefined}>
+                      <td>
+                        <strong className={styles.storeName}>{row.store_name}</strong>
+                        <span className={styles.storeCode}>{row.store_code || row.tenant_id.slice(0, 8)}</span>
+                      </td>
+                      <td>{row.lifecycle_kind === "trial" ? t.trial : t.subscription}</td>
+                      <td className={styles.date}>{fmt(row.service_ended_at, language)}</td>
+                      <td className={styles.date}>{fmt(row.access_grace_until, language)}</td>
+                      <td className={styles.date}>{fmt(row.deletion_review_at, language)}</td>
+                      <td><span className={isActionable ? styles.badgeAlert : styles.badge}>{badge(row.review_status, language)}</span></td>
+                      <td><span className={row.mdm_release_required && !row.mdm_release_completed_at ? styles.mdmPending : styles.mdmClear}>
+                        {row.mdm_release_required ? (row.mdm_release_completed_at ? t.mdmDone : t.mdmRequired) : "—"}
+                      </span></td>
+                      <td className={styles.actionsCell}>
+                        {isActionable ? (
+                          <button type="button" className={styles.rowButton} disabled={Boolean(busy)}
+                            aria-expanded={isExpanded} onClick={() => setExpanded(isExpanded ? null : row.tenant_id)}>
+                            {language === "th" ? "จัดการ" : "Review"} {isExpanded ? "⌃" : "⌄"}
+                          </button>
+                        ) : <span className={styles.muted}>—</span>}
+                      </td>
+                    </tr>
+                    {isExpanded ? (
+                      <tr className={styles.detailsRow}>
+                        <td colSpan={8}>
+                          <div className={styles.detailContent}>
+                            <label className={styles.noteField}>
+                              <span>{t.note}</span>
+                              <textarea rows={2} value={notes[row.tenant_id] ?? ""}
+                                onChange={(event) => setNotes((current) => ({ ...current, [row.tenant_id]: event.target.value }))}
+                                placeholder={t.notePlaceholder} disabled={Boolean(busy)} />
+                            </label>
+                            <div className={styles.rowActions}>
+                              {row.review_status === "ready_for_it_review" ? (
+                                <>
+                                  <button type="button" className={styles.secondaryButton} disabled={Boolean(busy)} onClick={() => void act(row, "keep")}>{t.keep}</button>
+                                  <button type="button" className={styles.dangerButton} disabled={Boolean(busy)} onClick={() => openConfirmation(row, "delete")}>{t.delete}</button>
+                                </>
+                              ) : null}
+                              {row.review_status === "mdm_release_pending" ? (
+                                <button type="button" className={styles.secondaryButton} disabled={Boolean(busy)} onClick={() => void act(row, "release_mdm")}>{t.releaseMdm}</button>
+                              ) : null}
+                              {row.review_status === "ready_to_delete" ? (
+                                <button type="button" className={styles.dangerButton} disabled={Boolean(busy)} onClick={() => openConfirmation(row, "finalize")}>{t.finalize}</button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     ) : null}
-                    {row.review_status === "mdm_release_pending" ? (
-                      <button type="button" style={dangerButton} disabled={Boolean(busy)} onClick={() => void act(row, "release_mdm")}>{t.releaseMdm}</button>
-                    ) : null}
-                    {row.review_status === "ready_to_delete" ? (
-                      <button type="button" style={dangerButton} disabled={Boolean(busy)} onClick={() => void act(row, "finalize")}>{t.finalize}</button>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-            </article>
-          );
-        })}
+                  </FragmentRow>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {!data ? <div className={styles.empty}>{t.working}</div> : null}
+        {data && visibleRows.length === 0 ? <div className={styles.empty}>{t.empty}</div> : null}
       </div>
-      <p style={{ margin: "14px 0 0", color: "#64748b", fontSize: 12 }}>
-        {language === "th"
-          ? `รายการที่ต้องดำเนินการตอนนี้: ${actionable}`
-          : `Actionable reviews now: ${actionable}`}
+      <p className={styles.footer}>
+        {language === "th" ? "รายการที่ต้องดำเนินการ: " + actionable + " · การลบถาวรต้องยืนยันรหัสร้านและเหตุผล" :
+          "Actions required: " + actionable + " · Permanent deletion requires store code and a reason."}
       </p>
+
+      {confirmation ? (
+        <div className={styles.overlay}>
+          <div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+            <div className={styles.dialogHeader}>
+              <span className={styles.dangerMark}>!</span>
+              <div>
+                <h2 id="delete-dialog-title">{language === "th" ? "ยืนยันการลบร้านถาวร" : "Confirm permanent deletion"}</h2>
+                <p>{t.confirmDelete}</p>
+              </div>
+            </div>
+            <div className={styles.dialogStore}>
+              <strong>{confirmation.row.store_name}</strong>
+              <span>{confirmation.row.store_code}</span>
+              <small>{language === "th" ? "การดำเนินการนี้ไม่สามารถย้อนกลับได้" : "This action cannot be undone"}</small>
+            </div>
+            <label className={styles.dialogField}>
+              <span>{language === "th" ? "พิมพ์รหัสร้านเพื่อยืนยัน" : "Type the store code to confirm"}</span>
+              <input value={typedCode} onChange={(event) => setTypedCode(event.target.value)}
+                autoComplete="off" placeholder={confirmation.row.store_code} disabled={Boolean(busy)} />
+            </label>
+            <label className={styles.dialogField}>
+              <span>{language === "th" ? "เหตุผลการลบ (บังคับ)" : "Deletion reason (required)"}</span>
+              <textarea rows={3} value={confirmationNote} onChange={(event) => setConfirmationNote(event.target.value)}
+                placeholder={t.notePlaceholder} disabled={Boolean(busy)} />
+            </label>
+            <div className={styles.dialogActions}>
+              <button type="button" className={styles.secondaryButton} disabled={Boolean(busy)}
+                onClick={() => setConfirmation(null)}>{language === "th" ? "ยกเลิก" : "Cancel"}</button>
+              <button type="button" className={styles.dangerButton} disabled={!isConfirmed || Boolean(busy)}
+                onClick={() => void act(confirmation.row, confirmation.action, confirmationNote.trim(), typedCode.trim())}>
+                {busy ? t.working : confirmation.action === "delete" ? t.delete : t.finalize}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
 
+// Keep a fragment wrapper for each row's independently expandable details.
+function FragmentRow({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
 function Stat({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
   return (
-    <div style={{ ...statCard, borderColor: danger && value > 0 ? "#fecaca" : "#dbe5f3" }}>
-      <span style={{ color: "#64748b", fontSize: 13 }}>{label}</span>
-      <strong style={{ fontSize: 28, color: danger && value > 0 ? "#b91c1c" : "#0f172a" }}>{value}</strong>
+    <div className={styles.statCard}>
+      <span>{label}</span>
+      <strong className={danger && value > 0 ? styles.statDanger : undefined}>{value}</strong>
     </div>
   );
 }
-
-function DateCell({ label, value }: { label: string; value: string }) {
-  return <div style={{ display: "grid", gap: 4 }}><span style={{ color: "#64748b", fontSize: 12 }}>{label}</span><strong>{value}</strong></div>;
-}
-
-const page: CSSProperties = { display: "grid", gap: 18, paddingBottom: 28 };
-const header: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" };
-const stats: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12 };
-const statCard: CSSProperties = { border: "1px solid #dbe5f3", borderRadius: 16, padding: 16, background: "#fff", display: "grid", gap: 6 };
-const card: CSSProperties = { border: "1px solid #dbe5f3", borderRadius: 18, padding: 18, boxShadow: "0 8px 24px rgba(15,23,42,.05)" };
-const cardTop: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" };
-const dateGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginTop: 14, padding: 14, borderRadius: 14, background: "#f8fafc" };
-const pill: CSSProperties = { display: "inline-flex", alignItems: "center", minHeight: 26, padding: "3px 9px", borderRadius: 999, background: "#eef4ff", color: "#2455a6", fontSize: 12, fontWeight: 800 };
-const dangerPill: CSSProperties = { ...pill, background: "#fee2e2", color: "#991b1b" };
-const button: CSSProperties = { minHeight: 40, padding: "8px 14px", borderRadius: 12, border: "1px solid #cbd5e1", background: "#fff", color: "#334155", fontWeight: 800, cursor: "pointer" };
-const dangerButton: CSSProperties = { ...button, background: "#b91c1c", color: "#fff", borderColor: "#b91c1c" };
-const actions: CSSProperties = { display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" };
-const textarea: CSSProperties = { width: "100%", resize: "vertical", border: "1px solid #cbd5e1", borderRadius: 12, padding: 10, font: "inherit" };
-const dangerNote: CSSProperties = { display: "grid", gap: 5, padding: 14, borderRadius: 14, border: "1px solid #fecaca", background: "#fff7f7", color: "#7f1d1d" };
-const mdmBox: CSSProperties = { marginTop: 12, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: 12, borderRadius: 12, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e" };
-const errorBox: CSSProperties = { padding: 12, borderRadius: 12, border: "1px solid #fecaca", background: "#fff1f2", color: "#b91c1c", fontWeight: 700 };
-const noticeBox: CSSProperties = { padding: 12, borderRadius: 12, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", fontWeight: 700 };
-const emptyBox: CSSProperties = { padding: 22, borderRadius: 14, border: "1px dashed #cbd5e1", color: "#64748b", textAlign: "center" };
