@@ -170,6 +170,7 @@ function salesModeDraftFromViews(views: PosSalesModeView[] | undefined): Record<
 type Props = {
   tenantId: string;
   fallbackName: string;
+  fallbackStoreCode?: string;
   onClose: () => void;
   onChanged: () => void;
   onDeleted: () => void;
@@ -271,7 +272,25 @@ async function parse<T>(response: Response): Promise<T> {
   return body.data;
 }
 
-export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged, onDeleted }: Props) {
+async function verifyTenantDeletionReceipt(tenantId: string, storeCode: string): Promise<boolean> {
+  if (!storeCode.trim()) return false;
+  try {
+    // This is a read-only reconciliation, never a second deletion request.
+    const response = await fetch(
+      `/api/it-admin/v1/tenants/${encodeURIComponent(tenantId)}/control?deletion_status=1&store_code=${encodeURIComponent(storeCode.trim())}`,
+      { method: "GET", credentials: "include", cache: "no-store" }
+    );
+    if (!response.ok) return false;
+    const body = await response.json().catch(() => null) as {
+      data?: { deleted?: boolean; already_deleted?: boolean; storage_cleanup_pending?: boolean }
+    } | null;
+    return body?.data?.deleted === true && body.data.already_deleted === true;
+  } catch {
+    return false;
+  }
+}
+
+export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode, onClose, onChanged, onDeleted }: Props) {
   const { canDelete } = useItAccess();
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<ControlData | null>(null);
@@ -395,11 +414,21 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
       const response = await fetch(`/api/it-admin/v1/tenants/${tenantId}/control`, { cache: "no-store", credentials: "include" });
       applyData(await parse<ControlData>(response));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "โหลดข้อมูลร้านไม่สำเร็จ");
+      const message = loadError instanceof Error ? loadError.message : "โหลดข้อมูลร้านไม่สำเร็จ";
+      if (/Tenant was not found\./i.test(message) && fallbackStoreCode) {
+        const verified = await verifyTenantDeletionReceipt(tenantId, fallbackStoreCode);
+        if (verified) {
+          onDeleted();
+          return;
+        }
+      }
+      setError(/Tenant was not found\./i.test(message)
+        ? "ไม่พบร้านนี้ในฐานข้อมูลแล้ว กรุณารีเฟรชรายการร้านค้า หากเพิ่งลบสำเร็จ ระบบจะตรวจสอบจาก Audit ก่อนยืนยันผล"
+        : message);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [applyData, tenantId]);
+  }, [applyData, tenantId, fallbackStoreCode, onDeleted]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -445,6 +474,13 @@ export function TenantControlCenter({ tenantId, fallbackName, onClose, onChanged
       onChanged();
       return next;
     } catch (mutationError) {
+      if (payload.action === "delete_store") {
+        const confirmedCode = String(payload.confirmation_code ?? "");
+        if (await verifyTenantDeletionReceipt(tenantId, confirmedCode)) {
+          onDeleted();
+          return { deleted: true, already_deleted: true };
+        }
+      }
       setError(mutationError instanceof Error ? mutationError.message : "บันทึกข้อมูลไม่สำเร็จ");
       return null;
     } finally {
