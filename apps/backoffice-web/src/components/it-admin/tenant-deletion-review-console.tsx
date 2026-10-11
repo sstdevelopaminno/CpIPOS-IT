@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import styles from "./tenant-deletion-review-console.module.css";
 import type { Language } from "@/lib/i18n";
 
@@ -421,7 +422,7 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
 }
 
 // Keep a fragment wrapper for each row's independently expandable details.
-function FragmentRow({ children }: { children: React.ReactNode }) {
+function FragmentRow({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
