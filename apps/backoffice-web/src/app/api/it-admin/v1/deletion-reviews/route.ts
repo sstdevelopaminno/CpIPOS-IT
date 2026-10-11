@@ -33,6 +33,7 @@ type ReviewActionBody = {
   action?: string;
   tenant_id?: string;
   note?: string;
+  confirmation_code?: string;
 };
 
 function text(value: unknown, max = 600) {
@@ -351,6 +352,33 @@ export async function POST(request: Request) {
     const tenantId = text(body?.tenant_id, 80);
     const note = text(body?.note, 600);
     if (!isUuid(tenantId)) return fail("invalid_tenant_id", "tenant_id is required.", 422);
+
+    // Two-step deletion authorization must be enforced by the server as well as the UI.
+    // Otherwise, a direct POST could bypass the confirmation dialog.
+    if (action === "delete" || action === "finalize") {
+      const confirmationCode = text(body?.confirmation_code, 80);
+      if (!note) return fail("deletion_note_required", "กรุณาระบุเหตุผลการลบเพื่อบันทึก Audit", 422);
+      const [tenantLookup, reviewLookup] = await Promise.all([
+        admin.supabase.from("tenants").select("code").eq("id", tenantId).maybeSingle<{ code: string }>(),
+        admin.supabase.from("tenant_lifecycle_deletion_reviews")
+          .select("review_status,deletion_review_at")
+          .eq("tenant_id", tenantId)
+          .maybeSingle<{ review_status: string; deletion_review_at: string }>()
+      ]);
+      if (tenantLookup.error || reviewLookup.error) {
+        throw new Error("tenant_deletion_confirmation_lookup_failed");
+      }
+      if (!tenantLookup.data || !confirmationCode || tenantLookup.data.code !== confirmationCode) {
+        return fail("invalid_store_confirmation", "รหัสร้านที่ยืนยันไม่ถูกต้อง", 422);
+      }
+      if (!reviewLookup.data || reviewLookup.data.review_status !==
+        (action === "delete" ? "ready_for_it_review" : "ready_to_delete")) {
+        return fail("deletion_review_not_ready", "ร้านยังไม่อยู่ในสถานะที่อนุญาตให้ลบ", 409);
+      }
+      if (new Date(reviewLookup.data.deletion_review_at).getTime() > Date.now()) {
+        return fail("deletion_retention_active", "ยังไม่ครบกำหนดรักษาข้อมูล", 409);
+      }
+    }
 
     if (action === "keep") {
       const { data, error } = await admin.supabase.rpc("it_decide_tenant_deletion_review", {
