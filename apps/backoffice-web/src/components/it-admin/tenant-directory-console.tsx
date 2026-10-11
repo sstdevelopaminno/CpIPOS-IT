@@ -75,6 +75,7 @@ export function TenantDirectoryConsole({ language }: { language: Language }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [selected, setSelected] = useState<TenantRow | null>(null);
@@ -199,6 +200,13 @@ export function TenantDirectoryConsole({ language }: { language: Language }) {
         </div>
       </header>
 
+      {deletionNotice ? (
+        <div role="status" className={styles.panel} style={{ padding: "14px 18px", borderColor: "#b6e2c4", color: "#166534", background: "#f0fdf4", fontWeight: 700 }}>
+          {deletionNotice}
+          <button type="button" onClick={() => setDeletionNotice(null)} style={{ marginLeft: 12, textDecoration: "underline", color: "inherit" }}>ปิด</button>
+        </div>
+      ) : null}
+
       <section className={styles.summaryGrid} aria-label="Tenant summary">
         <article><span>ร้านทั้งหมด</span><strong>{loading ? "—" : numberValue(summary.total)}</strong><small>Tenant records</small></article>
         <article><span>เปิดใช้งาน</span><strong>{loading ? "—" : numberValue(summary.active)}</strong><small>Authority active</small></article>
@@ -302,9 +310,14 @@ export function TenantDirectoryConsole({ language }: { language: Language }) {
         <TenantControlCenter
           tenantId={selected.id}
           fallbackName={selected.name || "ร้านค้า"}
+          fallbackStoreCode={selected.store_code}
           onClose={() => setSelected(null)}
           onChanged={() => void load(true)}
-          onDeleted={() => { setSelected(null); void load(true); }}
+          onDeleted={() => {
+            setDeletionNotice(`ยืนยันแล้ว: ร้าน ${selected.name || "ที่เลือก"} (${selected.store_code || "—"}) ถูกลบถาวรและบันทึก Audit แล้ว`);
+            setSelected(null);
+            void load(true);
+          }}
         />
       ) : null}
 
