@@ -34,11 +34,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ mod
       throw new ItAdminGuardError("unauthorized", "Authentication is required.", 401);
     }
 
-    const { value: payload, source } = await readThroughRuntimeCache({
-      key: `it-admin-module:${context.auth.userId}:${moduleName}`,
-      ttlMs: MODULE_CACHE_TTL_MS,
-      loader: () => loadItAdminModule(moduleName, accessToken)
-    });
+    // Store deletion is an irreversible operation. Never serve a stale tenant
+    // directory from the process-level 30s cache after the database commit.
+    const { value: payload, source } = moduleName === "tenants"
+      ? { value: await loadItAdminModule(moduleName, accessToken), source: "live" }
+      : await readThroughRuntimeCache({
+          key: `it-admin-module:${context.auth.userId}:${moduleName}`,
+          ttlMs: MODULE_CACHE_TTL_MS,
+          loader: () => loadItAdminModule(moduleName, accessToken)
+        });
     const response = ok(payload);
     response.headers.set("cache-control", "no-store");
     response.headers.set("x-admin-api-ms", String(Date.now() - startedAt));
