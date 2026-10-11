@@ -21,7 +21,7 @@ describe("operational cleanup safe-update guard", () => {
       expect(migration).toContain(`delete from public.${table} where id is not null;`);
     }
     expect(migration).not.toMatch(/delete from public\.[a-z_]+\s*;/i);
-    expect(migration).toMatch(/create or replace function public\\.it_run_operational_cleanup_7d/i);
+    expect(migration).toMatch(/create or replace function public\.it_run_operational_cleanup_7d/i);
   });
 
   it("preserves the 7-day window, active print jobs and the persistent cleanup ledger", () => {
