@@ -22,11 +22,12 @@ function isTransientDatabaseError(error: unknown) {
 async function runRpcWithRetry(
   context: Awaited<ReturnType<typeof requireItAdmin>>,
   fn: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
+  maxAttempts = 3
 ) {
   let lastError: unknown = null;
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const result = args ? await context.supabase.rpc(fn, args) : await context.supabase.rpc(fn);
       if (!result.error) return result;
@@ -37,7 +38,7 @@ async function runRpcWithRetry(
       if (!isTransientDatabaseError(error)) throw error;
     }
 
-    if (attempt < 2) {
+    if (attempt < maxAttempts - 1) {
       await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
     }
   }
@@ -91,13 +92,31 @@ export async function POST(request: Request) {
       p_mode: mode,
       p_actor_user_id: context.auth.userId,
       p_actor_role: context.auth.platformRole
-    });
+    }, 1); // Mutating RPC: never retry automatically after an ambiguous network timeout.
 
     if (result.error) {
+      const dbCode = typeof result.error === "object" && "code" in result.error
+        ? String(result.error.code ?? "") : "";
+      const dbMessage = typeof result.error === "object" && "message" in result.error
+        ? String(result.error.message ?? "") : String(result.error);
+      if (dbCode === "21000" && /DELETE requires a WHERE clause/i.test(dbMessage)) {
+        return fail(
+          "cleanup_safety_migration_required",
+          "ระบบป้องกันฐานข้อมูลปฏิเสธการลบทั้งหมด กรุณาตรวจสอบว่าติดตั้ง Migration ของ Cleanup ล่าสุดแล้ว",
+          409
+        );
+      }
+      if (dbCode === "23503") {
+        return fail(
+          "cleanup_referenced_record",
+          "ยังมีข้อมูลที่เกี่ยวข้องซึ่งไม่อนุญาตให้ลบ กรุณาตรวจสอบความสัมพันธ์ของข้อมูล",
+          409
+        );
+      }
       if (isTransientDatabaseError(result.error)) {
         return fail(
           "cleanup_database_temporarily_unavailable",
-          "ฐานข้อมูลตอบสนองชั่วคราว กรุณาลองใหม่อีกครั้ง",
+          "คำสั่งลบอาจเสร็จแล้วแม้การตอบกลับล้มเหลว กรุณาตรวจสอบ Cleanup Ledger และรีเฟรชก่อนสั่งซ้ำ",
           503
         );
       }
