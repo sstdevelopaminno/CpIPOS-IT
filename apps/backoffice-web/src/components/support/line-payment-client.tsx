@@ -166,7 +166,9 @@ function CopyButton({ value, label = "คัดลอก" }: { value: string; la
 }
 
 export function LinePaymentClient() {
-  const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID || DEFAULT_LIFF_ID;
+  // A dedicated Payment LIFF app may be configured; otherwise use the shared LIFF app
+  // with the /payment suffix under the /support/line endpoint.
+  const liffId = process.env.NEXT_PUBLIC_LINE_PAYMENT_LIFF_ID || process.env.NEXT_PUBLIC_LINE_LIFF_ID || DEFAULT_LIFF_ID;
   const [stage, setStage] = useState<Stage>("boot");
   const [idToken, setIdToken] = useState("");
   const [storeCode, setStoreCode] = useState("");

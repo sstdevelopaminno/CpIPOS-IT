@@ -112,6 +112,9 @@ function statusText(status: string) {
 
 export function LineSupportClient() {
   const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID || DEFAULT_LIFF_ID;
+  const paymentLiffUrl = process.env.NEXT_PUBLIC_LINE_PAYMENT_LIFF_ID
+    ? `https://liff.line.me/${process.env.NEXT_PUBLIC_LINE_PAYMENT_LIFF_ID}`
+    : `https://liff.line.me/${liffId}/payment`;
   const bootedRef = useRef(false);
   const endRef = useRef<HTMLDivElement | null>(null);
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
@@ -584,6 +587,12 @@ export function LineSupportClient() {
               <p className="mt-5 text-center text-[11px] leading-5 text-slate-400">
                 ครั้งแรกระบบจะส่ง OTP ไปยังอีเมล Owner ของร้านเพื่อยืนยันการผูก LINE
               </p>
+              <a
+                href={paymentLiffUrl}
+                className="mt-4 block rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-center text-sm font-bold text-blue-700"
+              >
+                ต้องการชำระเงิน? ไปยัง Payment Center
+              </a>
             </div>
           ) : null}
 
