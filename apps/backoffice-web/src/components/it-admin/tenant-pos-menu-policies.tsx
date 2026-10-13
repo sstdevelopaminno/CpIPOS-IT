@@ -4,7 +4,7 @@ import { isPosMenuAlwaysEnabled, type PosMenuDefinition } from "@/lib/pos-menu-p
 import type { MenuAvailability } from "@/lib/pos-menu-effective-state";
 import styles from "./tenant-pos-menu-policies.module.css";
 
-type Data = { catalog: PosMenuDefinition[]; overrides: Record<string, boolean>;
+type Data = { catalog: PosMenuDefinition[]; overrides: Record<string, boolean>; is_custom: boolean;
   availability: Record<string, MenuAvailability>;
   disabled: number; unavailable: number; total: number };
 type ResponseBody<T> = { data?: T | null; error?: { message?: string } | null };
@@ -41,11 +41,11 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       setError("เมนูเปิด/ปิดกะเป็นเมนูหลักของ POS และเปิดใช้งานเสมอ");
       return;
     }
-    const enabled = data.overrides[item.key] !== false;
+    const enabled = data.is_custom ? data.overrides[item.key] === true : data.overrides[item.key] !== false;
     const availability = data.availability?.[item.key];
     // The main switch shows actual POS availability, not an IT command that
     // cannot override package/branch access. Avoid a no-op toggle.
-    if (!availability || !availability.feature_allowed) {
+    if (!availability || (!data.is_custom && !availability.feature_allowed)) {
       setError("เมนูนี้ถูกปิดด้วยเงื่อนไขแพ็กเกจ/สาขา กรุณาตรวจสิทธิ์ฟีเจอร์ก่อน");
       return;
     }
@@ -65,8 +65,8 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       if (!response.ok || !body.data) throw new Error(body.error?.message ?? "บันทึกไม่สำเร็จ");
       setData(previous => previous ? {
         ...previous, overrides: { ...previous.overrides, [item.key]: body.data!.is_enabled },
-        disabled: previous.catalog.filter(menu => (menu.key === item.key
-          ? body.data!.is_enabled : previous.overrides[menu.key] !== false) === false).length
+        disabled: previous.catalog.filter(menu => menu.key !== "main.shift" && !(menu.key === item.key
+          ? body.data!.is_enabled : previous.is_custom ? previous.overrides[menu.key] === true : previous.overrides[menu.key] !== false)).length
       } : previous);
       setSuccess(`${prompt}เมนู "${item.label}" เรียบร้อยแล้ว`);
     } catch (updateError) {
@@ -75,14 +75,14 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   }
   function menuRow(item: PosMenuDefinition, child: boolean) {
     const alwaysEnabled = isPosMenuAlwaysEnabled(item.key);
-    const configured = alwaysEnabled || data?.overrides[item.key] !== false;
+    const configured = alwaysEnabled || (data?.is_custom ? data.overrides[item.key] === true : data?.overrides[item.key] !== false);
     const entitlement = data?.availability?.[item.key];
     const allowed = entitlement?.feature_allowed === true;
     const effective = configured && allowed;
     const blockedByAccess = configured && !allowed;
     const featureLabel = entitlement?.feature_code;
     const message = !configured
-      ? "ปิดด้วยคำสั่ง IT"
+      ? (data?.is_custom ? "CUSTOM: ยังไม่ได้เปิดโดย IT" : "ปิดด้วยคำสั่ง IT")
       : entitlement?.reason === "contract_inactive"
         ? "ปิดจริงใน POS • สัญญาแพ็กเกจไม่พร้อมใช้งาน"
         : entitlement?.reason === "no_active_branch"
@@ -105,7 +105,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
         aria-label={`${item.label}: ${effective ? "เปิดใช้งานใน POS" : message}`}
         title={blockedByAccess ? "ต้องเปิดสิทธิ์แพ็กเกจหรือสาขาก่อนจึงจะเปิดเมนูนี้ได้" : message}
         className={effective ? styles.switchOn : styles.switchOff}
-        disabled={busy !== null || alwaysEnabled || !entitlement || !allowed}
+        disabled={busy !== null || alwaysEnabled || !entitlement || (!data?.is_custom && !allowed)}
         onClick={() => void toggle(item)}>
         <span>{alwaysEnabled ? "เปิดเสมอ" : effective ? "เปิด" : "ปิด"}</span><i aria-hidden />
       </button>
@@ -126,6 +126,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
           {byParent.get(item.key)?.map(child => menuRow(child, true))}
         </div> : null}
       </section>)}
+    {data?.is_custom ? <p className={styles.note}>CUSTOM ใช้การซ่อนเมนูแบบอนุญาตเฉพาะรายการที่ IT เปิด (Explicit Allow) โดยเมนูแม่ต้องเปิดก่อนเมนูลูก และยังต้องตรวจสิทธิ์ฟีเจอร์/สาขาด้วย</p> : null}
     <p className={styles.note}>สวิตช์แสดงสถานะที่ POS ใช้งานได้จริงทุกสาขา หากแพ็กเกจไม่รองรับจะขึ้น “ปิด” แม้คำสั่ง IT ยังเป็น “เปิด” และจะไม่แก้แพ็กเกจให้เอง • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • เมนูทั่วไปยังเป็น navigation lock ตามเดิม แต่ <strong>CpiPOS AI</strong> เป็น policy lock แบบบังคับ: เมื่อปิดจะบล็อกหน้า AI และ API ของ AI สำหรับร้านนั้นด้วย • POS อ่านสถานะใหม่เมื่อกลับเข้าแท็บ</p>
   </div>;
 }
