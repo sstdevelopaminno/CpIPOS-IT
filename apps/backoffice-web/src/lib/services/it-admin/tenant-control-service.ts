@@ -589,7 +589,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   const contractView = normalizeContract(contract, lifecycle);
   const metadata = asRecord(contract?.metadata);
   // CUSTOM uses explicit IT selections; absent mode keys must never default to ON.
-  const modeSource = currentPackage?.code === "custom"
+  const modeSource = itTestMode === "full" ? metadata.sales_modes : currentPackage?.code === "custom"
     ? Object.fromEntries(POS_SALES_MODE_KEYS.map(key => [
         key, asRecord(metadata.sales_modes)[key] === true
       ]))
