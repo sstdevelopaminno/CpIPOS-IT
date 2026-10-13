@@ -5,6 +5,7 @@ import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-ad
 import { POS_MENU_CATALOG, isPosMenuAlwaysEnabled, isValidPosMenuKey } from "@/lib/pos-menu-policy";
 import { resolvePosMenuAvailability, type FeatureFlag, type PlanFlag, type ContractStatus } from "@/lib/pos-menu-effective-state";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
+import { getItQaMode } from "@/lib/server/internal-it-test-store";
 
 export const dynamic = "force-dynamic";
 
@@ -44,17 +45,22 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
         .eq("id", contract.data.package_id).maybeSingle<{ code: string }>()
       : { data: null, error: null };
     if (packageResult.error) throw packageResult.error;
-    const isCustom = String(packageResult.data?.code ?? "").toLowerCase() === "custom";
-    const overrides = Object.fromEntries((rows.data ?? []).map(row => [row.menu_key, row.is_enabled]));
+    const internalMode = await getItQaMode(admin, tenantId);
+    const isFull = internalMode === "full";
+    const isCustom = isFull || String(packageResult.data?.code ?? "").toLowerCase() === "custom";
+    const rawOverrides = Object.fromEntries((rows.data ?? []).map(row => [row.menu_key, row.is_enabled]));
+    const overrides = isFull
+      ? Object.fromEntries(POS_MENU_CATALOG.map(menu => [menu.key, rawOverrides[menu.key] !== false]))
+      : rawOverrides;
     const availability = resolvePosMenuAvailability({
-      overrides, is_custom: isCustom,
+      overrides, is_custom: isCustom, internal_test_full: isFull,
       contract: (contract.data ?? null) as ContractStatus,
       plan: plan.data ?? [],
       feature_overrides: featureOverrides.data ?? [],
       active_branch_ids: (branches.data ?? []).map(branch => branch.id)
     });
     const response = ok({
-      tenant_id: tenantId, is_custom: isCustom, catalog: POS_MENU_CATALOG, overrides, availability,
+      tenant_id: tenantId, is_custom: isCustom, internal_test_full: isFull, catalog: POS_MENU_CATALOG, overrides, availability,
       total: POS_MENU_CATALOG.length,
       disabled: POS_MENU_CATALOG.filter(item => item.key !== "main.shift" && (isCustom ? overrides[item.key] !== true : overrides[item.key] === false)).length,
       unavailable: POS_MENU_CATALOG.filter(item => availability[item.key]?.reason !== "available").length
