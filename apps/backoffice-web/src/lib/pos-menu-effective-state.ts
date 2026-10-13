@@ -73,6 +73,7 @@ function dineInEnabled(contract: ContractStatus): boolean {
 export function resolvePosMenuAvailability(args: {
   overrides: Record<string, boolean>;
   is_custom?: boolean;
+  internal_test_full?: boolean;
   contract: ContractStatus;
   plan: PlanFlag[];
   feature_overrides: FeatureFlag[];
@@ -81,7 +82,7 @@ export function resolvePosMenuAvailability(args: {
 }): Record<string, MenuAvailability> {
   const { overrides, contract, plan, feature_overrides, active_branch_ids } = args;
   const now = args.now ?? Date.now();
-  const contractActive = Boolean(contract && (contract.status === "active" || contract.status === "trial") &&
+  const contractActive = args.internal_test_full === true || Boolean(contract && (contract.status === "active" || contract.status === "trial") &&
     (!contract.ended_at || new Date(contract.ended_at).getTime() > now));
   const planMap = new Map(plan.map(flag => [flag.feature_code, Boolean(flag.included)]));
   const tenantMap = new Map(feature_overrides.filter(flag => !flag.branch_id).map(flag => [flag.feature_code, flag.is_enabled]));
@@ -94,9 +95,9 @@ export function resolvePosMenuAvailability(args: {
     let available = 0;
     if (contractActive) {
       for (const branch of active_branch_ids) {
-        let enabled = feature ? (planMap.get(feature) ?? false) : true;
-        if (feature && tenantMap.has(feature)) enabled = tenantMap.get(feature)!;
-        if (feature && branchMap.has(branch + ":" + feature)) enabled = branchMap.get(branch + ":" + feature)!;
+        let enabled = args.internal_test_full === true || (feature ? (planMap.get(feature) ?? false) : true);
+        if (!args.internal_test_full && feature && tenantMap.has(feature)) enabled = tenantMap.get(feature)!;
+        if (!args.internal_test_full && feature && branchMap.has(branch + ":" + feature)) enabled = branchMap.get(branch + ":" + feature)!;
         if (feature && dineInEnabled(contract) && DINE_IN_LINKED_FEATURES.has(feature)) enabled = true;
         if (enabled) available += 1;
       }
