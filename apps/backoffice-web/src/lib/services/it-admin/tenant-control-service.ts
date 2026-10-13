@@ -589,7 +589,9 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   const contractView = normalizeContract(contract, lifecycle);
   const metadata = asRecord(contract?.metadata);
   // CUSTOM uses explicit IT selections; absent mode keys must never default to ON.
-  const modeSource = itTestMode === "full" ? metadata.sales_modes : currentPackage?.code === "custom"
+  const modeSource = itTestMode === "full"
+    ? { ...asRecord(metadata.sales_modes), optical_retail: asRecord(metadata.sales_modes).optical_retail !== false }
+    : currentPackage?.code === "custom"
     ? Object.fromEntries(POS_SALES_MODE_KEYS.map(key => [
         key, asRecord(metadata.sales_modes)[key] === true
       ]))
@@ -704,8 +706,8 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
   const now = new Date().toISOString();
 
   if (action === "set_it_test_mode") {
-    if (context.profile.platform_role !== "it_admin" || !await getItQaMode(context, tenantId)) {
-      throw new ItAdminGuardError("it_test_scope_forbidden", "Only IT administrators can manage the verified internal test store.", 403);
+    if (!["it_admin", "it_support"].includes(String(context.profile.platform_role)) || !await getItQaMode(context, tenantId)) {
+      throw new ItAdminGuardError("it_test_scope_forbidden", "Only verified active IT staff may manage the internal test store.", 403);
     }
     const nextMode = input.it_test_mode;
     if (nextMode !== "full" && nextMode !== "simulate") {
@@ -1212,7 +1214,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
   }
 
   if (action === "change_package") {
-    if (context.profile.platform_role !== "it_admin" || !await getItQaMode(context, tenantId)) {
+    if (!["it_admin", "it_support"].includes(String(context.profile.platform_role)) || !await getItQaMode(context, tenantId)) {
       throw new ItAdminGuardError("paid_activation_requires_settlement",
         "ร้านลูกค้าทั่วไปต้องเปลี่ยนแพ็กเกจผ่านการตรวจรับชำระเงินจริง", 409);
     }
