@@ -3,7 +3,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { appendAuditLog } from "@/lib/audit-log";
 import { invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
-import { normalizePosSalesModes, toPosSalesModeViews, type PosSalesModeMap } from "@/lib/pos-sales-modes";
+import { POS_SALES_MODE_KEYS, normalizePosSalesModes, toPosSalesModeViews, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 import { ItAdminGuardError, type ItAdminContext } from "@/lib/it-admin-guard";
 
 const ACTIVE_CONTRACT_STATUSES = ["trial", "active", "suspended"] as const;
@@ -583,7 +583,13 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   const storeCode = accessCode?.access_code ?? tenant.code;
   const contractView = normalizeContract(contract, lifecycle);
   const metadata = asRecord(contract?.metadata);
-  const salesModes = toPosSalesModeViews(metadata.sales_modes);
+  // CUSTOM uses explicit IT selections; absent mode keys must never default to ON.
+  const modeSource = currentPackage?.code === "custom"
+    ? Object.fromEntries(POS_SALES_MODE_KEYS.map(key => [
+        key, asRecord(metadata.sales_modes)[key] === true
+      ]))
+    : metadata.sales_modes;
+  const salesModes = toPosSalesModeViews(modeSource);
   const uniqueUsers = new Set((userRolesResult.data ?? []).map((row) => row.user_id).filter(Boolean));
 
   return {
