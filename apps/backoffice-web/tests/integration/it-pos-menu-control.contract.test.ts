@@ -63,7 +63,7 @@ describe("IT ↔ POS single-source menu policy", () => {
     expect(ui).toContain("เปิดใช้งานใน POS");
     expect(ui).toContain("feature_allowed");
     expect(ui).toContain("aria-checked={effective}");
-    expect(ui).toContain("disabled={busy !== null || alwaysEnabled || !entitlement || !allowed}");
+    expect(ui).toContain("disabled={busy !== null || alwaysEnabled || !entitlement || (!data?.is_custom && !allowed)}");
     expect(ui).toContain("/features");
     expect(ui).toContain("สิทธิ์พนักงานรายคนตรวจแยก");
   });
