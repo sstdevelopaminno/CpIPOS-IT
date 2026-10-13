@@ -96,6 +96,7 @@ type ControlData = {
   packages: Package[];
   contract: Contract;
   current_package: Package | null;
+  internal_it_test_mode: "full" | "simulate" | null;
   lifecycle?: Lifecycle;
   usage: { active_devices: number; cashier_active: number; assigned_users: number; online_devices_5m: number };
   sales_modes: PosSalesModeView[];
@@ -954,6 +955,31 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
 
               {tab === "package" ? (
                 <div className={styles.controlStack}>
+                  {data.internal_it_test_mode ? (
+                    <section className={styles.controlSection} aria-label="ร้านทดสอบภายใน IT">
+                      <div className={styles.controlSectionHeader}><div>
+                        <span>INTERNAL QA ONLY</span><h4>ร้านทดสอบ IT · 900001</h4>
+                      </div><strong>{data.internal_it_test_mode === "full" ? "เปิดสิทธิ์ครบ" : "จำลองแพ็กเกจ"}</strong></div>
+                      <div className={styles.securityNote}>ใช้ข้อมูลและหน้าจอระบบจริง แต่ไม่สร้างยอดชำระเงินจากการเปลี่ยนแพ็กเกจทดสอบ ฝ่าย IT เท่านั้นที่ปรับโหมดนี้ได้</div>
+                      <div className={styles.sectionActions}>
+                        <button type="button" className={styles.primaryButton} disabled={busy || data.internal_it_test_mode === "full"}
+                          onClick={()=>void mutate({action:"set_it_test_mode",it_test_mode:"full"},"เปิดทุกฟังก์ชันสำหรับทดสอบแล้ว",true)}>เปิดสิทธิ์ครบ</button>
+                        <button type="button" className={styles.secondaryButton} disabled={busy || data.internal_it_test_mode === "simulate"}
+                          onClick={()=>void mutate({action:"set_it_test_mode",it_test_mode:"simulate"},"เปิดการจำลองแพ็กเกจแล้ว",true)}>จำลองสิทธิ์แพ็กเกจ</button>
+                      </div>
+                      <div className={styles.formGrid}>
+                        <label><span>แพ็กเกจสำหรับทดสอบ</span><select value={packageId} onChange={e=>selectPackage(e.target.value)}>
+                          {data.packages.map(pkg=><option key={pkg.id} value={pkg.id}>{pkg.name} · {pkg.code}</option>)}
+                        </select></label>
+                      </div>
+                      <div className={styles.sectionActions}>
+                        <button type="button" className={styles.primaryButton} disabled={busy || !packageId}
+                          onClick={()=>void mutate({action:"change_package",package_id:packageId},"เปลี่ยนแพ็กเกจทดสอบเรียบร้อย (ไม่สร้างรายการชำระเงินจริง)",true)}>
+                          ใช้แพ็กเกจนี้สำหรับทดสอบ
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
                   <section className={styles.packageHero}>
                     <div>
                       <span>CURRENT PACKAGE</span>

@@ -5,6 +5,7 @@ import { appendAuditLog } from "@/lib/audit-log";
 import { invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
 import { POS_SALES_MODE_KEYS, normalizePosSalesModes, toPosSalesModeViews, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 import { ItAdminGuardError, type ItAdminContext } from "@/lib/it-admin-guard";
+import { getItQaMode } from "@/lib/server/internal-it-test-store";
 
 const ACTIVE_CONTRACT_STATUSES = ["trial", "active", "suspended"] as const;
 const BILLING_CYCLES = new Set(["monthly", "yearly"]);
@@ -165,6 +166,7 @@ export type TenantControlAction =
   | "approve_custom_package_request"
   | "prepare_paid_package"
   | "change_package"
+  | "set_it_test_mode"
   | "update_sales_modes"
   | "suspend_package"
   | "resume_package"
@@ -212,6 +214,7 @@ export type TenantControlInput = {
   customer_title?: string;
   sales_modes?: Partial<PosSalesModeMap>;
   confirmation_code?: string;
+  it_test_mode?: "full" | "simulate";
 };
 
 const TENANT_SELECT = "id,code,name,display_name,owner_name,owner_phone,contact_phone,package_id,is_active,logo_url,company_address,created_at,updated_at";
@@ -245,6 +248,7 @@ function requireAction(raw: unknown): TenantControlAction {
     "approve_custom_package_request",
     "prepare_paid_package",
     "change_package",
+    "set_it_test_mode",
     "update_sales_modes",
     "suspend_package",
     "resume_package",
@@ -581,10 +585,11 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   if (userRolesResult.error) throw new Error(`tenant_users_count_failed:${userRolesResult.error.message}`);
 
   const storeCode = accessCode?.access_code ?? tenant.code;
+  const itTestMode = await getItQaMode(context, tenantId);
   const contractView = normalizeContract(contract, lifecycle);
   const metadata = asRecord(contract?.metadata);
   // CUSTOM uses explicit IT selections; absent mode keys must never default to ON.
-  const modeSource = currentPackage?.code === "custom"
+  const modeSource = itTestMode === "full" ? metadata.sales_modes : currentPackage?.code === "custom"
     ? Object.fromEntries(POS_SALES_MODE_KEYS.map(key => [
         key, asRecord(metadata.sales_modes)[key] === true
       ]))
@@ -619,6 +624,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
     packages,
     contract: contractView,
     current_package: currentPackage,
+    internal_it_test_mode: itTestMode,
     lifecycle,
     usage: {
       active_devices: devicesResult.count ?? 0,
@@ -696,6 +702,27 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
   const action = requireAction(input.action);
   const tenant = await loadTenant(context, tenantId);
   const now = new Date().toISOString();
+
+  if (action === "set_it_test_mode") {
+    if (context.profile.platform_role !== "it_admin" || !await getItQaMode(context, tenantId)) {
+      throw new ItAdminGuardError("it_test_scope_forbidden", "Only IT administrators can manage the verified internal test store.", 403);
+    }
+    const nextMode = input.it_test_mode;
+    if (nextMode !== "full" && nextMode !== "simulate") {
+      throw new ItAdminGuardError("invalid_it_test_mode", "Choose full or simulate.", 422);
+    }
+    const original = await context.supabase.from("tenants").select("metadata")
+      .eq("id", tenantId).maybeSingle<{ metadata: Record<string, unknown> | null }>();
+    if (original.error) throw original.error;
+    const changes = { metadata: { ...asRecord(original.data?.metadata), it_test_access_mode: nextMode }, updated_at: now };
+    const updated = await context.supabase.from("tenants").update(changes).eq("id", tenantId);
+    if (updated.error) throw updated.error;
+    invalidateTenantFeatureGateCache(tenantId);
+    await audit(context, tenantId, "internal_test_mode_changed", "tenants", tenantId,
+      { it_test_access_mode: asRecord(original.data?.metadata).it_test_access_mode ?? "full" },
+      { it_test_access_mode: nextMode });
+    return loadTenantControlCenter(context, tenantId);
+  }
 
   if (action === "update_profile") {
     const displayName = cleanText(input.display_name, 160);
@@ -1185,11 +1212,47 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
   }
 
   if (action === "change_package") {
-    throw new ItAdminGuardError(
-      "paid_activation_requires_settlement",
-      "ห้ามเปิดหรือเปลี่ยนแพ็กเกจที่มีค่าบริการจาก Tenants / Stores โดยตรง กรุณาสร้างรายการชำระแล้วไปอนุมัติในตารางชำระแพ็กเกจ",
-      409
-    );
+    if (context.profile.platform_role !== "it_admin" || !await getItQaMode(context, tenantId)) {
+      throw new ItAdminGuardError("paid_activation_requires_settlement",
+        "ร้านลูกค้าทั่วไปต้องเปลี่ยนแพ็กเกจผ่านการตรวจรับชำระเงินจริง", 409);
+    }
+    // QA package changes create a ZERO-VALUE contract (never a financial
+    // settlement, billing cycle, bank verification, or official receipt).
+    const packageId = cleanText(input.package_id, 80);
+    const selected = await context.supabase.from("subscription_packages").select(PACKAGE_SELECT)
+      .eq("id", packageId).eq("is_active", true).eq("status", "active")
+      .maybeSingle<PackageRow>();
+    if (selected.error) throw selected.error;
+    if (!selected.data) throw new ItAdminGuardError("package_not_found", "Package not found.", 404);
+    const previous = await loadCurrentContract(context, tenantId);
+    const metadata = {
+      it_internal_test_contract: true, package_change_by: context.auth.userId,
+      package_change_at: now, simulated_package_code: selected.data.code,
+      sales_modes: asRecord(previous?.metadata).sales_modes ?? undefined
+    };
+    const recorded = await context.supabase.from("tenant_subscription_contracts").insert({
+      tenant_id: tenantId, package_id: selected.data.id, contract_type: "saas",
+      billing_interval: "monthly", deployment_mode: "cloud",
+      status: "active", amount_per_cycle: 0, currency: "THB",
+      auto_renew: false, started_at: now, ended_at: null,
+      branch_limit: Math.max(1, selected.data.max_branches ?? 1),
+      terminal_limit_per_branch: Math.max(1, selected.data.max_devices ?? 1),
+      metadata
+    }).select("id").single<{ id: string }>();
+    if (recorded.error || !recorded.data) throw recorded.error ?? new Error("it_test_package_contract_failed");
+    const tenantUpdate = await context.supabase.from("tenants")
+      .update({ package_id: packageId, updated_at: now }).eq("id", tenantId);
+    if (tenantUpdate.error) throw tenantUpdate.error;
+    await updateLifecycle(context, tenantId, {
+      lifecycle_status: "active", access_locked: false, lock_reason: null,
+      subscription_expires_at: null
+    });
+    invalidateTenantFeatureGateCache(tenantId);
+    await audit(context, tenantId, "internal_test_package_changed", "tenant_subscription_contracts",
+      recorded.data.id, { previous_package_id: previous?.package_id ?? null },
+      { package_id: packageId, test_only: true, amount_per_cycle: 0 },
+      { excludes_real_payment_settlement: true, package_code: selected.data.code });
+    return loadTenantControlCenter(context, tenantId);
   }
 
   if (action === "prepare_paid_package") {

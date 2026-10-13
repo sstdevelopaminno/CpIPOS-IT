@@ -67,6 +67,16 @@ describe("IT POS menu switch reflects ACTUAL menu availability", () => {
     expect(resolvePosMenuAvailability({ ...base, contract: { status: "trial", ended_at: "2026-09-20T00:00:00Z" } })["main.sales"].reason).toBe("contract_inactive");
     expect(resolvePosMenuAvailability({ ...base, active_branch_ids: [] })["main.sales"].reason).toBe("no_active_branch");
   });
+  it("internal IT QA full access bypasses package entitlements but preserves menu OFF", () => {
+    const all = resolvePosMenuAvailability({ ...base, internal_test_full: true,
+      is_custom: true, overrides: { "main.more": true, "more.stock": true },
+      plan: [], contract: { status: "expired", ended_at: "2020-01-01T00:00:00Z" } });
+    expect(all["more.stock"].reason).toBe("available");
+    expect(all["more.stock"].feature_allowed).toBe(true);
+    const closed = resolvePosMenuAvailability({ ...base, internal_test_full: true,
+      is_custom: true, overrides: { "main.more": true, "more.stock": false } });
+    expect(closed["more.stock"].reason).toBe("it_locked");
+  });
   it("CUSTOM hides unset entries and requires an explicitly enabled parent", () => {
     const denied = resolvePosMenuAvailability({ ...base, is_custom: true });
     expect(denied["main.shift"].reason).toBe("available");
