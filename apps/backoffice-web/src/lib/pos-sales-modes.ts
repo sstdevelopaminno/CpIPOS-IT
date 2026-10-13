@@ -1,4 +1,4 @@
-export const POS_SALES_MODE_KEYS = ["takeaway", "dine_in", "buffet_table", "delivery", "general_sale"] as const;
+export const POS_SALES_MODE_KEYS = ["takeaway", "dine_in", "buffet_table", "delivery", "general_sale", "optical_retail"] as const;
 
 export type PosSalesModeKey = (typeof POS_SALES_MODE_KEYS)[number];
 export type PosSalesModeMap = Record<PosSalesModeKey, boolean>;
@@ -16,7 +16,8 @@ export const DEFAULT_POS_SALES_MODES: PosSalesModeMap = {
   dine_in: true,
   buffet_table: true,
   delivery: true,
-  general_sale: true
+  general_sale: true,
+  optical_retail: false
 };
 
 export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">> = [
@@ -49,6 +50,12 @@ export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">
     label: "ขายทั่วไป (SD)",
     short_label: "ขายทั่วไป",
     description: "ขายสินค้าแบบ SKU/บาร์โค้ด พร้อมตารางสแกนสำหรับร้านค้าทั่วไป"
+  },
+  {
+    key: "optical_retail",
+    label: "ร้านแว่นตา · IMDC OPTICAL",
+    short_label: "ร้านแว่นตา",
+    description: "โหมดขายกรอบและเลนส์ด้วย SKU/บาร์โค้ด ใช้ระบบขายปลีกเดิมเป็นฐาน (งานสั่งทำและค่าสายตากำลังพัฒนา)"
   }
 ];
 
@@ -67,7 +74,8 @@ export function normalizePosSalesModes(value: unknown): PosSalesModeMap {
     dine_in: asBoolean(record.dine_in, DEFAULT_POS_SALES_MODES.dine_in),
     buffet_table: asBoolean(record.buffet_table, DEFAULT_POS_SALES_MODES.buffet_table),
     delivery: asBoolean(record.delivery, DEFAULT_POS_SALES_MODES.delivery),
-    general_sale: asBoolean(record.general_sale, DEFAULT_POS_SALES_MODES.general_sale)
+    general_sale: asBoolean(record.general_sale, DEFAULT_POS_SALES_MODES.general_sale),
+    optical_retail: asBoolean(record.optical_retail, DEFAULT_POS_SALES_MODES.optical_retail)
   };
 }
 
