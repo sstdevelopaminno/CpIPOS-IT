@@ -1400,6 +1400,15 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       throw new ItAdminGuardError("subscription_closed", "Closed contracts cannot update POS sales modes.", 409);
     }
     const nextModes = normalizePosSalesModes(input.sales_modes);
+    if (nextModes.optical_retail && !await getItQaMode(context, tenantId)) {
+      const pkg = await context.supabase.from("subscription_packages")
+        .select("code").eq("id", contract.package_id).maybeSingle<{ code: string }>();
+      if (pkg.error) throw pkg.error;
+      if (String(pkg.data?.code ?? "").toLowerCase() !== "custom") {
+        throw new ItAdminGuardError("optical_custom_only",
+          "โหมดร้านแว่นตาเปิดได้เฉพาะ CUSTOM หรือร้านทดสอบ IT", 403);
+      }
+    }
     if (!Object.values(nextModes).some(Boolean)) {
       throw new ItAdminGuardError("sales_mode_required", "At least one POS sales mode must stay enabled.", 422);
     }
