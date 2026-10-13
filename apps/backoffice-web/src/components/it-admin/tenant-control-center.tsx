@@ -533,8 +533,12 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
           return Number.isFinite(base) ? Number((base * (1 - Math.max(0,Math.min(100,Number.isFinite(discount) ? discount : 0))/100)).toFixed(2)) : 0;
         })()
     : 0;
-  const salesModeEnabledCount = data?.sales_modes.filter((mode) => mode.enabled).length ?? 0;
-  const salesModeTotal = data?.sales_modes.length || POS_SALES_MODE_KEYS.length;
+  const visibleSalesModes = data?.sales_modes.filter((mode) =>
+    mode.key !== "optical_retail" || data.current_package?.code === "custom"
+      || Boolean(data.internal_it_test_mode)
+  ) ?? [];
+  const salesModeEnabledCount = visibleSalesModes.filter((mode) => mode.enabled).length;
+  const salesModeTotal = visibleSalesModes.length || POS_SALES_MODE_KEYS.length - 1;
   const hasSalesModeEnabled = Object.values(salesModeDrafts).some(Boolean);
 
   const changeContractCycle = (cycle: ContractPeriod) => {
@@ -832,10 +836,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       <span className={`${styles.controlPill} ${hasSalesModeEnabled ? styles.controlGood : styles.controlWarn}`}>{salesModeEnabledCount}/{salesModeTotal} เปิดใช้งาน</span>
                     </div>
                     <div className={dashboardStyles.salesModeGrid}>
-                      {data.sales_modes.filter((mode) =>
-                        mode.key !== "optical_retail" || data.current_package?.code === "custom"
-                          || Boolean(data.internal_it_test_mode)
-                      ).map((mode) => {
+                      {visibleSalesModes.map((mode) => {
                         const enabled = salesModeDrafts[mode.key];
                         return (
                           <label className={`${dashboardStyles.salesModeCard} ${enabled ? dashboardStyles.salesModeCardOn : dashboardStyles.salesModeCardOff}`} key={mode.key}>
