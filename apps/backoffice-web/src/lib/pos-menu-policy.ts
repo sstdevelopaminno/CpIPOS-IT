@@ -52,6 +52,18 @@ export function isPosMenuEnabled(key: string, overrides: Record<string, boolean>
   if (!catalog.has(key)) return true;
   return overrides[key] !== false;
 }
+/** CUSTOM menus are an explicit IT allowlist; an unset child or parent is hidden. */
+export function isCustomPosMenuVisible(
+  key: string,
+  overrides: Record<string, boolean>,
+  isCustom: boolean
+): boolean {
+  if (!isCustom) return isPosMenuEnabled(key, overrides);
+  if (isPosMenuAlwaysEnabled(key)) return true;
+  const item = catalog.get(key);
+  if (!item || overrides[key] !== true) return false;
+  return !item.parent || isCustomPosMenuVisible(item.parent, overrides, true);
+}
 /** Longest path wins; /preview/pos is an exact-match root, not a wildcard. */
 export function posMenuKeyForRoute(pathname: string): string | null {
   const path = pathname.split("?")[0].replace(/\/$/, "") || "/";

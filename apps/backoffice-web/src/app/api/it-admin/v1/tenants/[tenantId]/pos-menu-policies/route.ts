@@ -39,18 +39,24 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
         .returns<PlanFlag[]>()
       : { data: [] as PlanFlag[], error: null };
     if (plan.error) throw plan.error;
+    const packageResult = contract.data?.package_id
+      ? await admin.supabase.from("subscription_packages").select("code")
+        .eq("id", contract.data.package_id).maybeSingle<{ code: string }>()
+      : { data: null, error: null };
+    if (packageResult.error) throw packageResult.error;
+    const isCustom = String(packageResult.data?.code ?? "").toLowerCase() === "custom";
     const overrides = Object.fromEntries((rows.data ?? []).map(row => [row.menu_key, row.is_enabled]));
     const availability = resolvePosMenuAvailability({
-      overrides,
+      overrides, is_custom: isCustom,
       contract: (contract.data ?? null) as ContractStatus,
       plan: plan.data ?? [],
       feature_overrides: featureOverrides.data ?? [],
       active_branch_ids: (branches.data ?? []).map(branch => branch.id)
     });
     const response = ok({
-      tenant_id: tenantId, catalog: POS_MENU_CATALOG, overrides, availability,
+      tenant_id: tenantId, is_custom: isCustom, catalog: POS_MENU_CATALOG, overrides, availability,
       total: POS_MENU_CATALOG.length,
-      disabled: POS_MENU_CATALOG.filter(item => overrides[item.key] === false).length,
+      disabled: POS_MENU_CATALOG.filter(item => item.key !== "main.shift" && (isCustom ? overrides[item.key] !== true : overrides[item.key] === false)).length,
       unavailable: POS_MENU_CATALOG.filter(item => availability[item.key]?.reason !== "available").length
     });
     response.headers.set("cache-control", "private, no-store");

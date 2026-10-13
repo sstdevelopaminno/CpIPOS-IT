@@ -1,4 +1,4 @@
-import { POS_MENU_CATALOG, isPosMenuAlwaysEnabled } from "@/lib/pos-menu-policy";
+import { POS_MENU_CATALOG, isCustomPosMenuVisible, isPosMenuAlwaysEnabled } from "@/lib/pos-menu-policy";
 
 /**
  * Mirrors the feature gates on the CUSTOMER POS navigation surfaces.
@@ -72,6 +72,7 @@ function dineInEnabled(contract: ContractStatus): boolean {
  * while inactive/expired contracts always deny gated features. Never writes data. */
 export function resolvePosMenuAvailability(args: {
   overrides: Record<string, boolean>;
+  is_custom?: boolean;
   contract: ContractStatus;
   plan: PlanFlag[];
   feature_overrides: FeatureFlag[];
@@ -101,7 +102,7 @@ export function resolvePosMenuAvailability(args: {
       }
     }
     const featureAllowed = contractActive && total > 0 && available === total;
-    const itEnabled = isPosMenuAlwaysEnabled(menu.key) || overrides[menu.key] !== false;
+    const itEnabled = isPosMenuAlwaysEnabled(menu.key) || isCustomPosMenuVisible(menu.key, overrides, args.is_custom === true);
     const reason: MenuAvailability["reason"] = !itEnabled ? "it_locked"
       : !contractActive ? "contract_inactive"
       : total === 0 ? "no_active_branch"

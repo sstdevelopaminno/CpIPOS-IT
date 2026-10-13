@@ -67,6 +67,18 @@ describe("IT POS menu switch reflects ACTUAL menu availability", () => {
     expect(resolvePosMenuAvailability({ ...base, contract: { status: "trial", ended_at: "2026-09-20T00:00:00Z" } })["main.sales"].reason).toBe("contract_inactive");
     expect(resolvePosMenuAvailability({ ...base, active_branch_ids: [] })["main.sales"].reason).toBe("no_active_branch");
   });
+  it("CUSTOM hides unset entries and requires an explicitly enabled parent", () => {
+    const denied = resolvePosMenuAvailability({ ...base, is_custom: true });
+    expect(denied["main.shift"].reason).toBe("available");
+    expect(denied["main.more"].reason).toBe("it_locked");
+    const childOnly = resolvePosMenuAvailability({ ...base, is_custom: true, overrides: { "more.stock": true } });
+    expect(childOnly["more.stock"].reason).toBe("it_locked");
+    const granted = resolvePosMenuAvailability({
+      ...base, is_custom: true, overrides: { "main.more": true, "more.stock": true },
+      plan: [...base.plan, { feature_code: "stock_management", included: true }]
+    });
+    expect(granted["more.stock"].reason).toBe("available");
+  });
   it("IT OFF always stays OFF independently of package and other menu keys", () => {
     const result = resolvePosMenuAvailability({ ...base, overrides: { "main.sales": false } });
     expect(result["main.sales"]).toMatchObject({ feature_allowed: true, reason: "it_locked" });
