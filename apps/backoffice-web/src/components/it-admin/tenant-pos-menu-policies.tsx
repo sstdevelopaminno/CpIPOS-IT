@@ -52,7 +52,9 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
     const prompt = enabled ? "ปิดใช้งาน" : "เปิดใช้งาน";
     const scopeNotice = item.key === "main.ai_assistant"
       ? "การปิด CpiPOS AI จะบล็อกทั้งเมนู หน้า AI และ API ของ AI สำหรับร้านนี้ทันที โดยไม่กระทบเมนู POS อื่น"
-      : "ล็อกเฉพาะเมนูที่เลือก โดยยังแสดงรายการและลิงก์ใน POS ไม่เปลี่ยนค่าของเมนูอื่นหรือสิทธิ์แพ็กเกจ";
+      : data.is_custom
+        ? "CUSTOM: ปิดแล้วรายการจะถูกซ่อนจาก POS และ CRM โดยไม่แก้สิทธิ์แพ็กเกจ/พนักงาน"
+        : "ล็อกเฉพาะเมนูที่เลือก โดยยังแสดงรายการและลิงก์ใน POS ไม่เปลี่ยนค่าของเมนูอื่นหรือสิทธิ์แพ็กเกจ";
     if (!window.confirm(`${prompt} "${item.label}" ของร้าน ${storeName}?\n\n${scopeNotice}`)) return;
     setBusy(item.key); setError(""); setSuccess("");
     try {
@@ -78,11 +80,13 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
     const configured = alwaysEnabled || (data?.is_custom ? data.overrides[item.key] === true : data?.overrides[item.key] !== false);
     const entitlement = data?.availability?.[item.key];
     const allowed = entitlement?.feature_allowed === true;
-    const effective = configured && allowed;
+    const effective = configured && allowed && entitlement?.reason === "available";
     const blockedByAccess = configured && !allowed;
     const featureLabel = entitlement?.feature_code;
     const message = !configured
       ? (data?.is_custom ? "CUSTOM: ยังไม่ได้เปิดโดย IT" : "ปิดด้วยคำสั่ง IT")
+      : data?.is_custom && entitlement?.reason === "it_locked"
+        ? "CUSTOM: ต้องเปิดเมนูแม่จาก IT ก่อน"
       : entitlement?.reason === "contract_inactive"
         ? "ปิดจริงใน POS • สัญญาแพ็กเกจไม่พร้อมใช้งาน"
         : entitlement?.reason === "no_active_branch"
