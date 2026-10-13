@@ -956,6 +956,9 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
               {tab === "package" ? (
                 <div className={styles.controlStack}>
                   {data.internal_it_test_mode ? (
+                    <p className={styles.securityNote}>บัญชี IT Admin และ IT Support ที่ยืนยันสิทธิ์แล้วสามารถเปลี่ยนโหมดทดสอบได้ ทุกการเปลี่ยนแปลงบันทึกใน Audit Log</p>
+                  ) : null}
+                  {data.internal_it_test_mode ? (
                     <section className={styles.controlSection} aria-label="ร้านทดสอบภายใน IT">
                       <div className={styles.controlSectionHeader}><div>
                         <span>INTERNAL QA ONLY</span><h4>ร้านทดสอบ IT · 900001</h4>
