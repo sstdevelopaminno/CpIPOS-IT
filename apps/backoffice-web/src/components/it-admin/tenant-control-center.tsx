@@ -832,7 +832,10 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       <span className={`${styles.controlPill} ${hasSalesModeEnabled ? styles.controlGood : styles.controlWarn}`}>{salesModeEnabledCount}/{salesModeTotal} เปิดใช้งาน</span>
                     </div>
                     <div className={dashboardStyles.salesModeGrid}>
-                      {data.sales_modes.map((mode) => {
+                      {data.sales_modes.filter((mode) =>
+                        mode.key !== "optical_retail" || data.current_package?.code === "custom"
+                          || Boolean(data.internal_it_test_mode)
+                      ).map((mode) => {
                         const enabled = salesModeDrafts[mode.key];
                         return (
                           <label className={`${dashboardStyles.salesModeCard} ${enabled ? dashboardStyles.salesModeCardOn : dashboardStyles.salesModeCardOff}`} key={mode.key}>
