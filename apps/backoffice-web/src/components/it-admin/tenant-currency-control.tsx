@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 type Currency = "THB" | "LAK";
-type Check = { tenant_code:string; currency_code:Currency; is_custom:boolean; it_allowed:boolean; total_orders:number; unresolved_orders:number; open_shifts:number; active_sessions:number; blockers:string[]; can_change:boolean };
+type Check = { tenant_code:string; currency_code:Currency; is_custom:boolean; it_allowed:boolean; total_orders:number; unresolved_orders:number; open_shifts:number; active_sessions:number; pending_payment_intents:number; blockers:string[]; can_change:boolean };
 type Api<T> = {data:T|null;error:{code?:string;message?:string}|null};
 
 export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
@@ -56,11 +56,11 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
       <div><strong>IT เปิดเมนูตั้งค่าสกุลเงิน:</strong> {state.it_allowed?"เปิด":"ยังไม่เปิด"}</div>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
-      {([{label:"บิลย้อนหลัง",value:state.total_orders},{label:"บิลที่ยังไม่ปิด",value:state.unresolved_orders},{label:"กะที่เปิดอยู่",value:state.open_shifts},{label:"POS ที่ล็อกอิน",value:state.active_sessions}]).map(item=><div key={item.label} style={{border:"1px solid #cbd5e1",borderRadius:12,padding:14}}><small>{item.label}</small><div style={{fontWeight:800,fontSize:24}}>{item.value}</div></div>)}
+      {([{label:"บิลย้อนหลัง",value:state.total_orders},{label:"บิลที่ยังไม่ปิด",value:state.unresolved_orders},{label:"กะที่เปิดอยู่",value:state.open_shifts},{label:"POS ที่ล็อกอิน",value:state.active_sessions},{label:"QR ค้างชำระ",value:state.pending_payment_intents}]).map(item=><div key={item.label} style={{border:"1px solid #cbd5e1",borderRadius:12,padding:14}}><small>{item.label}</small><div style={{fontWeight:800,fontSize:24}}>{item.value}</div></div>)}
     </div>
     {state.blockers.length?<div role="alert" style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:12,padding:16}}>
       <strong>ยังไม่อนุญาตให้เปลี่ยนสกุลเงิน</strong><ul>{state.blockers.map(item=><li key={item}>• {item}</li>)}</ul>
-      <p>ฝ่าย IT ต้องเปิดเมนู CUSTOM, ปิดบิลและกะ รวมถึงให้เครื่อง POS ออกจากระบบก่อน</p>
+      <p>ฝ่าย IT ต้องเปิดเมนู CUSTOM, ปิดบิล กะ รายการ QR ค้างชำระ และให้เครื่อง POS ออกจากระบบก่อน</p>
     </div>:<p role="status" style={{color:"#166534"}}>เงื่อนไขพร้อมสำหรับตรวจสอบและอนุมัติโดย IT Admin</p>}
     <label style={{display:"grid",gap:7,fontWeight:700}}>สกุลเงินใหม่
       <select value={next} onChange={e=>{setNext(e.target.value as Currency);setConfirm("");setAck(false)}} style={{padding:12,border:"1px solid #cbd5e1",borderRadius:10}}>
