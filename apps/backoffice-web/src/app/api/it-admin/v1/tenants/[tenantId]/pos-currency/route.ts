@@ -9,16 +9,17 @@ type Code = "THB" | "LAK";
 type Contract = { id:string; package_id:string; status:string; ended_at:string|null; updated_at:string; metadata:Record<string,unknown>|null };
 async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItAdmin>>) {
   const db=admin.supabase;
-  const [tenant,contract,policies,orders,unresolved,openShifts,activeSessions] = await Promise.all([
+  const [tenant,contract,policies,orders,unresolved,openShifts,activeSessions,paymentIntents] = await Promise.all([
     db.from("tenants").select("id,code").eq("id",tenantId).maybeSingle(),
     db.from("tenant_subscription_contracts").select("id,package_id,status,ended_at,updated_at,metadata").eq("tenant_id",tenantId).order("created_at",{ascending:false}).limit(1).maybeSingle<Contract>(),
     db.from("tenant_pos_menu_policies").select("menu_key,is_enabled").eq("tenant_id",tenantId).in("menu_key",["main.settings","settings.currency"]),
     db.from("orders").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId),
     db.from("orders").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).in("status",["draft","queued","preparing"]),
     db.from("shifts").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("status","open"),
-    db.from("pos_sessions").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("status","active")
+    db.from("pos_sessions").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("status","active"),
+    db.from("pos_payment_intents").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).in("status",["pending","created","processing","authorized","awaiting_payment","active"])
   ]);
-  for(const result of [tenant,contract,policies,orders,unresolved,openShifts,activeSessions]) if(result.error) throw result.error;
+  for(const result of [tenant,contract,policies,orders,unresolved,openShifts,activeSessions,paymentIntents]) if(result.error) throw result.error;
   if(!tenant.data) return null;
   const pkg=contract.data?.package_id ? await db.from("subscription_packages").select("code").eq("id",contract.data.package_id).maybeSingle() : {data:null,error:null};
   if(pkg.error) throw pkg.error;
@@ -32,7 +33,9 @@ async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItA
   if((unresolved.count??0)>0)blockers.push("มีบิลยังไม่สิ้นสุด");
   if((openShifts.count??0)>0)blockers.push("มีกะขายยังเปิดอยู่");
   if((activeSessions.count??0)>0)blockers.push("มีเครื่อง POS ที่ยังเข้าสู่ระบบ");
-  return {tenant_code:tenant.data.code, currency_code:currency, is_custom:custom, it_allowed:allowed, total_orders:orders.count??0, unresolved_orders:unresolved.count??0, open_shifts:openShifts.count??0, active_sessions:activeSessions.count??0, blockers, can_change:blockers.length===0, contract:contract.data};
+  if((paymentIntents.count??0)>0)blockers.push("มีรายการรับเงิน QR ที่ยังไม่สิ้นสุด");
+  if(admin.profile.platform_role!=="it_admin")blockers.push("เฉพาะ IT Admin ที่อนุมัติการเปลี่ยนสกุลเงินได้");
+  return {tenant_code:tenant.data.code, currency_code:currency, is_custom:custom, it_allowed:allowed, total_orders:orders.count??0, unresolved_orders:unresolved.count??0, open_shifts:openShifts.count??0, active_sessions:activeSessions.count??0, pending_payment_intents:paymentIntents.count??0, blockers, can_change:blockers.length===0, contract:contract.data};
 }
 export async function GET(_request:Request,context:{params:Promise<{tenantId:string}>}){
  try{
@@ -67,7 +70,7 @@ export async function PATCH(request:Request,context:{params:Promise<{tenantId:st
   if(!updated)return fail("currency_conflict","มีการแก้ไขข้อมูลสัญญาพร้อมกัน กรุณารีเฟรช",409);
   await appendAuditLog({tenantId,actorUserId:admin.auth.userId,actorRole:"it_admin",action:"it_pos_currency_cutover_approved",targetTable:"tenant_subscription_contracts",targetId:x.contract.id,
     beforeData:{currency_code:x.currency_code},afterData:{currency_code:next},
-    metadata:{existing_orders:x.total_orders,unresolved_orders:x.unresolved_orders,open_shifts:x.open_shifts,active_sessions:x.active_sessions,financial_history_acknowledged:true},
+    metadata:{existing_orders:x.total_orders,unresolved_orders:x.unresolved_orders,open_shifts:x.open_shifts,active_sessions:x.active_sessions,pending_payment_intents:x.pending_payment_intents,financial_history_acknowledged:true},
     ipAddress:admin.requestMeta.ipAddress??undefined,userAgent:admin.requestMeta.userAgent??undefined});
   return ok({currency_code:next});
  }catch(error){return guardItAdminError(error)}
