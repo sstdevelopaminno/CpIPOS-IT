@@ -38,7 +38,7 @@ async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItA
   if((openShifts.count??0)>0)blockers.push("มีกะขายยังเปิดอยู่");
   if((activeSessions.count??0)>0)blockers.push("มีเครื่อง POS ที่ยังเข้าสู่ระบบ");
   if((paymentIntents.count??0)>0)blockers.push("มีรายการรับเงิน QR ที่ยังไม่สิ้นสุด");
-  if(admin.profile.platform_role!=="it_admin")blockers.push("เฉพาะ IT Admin ที่อนุมัติการเปลี่ยนสกุลเงินได้");
+  if(admin.profile.platform_role!=="it_admin" && admin.profile.platform_role!=="it_support")blockers.push("เฉพาะบัญชีฝ่าย IT ที่ยังเปิดใช้งานเท่านั้น");
   return {tenant_code:tenant.data.code, currency_code:currency, is_custom:custom, settings_menu_enabled:settingsMenuEnabled, currency_menu_enabled:currencyMenuEnabled, it_allowed:allowed, approver_role:admin.profile.platform_role === "it_admin" ? "it_admin" : "it_support", total_orders:orders.count??0, unresolved_orders:unresolved.count??0, open_shifts:openShifts.count??0, active_sessions:activeSessions.count??0, pending_payment_intents:paymentIntents.count??0, blockers, can_change:blockers.length===0, contract:contract.data};
 }
 export async function GET(_request:Request,context:{params:Promise<{tenantId:string}>}){
@@ -54,7 +54,7 @@ export async function GET(_request:Request,context:{params:Promise<{tenantId:str
 export async function PATCH(request:Request,context:{params:Promise<{tenantId:string}>}){
  try{
   const admin=await requireItAdmin();
-  if(admin.profile.platform_role!=="it_admin")return fail("it_admin_required","การเปลี่ยนสกุลเงินต้องได้รับอนุมัติจาก IT Admin",403);
+  if(admin.profile.platform_role!=="it_admin" && admin.profile.platform_role!=="it_support")return fail("it_role_required","การเปลี่ยนสกุลเงินต้องได้รับอนุมัติจากบัญชีฝ่าย IT",403);
   const tenantId=parseTenantParam((await context.params).tenantId);
   const rate=await enforceRateLimit({namespace:"it_currency_cutover",key:admin.auth.userId,max:8,windowMs:60000});
   if(!rate.ok)return fail("rate_limited","กรุณาลองอีกครั้งภายหลัง",429);
@@ -72,7 +72,7 @@ export async function PATCH(request:Request,context:{params:Promise<{tenantId:st
     .eq("tenant_id",tenantId).eq("id",x.contract.id).eq("updated_at",x.contract.updated_at).select("id").maybeSingle();
   if(error)throw error;
   if(!updated)return fail("currency_conflict","มีการแก้ไขข้อมูลสัญญาพร้อมกัน กรุณารีเฟรช",409);
-  await appendAuditLog({tenantId,actorUserId:admin.auth.userId,actorRole:"it_admin",action:"it_pos_currency_cutover_approved",targetTable:"tenant_subscription_contracts",targetId:x.contract.id,
+  await appendAuditLog({tenantId,actorUserId:admin.auth.userId,actorRole:admin.profile.platform_role??"it_admin",action:"it_pos_currency_cutover_approved",targetTable:"tenant_subscription_contracts",targetId:x.contract.id,
     beforeData:{currency_code:x.currency_code},afterData:{currency_code:next},
     metadata:{existing_orders:x.total_orders,unresolved_orders:x.unresolved_orders,open_shifts:x.open_shifts,active_sessions:x.active_sessions,pending_payment_intents:x.pending_payment_intents,financial_history_acknowledged:true},
     ipAddress:admin.requestMeta.ipAddress??undefined,userAgent:admin.requestMeta.userAgent??undefined});
