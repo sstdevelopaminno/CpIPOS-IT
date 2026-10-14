@@ -41,6 +41,16 @@ describe("IT-controlled CUSTOM sales currency cutover", () => {
   expect(ui).toContain('CHANGE ${next}');
   expect(route).toContain('if(!x.can_change||!x.contract)');
  });
+ it("blocks currency cutover for overlapping active CUSTOM contracts without touching money", () => {
+  expect(route).toContain('summarizeContractIntegrity(contracts.data??[])');
+  expect(route).toContain('effective_contract_count:integrity.effective_contract_count');
+  expect(route).toContain('has_contract_conflict:integrity.has_conflict');
+  expect(route).toContain('if(integrity.has_conflict)blockers.push(');
+  expect(ui).toContain('state.has_contract_conflict');
+  expect(ui).toContain('id="it-currency-blockers"');
+  expect(ui).toContain('ดูสาเหตุที่ยังอนุมัติไม่ได้');
+  expect(route).not.toContain('.from("orders").update(');
+ });
  it("has a discoverable per-tenant IT control entry", () => {
   expect(menu).toContain('/tenants/${encodeURIComponent(tenantId)}/currency');
   expect(ui).toContain("อนุมัติเปลี่ยนสกุลเงิน");
