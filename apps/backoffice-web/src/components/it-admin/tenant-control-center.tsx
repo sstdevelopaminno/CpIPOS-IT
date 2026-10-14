@@ -96,6 +96,7 @@ type ControlData = {
   branches: Branch[];
   packages: Package[];
   contract: Contract;
+  contract_integrity?: { effective_contract_count: number; has_conflict: boolean };
   current_package: Package | null;
   internal_it_test_mode: "full" | "simulate" | null;
   lifecycle?: Lifecycle;
@@ -502,7 +503,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
   const isPrepaidPendingTrial = isTrial && lifecycleMeta.prepaid_activation_state === "pending_trial_completion" &&
     typeof lifecycleMeta.prepaid_payment_reference === "string";
   const isInternalDemo = data?.lifecycle?.lifecycle_status === "sales_demo";
-  const canEditContract = Boolean(data?.contract) && currentStatus !== "cancelled" && !isPrepaidPendingTrial;
+  const canEditContract = Boolean(data?.contract) && currentStatus !== "cancelled" && !isPrepaidPendingTrial && !data?.contract_integrity?.has_conflict;
   const isPaidActiveContract = ["active", "expired"].includes(String(data?.contract?.status ?? "").toLowerCase()) && Number(data?.contract?.amount ?? 0) > 0;
   const canGrantPromoExtension = Boolean(data?.contract) && !["cancelled", "suspended", "trial"].includes(String(data?.contract?.status ?? "").toLowerCase()) && !isPrepaidPendingTrial;
   const canEditBillingCycle = canEditContract;
@@ -648,6 +649,12 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
           {loading ? <div className={styles.controlLoading}>กำลังโหลด Store Control Center…</div> : null}
           {error && tab === "overview" ? <div className={styles.controlAlertError}><strong>ดำเนินการไม่สำเร็จ</strong><span>{error}</span></div> : null}
           {success && tab === "overview" ? <div className={styles.controlAlertSuccess}>{success}</div> : null}
+          {data?.contract_integrity?.has_conflict ? (
+            <div className={styles.controlAlertError} role="alert">
+              <strong>พบสัญญาที่มีผลใช้งานซ้อนกัน {data.contract_integrity.effective_contract_count} รายการ</strong>
+              <span>ระงับการแก้รอบสัญญาและการสร้างสัญญา QA เพิ่มชั่วคราว จนกว่า IT ตรวจสอบประวัติการเงินและสิทธิ์รายร้าน โดยไม่ลบสัญญาเดิม</span>
+            </div>
+          ) : null}
 
           {!loading && data ? (
             <>
@@ -997,7 +1004,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                         </select></label>
                       </div>
                       <div className={styles.sectionActions}>
-                        <button type="button" className={styles.primaryButton} disabled={busy || !packageId}
+                        <button type="button" className={styles.primaryButton} disabled={busy || !packageId || (data.contract_integrity?.effective_contract_count ?? 0) > 0}
                           onClick={()=>void mutate({action:"change_package",package_id:packageId},"เปลี่ยนแพ็กเกจทดสอบเรียบร้อย (ไม่สร้างรายการชำระเงินจริง)",true)}>
                           ใช้แพ็กเกจนี้สำหรับทดสอบ
                         </button>
