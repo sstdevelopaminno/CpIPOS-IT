@@ -26,7 +26,7 @@ const COMPAT_KEYS: Record<string, string> = {
   activity: "settings.activity", settings_payments: "settings.payments",
   inet_nops: "settings.inet_nops", taxes: "settings.taxes",
   notifications: "settings.notifications", support: "settings.support", push_notifications: "settings.push_notifications", users: "settings.users",
-  language: "settings.language", menu_placement: "settings.placement",
+  language: "settings.language", currency: "settings.currency", menu_placement: "settings.placement",
   display: "settings.display", receipt_alerts: "settings.order_kitchen",
   table_qr: "settings.table_qr"
 };

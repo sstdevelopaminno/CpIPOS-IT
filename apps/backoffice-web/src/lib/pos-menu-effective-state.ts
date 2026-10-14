@@ -38,6 +38,7 @@ export const POS_MENU_NAV_FEATURES: Readonly<Record<string, string | null>> = {
   "settings.push_notifications": null,
   "settings.users": "user_management",
   "settings.language": null,
+  "settings.currency": null, // IT-only explicit CUSTOM grant; no generic plan feature.
   "settings.placement": null,
   "settings.display": "customer_facing_display",
   "settings.order_kitchen": null, // Only IT menu policy is checked in injected POS card.

@@ -14,7 +14,7 @@ const base = {
 };
 
 describe("IT POS menu switch reflects ACTUAL menu availability", () => {
-  it("covers the exact same 31 tenant-specific menu controls", () => {
+  it("covers every tenant-specific menu control including CUSTOM currency", () => {
     expect(Object.keys(POS_MENU_NAV_FEATURES).sort()).toEqual(POS_MENU_CATALOG.map(m => m.key).sort());
   });
   it("keeps shift available even when the package does not include attendance tracking", () => {

@@ -34,6 +34,7 @@ export const POS_MENU_GROUPS = [
     { key: "push_notifications", label: "การแจ้งเตือนอุปกรณ์", href: "/preview/pos/settings" },
     { key: "users", label: "ผู้ใช้งาน", href: "/preview/pos/settings" },
     { key: "language", label: "เปลี่ยนภาษา", href: "/preview/pos/settings" },
+    { key: "currency", label: "ตั้งค่าสกุลเงิน (CUSTOM)", href: "/preview/pos/settings" },
     { key: "menu_placement", label: "สลับแถบเมนูหลัก", href: "/preview/pos/settings" },
     { key: "display", label: "จอลูกค้า", href: "/preview/pos/customer-display" },
     { key: "receipt_alerts", label: "การแจ้งเตือนออเดอร์และครัว", href: "/preview/pos/settings" },
