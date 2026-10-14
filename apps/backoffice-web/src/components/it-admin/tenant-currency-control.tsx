@@ -43,7 +43,7 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
  return <section className="surface" style={{maxWidth:820,margin:"0 auto",padding:24}}>
   <h2 style={{fontSize:24,fontWeight:800,marginBottom:8}}>ตั้งค่าสกุลเงินร้านค้า — IT CONTROL</h2>
   <p style={{marginBottom:16,color:"#475569"}}>การเปลี่ยนสกุลเงินสำหรับแพ็กเกจ CUSTOM โดย IT Admin เท่านั้น ไม่มีการแปลงราคาสินค้าหรือยอดขายย้อนหลัง</p>
-  <p style={{marginBottom:16}}><Link href="/tenants">← กลับรายการร้านค้า</Link></p>
+  <p style={{marginBottom:16}}><Link href="/it-admin/tenants">← กลับรายการร้านค้า</Link></p>
   <button type="button" disabled={saving||loading} onClick={()=>void load()} style={{marginBottom:16,padding:"8px 14px",border:"1px solid #cbd5e1",borderRadius:9}}>ตรวจสอบเงื่อนไขใหม่</button>
   {loading?<p role="status">กำลังตรวจสิทธิ์และบิลที่ยังไม่ปิด...</p>:null}
   {error?<p role="alert" style={{color:"#b91c1c",marginBottom:16}}>{error}</p>:null}
