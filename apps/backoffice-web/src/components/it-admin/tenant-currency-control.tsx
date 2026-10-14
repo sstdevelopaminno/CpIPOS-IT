@@ -85,7 +85,7 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
  const menuMissing=Boolean(state?.is_custom&&!state.it_allowed);
  return <section className="surface" style={{maxWidth:940,margin:"0 auto",padding:24}}>
   <h2 style={{fontSize:24,fontWeight:800,marginBottom:8}}>ตั้งค่าสกุลเงินร้านค้า — IT CONTROL</h2>
-  <p style={{marginBottom:16,color:"#475569"}}>การเปลี่ยนสกุลเงินของร้าน CUSTOM ต้องผ่านการตรวจธุรกรรมและอนุมัติโดย IT Admin ไม่แปลงราคาสินค้าหรือยอดย้อนหลัง</p>
+  <p style={{marginBottom:16,color:"#475569"}}>การเปลี่ยนสกุลเงินของร้าน CUSTOM ต้องผ่านการตรวจธุรกรรมและอนุมัติโดยบัญชี IT Admin หรือ IT Support ที่ได้รับสิทธิ์ ไม่แปลงราคาสินค้าหรือยอดย้อนหลัง</p>
   <p style={{marginBottom:12}}><Link href="/it-admin/tenants">← กลับรายการร้านค้า</Link></p>
   <button type="button" disabled={saving||enabling||loading} onClick={()=>void load()}
    style={{marginBottom:16,padding:"10px 14px",border:"1px solid #cbd5e1",borderRadius:9}}>ตรวจสอบเงื่อนไขใหม่</button>
@@ -99,7 +99,7 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
       <div><strong>แพ็กเกจ CUSTOM:</strong> {state.is_custom?"ใช่":"ไม่ใช่"}</div>
       <div><strong>เมนูตั้งค่าหลัก:</strong> {state.settings_menu_enabled?"เปิดแล้ว":"ยังไม่เปิด"}</div>
       <div><strong>เมนูตั้งค่าสกุลเงิน:</strong> {state.currency_menu_enabled?"เปิดแล้ว":"ยังไม่เปิด"}</div>
-      <div><strong>สิทธิ์ของบัญชีนี้:</strong> {state.approver_role==="it_admin"?"IT Admin — สามารถอนุมัติเมื่อเงื่อนไขครบ":"IT Support — ตรวจสอบ/เปิดเมนูได้ แต่ต้องใช้ IT Admin อนุมัติ"}</div>
+      <div><strong>สิทธิ์ของบัญชีนี้:</strong> {state.approver_role==="it_admin"?"IT Admin — อนุมัติได้เมื่อเงื่อนไขครบ":"IT Support — อนุมัติได้เมื่อเงื่อนไขครบ"}</div>
    </div>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10}}>
      {([{label:"บิลย้อนหลัง",value:state.total_orders},{label:"บิลที่ยังไม่ปิด",value:state.unresolved_orders},{label:"กะที่เปิดอยู่",value:state.open_shifts},{label:"POS ที่ล็อกอิน",value:state.active_sessions},{label:"QR ค้างชำระ",value:state.pending_payment_intents}]).map(item=>
@@ -121,10 +121,9 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
      <div style={{display:"flex",flexWrap:"wrap",gap:14,marginTop:12}}>
       {state.unresolved_orders>0?<a href="https://cp-ipos-web.vercel.app/preview/pos/sales-list" target="_blank" rel="noopener noreferrer">ตรวจบิลค้างใน POS <strong>({state.unresolved_orders}) ↗</strong></a>:null}
       {state.active_sessions>0?<Link href={`/tenants/${encodeURIComponent(tenantId)}/devices`}>ตรวจอุปกรณ์และ POS Session ({state.active_sessions}) →</Link>:null}
-      {state.approver_role!=="it_admin"?<strong>การอนุมัติขั้นสุดท้ายต้องลงชื่อเข้าใช้ด้วยบัญชี IT Admin</strong>:null}
      </div>
      <p style={{marginTop:10,marginBottom:0}}>ตรวจสอบและปิดบิลที่ค้างด้วยกระบวนการปกติ ปิดกะ/เครื่องที่ใช้งาน แล้วกด “ตรวจสอบเงื่อนไขใหม่” ห้ามลบบิลหรือ Session เพียงเพื่อผ่านเงื่อนไข</p>
-   </div>:<p role="status" style={{color:"#166534",fontWeight:700}}>ตรวจสอบครบแล้ว พร้อมรับการอนุมัติโดย IT Admin</p>}
+   </div>:<p role="status" style={{color:"#166534",fontWeight:700}}>ตรวจสอบครบแล้ว พร้อมรับการอนุมัติโดยฝ่าย IT</p>}
    <label style={{display:"grid",gap:7,fontWeight:700}}>สกุลเงินใหม่
     <select value={next} onChange={e=>{setNext(e.target.value as Currency);setConfirm("");setAck(false);setError("")}} style={{padding:12,border:"1px solid #cbd5e1",borderRadius:10}}>
      <option value="THB">THB — บาท</option><option value="LAK">LAK — ກີບ</option>
