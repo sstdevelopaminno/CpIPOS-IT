@@ -14,7 +14,7 @@ describe("IT per-tenant notification language",()=>{
  it("offers a settings card and popup for email plus push in store settings",()=>{
   expect(center).toContain("ตั้งค่าภาษาระบบแจ้งเตือน");
   expect(center).toContain("TenantNotificationLanguageModal");
-  expect(modal).toContain('["th"');
+  expect(modal).toContain('code:"th"');
   expect(modal).toContain('name="tenant-notification-language"');
  });
  it("guards edits by IT privileges with conflict detection and audit",()=>{
