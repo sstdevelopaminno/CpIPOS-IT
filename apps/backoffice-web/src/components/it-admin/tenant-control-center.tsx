@@ -688,6 +688,15 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                   <div className={dashboardStyles.cardBottom}><span>รายร้าน · ไม่ลบข้อมูล</span><strong>จัดการเมนู →</strong></div>
                 </button>
 
+                {customRelevant ? (
+                <Link className={dashboardStyles.settingsCard} href={`/tenants/${encodeURIComponent(tenantId)}/currency`}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>₭</div><span className={dashboardStyles.cardBadge}>CUSTOM · IT</span></div>
+                  <div className={dashboardStyles.cardText}><span>CURRENCY CONTROL</span><strong>ตั้งค่าสกุลเงิน</strong><small>ตรวจสอบและอนุมัติ THB / LAK สำหรับร้าน CUSTOM เท่านั้น</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>ตรวจยอดขาย · บิลค้าง · กะขาย</span><strong>ตั้งค่าสกุลเงิน →</strong></div>
+                </Link>
+
+                ) : null}
+
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("package")}>
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>แพ็ก</div><span className={dashboardStyles.cardBadge}>{contractLabel(currentStatus)}</span></div>
                   <div className={dashboardStyles.cardText}><span>PACKAGE & CONTRACT</span><strong>แพ็กเกจและสิทธิ์</strong><small>สัญญา รอบบิล การระงับ และสิทธิ์การใช้งาน</small></div>
