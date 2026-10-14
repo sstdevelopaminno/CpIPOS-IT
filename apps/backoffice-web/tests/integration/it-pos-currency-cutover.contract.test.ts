@@ -53,6 +53,19 @@ describe("IT-controlled CUSTOM sales currency cutover", () => {
   expect(route).toContain('effectiveContractCount>1');
   expect(route).toContain('effective_contract_count:effectiveContractCount');
  });
+ it("shows the approved currency instead of preselecting the opposite tender currency", () => {
+  expect(ui).toContain('setNext(body.data.currency_code);');
+  expect(ui).not.toContain('setNext(body.data.currency_code==="LAK"?"THB":"LAK")');
+  expect(ui).toContain('data-testid="currency-current-status"');
+  expect(ui).toContain("อนุมัติแล้ว — ร้านนี้ใช้ LAK สำหรับรายการขายใหม่");
+  expect(ui).toContain("บิลย้อนหลัง (ไม่บล็อกการอนุมัติ)");
+  expect(ui).toContain("ไม่จำเป็นต้องลบบิลเพื่อเปลี่ยนเป็น LAK");
+  expect(ui).toContain("setAck(false);");
+  expect(ui).toContain("setConfirm(\"\");");
+  // Current-currency selection requires no new financial write.
+  expect(ui).toContain('if(next===state.currency_code)');
+  expect(route).toContain('if(next===x.currency_code)return ok({currency_code:x.currency_code,unchanged:true})');
+ });
  it("has a discoverable per-tenant IT control entry", () => {
   expect(menu).toContain('/tenants/${encodeURIComponent(tenantId)}/currency');
   expect(ui).toContain("อนุมัติเปลี่ยนสกุลเงิน");
