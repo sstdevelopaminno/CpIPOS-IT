@@ -39,6 +39,7 @@ export const POS_MENU_CATALOG: readonly PosMenuDefinition[] = [
   { key: "settings.push_notifications", label: "การแจ้งเตือนอุปกรณ์", group: "settings", parent: "main.settings" },
   { key: "settings.users", label: "ผู้ใช้งาน", group: "settings", parent: "main.settings", route: "/preview/pos/users" },
   { key: "settings.language", label: "เปลี่ยนภาษา", group: "settings", parent: "main.settings" },
+  { key: "settings.currency", label: "ตั้งค่าสกุลเงิน (CUSTOM)", group: "settings", parent: "main.settings" },
   { key: "settings.placement", label: "สลับแถบเมนูหลัก", group: "settings", parent: "main.settings" },
   { key: "settings.display", label: "จอลูกค้า", group: "settings", parent: "main.settings", route: "/preview/pos/customer-display" },
   { key: "settings.order_kitchen", label: "การแจ้งเตือนออเดอร์และครัว", group: "settings", parent: "main.settings", route: "/preview/pos/settings/order-kitchen" },
