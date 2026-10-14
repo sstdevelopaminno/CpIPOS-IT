@@ -21,12 +21,13 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
  const [saving,setSaving]=useState(false);
  const [enabling,setEnabling]=useState(false);
  const [error,setError]=useState("");
+ const [approvalFeedback,setApprovalFeedback]=useState("");
  const [notice,setNotice]=useState("");
  const endpoint=`/api/it-admin/v1/tenants/${encodeURIComponent(tenantId)}/pos-currency`;
  const menuEndpoint=`/api/it-admin/v1/tenants/${encodeURIComponent(tenantId)}/pos-menu-policies`;
 
  const load=useCallback(async()=>{
-   setLoading(true);setError("");
+   setLoading(true);setError("");setApprovalFeedback("");
    try{
     const response=await fetch(endpoint,{cache:"no-store",credentials:"include"});
     const body=await response.json() as Api<Check>;
@@ -63,20 +64,28 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
 
  async function save(){
   if(!state||saving||enabling)return;
-  if(!state.can_change){setError("ยังอนุมัติไม่ได้: "+state.blockers.join(" • "));return;}
-  if(!ack||confirm!==`CHANGE ${next}`||next===state.currency_code) {
-   setError(`โปรดติ๊กยืนยันและพิมพ์ CHANGE ${next} ลงในช่องให้ครบก่อนอนุมัติ (ข้อความสีเทาเป็นเพียงตัวอย่าง)`);
+  setApprovalFeedback("");
+  if(next===state.currency_code){
+   setApprovalFeedback(`ร้านนี้ใช้สกุลเงิน ${state.currency_code} อยู่แล้ว ไม่จำเป็นต้องอนุมัติซ้ำ`);
+   return;
+  }
+  if(!state.can_change){
+   setApprovalFeedback("ยังอนุมัติไม่ได้ เนื่องจาก: "+state.blockers.join(" • "));
+   return;
+  }
+  if(!ack||confirm!==`CHANGE ${next}`){
+   setApprovalFeedback(`กรุณาติ๊กยืนยันและพิมพ์ CHANGE ${next} ให้ตรงก่อนอนุมัติ`);
    return;
   }
   if(!window.confirm(`ยืนยันอนุมัติเปลี่ยนสกุลเงินร้าน ${state.tenant_code} จาก ${state.currency_code} เป็น ${next}?\n\nใบเสร็จและข้อมูลขายเก่าต้องคงสกุลเดิม และระบบไม่แปลงราคาสินค้า`))return;
-  setSaving(true);setError("");setNotice("");
+  setSaving(true);setError("");setApprovalFeedback("");setNotice("");
   try{
    const response=await fetch(endpoint,{method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({currency_code:next,expected_currency:state.currency_code,confirmation:confirm,acknowledge_history:true})});
    const body=await response.json() as Api<{currency_code:Currency}>;
    if(!response.ok||!body.data)throw new Error(body.error?.message||"ไม่สามารถอนุมัติได้");
    setNotice(`อนุมัติ ${body.data.currency_code} แล้ว กรุณาเข้าสู่ POS ใหม่และตรวจสอบราคาสินค้าก่อนเริ่มขาย`);
    setAck(false);setConfirm("");await load();
-  }catch(e){setError(e instanceof Error?e.message:"ไม่สามารถอนุมัติได้")}
+  }catch(e){setApprovalFeedback(e instanceof Error?e.message:"ไม่สามารถอนุมัติได้")}
   finally{setSaving(false)}
  }
 
@@ -125,7 +134,7 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
      <p style={{marginTop:10,marginBottom:0}}>ตรวจสอบและปิดบิลที่ค้างด้วยกระบวนการปกติ ปิดกะ/เครื่องที่ใช้งาน แล้วกด “ตรวจสอบเงื่อนไขใหม่” ห้ามลบบิลหรือ Session เพียงเพื่อผ่านเงื่อนไข</p>
    </div>:<p role="status" style={{color:"#166534",fontWeight:700}}>ตรวจสอบครบแล้ว พร้อมรับการอนุมัติโดยฝ่าย IT</p>}
    <label style={{display:"grid",gap:7,fontWeight:700}}>สกุลเงินใหม่
-    <select value={next} onChange={e=>{setNext(e.target.value as Currency);setConfirm("");setAck(false);setError("")}} style={{padding:12,border:"1px solid #cbd5e1",borderRadius:10}}>
+    <select value={next} onChange={e=>{setNext(e.target.value as Currency);setConfirm("");setAck(false);setError("");setApprovalFeedback("")}} style={{padding:12,border:"1px solid #cbd5e1",borderRadius:10}}>
      <option value="THB">THB — บาท</option><option value="LAK">LAK — ກີບ</option>
     </select>
    </label>
@@ -134,19 +143,20 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
     <p style={{marginBottom:0}}>ใบเสร็จเก่าคงสกุลเดิม / ไม่มีการแปลงราคาสินค้าอัตโนมัติ / ตรวจสอบราคาและวิธีรับเงินทุกสาขา / แยกรายงาน THB และ LAK</p>
    </div>
    <label style={{display:"flex",gap:9,alignItems:"flex-start"}}>
-    <input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>
+    <input type="checkbox" checked={ack} onChange={e=>{setAck(e.target.checked);setApprovalFeedback("")}}/>
     ข้าพเจ้าตรวจสอบยอดขายเดิมและรับทราบว่าจะไม่แปลงมูลค่าหรือราคาเดิมโดยอัตโนมัติ
    </label>
    <label style={{display:"grid",gap:6,fontWeight:700}}>พิมพ์คำว่า <strong>CHANGE {next}</strong> ลงในช่อง (ไม่ใช่ข้อความตัวอย่างสีเทา)
-    <input value={confirm} onChange={e=>{setConfirm(e.target.value);setError("")}} autoComplete="off"
+    <input value={confirm} onChange={e=>{setConfirm(e.target.value);setError("");setApprovalFeedback("")}} autoComplete="off"
      placeholder={`พิมพ์ CHANGE ${next} ที่นี่`} style={{padding:12,border:"1px solid #cbd5e1",borderRadius:10}}/>
    </label>
-   <button type="button" onClick={()=>void save()} disabled={saving||enabling||loading||next===state.currency_code}
-     title={!isReady?"ระบบยังมีเงื่อนไขที่ต้องแก้ไขก่อนอนุมัติ":!canSubmit?"ติ๊กยืนยันและพิมพ์ข้อความให้ตรงก่อน":"อนุมัติ"}
+   <button type="button" onClick={()=>void save()} disabled={saving||enabling||loading}
+     title={next===state.currency_code?"ตรวจสอบสกุลเงินที่ใช้งานอยู่":!isReady?"กดเพื่อดูรายการที่ต้องดำเนินการก่อนอนุมัติ":!canSubmit?"กดเพื่อดูวิธียืนยันก่อนอนุมัติ":"อนุมัติ"}
      style={{padding:"13px 18px",borderRadius:11,background:"#2563eb",color:"white",fontWeight:700,opacity:canSubmit?1:0.66,cursor:"pointer"}}>
-    {saving?"กำลังตรวจสอบและบันทึก":isReady?"อนุมัติเปลี่ยนสกุลเงิน":"ตรวจสอบเงื่อนไขก่อนอนุมัติ"}
+    {saving?"กำลังตรวจสอบและบันทึก":next===state.currency_code?"ตรวจสอบสกุลเงินปัจจุบัน":isReady?"อนุมัติเปลี่ยนสกุลเงิน":"ตรวจสอบสาเหตุที่ยังอนุมัติไม่ได้"}
    </button>
-   {!isReady?<p role="status" style={{color:"#92400e",fontSize:14}}>ปุ่มนี้จะแจ้งสาเหตุที่ยังไม่อนุมัติ ไม่เปลี่ยนสกุลเงินจนกว่าทุกเงื่อนไขจะผ่าน</p>:null}
+   {approvalFeedback?<p role="alert" aria-live="assertive" data-testid="currency-approval-feedback" style={{marginTop:12,padding:14,border:"1px solid #fdba74",borderRadius:10,background:"#fff7ed",color:"#9a3412",fontWeight:650,overflowWrap:"anywhere"}}>{approvalFeedback}</p>:null}
+   {!isReady?<p role="status" style={{color:"#92400e",fontSize:14}}>กดปุ่มเพื่อตรวจสอบเงื่อนไขที่ยังไม่ผ่าน ระบบจะไม่เปลี่ยนสกุลเงินจนกว่าบิล กะ Session และสิทธิ์จะถูกต้อง</p>:null}
   </div>:null}
  </section>;
 }

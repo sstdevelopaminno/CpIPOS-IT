@@ -9,9 +9,10 @@ type Code = "THB" | "LAK";
 type Contract = { id:string; package_id:string; status:string; ended_at:string|null; updated_at:string; metadata:Record<string,unknown>|null };
 async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItAdmin>>) {
   const db=admin.supabase;
-  const [tenant,contract,policies,orders,unresolved,openShifts,activeSessions,paymentIntents] = await Promise.all([
+  const [tenant,contract,contracts,policies,orders,unresolved,openShifts,activeSessions,paymentIntents] = await Promise.all([
     db.from("tenants").select("id,code").eq("id",tenantId).maybeSingle(),
     db.from("tenant_subscription_contracts").select("id,package_id,status,ended_at,updated_at,metadata").eq("tenant_id",tenantId).order("created_at",{ascending:false}).limit(1).maybeSingle<Contract>(),
+    db.from("tenant_subscription_contracts").select("id,status,ended_at").eq("tenant_id",tenantId).in("status",["active","trial"]),
     db.from("tenant_pos_menu_policies").select("menu_key,is_enabled").eq("tenant_id",tenantId).in("menu_key",["main.settings","settings.currency"]),
     db.from("orders").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId),
     db.from("orders").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).in("status",["draft","queued","preparing"]),
@@ -19,7 +20,7 @@ async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItA
     db.from("pos_sessions").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("status","active"),
     db.from("pos_payment_intents").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).in("status",["pending","created","processing","authorized","awaiting_payment","active"])
   ]);
-  for(const result of [tenant,contract,policies,orders,unresolved,openShifts,activeSessions,paymentIntents]) if(result.error) throw result.error;
+  for(const result of [tenant,contract,contracts,policies,orders,unresolved,openShifts,activeSessions,paymentIntents]) if(result.error) throw result.error;
   if(!tenant.data) return null;
   const pkg=contract.data?.package_id ? await db.from("subscription_packages").select("code").eq("id",contract.data.package_id).maybeSingle() : {data:null,error:null};
   if(pkg.error) throw pkg.error;
@@ -30,7 +31,14 @@ async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItA
   const currencyMenuEnabled=flags["settings.currency"]===true;
   const allowed=custom && settingsMenuEnabled && currencyMenuEnabled;
   const currency:Code=contract.data?.metadata?.pos_currency_code==="LAK"?"LAK":"THB";
+  const now=Date.now();
+  const effectiveContractCount=(contracts.data??[]).filter(c=>{
+    if(!c.ended_at)return true;
+    const expiry=Date.parse(c.ended_at);
+    return !Number.isFinite(expiry)||expiry>now;
+  }).length;
   const blockers:string[]=[];
+  if(effectiveContractCount>1)blockers.push(`มีสัญญา Active/Trial ซ้อนกัน ${effectiveContractCount} รายการ ต้องตรวจสอบโดยฝ่าย IT ก่อนอนุมัติ`);
   if(!custom)blockers.push("ร้านต้องมีสัญญาแพ็กเกจ CUSTOM ที่ยังใช้งานอยู่");
   if(custom && !settingsMenuEnabled)blockers.push("ยังไม่ได้เปิดเมนูหลัก ตั้งค่า (CUSTOM)");
   if(custom && !currencyMenuEnabled)blockers.push("ยังไม่ได้เปิดเมนูย่อย ตั้งค่าสกุลเงิน (CUSTOM)");
@@ -39,7 +47,7 @@ async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItA
   if((activeSessions.count??0)>0)blockers.push("มีเครื่อง POS ที่ยังเข้าสู่ระบบ");
   if((paymentIntents.count??0)>0)blockers.push("มีรายการรับเงิน QR ที่ยังไม่สิ้นสุด");
   if(admin.profile.platform_role!=="it_admin" && admin.profile.platform_role!=="it_support")blockers.push("เฉพาะบัญชีฝ่าย IT ที่ยังเปิดใช้งานเท่านั้น");
-  return {tenant_code:tenant.data.code, currency_code:currency, is_custom:custom, settings_menu_enabled:settingsMenuEnabled, currency_menu_enabled:currencyMenuEnabled, it_allowed:allowed, approver_role:admin.profile.platform_role === "it_admin" ? "it_admin" : "it_support", total_orders:orders.count??0, unresolved_orders:unresolved.count??0, open_shifts:openShifts.count??0, active_sessions:activeSessions.count??0, pending_payment_intents:paymentIntents.count??0, blockers, can_change:blockers.length===0, contract:contract.data};
+  return {tenant_code:tenant.data.code, currency_code:currency, is_custom:custom, settings_menu_enabled:settingsMenuEnabled, currency_menu_enabled:currencyMenuEnabled, it_allowed:allowed, approver_role:admin.profile.platform_role === "it_admin" ? "it_admin" : "it_support", total_orders:orders.count??0, unresolved_orders:unresolved.count??0, open_shifts:openShifts.count??0, active_sessions:activeSessions.count??0, pending_payment_intents:paymentIntents.count??0, effective_contract_count:effectiveContractCount, blockers, can_change:blockers.length===0, contract:contract.data};
 }
 export async function GET(_request:Request,context:{params:Promise<{tenantId:string}>}){
  try{

@@ -41,6 +41,18 @@ describe("IT-controlled CUSTOM sales currency cutover", () => {
   expect(ui).toContain('CHANGE ${next}');
   expect(route).toContain('if(!x.can_change||!x.contract)');
  });
+ it("keeps the approval-check button clickable and shows the exact blocker beside it", () => {
+  expect(ui).toContain('disabled={saving||enabling||loading}');
+  expect(ui).not.toContain('disabled={saving||enabling||loading||next===state.currency_code}');
+  expect(ui).toContain('data-testid="currency-approval-feedback"');
+  expect(ui).toContain('ร้านนี้ใช้สกุลเงิน ${state.currency_code} อยู่แล้ว');
+  expect(ui).toContain('ยังอนุมัติไม่ได้ เนื่องจาก: ');
+  expect(ui).toContain('กรุณาติ๊กยืนยันและพิมพ์ CHANGE ${next}');
+  expect(ui).toContain('aria-live="assertive"');
+  expect(route).toContain('if(!x.can_change||!x.contract)');
+  expect(route).toContain('effectiveContractCount>1');
+  expect(route).toContain('effective_contract_count:effectiveContractCount');
+ });
  it("has a discoverable per-tenant IT control entry", () => {
   expect(menu).toContain('/tenants/${encodeURIComponent(tenantId)}/currency');
   expect(ui).toContain("อนุมัติเปลี่ยนสกุลเงิน");
