@@ -7,11 +7,11 @@ const ui = source("../../src/components/it-admin/tenant-currency-control.tsx");
 const menu = source("../../src/components/it-admin/tenant-pos-menu-policies.tsx");
 
 describe("IT-controlled CUSTOM sales currency cutover", () => {
- it("requires active CUSTOM, explicit IT menu policy and IT Admin approver", () => {
+ it("requires active CUSTOM, explicit IT menu policy and verified IT account", () => {
   expect(route).toContain('flags["settings.currency"]===true');
   expect(route).toContain('flags["main.settings"]===true');
   expect(route).toContain('toLowerCase()==="custom"');
-  expect(route).toContain('admin.profile.platform_role!=="it_admin"');
+  expect(route).toContain('admin.profile.platform_role!=="it_admin" && admin.profile.platform_role!=="it_support"');
  });
  it("blocks live sales or unsettled payments before switching currency", () => {
   expect(route).toContain('"draft","queued","preparing"');
@@ -37,7 +37,7 @@ describe("IT-controlled CUSTOM sales currency cutover", () => {
   expect(ui).toContain('เปิดสิทธิ์เมนูตั้งค่าสกุลเงิน (CUSTOM)');
   expect(ui).toContain('state.unresolved_orders');
   expect(ui).toContain('state.active_sessions');
-  expect(ui).toContain('state.approver_role!=="it_admin"');
+  expect(ui).toContain('IT Support — อนุมัติได้เมื่อเงื่อนไขครบ');
   expect(ui).toContain('CHANGE ${next}');
   expect(route).toContain('if(!x.can_change||!x.contract)');
  });
