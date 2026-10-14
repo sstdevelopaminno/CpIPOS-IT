@@ -50,6 +50,8 @@ describe("IT-controlled CUSTOM sales currency cutover", () => {
   expect(ui).toContain('กรุณาติ๊กยืนยันและพิมพ์ CHANGE ${next}');
   expect(ui).toContain('aria-live="assertive"');
   expect(route).toContain('if(!x.can_change||!x.contract)');
+  expect(route).toContain('effectiveContractCount>1');
+  expect(route).toContain('effective_contract_count:effectiveContractCount');
  });
  it("has a discoverable per-tenant IT control entry", () => {
   expect(menu).toContain('/tenants/${encodeURIComponent(tenantId)}/currency');
