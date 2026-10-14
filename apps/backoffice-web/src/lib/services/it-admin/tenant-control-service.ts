@@ -2,6 +2,7 @@ import "server-only";
 
 import crypto from "node:crypto";
 import { appendAuditLog } from "@/lib/audit-log";
+import { summarizeContractIntegrity, type ContractIntegrityCandidate } from "@/lib/contract-integrity";
 import { invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
 import { POS_SALES_MODE_KEYS, normalizePosSalesModes, toPosSalesModeViews, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 import { ItAdminGuardError, type ItAdminContext } from "@/lib/it-admin-guard";
@@ -459,6 +460,17 @@ async function loadLatestAccessCode(context: ItAdminContext, tenantId: string): 
   return data?.[0] ?? null;
 }
 
+async function loadContractIntegrity(context: ItAdminContext, tenantId: string) {
+  const result = await context.supabase
+    .from("tenant_subscription_contracts")
+    .select("id,status,ended_at")
+    .eq("tenant_id", tenantId)
+    .in("status", ["active", "trial"])
+    .returns<ContractIntegrityCandidate[]>();
+  if (result.error) throw new Error(`contract_integrity_query_failed:${result.error.message}`);
+  return summarizeContractIntegrity(result.data ?? []);
+}
+
 async function loadCurrentContract(context: ItAdminContext, tenantId: string): Promise<ContractDbRow | null> {
   const latest = await context.supabase
     .from("tenant_subscription_contracts")
@@ -587,6 +599,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
   const storeCode = accessCode?.access_code ?? tenant.code;
   const itTestMode = await getItQaMode(context, tenantId);
   const contractView = normalizeContract(contract, lifecycle);
+  const contractIntegrity = await loadContractIntegrity(context, tenantId);
   const metadata = asRecord(contract?.metadata);
   // CUSTOM uses explicit IT selections; absent mode keys must never default to ON.
   const modeSource = itTestMode === "full"
@@ -625,6 +638,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
     })),
     packages,
     contract: contractView,
+    contract_integrity: contractIntegrity,
     current_package: currentPackage,
     internal_it_test_mode: itTestMode,
     lifecycle,
@@ -782,6 +796,10 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
   }
 
   if (action === "update_contract") {
+    if ((await loadContractIntegrity(context, tenantId)).has_conflict) {
+      throw new ItAdminGuardError("contract_integrity_conflict",
+        "พบสัญญาที่มีผลใช้งานซ้อนกัน กรุณาตรวจสอบประวัติการเงินก่อนแก้ไขสัญญา", 409);
+    }
     const contract = await loadCurrentContract(context, tenantId);
     if (!contract) throw new ItAdminGuardError("subscription_not_found", "This store has no subscription contract.", 409);
     if (contract.status === "cancelled") {
@@ -1218,8 +1236,15 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       throw new ItAdminGuardError("paid_activation_requires_settlement",
         "ร้านลูกค้าทั่วไปต้องเปลี่ยนแพ็กเกจผ่านการตรวจรับชำระเงินจริง", 409);
     }
-    // QA package changes create a ZERO-VALUE contract (never a financial
-    // settlement, billing cycle, bank verification, or official receipt).
+    // The legacy QA flow INSERTs a new active contract without closing the
+    // previous one. Disallow this until a reviewed atomic transition exists.
+    // This does not affect mode changes or existing POS selling entitlements.
+    const contractIntegrity = await loadContractIntegrity(context, tenantId);
+    if (contractIntegrity.effective_contract_count > 0) {
+      throw new ItAdminGuardError("qa_package_transition_required",
+        "ร้านมีสัญญาที่กำลังมีผลใช้งาน ต้องใช้ขั้นตอนเปลี่ยนแพ็กเกจแบบตรวจประวัติและย้ายสิทธิ์ในธุรกรรมเดียว ไม่สร้างสัญญาซ้อน", 409);
+    }
+    // Zero-value QA contract only; never a financial settlement or receipt.
     const packageId = cleanText(input.package_id, 80);
     const selected = await context.supabase.from("subscription_packages").select(PACKAGE_SELECT)
       .eq("id", packageId).eq("is_active", true).eq("status", "active")
