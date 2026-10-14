@@ -1,0 +1,74 @@
+import { fail, ok } from "@/lib/http";
+import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
+import { appendAuditLog } from "@/lib/audit-log";
+import { readBoundedJson } from "@/lib/server/limited-json";
+import { enforceRateLimit } from "@/lib/server/rate-limit";
+export const dynamic = "force-dynamic";
+
+type Code = "THB" | "LAK";
+type Contract = { id:string; package_id:string; status:string; ended_at:string|null; updated_at:string; metadata:Record<string,unknown>|null };
+async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItAdmin>>) {
+  const db=admin.supabase;
+  const [tenant,contract,policies,orders,unresolved,openShifts,activeSessions] = await Promise.all([
+    db.from("tenants").select("id,code").eq("id",tenantId).maybeSingle(),
+    db.from("tenant_subscription_contracts").select("id,package_id,status,ended_at,updated_at,metadata").eq("tenant_id",tenantId).order("created_at",{ascending:false}).limit(1).maybeSingle<Contract>(),
+    db.from("tenant_pos_menu_policies").select("menu_key,is_enabled").eq("tenant_id",tenantId).in("menu_key",["main.settings","settings.currency"]),
+    db.from("orders").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId),
+    db.from("orders").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).in("status",["draft","queued","preparing"]),
+    db.from("shifts").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("status","open"),
+    db.from("pos_sessions").select("id",{count:"exact",head:true}).eq("tenant_id",tenantId).eq("status","active")
+  ]);
+  for(const result of [tenant,contract,policies,orders,unresolved,openShifts,activeSessions]) if(result.error) throw result.error;
+  if(!tenant.data) return null;
+  const pkg=contract.data?.package_id ? await db.from("subscription_packages").select("code").eq("id",contract.data.package_id).maybeSingle() : {data:null,error:null};
+  if(pkg.error) throw pkg.error;
+  const flags=Object.fromEntries((policies.data??[]).map(p=>[p.menu_key,p.is_enabled]));
+  const active=Boolean(contract.data && ["active","trial"].includes(contract.data.status) && (!contract.data.ended_at||Date.parse(contract.data.ended_at)>Date.now()));
+  const custom=active && String(pkg.data?.code||"").toLowerCase()==="custom";
+  const allowed=custom && flags["main.settings"]===true && flags["settings.currency"]===true;
+  const currency:Code=contract.data?.metadata?.pos_currency_code==="LAK"?"LAK":"THB";
+  const blockers:string[]=[];
+  if(!allowed)blockers.push("ต้องเป็นแพ็กเกจ CUSTOM ที่ IT เปิดเมนูตั้งค่าและสกุลเงิน");
+  if((unresolved.count??0)>0)blockers.push("มีบิลยังไม่สิ้นสุด");
+  if((openShifts.count??0)>0)blockers.push("มีกะขายยังเปิดอยู่");
+  if((activeSessions.count??0)>0)blockers.push("มีเครื่อง POS ที่ยังเข้าสู่ระบบ");
+  return {tenant_code:tenant.data.code, currency_code:currency, is_custom:custom, it_allowed:allowed, total_orders:orders.count??0, unresolved_orders:unresolved.count??0, open_shifts:openShifts.count??0, active_sessions:activeSessions.count??0, blockers, can_change:blockers.length===0, contract:contract.data};
+}
+export async function GET(_request:Request,context:{params:Promise<{tenantId:string}>}){
+ try{
+  const admin=await requireItAdmin();
+  const tenantId=parseTenantParam((await context.params).tenantId);
+  const x=await state(tenantId,admin);
+  if(!x)return fail("tenant_not_found","ไม่พบร้านค้า",404);
+  const {contract:_contract,...publicState}=x;
+  const response=ok(publicState);response.headers.set("Cache-Control","private, no-store");return response;
+ }catch(error){return guardItAdminError(error)}
+}
+export async function PATCH(request:Request,context:{params:Promise<{tenantId:string}>}){
+ try{
+  const admin=await requireItAdmin();
+  if(admin.profile.platform_role!=="it_admin")return fail("it_admin_required","การเปลี่ยนสกุลเงินต้องได้รับอนุมัติจาก IT Admin",403);
+  const tenantId=parseTenantParam((await context.params).tenantId);
+  const rate=await enforceRateLimit({namespace:"it_currency_cutover",key:admin.auth.userId,max:8,windowMs:60000});
+  if(!rate.ok)return fail("rate_limited","กรุณาลองอีกครั้งภายหลัง",429);
+  const body=await readBoundedJson<{currency_code?:unknown;expected_currency?:unknown;confirmation?:unknown;acknowledge_history?:unknown}|null>(request,2048);
+  const next=body?.currency_code;
+  if(next!=="THB"&&next!=="LAK")return fail("invalid_currency","รองรับ THB และ LAK เท่านั้น",422);
+  if(body?.confirmation!==`CHANGE ${next}`||body?.acknowledge_history!==true)return fail("confirmation_required","กรุณายืนยันการตรวจยอดย้อนหลัง",422);
+  const x=await state(tenantId,admin);
+  if(!x)return fail("tenant_not_found","ไม่พบร้านค้า",404);
+  if(!x.can_change||!x.contract)return fail("cutover_blocked",x.blockers.join(" • ")||"ไม่สามารถเปลี่ยนสกุลเงินได้",409);
+  if(body.expected_currency!==x.currency_code)return fail("currency_conflict","สกุลเงินร้านมีการเปลี่ยนแปลง กรุณารีเฟรช",409);
+  if(next===x.currency_code)return ok({currency_code:x.currency_code,unchanged:true});
+  const {data:updated,error}=await admin.supabase.from("tenant_subscription_contracts")
+    .update({metadata:{...(x.contract.metadata??{}),pos_currency_code:next,pos_currency_cutover_at:new Date().toISOString(),pos_currency_cutover_previous:x.currency_code,pos_currency_cutover_order_count:x.total_orders}})
+    .eq("tenant_id",tenantId).eq("id",x.contract.id).eq("updated_at",x.contract.updated_at).select("id").maybeSingle();
+  if(error)throw error;
+  if(!updated)return fail("currency_conflict","มีการแก้ไขข้อมูลสัญญาพร้อมกัน กรุณารีเฟรช",409);
+  await appendAuditLog({tenantId,actorUserId:admin.auth.userId,actorRole:"it_admin",action:"it_pos_currency_cutover_approved",targetTable:"tenant_subscription_contracts",targetId:x.contract.id,
+    beforeData:{currency_code:x.currency_code},afterData:{currency_code:next},
+    metadata:{existing_orders:x.total_orders,unresolved_orders:x.unresolved_orders,open_shifts:x.open_shifts,active_sessions:x.active_sessions,financial_history_acknowledged:true},
+    ipAddress:admin.requestMeta.ipAddress??undefined,userAgent:admin.requestMeta.userAgent??undefined});
+  return ok({currency_code:next});
+ }catch(error){return guardItAdminError(error)}
+}
