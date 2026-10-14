@@ -32,7 +32,12 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
     const response=await fetch(endpoint,{cache:"no-store",credentials:"include"});
     const body=await response.json() as Api<Check>;
     if(!response.ok||!body.data)throw new Error(body.error?.message||"ไม่สามารถอ่านค่าร้านได้");
-    setState(body.data);setNext(body.data.currency_code==="LAK"?"THB":"LAK");
+    // Do not suggest reverting a successfully approved currency cutover.
+    // The user must explicitly choose a different currency to change it.
+    setState(body.data);
+    setNext(body.data.currency_code);
+    setAck(false);
+    setConfirm("");
    }catch(e){setState(null);setError(e instanceof Error?e.message:"ไม่สามารถอ่านข้อมูลได้");}
    finally{setLoading(false)}
  },[endpoint]);
@@ -105,13 +110,16 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
    <div style={{padding:18,border:"1px solid #cbd5e1",borderRadius:12,display:"grid",gap:5}}>
       <div><strong>ร้าน:</strong> {state.tenant_code}</div>
       <div><strong>สกุลเงินปัจจุบัน:</strong> {state.currency_code==="LAK"?"LAK — ກີບ":"THB — บาท"}</div>
+      <div data-testid="currency-current-status" role="status" style={{color:"#166534",fontWeight:750}}>
+       {state.currency_code==="LAK"?"อนุมัติแล้ว — ร้านนี้ใช้ LAK สำหรับรายการขายใหม่":"ร้านนี้ยังใช้ THB สำหรับรายการขายใหม่"}
+      </div>
       <div><strong>แพ็กเกจ CUSTOM:</strong> {state.is_custom?"ใช่":"ไม่ใช่"}</div>
       <div><strong>เมนูตั้งค่าหลัก:</strong> {state.settings_menu_enabled?"เปิดแล้ว":"ยังไม่เปิด"}</div>
       <div><strong>เมนูตั้งค่าสกุลเงิน:</strong> {state.currency_menu_enabled?"เปิดแล้ว":"ยังไม่เปิด"}</div>
       <div><strong>สิทธิ์ของบัญชีนี้:</strong> {state.approver_role==="it_admin"?"IT Admin — อนุมัติได้เมื่อเงื่อนไขครบ":"IT Support — อนุมัติได้เมื่อเงื่อนไขครบ"}</div>
    </div>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10}}>
-     {([{label:"บิลย้อนหลัง",value:state.total_orders},{label:"บิลที่ยังไม่ปิด",value:state.unresolved_orders},{label:"กะที่เปิดอยู่",value:state.open_shifts},{label:"POS ที่ล็อกอิน",value:state.active_sessions},{label:"QR ค้างชำระ",value:state.pending_payment_intents}]).map(item=>
+     {([{label:"บิลย้อนหลัง (ไม่บล็อกการอนุมัติ)",value:state.total_orders},{label:"บิลที่ยังไม่ปิด",value:state.unresolved_orders},{label:"กะที่เปิดอยู่",value:state.open_shifts},{label:"POS ที่ล็อกอิน",value:state.active_sessions},{label:"QR ค้างชำระ",value:state.pending_payment_intents}]).map(item=>
       <div key={item.label} style={{border:"1px solid #cbd5e1",borderRadius:12,padding:14}}>
        <small>{item.label}</small><div style={{fontWeight:800,fontSize:24}}>{item.value}</div>
       </div>)}
@@ -124,6 +132,7 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
        {enabling?"กำลังเปิดสิทธิ์...":"เปิดสิทธิ์เมนูตั้งค่าสกุลเงิน (CUSTOM)"}
      </button>
    </div>:null}
+   <p role="note" style={{margin:0,color:"#475569",fontSize:13}}>บิลย้อนหลังเป็นประวัติการทดสอบ ไม่ใช่เงื่อนไขที่ขัดขวางการอนุมัติสกุลเงิน และไม่จำเป็นต้องลบบิลเพื่อเปลี่ยนเป็น LAK</p>
    {state.blockers.length?<div role="alert" style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:12,padding:16}}>
      <strong>ขั้นที่ 2 — ยังไม่ผ่านเงื่อนไขการเปลี่ยนสกุลเงิน</strong>
      <ul style={{paddingLeft:20,marginTop:8}}>{state.blockers.map(item=><li key={item} style={{marginBottom:4}}>{item}</li>)}</ul>
@@ -132,8 +141,8 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
       {state.active_sessions>0?<Link href={`/tenants/${encodeURIComponent(tenantId)}/devices`}>ตรวจอุปกรณ์และ POS Session ({state.active_sessions}) →</Link>:null}
      </div>
      <p style={{marginTop:10,marginBottom:0}}>ตรวจสอบและปิดบิลที่ค้างด้วยกระบวนการปกติ ปิดกะ/เครื่องที่ใช้งาน แล้วกด “ตรวจสอบเงื่อนไขใหม่” ห้ามลบบิลหรือ Session เพียงเพื่อผ่านเงื่อนไข</p>
-   </div>:<p role="status" style={{color:"#166534",fontWeight:700}}>ตรวจสอบครบแล้ว พร้อมรับการอนุมัติโดยฝ่าย IT</p>}
-   <label style={{display:"grid",gap:7,fontWeight:700}}>สกุลเงินใหม่
+   </div>:<p role="status" style={{color:"#166534",fontWeight:700}}>{next===state.currency_code?"สกุลเงินที่เลือกถูกใช้งานอยู่แล้ว ไม่ต้องอนุมัติซ้ำ":"ตรวจสอบครบแล้ว พร้อมรับการอนุมัติโดยฝ่าย IT"}</p>}
+   <label style={{display:"grid",gap:7,fontWeight:700}}>สกุลเงินที่ต้องการใช้ (เปลี่ยนเฉพาะเมื่อต้องการสลับสกุลเงิน)
     <select value={next} onChange={e=>{setNext(e.target.value as Currency);setConfirm("");setAck(false);setError("");setApprovalFeedback("")}} style={{padding:12,border:"1px solid #cbd5e1",borderRadius:10}}>
      <option value="THB">THB — บาท</option><option value="LAK">LAK — ກີບ</option>
     </select>
@@ -153,7 +162,7 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
    <button type="button" onClick={()=>void save()} disabled={saving||enabling||loading}
      title={next===state.currency_code?"ตรวจสอบสกุลเงินที่ใช้งานอยู่":!isReady?"กดเพื่อดูรายการที่ต้องดำเนินการก่อนอนุมัติ":!canSubmit?"กดเพื่อดูวิธียืนยันก่อนอนุมัติ":"อนุมัติ"}
      style={{padding:"13px 18px",borderRadius:11,background:"#2563eb",color:"white",fontWeight:700,opacity:canSubmit?1:0.66,cursor:"pointer"}}>
-    {saving?"กำลังตรวจสอบและบันทึก":next===state.currency_code?"ตรวจสอบสกุลเงินปัจจุบัน":isReady?"อนุมัติเปลี่ยนสกุลเงิน":"ตรวจสอบสาเหตุที่ยังอนุมัติไม่ได้"}
+    {saving?"กำลังตรวจสอบและบันทึก":next===state.currency_code?"ใช้สกุลเงินนี้อยู่แล้ว":isReady?"อนุมัติเปลี่ยนสกุลเงิน":"ตรวจสอบสาเหตุที่ยังอนุมัติไม่ได้"}
    </button>
    {approvalFeedback?<p role="alert" aria-live="assertive" data-testid="currency-approval-feedback" style={{marginTop:12,padding:14,border:"1px solid #fdba74",borderRadius:10,background:"#fff7ed",color:"#9a3412",fontWeight:650,overflowWrap:"anywhere"}}>{approvalFeedback}</p>:null}
    {!isReady?<p role="status" style={{color:"#92400e",fontSize:14}}>กดปุ่มเพื่อตรวจสอบเงื่อนไขที่ยังไม่ผ่าน ระบบจะไม่เปลี่ยนสกุลเงินจนกว่าบิล กะ Session และสิทธิ์จะถูกต้อง</p>:null}
