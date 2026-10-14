@@ -37,6 +37,23 @@ describe("IT contract integrity preflight", () => {
     )).toBe(true);
   });
 
+  it("blocks legacy QA package INSERT while a contract is effective and shows an IT warning", () => {
+    const service = readFileSync(
+      new URL("../../src/lib/services/it-admin/tenant-control-service.ts", import.meta.url), "utf8"
+    );
+    const ui = readFileSync(
+      new URL("../../src/components/it-admin/tenant-control-center.tsx", import.meta.url), "utf8"
+    );
+    expect(service).toContain("async function loadContractIntegrity(");
+    expect(service).toContain("contract_integrity: contractIntegrity");
+    expect(service).toContain("if ((await loadContractIntegrity(context, tenantId)).has_conflict)");
+    expect(service).toContain("if (contractIntegrity.effective_contract_count > 0)");
+    expect(service).toContain('"qa_package_transition_required"');
+    expect(ui).toContain("data?.contract_integrity?.has_conflict");
+    expect(ui).toContain("ระงับการแก้รอบสัญญา");
+    expect(ui).toContain("(data.contract_integrity?.effective_contract_count ?? 0) > 0");
+  });
+
   it("scopes both IT GET and PATCH overlap checks to the requested tenant and blocks edits", () => {
     const route = readFileSync(
       new URL("../../src/app/api/it-admin/admin/tenants/[tenantId]/contract/route.ts", import.meta.url),
