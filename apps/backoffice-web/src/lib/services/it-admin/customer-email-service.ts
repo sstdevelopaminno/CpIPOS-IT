@@ -1,6 +1,8 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getTenantNotificationLanguage } from "@/lib/server/tenant-notification-language";
+import { localizeCustomerSystemEmail } from "./localized-customer-email";
 
 export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "subscription_due_reminder" | "trial_expiry_reminder" | "tenant_deletion_warning" | "sales_retention_export" | "daily_sales_summary" | "daily_sales_summary_test";
 export type CustomerEmailTriggerMode = "automatic" | "manual";
@@ -649,7 +651,11 @@ export async function deliverCustomerEmail(input: {
   eventKeySuffix?: string | null;
 }): Promise<CustomerEmailDeliveryResult> {
   const settings = await loadSettings(input.db);
-  const brandedMessage = brandMessage(input.message, settings, input.eventType);
+  const notificationLanguage = await getTenantNotificationLanguage(input.db, input.tenantId);
+  const brandedMessage = notificationLanguage === "th"
+    ? brandMessage(input.message, settings, input.eventType)
+    : localizeCustomerSystemEmail(input.message, input.eventType, notificationLanguage,
+        {email:settings.support_email,website:settings.website_url,company:settings.company_english_name});
   const automaticEnabled = input.eventType === "store_activation"
     ? settings.auto_send_store_activation
     : input.eventType === "payment_confirmation"
