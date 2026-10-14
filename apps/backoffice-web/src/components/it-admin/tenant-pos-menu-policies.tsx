@@ -130,6 +130,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
           {byParent.get(item.key)?.map(child => menuRow(child, true))}
         </div> : null}
       </section>)}
+    {data?.is_custom ? <p className={styles.note}><a href={`/tenants/${encodeURIComponent(tenantId)}/currency`}>ตั้งค่าสกุลเงิน (CUSTOM) → ตรวจสอบบิลค้างและอนุมัติ THB / LAK โดย IT</a></p> : null}
     {data?.is_custom ? <p className={styles.note}>CUSTOM ใช้การซ่อนเมนูแบบอนุญาตเฉพาะรายการที่ IT เปิด (Explicit Allow) โดยเมนูแม่ต้องเปิดก่อนเมนูลูก และยังต้องตรวจสิทธิ์ฟีเจอร์/สาขาด้วย</p> : null}
     <p className={styles.note}>สวิตช์แสดงสถานะที่ POS ใช้งานได้จริงทุกสาขา หากแพ็กเกจไม่รองรับจะขึ้น “ปิด” แม้คำสั่ง IT ยังเป็น “เปิด” และจะไม่แก้แพ็กเกจให้เอง • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • เมนูทั่วไปยังเป็น navigation lock ตามเดิม แต่ <strong>CpiPOS AI</strong> เป็น policy lock แบบบังคับ: เมื่อปิดจะบล็อกหน้า AI และ API ของ AI สำหรับร้านนั้นด้วย • POS อ่านสถานะใหม่เมื่อกลับเข้าแท็บ</p>
   </div>;
