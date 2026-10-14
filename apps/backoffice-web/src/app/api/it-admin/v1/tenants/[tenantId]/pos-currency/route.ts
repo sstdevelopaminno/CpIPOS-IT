@@ -26,16 +26,20 @@ async function state(tenantId:string, admin:Awaited<ReturnType<typeof requireItA
   const flags=Object.fromEntries((policies.data??[]).map(p=>[p.menu_key,p.is_enabled]));
   const active=Boolean(contract.data && ["active","trial"].includes(contract.data.status) && (!contract.data.ended_at||Date.parse(contract.data.ended_at)>Date.now()));
   const custom=active && String(pkg.data?.code||"").toLowerCase()==="custom";
-  const allowed=custom && flags["main.settings"]===true && flags["settings.currency"]===true;
+  const settingsMenuEnabled=flags["main.settings"]===true;
+  const currencyMenuEnabled=flags["settings.currency"]===true;
+  const allowed=custom && settingsMenuEnabled && currencyMenuEnabled;
   const currency:Code=contract.data?.metadata?.pos_currency_code==="LAK"?"LAK":"THB";
   const blockers:string[]=[];
-  if(!allowed)blockers.push("ต้องเป็นแพ็กเกจ CUSTOM ที่ IT เปิดเมนูตั้งค่าและสกุลเงิน");
+  if(!custom)blockers.push("ร้านต้องมีสัญญาแพ็กเกจ CUSTOM ที่ยังใช้งานอยู่");
+  if(custom && !settingsMenuEnabled)blockers.push("ยังไม่ได้เปิดเมนูหลัก ตั้งค่า (CUSTOM)");
+  if(custom && !currencyMenuEnabled)blockers.push("ยังไม่ได้เปิดเมนูย่อย ตั้งค่าสกุลเงิน (CUSTOM)");
   if((unresolved.count??0)>0)blockers.push("มีบิลยังไม่สิ้นสุด");
   if((openShifts.count??0)>0)blockers.push("มีกะขายยังเปิดอยู่");
   if((activeSessions.count??0)>0)blockers.push("มีเครื่อง POS ที่ยังเข้าสู่ระบบ");
   if((paymentIntents.count??0)>0)blockers.push("มีรายการรับเงิน QR ที่ยังไม่สิ้นสุด");
   if(admin.profile.platform_role!=="it_admin")blockers.push("เฉพาะ IT Admin ที่อนุมัติการเปลี่ยนสกุลเงินได้");
-  return {tenant_code:tenant.data.code, currency_code:currency, is_custom:custom, it_allowed:allowed, total_orders:orders.count??0, unresolved_orders:unresolved.count??0, open_shifts:openShifts.count??0, active_sessions:activeSessions.count??0, pending_payment_intents:paymentIntents.count??0, blockers, can_change:blockers.length===0, contract:contract.data};
+  return {tenant_code:tenant.data.code, currency_code:currency, is_custom:custom, settings_menu_enabled:settingsMenuEnabled, currency_menu_enabled:currencyMenuEnabled, it_allowed:allowed, approver_role:admin.profile.platform_role === "it_admin" ? "it_admin" : "it_support", total_orders:orders.count??0, unresolved_orders:unresolved.count??0, open_shifts:openShifts.count??0, active_sessions:activeSessions.count??0, pending_payment_intents:paymentIntents.count??0, blockers, can_change:blockers.length===0, contract:contract.data};
 }
 export async function GET(_request:Request,context:{params:Promise<{tenantId:string}>}){
  try{
