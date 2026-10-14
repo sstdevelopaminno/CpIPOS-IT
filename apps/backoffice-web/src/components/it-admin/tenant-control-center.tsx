@@ -10,6 +10,7 @@ import { TenantSalesSummary } from "./tenant-sales-summary";
 import { TenantDailySalesEmailSettings } from "./tenant-daily-sales-email-settings";
 import { TenantCashierDevices } from "./tenant-cashier-devices";
 import { TenantPosMenuPolicies } from "./tenant-pos-menu-policies";
+import { TenantNotificationLanguageModal } from "./tenant-notification-language-modal";
 import dashboardStyles from "./tenant-control-center-dashboard.module.css";
 import styles from "./tenant-directory-console.module.css";
 
@@ -294,6 +295,7 @@ async function verifyTenantDeletionReceipt(tenantId: string, storeCode: string):
 export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode, onClose, onChanged, onDeleted }: Props) {
   const { canDelete } = useItAccess();
   const [tab, setTab] = useState<Tab>("overview");
+  const [notificationLanguageOpen, setNotificationLanguageOpen] = useState(false);
   const [data, setData] = useState<ControlData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -719,6 +721,12 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>฿</div><span className={dashboardStyles.cardBadge}>POS LIVE DATA</span></div>
                   <div className={dashboardStyles.cardText}><span>SALES REPORT</span><strong>สรุปยอดขาย</strong><small>รายวัน เดือน ปี · บิลขาย · สินค้า · แยกสาขา</small></div>
                   <div className={dashboardStyles.cardBottom}><span>ข้อมูลจาก CpiPOS-001 · อ่านอย่างเดียว</span><strong>ดูรายงาน →</strong></div>
+                </button>
+
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setNotificationLanguageOpen(true)}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>文</div><span className={dashboardStyles.cardBadge}>EMAIL + PUSH · IT</span></div>
+                  <div className={dashboardStyles.cardText}><span>INTERNATIONAL NOTIFICATION LANGUAGE</span><strong>ตั้งค่าภาษาระบบแจ้งเตือน</strong><small>กำหนดภาษาไทย อังกฤษ หรือลาว สำหรับข้อความแจ้งเตือนจากระบบของร้าน</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>รายร้าน · ไม่กระทบภาษา POS</span><strong>เปิดตั้งค่า →</strong></div>
                 </button>
 
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("dailySalesEmail")}>
@@ -1168,6 +1176,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
       ) : null}
 
       {confirmationDialog}
+      {notificationLanguageOpen ? <TenantNotificationLanguageModal tenantId={tenantId} onClose={() => setNotificationLanguageOpen(false)} /> : null}
     </div>
   );
 }
