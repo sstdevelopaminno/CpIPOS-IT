@@ -27,6 +27,20 @@ describe("IT-controlled CUSTOM sales currency cutover", () => {
   expect(route).toContain('pos_currency_cutover_previous');
   expect(route).not.toContain('.from("orders").update(');
  });
+ it("shows actionable blockers and allows explicit menu activation without bypassing financial guards", () => {
+  expect(route).toContain('settings_menu_enabled:settingsMenuEnabled');
+  expect(route).toContain('currency_menu_enabled:currencyMenuEnabled');
+  expect(route).toContain('approver_role:admin.profile.platform_role');
+  expect(ui).toContain('"main.settings"');
+  expect(ui).toContain('"settings.currency"');
+  expect(ui).toContain('menuEndpoint');
+  expect(ui).toContain('เปิดสิทธิ์เมนูตั้งค่าสกุลเงิน (CUSTOM)');
+  expect(ui).toContain('state.unresolved_orders');
+  expect(ui).toContain('state.active_sessions');
+  expect(ui).toContain('state.approver_role!=="it_admin"');
+  expect(ui).toContain('CHANGE ${next}');
+  expect(route).toContain('if(!x.can_change||!x.contract)');
+ });
  it("has a discoverable per-tenant IT control entry", () => {
   expect(menu).toContain('/tenants/${encodeURIComponent(tenantId)}/currency');
   expect(ui).toContain("อนุมัติเปลี่ยนสกุลเงิน");
