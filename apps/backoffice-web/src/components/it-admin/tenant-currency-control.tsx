@@ -8,7 +8,7 @@ type Check = {
  settings_menu_enabled:boolean; currency_menu_enabled:boolean;
  approver_role:"it_admin"|"it_support";
  total_orders:number; unresolved_orders:number; open_shifts:number;
- active_sessions:number; pending_payment_intents:number; blockers:string[]; can_change:boolean;
+ active_sessions:number; pending_payment_intents:number; effective_contract_count:number; has_contract_conflict:boolean; blockers:string[]; can_change:boolean;
 };
 type Api<T> = {data:T|null;error:{code?:string;message?:string}|null};
 
@@ -63,7 +63,11 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
 
  async function save(){
   if(!state||saving||enabling)return;
-  if(!state.can_change){setError("ยังอนุมัติไม่ได้: "+state.blockers.join(" • "));return;}
+  if(!state.can_change){
+   setError("ยังอนุมัติไม่ได้: "+state.blockers.join(" • "));
+   document.getElementById("it-currency-blockers")?.scrollIntoView({behavior:"smooth",block:"center"});
+   return;
+  }
   if(!ack||confirm!==`CHANGE ${next}`||next===state.currency_code) {
    setError(`โปรดติ๊กยืนยันและพิมพ์ CHANGE ${next} ลงในช่องให้ครบก่อนอนุมัติ (ข้อความสีเทาเป็นเพียงตัวอย่าง)`);
    return;
@@ -115,12 +119,17 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
        {enabling?"กำลังเปิดสิทธิ์...":"เปิดสิทธิ์เมนูตั้งค่าสกุลเงิน (CUSTOM)"}
      </button>
    </div>:null}
-   {state.blockers.length?<div role="alert" style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:12,padding:16}}>
+   {state.has_contract_conflict?<div role="alert" style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:12,padding:16,display:"grid",gap:6}}>
+     <strong>ตรวจพบสัญญาที่มีผลใช้งานซ้อนกัน {state.effective_contract_count} รายการ</strong>
+     <p style={{margin:0}}>ยังไม่สามารถอนุมัติสกุลเงินได้จนกว่า IT ตรวจสอบและแก้ความขัดแย้งของสัญญา พร้อมประวัติการเงิน โดยไม่ลบหรือยกเลิกสัญญาอัตโนมัติ</p>
+   </div>:null}
+   {state.blockers.length?<div id="it-currency-blockers" role="alert" style={{background:"#fff7ed",border:"1px solid #fdba74",borderRadius:12,padding:16}}>
      <strong>ขั้นที่ 2 — ยังไม่ผ่านเงื่อนไขการเปลี่ยนสกุลเงิน</strong>
      <ul style={{paddingLeft:20,marginTop:8}}>{state.blockers.map(item=><li key={item} style={{marginBottom:4}}>{item}</li>)}</ul>
      <div style={{display:"flex",flexWrap:"wrap",gap:14,marginTop:12}}>
       {state.unresolved_orders>0?<a href="https://cp-ipos-web.vercel.app/preview/pos/sales-list" target="_blank" rel="noopener noreferrer">ตรวจบิลค้างใน POS <strong>({state.unresolved_orders}) ↗</strong></a>:null}
       {state.active_sessions>0?<Link href={`/tenants/${encodeURIComponent(tenantId)}/devices`}>ตรวจอุปกรณ์และ POS Session ({state.active_sessions}) →</Link>:null}
+      {state.open_shifts>0?<a href="https://cp-ipos-web.vercel.app/preview/pos/shift" target="_blank" rel="noopener noreferrer">ตรวจสอบกะที่ยังเปิด ({state.open_shifts}) ↗</a>:null}
      </div>
      <p style={{marginTop:10,marginBottom:0}}>ตรวจสอบและปิดบิลที่ค้างด้วยกระบวนการปกติ ปิดกะ/เครื่องที่ใช้งาน แล้วกด “ตรวจสอบเงื่อนไขใหม่” ห้ามลบบิลหรือ Session เพียงเพื่อผ่านเงื่อนไข</p>
    </div>:<p role="status" style={{color:"#166534",fontWeight:700}}>ตรวจสอบครบแล้ว พร้อมรับการอนุมัติโดยฝ่าย IT</p>}
@@ -144,9 +153,9 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
    <button type="button" onClick={()=>void save()} disabled={saving||enabling||loading||next===state.currency_code}
      title={!isReady?"ระบบยังมีเงื่อนไขที่ต้องแก้ไขก่อนอนุมัติ":!canSubmit?"ติ๊กยืนยันและพิมพ์ข้อความให้ตรงก่อน":"อนุมัติ"}
      style={{padding:"13px 18px",borderRadius:11,background:"#2563eb",color:"white",fontWeight:700,opacity:canSubmit?1:0.66,cursor:"pointer"}}>
-    {saving?"กำลังตรวจสอบและบันทึก":isReady?"อนุมัติเปลี่ยนสกุลเงิน":"ตรวจสอบเงื่อนไขก่อนอนุมัติ"}
+    {saving?"กำลังตรวจสอบและบันทึก":isReady?"อนุมัติเปลี่ยนสกุลเงิน":"ดูสาเหตุที่ยังอนุมัติไม่ได้"}
    </button>
-   {!isReady?<p role="status" style={{color:"#92400e",fontSize:14}}>ปุ่มนี้จะแจ้งสาเหตุที่ยังไม่อนุมัติ ไม่เปลี่ยนสกุลเงินจนกว่าทุกเงื่อนไขจะผ่าน</p>:null}
+   {!isReady?<p role="status" style={{color:"#92400e",fontSize:14}}>ปุ่มนี้แสดงสาเหตุและพาไปยังรายการที่ต้องตรวจสอบ ไม่แก้ข้อมูลสกุลเงินหรือข้ามเงื่อนไขของบิล กะ และสัญญา</p>:null}
   </div>:null}
  </section>;
 }
