@@ -21,6 +21,7 @@ export const POS_MENU_GROUPS = [
   ] },
   { key: "package_payment", label: "ชำระแพ็กเกจ", href: "/preview/pos/payments/package", children: [] },
   { key: "settings", label: "ตั้งค่า", href: "/preview/pos/settings", children: [
+    { key: "branding", label: "ธีมสี / โลโก้ / ชื่อระบบ (CUSTOM)", href: "/preview/pos/settings" },
     { key: "store", label: "ข้อมูลร้านค้า/บริษัท", href: "/preview/pos/settings" },
     { key: "branches", label: "เพิ่มสาขา", href: "/preview/pos/settings" },
     { key: "devices", label: "เพิ่มเครื่องแคชเชียร์", href: "/preview/pos/settings" },
