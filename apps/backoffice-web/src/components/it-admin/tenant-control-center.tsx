@@ -10,6 +10,7 @@ import { TenantSalesSummary } from "./tenant-sales-summary";
 import { TenantDailySalesEmailSettings } from "./tenant-daily-sales-email-settings";
 import { TenantCashierDevices } from "./tenant-cashier-devices";
 import { TenantPosMenuPolicies } from "./tenant-pos-menu-policies";
+import { TenantCrmMenuPolicies } from "./tenant-crm-menu-policies";
 import { TenantNotificationLanguageModal } from "./tenant-notification-language-modal";
 import dashboardStyles from "./tenant-control-center-dashboard.module.css";
 import styles from "./tenant-directory-console.module.css";
@@ -160,7 +161,7 @@ type ControlData = {
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "salesModes" | "package" | "customPackage" | "salesSummary" | "dailySalesEmail" | "danger";
+type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "crmMenus" | "salesModes" | "package" | "customPackage" | "salesSummary" | "dailySalesEmail" | "danger";
 type BillingCycle = "monthly" | "yearly";
 type ContractPeriod = "trial_7d" | "monthly" | "yearly";
 
@@ -613,6 +614,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
         ? { eyebrow: "CASHIER TERMINALS", title: "เครื่องแคชเชียร์", description: "เพิ่ม แก้ไข เปิด–ปิด และลบเครื่องตามโควตาแพ็กเกจ เชื่อม CpIPOS ออนไลน์" }
       : tab === "menuPolicies"
         ? { eyebrow: "POS MENU CONTROL", title: "เปิดปิดเมนูหลัก", description: "เปิด–ปิดเมนูหลักและเมนูย่อยของ CpIPOS สำหรับร้านนี้" }
+      : tab === "crmMenus"
+        ? { eyebrow: "CRM MENU CONTROL", title: "เปิดปิดเมนู CRM", description: "ตั้งค่าสวิตช์เมนูหลักและเมนูย่อย CRM แยกจาก POS สำหรับร้านนี้" }
       : tab === "salesModes"
         ? { eyebrow: "POS SALES MODES", title: "โหมดขาย", description: "เปิดหรือปิดโหมดหน้าขาย POS ของร้านนี้" }
         : tab === "package"
@@ -688,6 +691,12 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>☰</div><span className={dashboardStyles.cardBadge}>IT CONTROL</span></div>
                   <div className={dashboardStyles.cardText}><span>POS MAIN MENU CONTROL</span><strong>เปิดปิดเมนูหลัก</strong><small>กำหนดเมนูหลักและเมนูย่อยที่ร้านสามารถใช้งานได้</small></div>
                   <div className={dashboardStyles.cardBottom}><span>รายร้าน · ไม่ลบข้อมูล</span><strong>จัดการเมนู →</strong></div>
+                </button>
+
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("crmMenus")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>☷</div><span className={dashboardStyles.cardBadge}>CRM · IT CONTROL</span></div>
+                  <div className={dashboardStyles.cardText}><span>CUSTOMER PORTAL MENU CONTROL</span><strong>เปิดปิดเมนู CRM</strong><small>กำหนดเมนูหลักและเมนูย่อยของ Customer Portal แยกจาก POS</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>รายร้าน · ไม่เปลี่ยนแพ็กเกจ</span><strong>จัดการ CRM →</strong></div>
                 </button>
 
                 {data ? (
@@ -784,6 +793,9 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
               {tab === "dailySalesEmail" ? <TenantDailySalesEmailSettings tenantId={tenantId} /> : null}
               {tab === "menuPolicies" ? (
                 <TenantPosMenuPolicies tenantId={tenantId} storeName={storeName} />
+              ) : null}
+              {tab === "crmMenus" ? (
+                <TenantCrmMenuPolicies tenantId={tenantId} storeName={storeName} />
               ) : null}
               {tab === "cashiers" ? (
                 <TenantCashierDevices tenantId={tenantId} storeName={storeName}
