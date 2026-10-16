@@ -13,7 +13,7 @@ describe("IT CRM tenant main and submenu switches",()=>{
   const keys=CRM_MENU_CATALOG.map(x=>x.key);
   expect(keys).toHaveLength(36);
   expect(new Set(keys).size).toBe(keys.length);
-  expect(keys.every(key=>/^(main|more|settings)\\.crm_[a-z_]+$/.test(key))).toBe(true);
+  expect(keys.every(key=>/^(main|more|settings)\.crm_[a-z_]+$/.test(key))).toBe(true);
   expect(keys.every(key=>!POS_MENU_CATALOG.some(pos=>pos.key===key))).toBe(true);
   expect(keys.every(isValidCrmMenuKey)).toBe(true);
   expect(isValidCrmMenuKey("settings.store")).toBe(false);
