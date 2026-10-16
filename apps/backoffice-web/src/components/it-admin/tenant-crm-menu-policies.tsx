@@ -59,7 +59,7 @@ export function TenantCrmMenuPolicies({tenantId,storeName}:{tenantId:string;stor
       <button type="button" role="switch" aria-checked={effective}
         aria-label={`${item.label}: ${detail}`}
         className={effective?styles.switchOn:styles.switchOff}
-        disabled={busy!==null} onClick={()=>void toggle(item)}>
+        disabled={busy!==null||parentBlocked} onClick={()=>void toggle(item)}>
         <span>{effective?"เปิด":"ปิด"}</span><i aria-hidden/>
       </button>
     </div>;
