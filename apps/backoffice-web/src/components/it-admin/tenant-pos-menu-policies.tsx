@@ -33,7 +33,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   useEffect(() => { void load(); }, [load]);
   const main = useMemo(() => data?.catalog.filter(item => item.group === "main") ?? [], [data]);
   const byParent = useMemo(() => new Map(main.map(item => [item.key,
-    data?.catalog.filter(child => child.parent === item.key) ?? []
+    data?.catalog.filter(child => child.parent === item.key && (data.is_custom || child.key !== "settings.branding")) ?? []
   ])), [data, main]);
   async function toggle(item: PosMenuDefinition) {
     if (!data || busy) return;
