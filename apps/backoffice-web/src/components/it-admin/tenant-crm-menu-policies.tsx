@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CRM_MENU_CATALOG, isCrmMenuEnabled, type CrmMenuDefinition } from "@/lib/crm-menu-policy";
+import { isCrmMenuEnabled, type CrmMenuDefinition } from "@/lib/crm-menu-policy";
 import styles from "./tenant-pos-menu-policies.module.css";
 
 type Payload={catalog:CrmMenuDefinition[];overrides:Record<string,boolean>;total:number};
@@ -80,6 +80,5 @@ export function TenantCrmMenuPolicies({tenantId,storeName}:{tenantId:string;stor
       </section>)}
     <p className={styles.note}>เมนูที่ไม่เคยตั้งค่าสวิตช์จะยังแสดงเหมือนเดิมเพื่อไม่กระทบลูกค้าเดิม การปิดเมนู CRM เป็นการซ่อนการนำทาง ไม่ใช่การเพิกถอนสิทธิ์ API หรือเปลี่ยนแพ็กเกจ</p>
     <p className={styles.note}>รายการที่ใช้ร่วมกับ POS ยังต้องผ่านสิทธิ์แพ็กเกจ IT ของ POS และสิทธิ์ Owner/Manager ตามเดิม</p>
-    <small hidden>{CRM_MENU_CATALOG.length}</small>
   </div>;
 }
