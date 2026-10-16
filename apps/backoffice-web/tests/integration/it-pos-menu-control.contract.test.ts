@@ -12,7 +12,7 @@ describe("IT ↔ POS single-source menu policy", () => {
   it("maps every legacy menu switch to exactly one canonical key (including shift)", () => {
     const canonical = POS_MENU_CATALOG.map(item => item.key).sort();
     const aliases = [...legacy.matchAll(/\b[a-z_]+: "((?:main|more|settings)\.[a-z_]+)"/g)].map(match => match[1]);
-    expect(canonical).toHaveLength(36);
+    expect(canonical).toHaveLength(37);
     expect(new Set(canonical).size).toBe(canonical.length);
     expect(new Set(aliases).size).toBe(aliases.length);
     expect(aliases.sort()).toEqual(canonical);
@@ -24,6 +24,8 @@ describe("IT ↔ POS single-source menu policy", () => {
     expect(canonical).toContain("settings.support");
     expect(canonical).toContain("settings.push_notifications");
     expect(canonical).toContain("settings.currency");
+    expect(canonical).toContain("settings.branding");
+    expect(availability).toContain('"settings.branding": null');
   });
 
   it("locks only an exact key; an enabled shift is not locked by IT menu policy", () => {
@@ -35,6 +37,7 @@ describe("IT ↔ POS single-source menu policy", () => {
       }
     }
     expect(isPosMenuEnabled("main.shift", { "main.shift": false, "main.more": false })).toBe(true);
+    expect(isPosMenuEnabled("settings.store", { "settings.branding": false })).toBe(true);
   });
 
   it("reads and writes the same tenant-scoped Supabase table, not subscription metadata", () => {
@@ -53,6 +56,7 @@ describe("IT ↔ POS single-source menu policy", () => {
 
   it("renders AI as a protected main-menu policy and keeps support/push under Settings", () => {
     expect(ui).toContain('item.key === "main.ai_assistant"');
+    expect(ui).toContain('data.is_custom || child.key !== "settings.branding"');
     expect(ui).toContain("AI POLICY");
     expect(availability).toContain('"main.ai_assistant": null');
     expect(availability).toContain('"main.package_payment": null');
