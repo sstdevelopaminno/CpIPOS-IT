@@ -56,6 +56,7 @@ describe("IT ↔ POS single-source menu policy", () => {
 
   it("renders AI as a protected main-menu policy and keeps support/push under Settings", () => {
     expect(ui).toContain('item.key === "main.ai_assistant"');
+    expect(ui).toContain('data.is_custom || child.key !== "settings.branding"');
     expect(ui).toContain("AI POLICY");
     expect(availability).toContain('"main.ai_assistant": null');
     expect(availability).toContain('"main.package_payment": null');
