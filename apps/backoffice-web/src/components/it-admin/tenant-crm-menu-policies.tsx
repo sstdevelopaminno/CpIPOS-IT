@@ -26,6 +26,7 @@ export function TenantCrmMenuPolicies({tenantId,storeName}:{tenantId:string;stor
   },[endpoint]);
   useEffect(()=>{void refresh();},[refresh]);
   const main=useMemo(()=>data?.catalog.filter(menu=>menu.group==="main")??[],[data]);
+  const opticalApi=useMemo(()=>data?.catalog.filter(menu=>menu.group==="optical_api")??[],[data]);
   const children=useMemo(()=>new Map(main.map(parent=>[
     parent.key, data?.catalog.filter(menu=>menu.parent===parent.key)??[]
   ])),[main,data]);
@@ -33,7 +34,9 @@ export function TenantCrmMenuPolicies({tenantId,storeName}:{tenantId:string;stor
     if(!data||busy)return;
     // A disabled parent must never override or silently rewrite individual child choices.
     const current=data.overrides[item.key]!==false;
-    if(!window.confirm(`${current?"ปิด":"เปิด"}เมนู CRM "${item.label}" ของร้าน ${storeName}?\n\nสวิตช์ CRM ไม่กระทบ POS และไม่ลบข้อมูล`))return;
+    const apiControl=item.group==="optical_api";
+    const note=apiControl?"สวิตช์นี้บังคับใช้กับ POS Optical API โดยตรง แต่ไม่เปลี่ยนสิทธิ์แพ็กเกจหรือทำธุรกรรมย้อนหลัง":"เมนู CRM จะถูกซ่อน และเมื่อ Deploy RLS แล้วจะเพิกถอนสิทธิ์ Data API ของ Optical";
+    if(!window.confirm(`${current?"ปิด":"เปิด"}${apiControl?"สิทธิ์ API":"เมนู CRM"} "${item.label}" ของร้าน ${storeName}?\n\n${note}`))return;
     setBusy(item.key);setError("");setSuccess("");
     try{
       const response=await fetch(endpoint,{method:"PATCH",credentials:"include",
@@ -50,7 +53,8 @@ export function TenantCrmMenuPolicies({tenantId,storeName}:{tenantId:string;stor
     const configured=data?.overrides[item.key]!==false;
     const effective=Boolean(data&&isCrmMenuEnabled(item.key,data.overrides));
     const parentBlocked=Boolean(item.parent&&!isCrmMenuEnabled(item.parent!,data?.overrides??{}));
-    const detail=parentBlocked?"เมนูแม่ถูก IT ปิด":configured?"อนุญาตใน CRM":"IT ปิดเมนู CRM";
+    const apiControl=item.group==="optical_api";
+    const detail=parentBlocked?"เมนูแม่ถูก IT ปิด":configured?(apiControl?"อนุญาต API (ยังต้องผ่านแพ็กเกจ / Role)":"อนุญาตใน CRM"):(apiControl?"IT ปิด POS Optical API":"IT ปิดเมนู CRM");
     return <div className={child?styles.child:styles.parent} key={item.key}>
       <div className={styles.menuLabel}>
         <strong>{item.label}</strong>
@@ -78,7 +82,12 @@ export function TenantCrmMenuPolicies({tenantId,storeName}:{tenantId:string;stor
           {children.get(item.key)?.map(child=>menuRow(child,true))}
         </div>:null}
       </section>)}
-    <p className={styles.note}>เมนูที่ไม่เคยตั้งค่าสวิตช์จะยังแสดงเหมือนเดิมเพื่อไม่กระทบลูกค้าเดิม การปิดเมนู CRM เป็นการซ่อนการนำทาง ไม่ใช่การเพิกถอนสิทธิ์ API หรือเปลี่ยนแพ็กเกจ</p>
+    {opticalApi.length>0?<section className={styles.group}>
+      <strong>ควบคุม API ระบบ Optical เฉพาะร้านนี้ (POS)</strong>
+      <p className={styles.note}>เมื่อ IT ปิด ระบบ POS จะปฏิเสธ API นั้นเพิ่มเติมจากเงื่อนไข CUSTOM Optical / Role / กะ / Currency ที่ต้องผ่านอยู่แล้ว</p>
+      <div className={styles.children}>{opticalApi.map(item=>menuRow(item,true))}</div>
+    </section>:null}
+    <p className={styles.note}>เมนู CRM ที่ไม่มีสวิตช์ยังคงแสดงเพื่อความเข้ากันได้ การปิดเมนู Optical จะเพิกถอนสิทธิ์ฐานข้อมูลหลัง Migration RLS ที่เกี่ยวข้องผ่านการทดสอบและ Deploy แล้ว โดยไม่แก้แพ็กเกจ</p>
     <p className={styles.note}>รายการที่ใช้ร่วมกับ POS ยังต้องผ่านสิทธิ์แพ็กเกจ IT ของ POS และสิทธิ์ Owner/Manager ตามเดิม</p>
   </div>;
 }
