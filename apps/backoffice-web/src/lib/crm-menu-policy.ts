@@ -46,6 +46,7 @@ export const CRM_MENU_CATALOG:readonly CrmMenuDefinition[] = [
   {key:"settings.crm_optical_api_work_orders",label:"API ใบสั่งงาน Optical (POS)",group:"optical_api"},
   {key:"settings.crm_optical_api_deposits",label:"API รับมัดจำ / ยอดค้าง (POS)",group:"optical_api"},
   {key:"settings.crm_optical_api_inventory",label:"API สต๊อก Optical (POS)",group:"optical_api"},
+  {key:"settings.crm_optical_api_customers",label:"API ลูกค้า / ตรวจสายตา (POS)",group:"optical_api"},
   {key:"settings.crm_optical_api_payment_verification",label:"API ยืนยันเงินโอน Optical (POS)",group:"optical_api"},
 ];
 const catalog=new Map(CRM_MENU_CATALOG.map(menu=>[menu.key,menu]));
