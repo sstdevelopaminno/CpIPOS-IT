@@ -102,6 +102,7 @@ type CustomTermsRow = {
   yearly_price: number | string;
   monthly_discount_percent: number | string;
   yearly_discount_percent: number | string;
+  proposed_billing_interval: "monthly" | "yearly" | null;
   max_branches: number;
   max_devices: number;
   max_users: number;
@@ -192,6 +193,7 @@ export type TenantControlInput = {
   contract_period?: string;
   custom_monthly_price?: number;
   custom_yearly_price?: number | null;
+  custom_proposed_billing_interval?: string;
   custom_monthly_discount_percent?: number;
   custom_yearly_discount_percent?: number;
   custom_max_branches?: number;
@@ -372,6 +374,7 @@ function customTermsAmount(terms: CustomTermsRow, billingCycle: "monthly" | "yea
 function customTermsSnapshot(terms: CustomTermsRow) {
   return {
     terms_version: terms.version,
+    proposed_billing_interval: terms.proposed_billing_interval,
     monthly_price: Number(terms.monthly_price),
     yearly_price: Number(terms.yearly_price),
     monthly_discount_percent: Number(terms.monthly_discount_percent),
@@ -543,7 +546,7 @@ export async function loadTenantControlCenter(context: ItAdminContext, tenantId:
       .maybeSingle<ReceiptRow>(),
     context.supabase
       .from("tenant_custom_package_terms")
-      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .select("tenant_id,package_id,status,proposed_billing_interval,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
       .eq("tenant_id", tenantId)
       .maybeSingle<CustomTermsRow>(),
     context.supabase
@@ -1020,7 +1023,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (!customPackage.data) throw new ItAdminGuardError("custom_package_not_available","ไม่พบแพ็กเกจ CUSTOM ที่เปิดใช้งาน",409);
 
     const currentResult = await context.supabase.from("tenant_custom_package_terms")
-      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .select("tenant_id,package_id,status,proposed_billing_interval,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
       .eq("tenant_id",tenantId).maybeSingle<CustomTermsRow>();
     if (currentResult.error) throw new Error(`custom_terms_query_failed:${currentResult.error.message}`);
     const current = currentResult.data;
@@ -1036,6 +1039,18 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     const yearlyPrice = readNumber(input.custom_yearly_price, Number(current?.yearly_price ?? 0), 0, 100_000_000, "ราคารายปี");
     const monthlyDiscount = readNumber(input.custom_monthly_discount_percent, Number(current?.monthly_discount_percent ?? 0), 0, 100, "ส่วนลดรายเดือน");
     const yearlyDiscount = readNumber(input.custom_yearly_discount_percent, Number(current?.yearly_discount_percent ?? 0), 0, 100, "ส่วนลดรายปี");
+    // This is a proposed cycle, not an instruction to modify the live contract.
+    const proposedBilling = input.custom_proposed_billing_interval === undefined
+      ? current?.proposed_billing_interval ?? null
+      : requireBillingCycle(input.custom_proposed_billing_interval);
+    const discountedMonthly = discountedAmount(monthlyPrice, monthlyDiscount);
+    const discountedYearly = discountedAmount(yearlyPrice, yearlyDiscount);
+    if (proposedBilling === "monthly" && discountedMonthly <= 0 && discountedYearly > 0) {
+      throw new ItAdminGuardError("custom_cycle_price_missing", "ข้อเสนอรายเดือนต้องมีราคาต่อเดือนหลังหักส่วนลดมากกว่า 0 กรุณาเลือกรายปี", 422);
+    }
+    if (proposedBilling === "yearly" && discountedYearly <= 0 && discountedMonthly > 0) {
+      throw new ItAdminGuardError("custom_cycle_price_missing", "ข้อเสนอรายปีต้องมีราคาต่อปีหลังหักส่วนลดมากกว่า 0 กรุณาเลือกรายเดือน", 422);
+    }
     const maxBranches = Math.trunc(readNumber(input.custom_max_branches, current?.max_branches ?? 1, 1, 10000, "จำนวนสาขา"));
     const maxDevices = Math.trunc(readNumber(input.custom_max_devices, current?.max_devices ?? 1, 1, 10000, "จำนวนเครื่องขาย"));
     const maxUsers = Math.trunc(readNumber(input.custom_max_users, current?.max_users ?? 1, 1, 100000, "จำนวนผู้ใช้งาน"));
@@ -1084,6 +1099,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       tenant_id: tenantId,
       package_id: customPackage.data.id,
       status: "draft",
+      proposed_billing_interval: proposedBilling,
       monthly_price: Number(monthlyPrice.toFixed(2)),
       yearly_price: Number(yearlyPrice.toFixed(2)),
       monthly_discount_percent: Number(monthlyDiscount.toFixed(2)),
@@ -1103,7 +1119,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     };
     const saved = await context.supabase.from("tenant_custom_package_terms")
       .upsert(payload,{onConflict:"tenant_id"})
-      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .select("tenant_id,package_id,status,proposed_billing_interval,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
       .single<CustomTermsRow>();
     if (saved.error) throw new Error(`custom_terms_save_failed:${saved.error.message}`);
 
@@ -1120,11 +1136,14 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (!customPackage.data) throw new ItAdminGuardError("custom_package_not_available","ไม่พบแพ็กเกจ CUSTOM ที่เปิดใช้งาน",409);
 
     const termsResult = await context.supabase.from("tenant_custom_package_terms")
-      .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+      .select("tenant_id,package_id,status,proposed_billing_interval,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
       .eq("tenant_id",tenantId).eq("package_id",customPackage.data.id).maybeSingle<CustomTermsRow>();
     if (termsResult.error) throw new Error(`custom_terms_query_failed:${termsResult.error.message}`);
     if (!termsResult.data) throw new ItAdminGuardError("custom_terms_required","กรุณากำหนดรายละเอียด CUSTOM ก่อนอนุมัติ",422);
     const terms = termsResult.data;
+    if (terms.proposed_billing_interval && terms.proposed_billing_interval !== billingCycle) {
+      throw new ItAdminGuardError("custom_proposal_cycle_mismatch", "รอบบิลที่อนุมัติไม่ตรงกับข้อเสนอ CUSTOM ที่บันทึกไว้ กรุณาตรวจสอบรอบบิล", 409);
+    }
     const expectedAmount = customTermsAmount(terms,billingCycle);
     if (expectedAmount <= 0) {
       throw new ItAdminGuardError("custom_price_required",
@@ -1275,12 +1294,15 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     let expectedAmount = packageAmount(packageResult.data, billingCycle);
     if (packageResult.data.quota_mode === "custom" || packageResult.data.code === "custom") {
       const customTerms = await context.supabase.from("tenant_custom_package_terms")
-        .select("tenant_id,package_id,status,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+        .select("tenant_id,package_id,status,proposed_billing_interval,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
         .eq("tenant_id",tenantId).eq("package_id",packageId)
         .in("status",["approved","active"]).maybeSingle<CustomTermsRow>();
       if (customTerms.error) throw new Error(`custom_terms_query_failed:${customTerms.error.message}`);
       if (!customTerms.data) {
         throw new ItAdminGuardError("custom_terms_required","กรุณากำหนดและอนุมัติรายละเอียด CUSTOM ของร้านก่อนสร้างรายการชำระ",422);
+      }
+      if (customTerms.data.proposed_billing_interval && customTerms.data.proposed_billing_interval !== billingCycle) {
+        throw new ItAdminGuardError("custom_proposal_cycle_mismatch", "รอบบิลไม่ตรงกับข้อเสนอ CUSTOM ที่อนุมัติไว้", 409);
       }
       customTermsForPayment = customTerms.data;
       expectedAmount = customTermsAmount(customTerms.data,billingCycle);
