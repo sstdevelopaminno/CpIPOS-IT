@@ -45,6 +45,9 @@ describe("Catalog versions and Add-on proposals",()=>{
   expect(addonRoute).toContain("feature_not_available");
   expect(addonRoute).toContain("it_addon_quote_approved");
   expect(addonRoute).toContain("no_entitlement: true");
+  expect(addonRoute).toContain("contract_currency: contract.data?.currency ?? null");
+  expect(addonPage).toContain('data?.contract_currency==="THB"');
+  expect(addonPage).toContain("LAK/USD ต้องกำหนดราคาเอง");
   expect(addonRoute).not.toContain('.from("tenant_feature_subscriptions")');
   expect(addonRoute).not.toContain('.from("tenant_billing_cycles")');
  });
