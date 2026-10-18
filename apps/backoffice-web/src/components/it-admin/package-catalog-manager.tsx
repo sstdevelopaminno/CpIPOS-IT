@@ -271,6 +271,7 @@ export function PackageCatalogManager() {
         <p>ราคา · ส่วนลด · โควตา · อายุข้อมูล</p>
       </div>
       <div className={styles.headerActions}>
+        <Link href="/it-admin/packages/versions">เวอร์ชันราคา / ประวัติแพ็กเกจ</Link>
         <Link href="/it-admin/cpipos-ai">AI Quota</Link>
         <Link href="/it-admin/tenants">CUSTOM รายร้าน</Link>
         <button type="button" onClick={() => setDraft(emptyDraft())}>+ เพิ่มแพ็กเกจ</button>

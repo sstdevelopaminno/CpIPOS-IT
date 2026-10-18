@@ -1158,6 +1158,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                           {isTrial ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระแพ็กเกจ"}
                         </button>
                         <Link className={styles.secondaryButton} href={`/it-admin/subscription-payments/${tenantId}`}>ไปตารางชำระแพ็กเกจ</Link>
+                        <Link className={styles.secondaryButton} href={`/it-admin/tenants/${tenantId}/addons`}>Add-ons เฉพาะร้าน →</Link>
                       </div>
                     </>}
                   </section>
