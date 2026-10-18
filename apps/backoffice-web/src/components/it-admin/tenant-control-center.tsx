@@ -1000,6 +1000,12 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                           custom_feature_overrides:customDraft.feature_overrides,
                           custom_notes:customDraft.notes
                         },"บันทึกร่าง CUSTOM แล้ว",true)}>บันทึกร่าง</button>
+                      {customTerms?.status === "draft" && !customRequestOpen ? <button
+                        className={styles.primaryButton} type="button" disabled={busy}
+                        onClick={() => void mutate({action:"approve_custom_terms_draft"},
+                          "อนุมัติข้อเสนอ CUSTOM แล้ว · ยังไม่เปลี่ยนแพ็กเกจหรือเรียกเก็บเงิน",true)}>
+                        อนุมัติร่างเพื่อเสนอแพ็กเกจ (ไม่เรียกเก็บเงิน)
+                      </button> : null}
                       {customRequestOpen ? <button className={styles.primaryButton} type="button" disabled={busy || !customTerms}
                         onClick={() => void mutate({
                           action:"approve_custom_package_request",
@@ -1131,6 +1137,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                         <label className={styles.span2}><span>หมายเหตุภายใน (Audit)</span><input placeholder={isTrial ? "เช่น เตรียมเปิดแพ็กเกจจริงหลังตรวจรับเงินรอบแรก" : "เช่น ลูกค้าขอต่ออายุ/เปลี่ยนแพ็กเกจ"} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} /></label>
                       </div>
                       {!selectedPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจที่เลือกยังไม่มีราคารายปี ระบบจะยังไม่สร้างรายการรายปีจนกว่าจะตั้งราคาในระบบ IT</div> : null}
+                      {selectedPackage?.code === "custom" && customTerms?.status !== "approved" && customTerms?.status !== "active" ?
+                        <div className={styles.securityNote}>ก่อนเปลี่ยนเป็น CUSTOM ต้องบันทึกและอนุมัติร่างข้อเสนอในเมนู กำหนดรายละเอียดแพ็กเกจ ก่อนสร้างรายการชำระ</div> : null}
                       {selectedPackage ? <div className={styles.packagePreview}>
                         <strong>{selectedPackage.name}</strong>
                         <span>{billingCycle === "yearly" ? "รายปี" : "รายเดือน"} · ยอดที่ต้องตรวจรับ {money(selectedPackageAmount)} · รอบบริการจริงจะเริ่มจาก Settlement</span>
@@ -1138,6 +1146,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       <div className={styles.sectionActions}>
                         <button className={styles.primaryButton} type="button"
                           disabled={busy || isPrepaidPendingTrial || !packageId || selectedPackageAmount <= 0 ||
+                            (selectedPackage?.code === "custom" && customTerms?.status !== "approved" && customTerms?.status !== "active") ||
                             (billingCycle === "yearly" && !selectedPackageYearlyAvailable)}
                           onClick={() => void mutate({
                             action: "prepare_paid_package",
