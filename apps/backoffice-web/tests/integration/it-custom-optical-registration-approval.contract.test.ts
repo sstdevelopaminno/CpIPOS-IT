@@ -25,8 +25,10 @@ describe("CUSTOM Optical registration approval", () => {
     expect(route).toContain('status: "processing"');
   });
   it("retains authorized trial provisioning, contract price validation and audit", () => {
-    expect(ui).toContain("Number(customTerms.monthly_price) <= 0");
-    expect(route).toContain("custom_monthly_price_required");
+    expect(ui).toContain("resolveCustomRegistrationBilling");
+    expect(route).toContain("custom_price_required");
+    expect(route).toContain('billing_interval: customBilling?.billing_interval ?? "monthly"');
+    expect(route).toContain("amount_per_cycle: customBilling?.amount_per_cycle");
     expect(route).toContain("requireItAdmin()");
     expect(route).toContain("appendAuditLog");
     expect(route).toContain('contract: { status: "trial"');
