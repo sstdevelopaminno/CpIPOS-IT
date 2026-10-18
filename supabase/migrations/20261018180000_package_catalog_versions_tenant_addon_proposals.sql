@@ -46,7 +46,7 @@ create table if not exists public.it_tenant_addon_proposals (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint addon_feature_shape_chk check (
-    (addon_type = 'feature' and feature_code = addon_code)
+    (addon_type = 'feature' and feature_code is not null and feature_code = addon_code)
     or (addon_type = 'quota' and feature_code is null and addon_code in
       ('extra_branch','extra_device','extra_user','extra_storage_gb'))
   ),
