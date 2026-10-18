@@ -170,6 +170,14 @@ export async function POST(req: Request) {
         if (prior.data?.length) return fail("edit_after_provision_started", "เริ่มสร้างร้านแล้ว แก้คำขอไม่ได้ กรุณาติดต่อผู้ดูแลเพื่อกู้คืน", 409);
       }
       const patch = validateEdit(input);
+      if (patch.sales_modes.optical_retail) {
+        const proposed = await ctx.supabase.from("subscription_packages")
+          .select("id,code,quota_mode").eq("id", patch.package_id).maybeSingle();
+        if (proposed.error) throw proposed.error;
+        if (!proposed.data || (proposed.data.code !== "custom" && proposed.data.quota_mode !== "custom")) {
+          return fail("optical_mode_requires_custom", "โหมดร้านแว่นตาเปิดได้เฉพาะแพ็กเกจ CUSTOM", 422);
+        }
+      }
       const { data, error } = await ctx.supabase.from("store_registration_requests")
         .update({ ...patch, status: "pending", last_error: null, updated_at: new Date().toISOString() })
         .eq("id", row.id).eq("status", row.status).select(fields).maybeSingle();
@@ -210,6 +218,10 @@ export async function POST(req: Request) {
         !["standard","custom"].includes(pkg.data.quota_mode) ||
         (!isCustom && (Number(pkg.data.monthly_price) <= 0 || Number(pkg.data.max_devices ?? 0) < 1))) {
       return fail("package_unavailable", "แพ็กเกจไม่พร้อมเปิดทดลองใช้ กรุณาแก้ไขคำขอ", 409);
+    }
+    // A stale or crafted non-CUSTOM registration must never enable Optical Retail.
+    if (normalizePosSalesModes(row.sales_modes).optical_retail && !isCustom) {
+      return fail("optical_mode_requires_custom", "โหมดร้านแว่นตาเปิดได้เฉพาะแพ็กเกจ CUSTOM", 422);
     }
     const approvedCustomTerms = isCustom ? sanitizeCustomTerms(input.custom_terms) : null;
     const claimed = await ctx.supabase.from("store_registration_requests")
