@@ -7,7 +7,7 @@ type View = {
   tenant_name: string;
   contract: { status: string; billing_interval: string; amount_per_cycle: number; currency: string; max_branches: number; max_devices: number; max_users: number };
   terms: { status: string; version: number; max_branches: number; max_devices: number; max_users: number; yearly_price: number };
-  stats: { active_branches: number; active_devices: number; assigned_users: number; open_payment_requests: number; settled_payments: number };
+  stats: { active_branches: number; active_devices: number; assigned_users: number; open_payment_requests: number; settled_payments: number; misaligned_branch_policies: number };
   applied: boolean;
 };
 const style = { padding: 22, border: "1px solid #ccd7ed", borderRadius: 12, background: "#fff" };
