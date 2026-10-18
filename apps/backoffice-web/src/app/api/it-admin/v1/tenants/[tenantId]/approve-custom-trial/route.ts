@@ -24,7 +24,7 @@ type Terms = {
   max_branches: number; max_devices: number; max_users: number;
   approved_at: string | null;
 };
-type Stats = { active_branches: number; active_devices: number; assigned_users: number; open_payment_requests: number; settled_payments: number };
+type Stats = { active_branches: number; active_devices: number; assigned_users: number; open_payment_requests: number; settled_payments: number; misaligned_branch_policies: number };
 
 function checkTarget(raw: string) {
   const id = parseTenantParam(raw);
@@ -34,7 +34,7 @@ function checkTarget(raw: string) {
 
 async function loadState(admin: Context, tenantId: string) {
   const db = admin.supabase;
-  const [tenantResult, contractResult, termsResult, branches, devices, roles, requests, settlements] = await Promise.all([
+  const [tenantResult, contractResult, termsResult, branches, devices, roles, requests, settlements, branchPolicies] = await Promise.all([
     db.from("tenants").select("id,name,is_active").eq("id", tenantId).maybeSingle(),
     db.from("tenant_subscription_contracts")
       .select("id,package_id,status,billing_interval,amount_per_cycle,currency,max_branches,max_devices,max_users,updated_at,metadata")
@@ -47,9 +47,10 @@ async function loadState(admin: Context, tenantId: string) {
     db.from("user_branch_roles").select("user_id").eq("tenant_id", tenantId),
     db.from("tenant_subscription_payment_requests").select("id", { head: true, count: "exact" })
       .eq("tenant_id", tenantId).in("status", ["pending", "under_review"]),
-    db.from("tenant_subscription_settlements").select("id", { head: true, count: "exact" }).eq("tenant_id", tenantId)
+    db.from("tenant_subscription_settlements").select("id", { head: true, count: "exact" }).eq("tenant_id", tenantId),
+    db.from("branch_login_policies").select("max_devices").eq("tenant_id", tenantId)
   ]);
-  for (const r of [tenantResult,contractResult,termsResult,branches,devices,roles,requests,settlements]) {
+  for (const r of [tenantResult,contractResult,termsResult,branches,devices,roles,requests,settlements,branchPolicies]) {
     if (r.error) throw new Error("custom_trial_preflight_failed:" + r.error.message);
   }
   if (!tenantResult.data || !contractResult.data || !termsResult.data) {
@@ -62,7 +63,8 @@ async function loadState(admin: Context, tenantId: string) {
     active_devices: devices.count ?? 0,
     assigned_users: new Set((roles.data ?? []).map(r => r.user_id)).size,
     open_payment_requests: requests.count ?? 0,
-    settled_payments: settlements.count ?? 0
+    settled_payments: settlements.count ?? 0,
+    misaligned_branch_policies: (branchPolicies.data ?? []).filter(row => row.max_devices !== TARGET.max_devices).length
   };
   return { tenant: tenantResult.data, contract: contractResult.data, terms: termsResult.data, package_code: p.data?.code ?? null, stats };
 }
@@ -70,7 +72,8 @@ async function loadState(admin: Context, tenantId: string) {
 function isApplied(s: Awaited<ReturnType<typeof loadState>>) {
   const { contract: c, terms: t } = s;
   return t.status === "approved" && c.max_branches === 2 && c.max_devices === 2 && c.max_users === 8
-    && String(c.metadata?.custom_terms_version ?? "") === String(t.version);
+    && String(c.metadata?.custom_terms_version ?? "") === String(t.version)
+    && s.stats.misaligned_branch_policies === 0;
 }
 
 function assertSafe(s: Awaited<ReturnType<typeof loadState>>) {
