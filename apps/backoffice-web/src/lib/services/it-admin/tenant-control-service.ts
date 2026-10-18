@@ -164,6 +164,7 @@ export type TenantControlAction =
   | "update_contract"
   | "grant_promo_extension"
   | "update_custom_package_terms"
+  | "approve_custom_terms_draft"
   | "approve_custom_package_request"
   | "prepare_paid_package"
   | "change_package"
@@ -247,6 +248,7 @@ function requireAction(raw: unknown): TenantControlAction {
     "update_contract",
     "grant_promo_extension",
     "update_custom_package_terms",
+    "approve_custom_terms_draft",
     "approve_custom_package_request",
     "prepare_paid_package",
     "change_package",
@@ -1125,6 +1127,53 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
 
     await audit(context,tenantId,"custom_package_terms_draft_saved","tenant_custom_package_terms",tenantId,
       current ? asRecord(current) : {}, asRecord(saved.data), { package_id: customPackage.data.id });
+  }
+
+  if (action === "approve_custom_terms_draft") {
+    // Approves a quotation for any tenant, even while on a standard package.
+    // This is NOT a package activation, payment instruction or live contract update.
+    const selectedPackage = await context.supabase.from("subscription_packages")
+      .select("id").eq("code", "custom").eq("is_active", true).eq("status", "active").maybeSingle();
+    if (selectedPackage.error) throw selectedPackage.error;
+    if (!selectedPackage.data) throw new ItAdminGuardError("custom_package_not_available", "CUSTOM is not active.", 409);
+    const draft = await context.supabase.from("tenant_custom_package_terms")
+      .select("tenant_id,package_id,status,proposed_billing_interval,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,version")
+      .eq("tenant_id", tenantId).eq("package_id", selectedPackage.data.id)
+      .maybeSingle<CustomTermsRow>();
+    if (draft.error) throw draft.error;
+    if (!draft.data || draft.data.status !== "draft") {
+      throw new ItAdminGuardError("custom_draft_required", "กรุณาบันทึกร่าง CUSTOM ก่อนอนุมัติข้อเสนอ", 409);
+    }
+    const cycle = draft.data.proposed_billing_interval ??
+      (customTermsAmount(draft.data, "monthly") > 0 ? "monthly" : "yearly");
+    const amount = customTermsAmount(draft.data, cycle);
+    if (amount <= 0) throw new ItAdminGuardError("custom_price_required", "ข้อเสนอ CUSTOM ต้องมีราคาตามรอบบิลมากกว่า 0", 422);
+    const [branches, devices, roles, pending] = await Promise.all([
+      context.supabase.from("branches").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("is_active", true),
+      context.supabase.from("branch_devices").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("is_active", true).eq("status", "active"),
+      context.supabase.from("user_branch_roles").select("user_id").eq("tenant_id", tenantId),
+      context.supabase.from("tenant_subscription_payment_requests").select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId).in("status", ["pending", "under_review"])
+    ]);
+    for (const result of [branches, devices, roles, pending]) if (result.error) throw result.error;
+    if ((pending.count ?? 0) > 0) throw new ItAdminGuardError("payment_request_pending", "มีคำขอชำระเงินรออยู่ ให้ดำเนินการผ่านคำขอนั้นก่อน", 409);
+    const assignedUsers = new Set((roles.data ?? []).map(r => r.user_id)).size;
+    if ((branches.count ?? 0) > draft.data.max_branches ||
+      (devices.count ?? 0) > draft.data.max_devices || assignedUsers > draft.data.max_users) {
+      throw new ItAdminGuardError("custom_terms_below_usage", "โควตาต้องไม่ต่ำกว่าการใช้งานจริงของร้าน", 409);
+    }
+    const updated = await context.supabase.from("tenant_custom_package_terms")
+      .update({ status: "approved", approved_by: context.auth.userId, approved_at: now, updated_at: now })
+      .eq("tenant_id", tenantId).eq("package_id", selectedPackage.data.id)
+      .eq("status", "draft").eq("version", draft.data.version)
+      .select("version,status,proposed_billing_interval").maybeSingle();
+    if (updated.error) throw updated.error;
+    if (!updated.data) throw new ItAdminGuardError("custom_draft_changed", "ร่าง CUSTOM เปลี่ยนแปลง กรุณาโหลดหน้าใหม่", 409);
+    await audit(context, tenantId, "custom_terms_quotation_approved", "tenant_custom_package_terms", tenantId,
+      { status: draft.data.status, version: draft.data.version },
+      { status: "approved", version: updated.data.version, proposed_billing_interval: cycle },
+      { package_id: selectedPackage.data.id, amount, billing_cycle: cycle, no_payment_created: true });
+    // Contract, quotas, payment requests, settlements and receipts remain untouched.
   }
 
   if (action === "approve_custom_package_request") {
