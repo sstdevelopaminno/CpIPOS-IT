@@ -139,6 +139,7 @@ type ControlData = {
       status: "draft" | "approved" | "active" | "retired";
       monthly_price: number;
       yearly_price: number;
+      proposed_billing_interval?: "monthly" | "yearly" | null;
       monthly_discount_percent: number;
       yearly_discount_percent: number;
       effective_monthly_price: number;
@@ -395,7 +396,15 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
       notes: custom?.notes ?? "",
       feature_overrides: custom?.feature_overrides ?? {}
     });
-    setCustomBillingCycle(next.billing.latest_request?.billing_interval === "yearly" ? "yearly" : "monthly");
+    // Stored CUSTOM quote preference wins. Legacy quotes use contract or pricing.
+    const storedProposal = custom?.proposed_billing_interval;
+    const preferredCycle: BillingCycle = storedProposal === "yearly" || storedProposal === "monthly"
+      ? storedProposal
+      : next.current_package?.code === "custom" && next.contract?.billing_cycle === "yearly"
+        ? "yearly"
+        : Number(custom?.monthly_price ?? 0) <= 0 && Number(custom?.yearly_price ?? 0) > 0
+          ? "yearly" : "monthly";
+    setCustomBillingCycle(preferredCycle);
 
     setNotice({
       customer_title: next.pos_notice?.title ?? "ระบบถูกระงับชั่วคราว",
@@ -521,8 +530,10 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
   const customRelevant = Boolean(
     data?.current_package?.code === "custom" ||
     latestBillingRequest?.requested_package_id === customPackageDefinition?.id ||
-    customRequestOpen
+    customRequestOpen || customTerms
   );
+  // Preparing a quote does not change the active subscription.
+  const customCanDraft = Boolean(customPackageDefinition);
   const selectedPackageYearlyAvailable = selectedPackage?.code === "custom"
     ? Number(customTerms?.effective_yearly_price ?? 0) > 0
     : packageAllowsYearly(selectedPackage);
@@ -596,6 +607,15 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
   const selectPackage = (nextPackageId: string) => {
     setPackageId(nextPackageId);
     const nextPackage = data?.packages.find((pkg) => pkg.id === nextPackageId) ?? null;
+    if (nextPackage?.code === "custom") {
+      const offer = data?.custom_package.terms;
+      const nextCycle: BillingCycle = offer?.proposed_billing_interval === "yearly" ||
+        (offer?.proposed_billing_interval == null && Number(offer?.effective_monthly_price ?? 0) <= 0 && Number(offer?.effective_yearly_price ?? 0) > 0)
+        ? "yearly" : "monthly";
+      setBillingCycle(nextCycle);
+      if (changeAutoEnd) setChangeEndDate(addBillingDate(changeStartDate, nextCycle));
+      return;
+    }
     if (billingCycle === "yearly" && !packageAllowsYearly(nextPackage)) {
       setBillingCycle("monthly");
       if (changeAutoEnd) setChangeEndDate(addBillingDate(changeStartDate, "monthly"));
@@ -908,11 +928,17 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                     </div>
                   </section>
 
-                  {!customRelevant ? <div className={styles.securityNote}>
-                    ร้านนี้ยังใช้แพ็กเกจมาตรฐานและไม่มีคำขอ CUSTOM จึงยังไม่เปิดการบันทึกเงื่อนไขเฉพาะร้าน
+                  {data.current_package?.code !== "custom" ? <div className={styles.securityNote}>
+                    ร้านนี้ยังไม่ใช้ CUSTOM: IT สามารถเตรียมข้อเสนอและบันทึกร่างไว้ล่วงหน้าได้
+                    แต่การบันทึกไม่เปลี่ยนสัญญา แพ็กเกจ โหมดขาย หรือยอดชำระ จนกว่าจะอนุมัติตามขั้นตอน
+                  </div> : null}
+                  {customTerms?.status === "draft" && data.contract ? <div className={styles.securityNote}>
+                    <strong>ร่าง CUSTOM ยังไม่เปลี่ยนสัญญาจริง</strong>
+                    <div>สัญญาจริง: {data.contract.max_branches ?? "—"} สาขา / {data.contract.max_devices ?? "—"} เครื่อง / {data.contract.max_users ?? "—"} ผู้ใช้ · {data.contract.billing_cycle === "yearly" ? "รายปี" : "รายเดือน"}</div>
+                    <div>ร่าง: {customTerms.max_branches} สาขา / {customTerms.max_devices} เครื่อง / {customTerms.max_users} ผู้ใช้ · เสนอ{customBillingCycle === "yearly" ? "รายปี" : "รายเดือน"}</div>
                   </div> : null}
 
-                  {customRelevant ? <section className={styles.controlSection}>
+                  {customCanDraft ? <section className={styles.controlSection}>
                     <div className={styles.controlSectionHeader}>
                       <div><span>COMMERCIAL TERMS</span><h4>ราคาและอายุข้อมูล</h4></div>
                       <small>Sales Retention ของแพ็กเกจมาตรฐานล็อก 6 เดือน · CUSTOM กำหนดแยกร้าน</small>
@@ -923,11 +949,11 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       <label><span>ราคารายปี</span><input type="number" min="0" step="0.01" value={customDraft.yearly_price} onChange={(e)=>setCustomDraft((v)=>({...v,yearly_price:e.target.value}))}/></label>
                       <label><span>ส่วนลดรายปี %</span><input type="number" min="0" max="100" step="0.01" value={customDraft.yearly_discount_percent} onChange={(e)=>setCustomDraft((v)=>({...v,yearly_discount_percent:e.target.value}))}/></label>
                       <label><span>เก็บยอดขาย</span><select value={customDraft.retention_months} onChange={(e)=>setCustomDraft((v)=>({...v,retention_months:e.target.value}))}><option value="6">6 เดือน</option><option value="12">12 เดือน</option><option value="18">18 เดือน</option><option value="24">24 เดือน</option><option value="36">36 เดือน</option></select></label>
-                      <label><span>รอบที่จะเสนอ</span><select value={customBillingCycle} onChange={(e)=>setCustomBillingCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly">รายปี</option></select></label>
+                      <label><span>รอบที่จะเสนอ (บันทึกในร่าง)</span><select value={customBillingCycle} onChange={(e)=>setCustomBillingCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly">รายปี</option></select></label>
                     </div>
                   </section> : null}
 
-                  {customRelevant ? <section className={styles.controlSection}>
+                  {customCanDraft ? <section className={styles.controlSection}>
                     <div className={styles.controlSectionHeader}><div><span>QUOTAS</span><h4>โควตาการใช้งาน</h4></div></div>
                     <div className={styles.formGrid}>
                       <label><span>สาขา</span><input type="number" min="1" value={customDraft.max_branches} onChange={(e)=>setCustomDraft((v)=>({...v,max_branches:e.target.value}))}/></label>
@@ -961,6 +987,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                           action:"update_custom_package_terms",
                           custom_monthly_price:Number(customDraft.monthly_price || 0),
                           custom_yearly_price:Number(customDraft.yearly_price || 0),
+                          custom_proposed_billing_interval:customBillingCycle,
                           custom_monthly_discount_percent:Number(customDraft.monthly_discount_percent || 0),
                           custom_yearly_discount_percent:Number(customDraft.yearly_discount_percent || 0),
                           custom_max_branches:Number(customDraft.max_branches || 1),
@@ -973,6 +1000,12 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                           custom_feature_overrides:customDraft.feature_overrides,
                           custom_notes:customDraft.notes
                         },"บันทึกร่าง CUSTOM แล้ว",true)}>บันทึกร่าง</button>
+                      {customTerms?.status === "draft" && !customRequestOpen ? <button
+                        className={styles.primaryButton} type="button" disabled={busy}
+                        onClick={() => void mutate({action:"approve_custom_terms_draft"},
+                          "อนุมัติข้อเสนอ CUSTOM แล้ว · ยังไม่เปลี่ยนแพ็กเกจหรือเรียกเก็บเงิน",true)}>
+                        อนุมัติร่างเพื่อเสนอแพ็กเกจ (ไม่เรียกเก็บเงิน)
+                      </button> : null}
                       {customRequestOpen ? <button className={styles.primaryButton} type="button" disabled={busy || !customTerms}
                         onClick={() => void mutate({
                           action:"approve_custom_package_request",
@@ -1104,6 +1137,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                         <label className={styles.span2}><span>หมายเหตุภายใน (Audit)</span><input placeholder={isTrial ? "เช่น เตรียมเปิดแพ็กเกจจริงหลังตรวจรับเงินรอบแรก" : "เช่น ลูกค้าขอต่ออายุ/เปลี่ยนแพ็กเกจ"} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} /></label>
                       </div>
                       {!selectedPackageYearlyAvailable ? <div className={styles.securityNote}>แพ็กเกจที่เลือกยังไม่มีราคารายปี ระบบจะยังไม่สร้างรายการรายปีจนกว่าจะตั้งราคาในระบบ IT</div> : null}
+                      {selectedPackage?.code === "custom" && customTerms?.status !== "approved" && customTerms?.status !== "active" ?
+                        <div className={styles.securityNote}>ก่อนเปลี่ยนเป็น CUSTOM ต้องบันทึกและอนุมัติร่างข้อเสนอในเมนู กำหนดรายละเอียดแพ็กเกจ ก่อนสร้างรายการชำระ</div> : null}
                       {selectedPackage ? <div className={styles.packagePreview}>
                         <strong>{selectedPackage.name}</strong>
                         <span>{billingCycle === "yearly" ? "รายปี" : "รายเดือน"} · ยอดที่ต้องตรวจรับ {money(selectedPackageAmount)} · รอบบริการจริงจะเริ่มจาก Settlement</span>
@@ -1111,6 +1146,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       <div className={styles.sectionActions}>
                         <button className={styles.primaryButton} type="button"
                           disabled={busy || isPrepaidPendingTrial || !packageId || selectedPackageAmount <= 0 ||
+                            (selectedPackage?.code === "custom" && customTerms?.status !== "approved" && customTerms?.status !== "active") ||
                             (billingCycle === "yearly" && !selectedPackageYearlyAvailable)}
                           onClick={() => void mutate({
                             action: "prepare_paid_package",
