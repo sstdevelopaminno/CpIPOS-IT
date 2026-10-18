@@ -701,7 +701,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                   <div className={dashboardStyles.cardBottom}><span>รายร้าน · ไม่เปลี่ยนแพ็กเกจ</span><strong>จัดการ CRM →</strong></div>
                 </button>
 
-                {data ? (
+                {data ? (<>
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("crmAccess")}>
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>🔐</div><span className={dashboardStyles.cardBadge}>CRM · ROLE ACCESS</span></div>
                   <div className={dashboardStyles.cardText}><span>CRM USER ELIGIBILITY</span><strong>กำหนดสิทธิ์เข้าระบบ CRM</strong><small>IT เปิดสิทธิ์ประเภทบัญชี Manager / Staff ตามแพ็กเกจ · เจ้าของร้านกำหนดสิทธิ์รายพนักงานเอง</small></div>
@@ -713,7 +713,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                   <div className={dashboardStyles.cardBottom}><span>ตรวจยอดขาย · บิลค้าง · กะขาย</span><strong>ตั้งค่าสกุลเงิน →</strong></div>
                 </Link>
 
-                ) : null}
+                </>) : null}
 
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("package")}>
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>แพ็ก</div><span className={dashboardStyles.cardBadge}>{contractLabel(currentStatus)}</span></div>
