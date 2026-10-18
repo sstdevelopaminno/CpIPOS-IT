@@ -29,17 +29,19 @@ export async function GET(_req: Request, context: Context) {
   try {
     const admin = await requireItAdmin();
     const tenantId = id((await context.params).tenantId);
-    const [tenant, existing, catalog] = await Promise.all([
+    const [tenant, existing, catalog, contract] = await Promise.all([
       admin.supabase.from("tenants").select("id,name").eq("id", tenantId).maybeSingle(),
       admin.supabase.from("it_tenant_addon_proposals").select("*").eq("tenant_id", tenantId)
         .order("created_at", { ascending: false }).limit(100).returns<Proposal[]>(),
       admin.supabase.from("package_feature_catalog")
         .select("code,name,is_active,default_monthly_price,default_yearly_price")
-        .eq("is_active", true).order("name").limit(100)
+        .eq("is_active", true).order("name").limit(100),
+      admin.supabase.from("tenant_subscription_contracts").select("currency")
+        .eq("tenant_id",tenantId).order("created_at",{ascending:false}).limit(1).maybeSingle()
     ]);
-    for (const result of [tenant,existing,catalog]) if (result.error) throw result.error;
+    for (const result of [tenant,existing,catalog,contract]) if (result.error) throw result.error;
     if (!tenant.data) return fail("tenant_not_found", "ไม่พบร้าน", 404);
-    return ok({ tenant: tenant.data, proposals: existing.data ?? [], features: catalog.data ?? [],
+    return ok({ tenant: tenant.data, proposals: existing.data ?? [], features: catalog.data ?? [], contract_currency: contract.data?.currency ?? null,
       note: "Only proposals: no payment, quota or feature entitlement is granted." });
   } catch (error) { return guardItAdminError(error); }
 }
