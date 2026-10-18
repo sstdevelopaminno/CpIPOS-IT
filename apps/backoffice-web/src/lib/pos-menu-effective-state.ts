@@ -11,6 +11,8 @@ export const POS_MENU_NAV_FEATURES: Readonly<Record<string, string | null>> = {
   "main.sales_list": "advanced_sales_reports",
   "main.kitchen": null, // POS staff sidebar does not package-gate this link.
   "main.shift": null,
+  "main.optical_customers": null, // CUSTOM Optical entitlement also checked below
+  "main.optical_work_orders": null,
   "main.ai_assistant": null,
   "main.more": null,
   "main.package_payment": null,
@@ -91,6 +93,11 @@ export function resolvePosMenuAvailability(args: {
   const branchMap = new Map(feature_overrides.filter(flag => Boolean(flag.branch_id))
     .map(flag => [flag.branch_id + ":" + flag.feature_code, flag.is_enabled]));
   const total = active_branch_ids.length;
+  const opticalMode=contract?.metadata?.sales_modes;
+  const opticalAllowed=args.is_custom===true && Boolean(opticalMode &&
+    typeof opticalMode==="object" && !Array.isArray(opticalMode) &&
+    (opticalMode as Record<string,unknown>).optical_retail===true);
+
 
   return Object.fromEntries(POS_MENU_CATALOG.map(menu => {
     const feature = POS_MENU_NAV_FEATURES[menu.key] ?? null;
@@ -101,6 +108,7 @@ export function resolvePosMenuAvailability(args: {
         if (!args.internal_test_full && feature && tenantMap.has(feature)) enabled = tenantMap.get(feature)!;
         if (!args.internal_test_full && feature && branchMap.has(branch + ":" + feature)) enabled = branchMap.get(branch + ":" + feature)!;
         if (feature && dineInEnabled(contract) && DINE_IN_LINKED_FEATURES.has(feature)) enabled = true;
+        if((menu.key==="main.optical_customers"||menu.key==="main.optical_work_orders")&&!opticalAllowed)enabled=false;
         if (enabled) available += 1;
       }
     }
