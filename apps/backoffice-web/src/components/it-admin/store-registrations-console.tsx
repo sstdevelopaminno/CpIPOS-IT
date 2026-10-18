@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useItAccess } from "@/components/layout/app-shell";
 import styles from "./store-registrations-console.module.css";
 
-type Modes = { takeaway: boolean; dine_in: boolean; buffet_table: boolean; delivery: boolean; general_sale: boolean };
+type Modes = { takeaway: boolean; dine_in: boolean; buffet_table: boolean; delivery: boolean; general_sale: boolean; optical_retail: boolean };
 type Row = {
   id: string; store_name: string; business_type: string; owner_name: string;
   owner_phone: string; owner_email: string; package_id: string; sales_modes: Modes;
@@ -19,7 +19,8 @@ type Envelope<T> = { data: T | null; error: { message?: string; code?: string } 
 const modes: { key: keyof Modes; label: string }[] = [
   { key: "takeaway", label: "ขายกลับบ้าน" },
   { key: "dine_in", label: "นั่งโต๊ะ" },
-  { key: "general_sale", label: "ร้านชำ / ขายทั่วไป" }
+  { key: "general_sale", label: "ร้านชำ / ขายทั่วไป" },
+  { key: "optical_retail", label: "ร้านแว่นตา (Optical Retail · CUSTOM)" }
 ];
 function dateTime(v: string | null) {
   return v ? new Date(v).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "medium", timeStyle: "short" }) : "—";
@@ -42,7 +43,8 @@ function draft(r: Row): Form {
     sales_modes: {
       takeaway: Boolean(r.sales_modes?.takeaway), dine_in: Boolean(r.sales_modes?.dine_in),
       buffet_table: Boolean(r.sales_modes?.buffet_table), delivery: Boolean(r.sales_modes?.delivery),
-      general_sale: Boolean(r.sales_modes?.general_sale)
+      general_sale: Boolean(r.sales_modes?.general_sale),
+      optical_retail: Boolean(r.sales_modes?.optical_retail)
     }
   };
 }
@@ -266,16 +268,24 @@ export function StoreRegistrationsConsole() {
             <label>ชื่อเจ้าของ<input required value={form.owner_name} onChange={(e) => update("owner_name", e.target.value)} /></label>
             <label>เบอร์ติดต่อ<input required value={form.owner_phone} onChange={(e) => update("owner_phone", e.target.value)} /></label>
             <label>อีเมล Owner<input required type="email" value={form.owner_email} onChange={(e) => update("owner_email", e.target.value)} /></label>
-            <label>แพ็กเกจ<select value={form.package_id} onChange={(e) => update("package_id", e.target.value)}>{data?.packages.map((p) =>
+            <label>แพ็กเกจ<select value={form.package_id} onChange={(e) => {
+              const nextPackageId = e.target.value;
+              const nextPackage = data?.packages.find((p) => p.id === nextPackageId);
+              const custom = nextPackage?.quota_mode === "custom" || nextPackage?.code === "custom";
+              setForm((prev) => prev ? { ...prev, package_id: nextPackageId,
+                sales_modes: { ...prev.sales_modes, optical_retail: custom ? prev.sales_modes.optical_retail : false } } : null);
+            }}>{data?.packages.map((p) =>
               <option key={p.id} value={p.id}>{p.quota_mode === "custom" || p.code === "custom" ? `${p.name} · IT กำหนดรายร้าน` : `${p.name} · ${p.max_branches} สาขา / ${p.max_devices} เครื่อง`}</option>)}</select></label>
             {dialogCustom ? <label className={styles.span2}>ความต้องการ CUSTOM<textarea rows={3} value={form.custom_requirements ?? ""} onChange={(e)=>update("custom_requirements",e.target.value)} placeholder="รายละเอียดที่ลูกค้าต้องการ"/></label> : null}
             </div> : <div className={styles.summary}>
               <strong>{selected.store_name}</strong><span>{selected.business_type} · {selected.owner_name}</span>
               <span>{selected.owner_email} · {selected.owner_phone}</span>
               <span>แพ็กเกจ: {data?.packages.find((p) => p.id === selected.package_id)?.name ?? "—"} · 7 วันนับจากอนุมัติ</span>
+              {dialogCustom && selected.sales_modes?.optical_retail ? <span>โหมดธุรกิจ: ร้านแว่นตา (Optical Retail)</span> : null}
               {dialogCustom ? <>
                 <div className={styles.customRequestBox}><strong>ความต้องการจากลูกค้า</strong><span>{selected.custom_requirements || "ไม่ได้ระบุรายละเอียด"}</span></div>
                 <div className={styles.formGrid}>
+                  <p className={styles.span2}>แพ็กเกจ CUSTOM ต้องกำหนดราคาสัญญารายเดือนมากกว่า 0 แม้เปิดทดลอง 7 วัน ระบบจะไม่เรียกเก็บเงินจากขั้นตอนนี้โดยตรง</p>
                   <label>รายเดือน<input type="number" min="0" value={customTerms.monthly_price} onChange={(e)=>setCustomTerms(v=>({...v,monthly_price:e.target.value}))}/></label>
                   <label>ส่วนลด %<input type="number" min="0" max="100" value={customTerms.monthly_discount_percent} onChange={(e)=>setCustomTerms(v=>({...v,monthly_discount_percent:e.target.value}))}/></label>
                   <label>รายปี<input type="number" min="0" value={customTerms.yearly_price} onChange={(e)=>setCustomTerms(v=>({...v,yearly_price:e.target.value}))}/></label>
@@ -297,7 +307,7 @@ export function StoreRegistrationsConsole() {
                 onChange={(e) => setPin(e.target.value.replace(/\D/g,"").slice(0,6))} /></label>
               <small>PIN ส่งตรงให้ระบบสร้าง Owner ในคำขอนี้เท่านั้น ไม่เก็บไว้ในตารางคำขอหรือ Audit Log</small>
             </div>}
-          {intent === "edit" ? <fieldset className={styles.modes}><legend>โหมดขายเริ่มต้น (เลือกได้หลายโหมด)</legend>{modes.map((m) =>
+          {intent === "edit" ? <fieldset className={styles.modes}><legend>โหมดขายเริ่มต้น (เลือกได้หลายโหมด)</legend>{modes.filter((m) => m.key !== "optical_retail" || dialogCustom).map((m) =>
             <label key={m.key}><input type="checkbox" checked={form.sales_modes[m.key]}
               onChange={(e) => update("sales_modes",{...form.sales_modes,[m.key]:e.target.checked})}/>{m.label}</label>)}</fieldset> : null}
           {error ? <p role="alert" className={styles.error}>{error}</p> : null}
