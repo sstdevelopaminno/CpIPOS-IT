@@ -65,7 +65,8 @@ export default function ApproveImdcCustomTrialPage() {
           <p><strong>ร่างเวอร์ชัน {view.terms.version}:</strong> {view.terms.status} · {view.terms.max_branches} สาขา · {view.terms.max_devices} เครื่อง · {view.terms.max_users} ผู้ใช้ · {view.terms.yearly_price.toLocaleString("th-TH")} บาท/ปี</p>
           <p><strong>ใช้งานจริง:</strong> {view.stats.active_branches} สาขา · {view.stats.active_devices} เครื่อง · {view.stats.assigned_users} ผู้ใช้</p>
           <p><strong>รายการชำระที่รอ / รับชำระแล้ว:</strong> {view.stats.open_payment_requests} / {view.stats.settled_payments}</p>
-          <button type="button" disabled={view.applied || busy || view.terms.status !== "draft"} onClick={() => void approve()}
+          <p><strong>นโยบายเครื่องขายที่ต้องปรับ:</strong> {view.stats.misaligned_branch_policies} สาขา</p>
+          <button type="button" disabled={view.applied || busy || !["draft", "approved"].includes(view.terms.status)} onClick={() => void approve()}
             style={{ background: view.applied ? "#64748b" : "#1750ad", color: "#fff", border: 0, borderRadius: 8, padding: "14px 18px", cursor: "pointer" }}>
             {view.applied ? "ตรวจแล้ว: โควตา 2 / 2 / 8 มีผลแล้ว" : busy ? "กำลังอนุมัติ..." : "ยืนยันอนุมัติร่างและใช้โควตา 2 / 2 / 8"}
           </button>
