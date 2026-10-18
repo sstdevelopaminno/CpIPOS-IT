@@ -161,7 +161,7 @@ type ControlData = {
   pos_notice: { status: string; title: string | null; message: string | null; admin_reason: string | null } | null;
 };
 
-type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "crmMenus" | "salesModes" | "package" | "customPackage" | "salesSummary" | "dailySalesEmail" | "danger";
+type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "crmMenus" | "crmAccess" | "salesModes" | "package" | "customPackage" | "salesSummary" | "dailySalesEmail" | "danger";
 type BillingCycle = "monthly" | "yearly";
 type ContractPeriod = "trial_7d" | "monthly" | "yearly";
 
@@ -614,6 +614,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
         ? { eyebrow: "CASHIER TERMINALS", title: "เครื่องแคชเชียร์", description: "เพิ่ม แก้ไข เปิด–ปิด และลบเครื่องตามโควตาแพ็กเกจ เชื่อม CpIPOS ออนไลน์" }
       : tab === "menuPolicies"
         ? { eyebrow: "POS MENU CONTROL", title: "เปิดปิดเมนูหลัก", description: "เปิด–ปิดเมนูหลักและเมนูย่อยของ CpIPOS สำหรับร้านนี้" }
+      : tab === "crmAccess"
+        ? { eyebrow: "CRM ACCESS CONTROL", title: "กำหนดสิทธิ์เข้าระบบ CRM", description: "กำหนดบทบาทที่แพ็กเกจอนุญาตให้เข้าสู่ CRM · เจ้าของร้านกำหนดสิทธิ์รายพนักงาน" }
       : tab === "crmMenus"
         ? { eyebrow: "CRM MENU CONTROL", title: "เปิดปิดเมนู CRM", description: "ตั้งค่าสวิตช์เมนูหลักและเมนูย่อย CRM แยกจาก POS สำหรับร้านนี้" }
       : tab === "salesModes"
@@ -700,6 +702,11 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                 </button>
 
                 {data ? (
+                <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("crmAccess")}>
+                  <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>🔐</div><span className={dashboardStyles.cardBadge}>CRM · ROLE ACCESS</span></div>
+                  <div className={dashboardStyles.cardText}><span>CRM USER ELIGIBILITY</span><strong>กำหนดสิทธิ์เข้าระบบ CRM</strong><small>IT เปิดสิทธิ์ประเภทบัญชี Manager / Staff ตามแพ็กเกจ · เจ้าของร้านกำหนดสิทธิ์รายพนักงานเอง</small></div>
+                  <div className={dashboardStyles.cardBottom}><span>สิทธิ์รายร้าน · แยกจากเมนู POS</span><strong>ตั้งค่าสิทธิ์ CRM →</strong></div>
+                </button>
                 <Link className={dashboardStyles.settingsCard} href={`/tenants/${encodeURIComponent(tenantId)}/currency`}>
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>₭</div><span className={dashboardStyles.cardBadge}>CUSTOM · IT</span></div>
                   <div className={dashboardStyles.cardText}><span>CURRENCY CONTROL</span><strong>ตั้งค่าสกุลเงิน</strong><small>ตรวจสอบและอนุมัติ THB / LAK สำหรับร้าน CUSTOM เท่านั้น</small></div>
@@ -794,7 +801,9 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
               {tab === "menuPolicies" ? (
                 <TenantPosMenuPolicies tenantId={tenantId} storeName={storeName} />
               ) : null}
-              {tab === "crmMenus" ? (
+              {tab === "crmAccess" ? (
+                <TenantCrmMenuPolicies tenantId={tenantId} storeName={storeName} mode="access" />
+              ) : tab === "crmMenus" ? (
                 <TenantCrmMenuPolicies tenantId={tenantId} storeName={storeName} />
               ) : null}
               {tab === "cashiers" ? (
