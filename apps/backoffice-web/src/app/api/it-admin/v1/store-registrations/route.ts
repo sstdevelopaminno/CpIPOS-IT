@@ -5,6 +5,7 @@ import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { provisionStore, StoreProvisioningError } from "@/lib/services/it-admin/store-provisioning-service";
 import { appendAuditLog } from "@/lib/audit-log";
 import { normalizePosSalesModes, type PosSalesModeMap } from "@/lib/pos-sales-modes";
+import { resolveCustomRegistrationBilling } from "@/lib/custom-registration-billing";
 import { buildStoreActivationEmail, customerEmailProblem, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
 
 export const dynamic = "force-dynamic";
@@ -80,14 +81,20 @@ function sanitizeCustomTerms(value: RecordInput["custom_terms"]): ApprovedCustom
     throw new ItAdminGuardError("custom_terms_required", "กรุณากำหนดรายละเอียด CUSTOM ก่อนเปิดร้าน", 422);
   }
   const monthlyPrice = Number(finiteNumber(value.monthly_price, 0, 10_000_000, "ราคารายเดือน").toFixed(2));
-  if (monthlyPrice <= 0) {
-    throw new ItAdminGuardError("custom_monthly_price_required", "CUSTOM ต้องกำหนดราคารายเดือนมากกว่า 0", 422);
+  const yearlyPrice = Number(finiteNumber(value.yearly_price ?? 0, 0, 100_000_000, "ราคารายปี").toFixed(2));
+  const monthlyDiscount = Number(finiteNumber(value.monthly_discount_percent ?? 0, 0, 100, "ส่วนลดรายเดือน").toFixed(2));
+  const yearlyDiscount = Number(finiteNumber(value.yearly_discount_percent ?? 0, 0, 100, "ส่วนลดรายปี").toFixed(2));
+  if (!resolveCustomRegistrationBilling({
+    monthly_price: monthlyPrice, yearly_price: yearlyPrice,
+    monthly_discount_percent: monthlyDiscount, yearly_discount_percent: yearlyDiscount
+  })) {
+    throw new ItAdminGuardError("custom_price_required", "CUSTOM ต้องกำหนดราคารายเดือนหรือรายปีหลังหักส่วนลดให้มากกว่า 0", 422);
   }
   return {
     monthly_price: monthlyPrice,
-    yearly_price: Number(finiteNumber(value.yearly_price ?? 0, 0, 100_000_000, "ราคารายปี").toFixed(2)),
-    monthly_discount_percent: Number(finiteNumber(value.monthly_discount_percent ?? 0, 0, 100, "ส่วนลดรายเดือน").toFixed(2)),
-    yearly_discount_percent: Number(finiteNumber(value.yearly_discount_percent ?? 0, 0, 100, "ส่วนลดรายปี").toFixed(2)),
+    yearly_price: yearlyPrice,
+    monthly_discount_percent: monthlyDiscount,
+    yearly_discount_percent: yearlyDiscount,
     max_branches: Math.trunc(finiteNumber(value.max_branches, 1, 10_000, "จำนวนสาขา")),
     max_devices: Math.trunc(finiteNumber(value.max_devices, 1, 10_000, "จำนวนเครื่องขาย")),
     max_users: Math.trunc(finiteNumber(value.max_users, 1, 100_000, "จำนวนผู้ใช้งาน")),
@@ -224,6 +231,7 @@ export async function POST(req: Request) {
       return fail("optical_mode_requires_custom", "โหมดร้านแว่นตาเปิดได้เฉพาะแพ็กเกจ CUSTOM", 422);
     }
     const approvedCustomTerms = isCustom ? sanitizeCustomTerms(input.custom_terms) : null;
+    const customBilling = approvedCustomTerms ? resolveCustomRegistrationBilling(approvedCustomTerms) : null;
     const claimed = await ctx.supabase.from("store_registration_requests")
       .update({ status: "processing", last_error: null, updated_at: new Date().toISOString() })
       .eq("id", row.id).eq("status", row.status).select("id").maybeSingle();
@@ -235,7 +243,7 @@ export async function POST(req: Request) {
         request_id: row.provision_request_key,
         store: { name: row.store_name, owner_phone: row.owner_phone },
         package_id: row.package_id,
-        contract: { status: "trial", billing_interval: "monthly" },
+        contract: { status: "trial", billing_interval: customBilling?.billing_interval ?? "monthly" },
         initial_branch: { code: "001", name: "สาขาหลัก" },
         owner: { name: row.owner_name, email: row.owner_email, phone: row.owner_phone, employee_code: ownerCode, pin }
       });
@@ -269,6 +277,7 @@ export async function POST(req: Request) {
             max_devices: approvedCustomTerms.max_devices,
             terminal_limit_per_branch: approvedCustomTerms.max_devices,
             max_users: approvedCustomTerms.max_users,
+            amount_per_cycle: customBilling?.amount_per_cycle ?? result.contract.amount_per_cycle,
             metadata: {
               ...meta,
               sales_modes: modes,
