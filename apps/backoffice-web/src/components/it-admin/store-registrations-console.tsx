@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useItAccess } from "@/components/layout/app-shell";
+import { resolveCustomRegistrationBilling } from "@/lib/custom-registration-billing";
 import styles from "./store-registrations-console.module.css";
 
 type Modes = { takeaway: boolean; dine_in: boolean; buffet_table: boolean; delivery: boolean; general_sale: boolean; optical_retail: boolean };
@@ -124,11 +125,20 @@ export function StoreRegistrationsConsole() {
     const action = intent;
     const selectedPackage = data?.packages.find((pkg)=>pkg.id===form.package_id) ?? null;
     const customSelected = selectedPackage?.quota_mode === "custom" || selectedPackage?.code === "custom";
+    const customBilling = resolveCustomRegistrationBilling({
+      monthly_price: Number(customTerms.monthly_price),
+      yearly_price: Number(customTerms.yearly_price),
+      monthly_discount_percent: Number(customTerms.monthly_discount_percent),
+      yearly_discount_percent: Number(customTerms.yearly_discount_percent)
+    });
     if (action === "activate" && customSelected) {
-      if (Number(customTerms.monthly_price) <= 0 || Number(customTerms.max_branches) < 1 ||
+      if (!customBilling) {
+        setError("CUSTOM ต้องกำหนดราคารายเดือนหรือรายปีหลังหักส่วนลดมากกว่า 0"); return;
+      }
+      if (Number(customTerms.max_branches) < 1 ||
           Number(customTerms.max_devices) < 1 || Number(customTerms.max_users) < 1 ||
           Number(customTerms.retention_months) < 1) {
-        setError("CUSTOM ต้องกำหนดราคา โควตา และระยะเก็บข้อมูลให้ครบก่อนเปิดร้าน"); return;
+        setError("CUSTOM ต้องกำหนดโควตาและระยะเก็บข้อมูลให้ครบก่อนเปิดร้าน"); return;
       }
     }
     if (action === "activate" && !window.confirm(`เปิดร้าน ${selected.store_name} ทดลองใช้ 7 วัน พร้อมสร้าง Owner และสาขาหลักใช่หรือไม่?`)) return;
@@ -212,6 +222,11 @@ export function StoreRegistrationsConsole() {
   const pending = data?.requests.filter((r) => r.status === "pending").length ?? 0;
   const dialogPackage = data?.packages.find((pkg)=>pkg.id===form?.package_id) ?? null;
   const dialogCustom = dialogPackage?.quota_mode === "custom" || dialogPackage?.code === "custom";
+  const dialogBilling = resolveCustomRegistrationBilling({
+    monthly_price: Number(customTerms.monthly_price), yearly_price: Number(customTerms.yearly_price),
+    monthly_discount_percent: Number(customTerms.monthly_discount_percent),
+    yearly_discount_percent: Number(customTerms.yearly_discount_percent)
+  });
   return <div className={styles.shell}>
     <header className={styles.hero}>
       <div><span className={styles.eyebrow}>WEBSITE → CPIPOS-001 → IT APPROVAL</span>
@@ -285,7 +300,8 @@ export function StoreRegistrationsConsole() {
               {dialogCustom ? <>
                 <div className={styles.customRequestBox}><strong>ความต้องการจากลูกค้า</strong><span>{selected.custom_requirements || "ไม่ได้ระบุรายละเอียด"}</span></div>
                 <div className={styles.formGrid}>
-                  <p className={styles.span2}>แพ็กเกจ CUSTOM ต้องกำหนดราคาสัญญารายเดือนมากกว่า 0 แม้เปิดทดลอง 7 วัน ระบบจะไม่เรียกเก็บเงินจากขั้นตอนนี้โดยตรง</p>
+                  <p className={styles.span2}>CUSTOM รองรับรายเดือนหรือรายปีอย่างเดียวได้ โดยต้องมีราคาอย่างน้อยหนึ่งรอบบิลหลังหักส่วนลดมากกว่า 0 · ทดลองใช้ 7 วันก่อนเริ่มการชำระเงิน</p>
+                  {dialogBilling ? <p className={styles.span2}>รอบบิลของสัญญา: {dialogBilling.billing_interval === "yearly" ? "รายปี" : "รายเดือน"} · {dialogBilling.amount_per_cycle.toLocaleString("th-TH")} บาท/รอบ (หลังหักส่วนลด)</p> : null}
                   <label>รายเดือน<input type="number" min="0" value={customTerms.monthly_price} onChange={(e)=>setCustomTerms(v=>({...v,monthly_price:e.target.value}))}/></label>
                   <label>ส่วนลด %<input type="number" min="0" max="100" value={customTerms.monthly_discount_percent} onChange={(e)=>setCustomTerms(v=>({...v,monthly_discount_percent:e.target.value}))}/></label>
                   <label>รายปี<input type="number" min="0" value={customTerms.yearly_price} onChange={(e)=>setCustomTerms(v=>({...v,yearly_price:e.target.value}))}/></label>
