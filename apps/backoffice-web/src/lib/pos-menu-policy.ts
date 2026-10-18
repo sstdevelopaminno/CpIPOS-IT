@@ -12,6 +12,8 @@ export const POS_MENU_CATALOG: readonly PosMenuDefinition[] = [
   { key: "main.sales_list", label: "รายการขาย", group: "main", route: "/preview/pos/sales-list" },
   { key: "main.kitchen", label: "ครัว", group: "main", route: "/preview/pos/kitchen" },
   { key: "main.shift", label: "เปิด/ปิดกะ", group: "main", route: "/preview/pos/shift" },
+  { key: "main.optical_customers", label: "ลูกค้าแว่นตา (CUSTOM Optical)", group: "main", route: "/preview/pos/optical/customers" },
+  { key: "main.optical_work_orders", label: "ใบสั่งงานแว่นตา (CUSTOM Optical)", group: "main", route: "/preview/pos/optical/work-orders" },
   { key: "main.ai_assistant", label: "CpiPOS AI", group: "main", route: "/preview/pos/ai-assistant", protected: true },
   { key: "main.more", label: "เพิ่มเติม", group: "main", route: "/preview/pos/more" },
   { key: "main.package_payment", label: "ชำระแพ็กเกจ", group: "main", route: "/preview/pos/payments/package" },
