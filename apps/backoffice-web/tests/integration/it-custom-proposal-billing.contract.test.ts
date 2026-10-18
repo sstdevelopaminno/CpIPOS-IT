@@ -38,6 +38,12 @@ describe("IT CUSTOM proposal cycle persistence across all tenants", () => {
     expect(service).toContain("requireBillingCycle(input.custom_proposed_billing_interval)");
     expect(service).toContain("custom_cycle_price_missing");
     expect(service).toContain("custom_proposal_cycle_mismatch");
+    expect(service).toContain('if (action === "approve_custom_terms_draft")');
+    expect(service).toContain('status: "approved", approved_by: context.auth.userId');
+    expect(service).toContain("custom_terms_quotation_approved");
+    expect(ui).toContain('action:"approve_custom_terms_draft"');
+    expect(ui).toContain("customTerms?.status !== \"approved\"");
+
     expect(service).toContain("tenant_subscription_payment_requests");
     expect(service).toContain('if (action === "update_sales_modes")');
     expect(service).toContain("optical_custom_only");
