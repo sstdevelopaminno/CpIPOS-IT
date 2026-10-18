@@ -4,7 +4,7 @@ import { useCallback,useEffect,useState } from "react";
 import { useParams } from "next/navigation";
 type Feature = {code:string,name:string,default_monthly_price:number|string,default_yearly_price:number|string};
 type Proposal = {id:string;addon_type:string;addon_code:string;quantity:number;unit_price:number;total_price:number;currency:string;billing_interval:string;state:string;reason:string;created_at:string};
-type Payload = {tenant:{id:string,name:string};proposals:Proposal[];features:Feature[]};
+type Payload = {tenant:{id:string,name:string};proposals:Proposal[];features:Feature[];contract_currency:string|null};
 async function api<T>(url:string,init?:RequestInit):Promise<T>{
  const resp=await fetch(url,{credentials:"include",cache:"no-store",...init});
  const json=await resp.json().catch(()=>null) as {data?:T,error?:{message?:string}}|null;
@@ -46,7 +46,8 @@ export default function TenantAddonsPage(){
    <label>รายการ<select style={{display:"block",padding:10,width:"100%"}} value={code} onChange={e=>{
      const next=e.target.value;setCode(next);
      const feat=data?.features.find(f=>f.code===next);
-     if(feat)setUnitPrice(String(interval==="yearly"?feat.default_yearly_price:feat.default_monthly_price));
+     if(feat && data?.contract_currency==="THB")setUnitPrice(String(interval==="yearly"?feat.default_yearly_price:feat.default_monthly_price));
+     else setUnitPrice("0");
    }}>
     {type==="quota"?<><option value="extra_branch">เพิ่มสาขา</option><option value="extra_device">เพิ่มเครื่อง POS</option><option value="extra_user">เพิ่มผู้ใช้งาน</option><option value="extra_storage_gb">เพิ่ม Storage GB</option></>:<>
      <option value="">เลือกฟีเจอร์</option>{(data?.features??[]).filter(f=>!f.code.startsWith("pos.")&&
@@ -55,16 +56,18 @@ export default function TenantAddonsPage(){
    </select></label>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12}}>
     <label>จำนวน<input style={{display:"block",padding:10,width:"100%"}} type="number" min={1} step={1} value={quantity} onChange={e=>setQuantity(e.target.value)}/></label>
-    <label>ราคา/หน่วย (สกุลเงินตามสัญญาร้าน)<input style={{display:"block",padding:10,width:"100%"}} type="number" min={0} step="0.01" value={unitPrice} onChange={e=>setUnitPrice(e.target.value)}/></label>
+    <label>ราคา/หน่วย ({data?.contract_currency??"สกุลเงินสัญญา"})<input style={{display:"block",padding:10,width:"100%"}} type="number" min={0} step="0.01" value={unitPrice} onChange={e=>setUnitPrice(e.target.value)}/></label>
     <label>รอบคิดราคา<select style={{display:"block",padding:10,width:"100%"}} value={interval} onChange={e=>{
      const newInterval=e.target.value;setInterval(newInterval);
-     const f=data?.features.find(f=>f.code===code);if(f&&newInterval!=="one_time")setUnitPrice(String(newInterval==="yearly"?f.default_yearly_price:f.default_monthly_price));
+     const f=data?.features.find(f=>f.code===code);if(f&&newInterval!=="one_time"&&data?.contract_currency==="THB")setUnitPrice(String(newInterval==="yearly"?f.default_yearly_price:f.default_monthly_price));
+     else if(data?.contract_currency!=="THB")setUnitPrice("0");
     }}><option value="monthly">รายเดือน</option><option value="yearly">รายปี</option><option value="one_time">ครั้งเดียว</option></select></label>
    </div>
    <label>เหตุผล / ขอบเขตงาน<textarea style={{display:"block",padding:10,width:"100%",minHeight:75}} value={reason} onChange={e=>setReason(e.target.value)}/></label>
    <strong>ยอดเสนอราคา: {Number.isFinite(Number(quantity)*Number(unitPrice))?(Number(quantity)*Number(unitPrice)).toLocaleString("th-TH"):"—"}</strong>
    <button type="button" disabled={loading||!code||reason.trim().length<5} onClick={()=>void mutate({action:"draft",addon_type:type,addon_code:code,quantity:Number(quantity),unit_price:Number(unitPrice),billing_interval:interval,reason})}
     style={{background:"#2055a1",padding:13,color:"white",border:0,borderRadius:8}}>บันทึกข้อเสนอ Add-on</button>
+   <small>ราคามาตรฐานฟีเจอร์ใน Feature Catalog เป็น THB เท่านั้น · สัญญา LAK/USD ต้องกำหนดราคาเองโดยไม่แปลงอัตราแลกเปลี่ยนอัตโนมัติ</small>
    <small>การอนุมัติข้อเสนอไม่เรียกเก็บเงิน ไม่เพิ่มโควตาสัญญา และไม่เปิดฟีเจอร์จริง ขั้นตอนชำระ/เปิดสิทธิ์จะดำเนินการแยกภายหลัง</small>
   </section>
   <section style={box}><h2>ประวัติข้อเสนอรายร้าน</h2>
