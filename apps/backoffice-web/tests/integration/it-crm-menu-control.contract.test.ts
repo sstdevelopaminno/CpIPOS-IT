@@ -11,7 +11,7 @@ const ui=read("../../src/components/it-admin/tenant-crm-menu-policies.tsx");
 describe("IT CRM tenant main and submenu switches",()=>{
  it("keeps all CRM keys unique, namespaced, and separate from POS",()=>{
   const keys=CRM_MENU_CATALOG.map(x=>x.key);
-  expect(keys).toHaveLength(41);
+  expect(keys).toHaveLength(43);
   expect(new Set(keys).size).toBe(keys.length);
   expect(keys.every(key=>/^(main|more|settings)\.crm_[a-z_]+$/.test(key))).toBe(true);
   expect(keys.every(key=>!POS_MENU_CATALOG.some(pos=>pos.key===key))).toBe(true);
@@ -19,6 +19,8 @@ describe("IT CRM tenant main and submenu switches",()=>{
   expect(isValidCrmMenuKey("settings.store")).toBe(false);
   expect(isValidCrmMenuKey("main.fake_menu")).toBe(false);
   for(const key of [
+    "settings.crm_access_staff",
+    "settings.crm_access_manager",
     "settings.crm_optical_api_work_orders",
     "settings.crm_optical_api_deposits",
     "settings.crm_optical_api_inventory",
@@ -40,8 +42,11 @@ describe("IT CRM tenant main and submenu switches",()=>{
  });
  it("exposes a distinct tenant card and IT-only audited CRM policy writes",()=>{
   expect(card).toContain('setTab("crmMenus")');
+  expect(card).toContain('setTab("crmAccess")');
+  expect(card).toContain('mode="access"');
   expect(card).toContain('<TenantCrmMenuPolicies tenantId={tenantId} storeName={storeName}');
   expect(ui).toContain('role="switch"');
+  expect(ui).toContain('settings.crm_access_staff');
   expect(ui).toContain('group==="optical_api"');
   expect(ui).toContain('IT ปิด POS Optical API');
   expect(ui).toContain("isCrmMenuEnabled(item.key,data.overrides)");
