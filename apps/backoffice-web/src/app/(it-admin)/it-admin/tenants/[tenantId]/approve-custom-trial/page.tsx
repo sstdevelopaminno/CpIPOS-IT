@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 
 type View = {
@@ -73,7 +74,7 @@ export default function ApproveImdcCustomTrialPage() {
           <p style={{ fontSize: 13 }}>ใช้บัญชี IT ที่มีสิทธิ์เท่านั้น การเปลี่ยนแปลงจะผูกผู้อนุมัติลง Audit Log และตรวจสัญญาใหม่หลังบันทึก</p>
         </section>
       )}
-      <a href="/it-admin/tenants">กลับ Tenants / Stores</a>
+      <Link href="/it-admin/tenants">กลับ Tenants / Stores</Link>
     </main>
   );
 }
