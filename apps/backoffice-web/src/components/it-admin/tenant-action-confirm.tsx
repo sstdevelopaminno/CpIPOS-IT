@@ -99,6 +99,13 @@ const actionCopy: Record<string, Copy> = {
     confirmLabel: "ยืนยันให้สิทธิ์พิเศษ",
     tone: "info"
   },
+  approve_custom_terms_draft: {
+    eyebrow: "CUSTOM QUOTE APPROVAL",
+    title: "อนุมัติข้อเสนอ CUSTOM โดยไม่เปลี่ยนสัญญา?",
+    description: "บันทึกผู้อนุมัติร่าง CUSTOM เพื่อเตรียมเสนอราคาเท่านั้น ยังไม่เปลี่ยนโควตาสัญญา แพ็กเกจ โหมดขาย หรือสร้างรายการชำระเงินจริง",
+    confirmLabel: "อนุมัติข้อเสนอ",
+    tone: "warning"
+  },
   prepare_paid_package: {
     eyebrow: "PACKAGE BILLING",
     title: "สร้างรายการชำระแพ็กเกจ?",
