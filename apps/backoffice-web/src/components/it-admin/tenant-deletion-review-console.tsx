@@ -421,7 +421,10 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
             </tbody>
           </table>
         </div>
-        {!data ? <div className={styles.empty}>{t.working}</div> : null}
+        {!data && !error ? <div className={styles.empty}>{t.working}</div> : null}
+        {!data && error ? <div className={styles.empty}>
+          <button type="button" className={styles.secondaryButton} onClick={() => void load()}>{t.refresh}</button>
+        </div> : null}
         {data && visibleRows.length === 0 ? <div className={styles.empty}>{t.empty}</div> : null}
       </div>
       <p className={styles.footer}>
