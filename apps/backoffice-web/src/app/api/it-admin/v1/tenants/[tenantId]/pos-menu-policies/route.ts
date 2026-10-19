@@ -59,8 +59,14 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
       feature_overrides: featureOverrides.data ?? [],
       active_branch_ids: (branches.data ?? []).map(branch => branch.id)
     });
+    const salesModes = contract.data?.metadata?.sales_modes;
+    const opticalAuthorized = isCustom && contract.data &&
+      (contract.data.status === "trial" || contract.data.status === "active") &&
+      (!contract.data.ended_at || Date.parse(contract.data.ended_at) > Date.now()) &&
+      salesModes && typeof salesModes === "object" && !Array.isArray(salesModes) &&
+      (salesModes as Record<string, unknown>).optical_retail === true;
     const response = ok({
-      tenant_id: tenantId, is_custom: isCustom, internal_test_full: isFull, catalog: POS_MENU_CATALOG, overrides, availability,
+      tenant_id: tenantId, is_custom: isCustom, is_optical_custom: Boolean(opticalAuthorized), internal_test_full: isFull, catalog: POS_MENU_CATALOG, overrides, availability,
       total: POS_MENU_CATALOG.length,
       disabled: POS_MENU_CATALOG.filter(item => item.key !== "main.shift" && (isCustom ? overrides[item.key] !== true : overrides[item.key] === false)).length,
       unavailable: POS_MENU_CATALOG.filter(item => availability[item.key]?.reason !== "available").length
