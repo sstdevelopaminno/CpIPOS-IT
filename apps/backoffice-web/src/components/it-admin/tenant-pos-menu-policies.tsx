@@ -4,7 +4,7 @@ import { isPosMenuAlwaysEnabled, type PosMenuDefinition } from "@/lib/pos-menu-p
 import type { MenuAvailability } from "@/lib/pos-menu-effective-state";
 import styles from "./tenant-pos-menu-policies.module.css";
 
-type Data = { catalog: PosMenuDefinition[]; overrides: Record<string, boolean>; is_custom: boolean;
+type Data = { catalog: PosMenuDefinition[]; overrides: Record<string, boolean>; is_custom: boolean; is_optical_custom?: boolean;
   availability: Record<string, MenuAvailability>;
   disabled: number; unavailable: number; total: number };
 type ResponseBody<T> = { data?: T | null; error?: { message?: string } | null };
@@ -35,6 +35,22 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   const byParent = useMemo(() => new Map(main.map(item => [item.key,
     data?.catalog.filter(child => child.parent === item.key && (data.is_custom || child.key !== "settings.branding")) ?? []
   ])), [data, main]);
+  async function activateOpticalSales() {
+    if (!data?.is_optical_custom || busy) return;
+    if (!window.confirm(`เปิดสิทธิ์ POS Sales และเมนูหน้าขายสำหรับ CUSTOM Optical ร้าน ${storeName}?\n\nระบบจะใช้สิทธิ์ IT Admin ของท่าน และบันทึก Audit Log`)) return;
+    setBusy("optical_sales_activation"); setError(""); setSuccess("");
+    try {
+      const response = await fetch(`/api/it-admin/v1/tenants/${encodeURIComponent(tenantId)}/optical-sales-activate`, {
+        method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: "{}"
+      });
+      const body = await response.json() as ResponseBody<{ activated: boolean }>;
+      if (!response.ok || !body.data?.activated) throw new Error(body.error?.message ?? "เปิดสิทธิ์หน้าขายไม่สำเร็จ");
+      await load();
+      setSuccess("ตรวจสอบและเปิดสิทธิ์ POS Sales พร้อมเมนูหน้าขายเรียบร้อยแล้ว กรุณาทดสอบเข้าสู่ POS อีกครั้ง");
+    } catch (activationError) {
+      setError(activationError instanceof Error ? activationError.message : "เปิดสิทธิ์หน้าขายไม่สำเร็จ");
+    } finally { setBusy(null); }
+  }
   async function toggle(item: PosMenuDefinition) {
     if (!data || busy) return;
     if (isPosMenuAlwaysEnabled(item.key)) {
@@ -65,12 +81,8 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       });
       const body = await response.json() as ResponseBody<{ is_enabled: boolean }>;
       if (!response.ok || !body.data) throw new Error(body.error?.message ?? "บันทึกไม่สำเร็จ");
-      setData(previous => previous ? {
-        ...previous, overrides: { ...previous.overrides, [item.key]: body.data!.is_enabled },
-        disabled: previous.catalog.filter(menu => menu.key !== "main.shift" && !(menu.key === item.key
-          ? body.data!.is_enabled : previous.is_custom ? previous.overrides[menu.key] === true : previous.overrides[menu.key] !== false)).length
-      } : previous);
-      setSuccess(`${prompt}เมนู "${item.label}" เรียบร้อยแล้ว`);
+      await load(); // Refresh both configured IT intent and real package availability.
+      setSuccess(`${prompt}คำสั่ง IT สำหรับเมนู "${item.label}" แล้ว โปรดดูสถานะสิทธิ์ด้านล่าง`);
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "บันทึกไม่สำเร็จ");
     } finally { setBusy(null); }
@@ -105,13 +117,13 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
           <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์</a>
         </small> : null}
       </div>
-      <button type="button" role="switch" aria-checked={effective}
-        aria-label={`${item.label}: ${effective ? "เปิดใช้งานใน POS" : message}`}
-        title={blockedByAccess ? "ต้องเปิดสิทธิ์แพ็กเกจหรือสาขาก่อนจึงจะเปิดเมนูนี้ได้" : message}
-        className={effective ? styles.switchOn : styles.switchOff}
+      <button type="button" role="switch" aria-checked={configured}
+        aria-label={`${item.label}: คำสั่ง IT ${configured ? "เปิด" : "ปิด"}; ${effective ? "ใช้งาน POS ได้" : message}`}
+        title={message}
+        className={configured ? styles.switchOn : styles.switchOff}
         disabled={busy !== null || alwaysEnabled || !entitlement || (!data?.is_custom && !allowed)}
         onClick={() => void toggle(item)}>
-        <span>{alwaysEnabled ? "เปิดเสมอ" : effective ? "เปิด" : "ปิด"}</span><i aria-hidden />
+        <span>{alwaysEnabled ? "เปิดเสมอ" : configured ? "เปิด IT" : "ปิด"}</span><i aria-hidden />
       </button>
     </div>;
   }
@@ -121,6 +133,13 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       <p>สีเขียว = IT อนุญาตและแพ็กเกจรองรับทุกสาขา • สีเทา = IT สั่งปิด หรือแพ็กเกจ/สิทธิ์สาขาล็อก • สิทธิ์พนักงานรายคนตรวจแยก</p>
     </div><button type="button" className={styles.refresh} disabled={busy !== null}
       onClick={() => { setLoading(true); void load(); }}>รีเฟรช</button></header>
+    {data?.is_optical_custom ? <div className={styles.note}>
+      <strong>CUSTOM Optical: ซ่อมสิทธิ์เข้าหน้าขาย</strong>{" "}
+      <button type="button" disabled={busy !== null || loading} onClick={() => void activateOpticalSales()}>
+        เปิด POS Sales และเมนูหน้าขาย (เฉพาะร้านนี้)
+      </button>
+      <p>เปิดเฉพาะสิทธิ์ POS Sales พื้นฐานและเมนูหน้าขาย ไม่แก้ราคา สัญญา โควตา หรือสิทธิ์ลูกค้าร้านอื่น</p>
+    </div> : null}
     {error ? <p role="alert" className={styles.error}>{error}</p> : null}
     {success ? <p role="status" className={styles.success}>{success}</p> : null}
     {loading ? <p className={styles.empty}>กำลังโหลดนโยบายเมนู…</p> : !data ? <p className={styles.empty}>ยังยืนยันสถานะเมนูไม่ได้ กรุณารีเฟรช</p> :
@@ -132,6 +151,6 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       </section>)}
     {data?.is_custom ? <p className={styles.note}><a href={`/tenants/${encodeURIComponent(tenantId)}/currency`}>ตั้งค่าสกุลเงิน (CUSTOM) → ตรวจสอบบิลค้างและอนุมัติ THB / LAK โดย IT</a></p> : null}
     {data?.is_custom ? <p className={styles.note}>CUSTOM ใช้การซ่อนเมนูแบบอนุญาตเฉพาะรายการที่ IT เปิด (Explicit Allow) โดยเมนูแม่ต้องเปิดก่อนเมนูลูก และยังต้องตรวจสิทธิ์ฟีเจอร์/สาขาด้วย</p> : null}
-    <p className={styles.note}>สวิตช์แสดงสถานะที่ POS ใช้งานได้จริงทุกสาขา หากแพ็กเกจไม่รองรับจะขึ้น “ปิด” แม้คำสั่ง IT ยังเป็น “เปิด” และจะไม่แก้แพ็กเกจให้เอง • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • เมนูทั่วไปยังเป็น navigation lock ตามเดิม แต่ <strong>CpiPOS AI</strong> เป็น policy lock แบบบังคับ: เมื่อปิดจะบล็อกหน้า AI และ API ของ AI สำหรับร้านนั้นด้วย • POS อ่านสถานะใหม่เมื่อกลับเข้าแท็บ</p>
+    <p className={styles.note}>สวิตช์แสดงคำสั่ง IT (เปิด IT/ปิด) ส่วนข้อความด้านซ้ายแสดงสิทธิ์ที่ POS ใช้งานได้จริง หากแพ็กเกจยังไม่รองรับต้องเปิดสิทธิ์แยกต่างหาก • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • เมนูทั่วไปยังเป็น navigation lock ตามเดิม แต่ <strong>CpiPOS AI</strong> เป็น policy lock แบบบังคับ: เมื่อปิดจะบล็อกหน้า AI และ API ของ AI สำหรับร้านนั้นด้วย • POS อ่านสถานะใหม่เมื่อกลับเข้าแท็บ</p>
   </div>;
 }
