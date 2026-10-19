@@ -107,6 +107,10 @@ export function resolvePosMenuAvailability(args: {
         let enabled = args.internal_test_full === true || (feature ? (planMap.get(feature) ?? false) : true);
         if (!args.internal_test_full && feature && tenantMap.has(feature)) enabled = tenantMap.get(feature)!;
         if (!args.internal_test_full && feature && branchMap.has(branch + ":" + feature)) enabled = branchMap.get(branch + ":" + feature)!;
+        // Mirrors POS: IT-approved CUSTOM Optical includes the core cashier baseline,
+        // unless an explicit tenant or branch feature override denies it.
+        if (feature === "core_pos_sales" && opticalAllowed &&
+            !tenantMap.has(feature) && !branchMap.has(branch + ":" + feature)) enabled = true;
         if (feature && dineInEnabled(contract) && DINE_IN_LINKED_FEATURES.has(feature)) enabled = true;
         if((menu.key==="main.optical_customers"||menu.key==="main.optical_work_orders")&&!opticalAllowed)enabled=false;
         if (enabled) available += 1;
