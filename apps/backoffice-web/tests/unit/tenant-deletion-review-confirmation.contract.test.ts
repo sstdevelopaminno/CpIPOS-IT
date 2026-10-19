@@ -40,4 +40,17 @@ describe("tenant deletion review: confirmation safety and table UX", () => {
     expect(consoleUi).toContain('disabled={!isConfirmed || Boolean(busy)}');
     expect(consoleUi).toContain('confirmation_code: confirmationCode');
   });
+  it("keeps committed deletion responses independent of a queue reload and bounds the UI wait", () => {
+    expect(route).toContain('return ok({ decision, finalized });');
+    expect(route).toContain('return ok({ finalized });');
+    expect(route).not.toContain('return ok({ decision, finalized, ...(await loadRows(admin)) });');
+    expect(consoleUi).toContain('signal: AbortSignal.timeout(35_000)');
+    expect(consoleUi).toContain('signal: AbortSignal.timeout(20_000)');
+    expect(consoleUi).toContain('verifyDeletionReceipt(row)');
+    expect(consoleUi).toContain('void load()');
+    expect(consoleUi).toContain('finalized?.deleted === true');
+    expect(consoleUi).toContain('!data && !error');
+    expect(consoleUi).toContain('!data && error');
+  });
+
 });

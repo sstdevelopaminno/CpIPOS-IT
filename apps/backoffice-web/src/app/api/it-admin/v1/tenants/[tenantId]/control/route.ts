@@ -38,7 +38,12 @@ async function verifyCompletedDeletion(
     throw new ItAdminGuardError("tenant_deletion_status_unavailable", "Unable to verify the store deletion receipt.", 503);
   }
   if (tenantResult.data || !auditResult.data) return null;
-  if (String(auditResult.data.metadata?.store_code ?? "") !== confirmationCode) return null;
+  // The IT deletion review shows the internal tenant code, while the atomic
+  // cascade/audit receipt records the current six-digit access code as store_code.
+  // Both values originate from the same audited deletion, never from client claims.
+  const receiptCode = String(auditResult.data.metadata?.store_code ?? "");
+  const internalCode = String(auditResult.data.metadata?.internal_code ?? "");
+  if (confirmationCode !== receiptCode && confirmationCode !== internalCode) return null;
   const cleanup = await admin.supabase.from("it_tenant_deletion_cleanup")
     .select("status")
     .eq("tenant_id", tenantId)
