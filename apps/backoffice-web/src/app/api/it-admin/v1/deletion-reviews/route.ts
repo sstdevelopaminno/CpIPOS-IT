@@ -388,7 +388,9 @@ export async function POST(request: Request) {
         p_note: note || "IT reviewed the retention expiry and chose to keep this store."
       });
       if (error) throw new Error(`tenant_deletion_keep_failed:${error.message}`);
-      return ok({ decision: data, ...(await loadRows(admin)) });
+      // Do not turn a committed IT decision into an apparent failure when the queue refresh is slow.
+      // The UI performs a separate bounded GET after receiving this authoritative result.
+      return ok({ decision: data });
     }
 
     if (action === "delete") {
@@ -405,23 +407,23 @@ export async function POST(request: Request) {
       const reviewStatus = String(decision.review_status ?? "");
       if (reviewStatus === "mdm_release_pending") {
         const mdm = await queueDeviceOwnerRelease(admin, tenantId, note);
-        return ok({ decision, mdm, deleted: false, ...(await loadRows(admin)) });
+        return ok({ decision, mdm, deleted: false });
       }
       if (reviewStatus === "ready_to_delete") {
         const finalized = await finalizeApprovedDeletion(admin, tenantId, note);
-        return ok({ decision, finalized, ...(await loadRows(admin)) });
+        return ok({ decision, finalized });
       }
-      return ok({ decision, deleted: false, ...(await loadRows(admin)) });
+      return ok({ decision, deleted: false });
     }
 
     if (action === "finalize") {
       const finalized = await finalizeApprovedDeletion(admin, tenantId, note);
-      return ok({ finalized, ...(await loadRows(admin)) });
+      return ok({ finalized });
     }
 
     if (action === "release_mdm") {
       const mdm = await queueDeviceOwnerRelease(admin, tenantId, note);
-      return ok({ mdm, ...(await loadRows(admin)) });
+      return ok({ mdm });
     }
 
     return fail("invalid_action", "Unknown deletion-review action.", 422);
