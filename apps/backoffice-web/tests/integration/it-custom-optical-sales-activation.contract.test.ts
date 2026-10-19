@@ -29,5 +29,8 @@ describe("authenticated IT CUSTOM Optical cashier repair", () => {
     expect(ui).toContain("className={configured ? styles.switchOn : styles.switchOff}");
     expect(ui).toContain("await load(); // Refresh both configured IT intent");
     expect(menu).toContain("is_optical_custom: Boolean(opticalAuthorized)");
+    const effective = source("lib/pos-menu-effective-state.ts");
+    expect(effective).toContain('feature === "core_pos_sales" && opticalAllowed');
+    expect(effective).toContain('!tenantMap.has(feature) && !branchMap.has(branch + ":" + feature)');
   });
 });
