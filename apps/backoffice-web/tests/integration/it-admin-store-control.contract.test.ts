@@ -229,7 +229,7 @@ describe("IT Admin Store Control Center contract", () => {
     const packages = controlCenter.indexOf('setTab("package")');
     expect(cashier).toBeLessThan(menu);
     expect(menu).toBeLessThan(packages);
-    expect(menuPanel).toContain("aria-checked={effective}");
+    expect(menuPanel).toContain("aria-checked={configured}");
     expect(menuPanel).toContain("feature_allowed");
     expect(menuPanel).toContain("group === \"main\"");
   });
