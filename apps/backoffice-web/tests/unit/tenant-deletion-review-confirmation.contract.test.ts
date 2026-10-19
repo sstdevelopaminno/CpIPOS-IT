@@ -49,6 +49,8 @@ describe("tenant deletion review: confirmation safety and table UX", () => {
     expect(consoleUi).toContain('verifyDeletionReceipt(row)');
     expect(consoleUi).toContain('void load()');
     expect(consoleUi).toContain('finalized?.deleted === true');
+    expect(consoleUi).toContain('!data && !error');
+    expect(consoleUi).toContain('!data && error');
   });
 
 });
