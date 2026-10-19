@@ -120,7 +120,8 @@ function badge(status: string, language: Language) {
 async function readQueue(): Promise<Payload> {
   const response = await fetch("/api/it-admin/v1/deletion-reviews", {
     cache: "no-store",
-    credentials: "include"
+    credentials: "include",
+    signal: AbortSignal.timeout(20_000)
   });
   const body = await response.json().catch(() => null) as Envelope<Payload> | null;
   if (!response.ok || !body?.data) throw new Error(body?.error?.message ?? "Unable to load deletion reviews.");
@@ -129,6 +130,18 @@ async function readQueue(): Promise<Payload> {
 
 
 type DestructiveAction = "delete" | "finalize";
+
+// A timed-out mutation may have committed. Verify the independently audited
+// permanent-deletion receipt before showing an error or allowing an operator retry.
+async function verifyDeletionReceipt(row: ReviewRow): Promise<boolean> {
+  const response = await fetch(
+    `/api/it-admin/v1/tenants/${encodeURIComponent(row.tenant_id)}/control?deletion_status=1&store_code=${encodeURIComponent(row.store_code)}`,
+    { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(12_000) }
+  );
+  if (!response.ok) return false;
+  const body = await response.json().catch(() => null) as Envelope<{ deleted?: boolean; already_deleted?: boolean }> | null;
+  return body?.data?.deleted === true && body.data.already_deleted === true;
+}
 
 export function TenantDeletionReviewConsole({ language }: { language: Language }) {
   const t = copy[language];
@@ -200,6 +213,7 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        signal: AbortSignal.timeout(35_000),
         body: JSON.stringify({
           action,
           tenant_id: row.tenant_id,
@@ -207,27 +221,61 @@ export function TenantDeletionReviewConsole({ language }: { language: Language }
           confirmation_code: confirmationCode
         })
       });
-      const body = await response.json().catch(() => null) as Envelope<Payload & Record<string, unknown>> | null;
+      const body = await response.json().catch(() => null) as Envelope<{
+        decision?: { review_status?: string };
+        finalized?: { deleted?: boolean; communications?: { completed?: boolean } };
+        mdm?: { queued?: number; blocked?: Array<{ device_id?: string; reason?: string }>; device_count?: number };
+      }> | null;
       if (!response.ok) throw new Error(body?.error?.message ?? "Request failed (" + response.status + ")");
-      if (body?.data?.rows) {
-        setData({ rows: body.data.rows, counts: body.data.counts });
-      } else {
-        await load();
-      }
+      if (!body?.data) throw new Error(language === "th" ? "API ไม่ส่งผลลัพธ์การดำเนินการ" : "API returned no action result.");
       setConfirmation(null);
       setExpanded(null);
-      const mdm = body?.data?.mdm && typeof body.data.mdm === "object"
-        ? body.data.mdm as { queued?: number; blocked?: Array<{ device_id?: string; reason?: string }>; device_count?: number }
-        : null;
-      if (mdm) {
+      // Queue reload must not delay or invalidate an already committed mutation.
+      void load();
+      const mdm = body.data.mdm;
+      const finalized = body.data.finalized;
+      if (finalized?.deleted === true) {
+        setNotice(language === "th"
+          ? finalized.communications?.completed === false
+            ? "ลบข้อมูลร้านหลักแล้ว แต่ยังต้องตรวจสอบการลบข้อมูลแชท กรุณาติดต่อ IT"
+            : "ยืนยันการลบถาวรสำเร็จ ตรวจสอบรายการร้านและประวัติ Audit ได้"
+          : finalized.communications?.completed === false
+            ? "Primary store deleted. Communications cleanup requires IT follow-up."
+            : "Permanent deletion completed. Check the store list and audit trail.");
+      } else if (mdm) {
         const blocked = Array.isArray(mdm.blocked) ? mdm.blocked : [];
         if (blocked.length > 0) setNotice(t.mdmBlocked + " (" + blocked.length + "/" + (mdm.device_count ?? blocked.length) + ")");
         else if ((mdm.queued ?? 0) > 0) setNotice(t.mdmQueued);
+        else setNotice(language === "th" ? "รอตรวจสอบการปลด MDM ก่อนลบถาวร" : "Awaiting MDM release before deletion.");
+      } else if (body.data.decision?.review_status === "ready_to_delete") {
+        setNotice(language === "th" ? "IT ยืนยันแล้ว แต่การลบยังไม่เสร็จ ตรวจสอบสถานะและกดยืนยันลบขั้นสุดท้ายอีกครั้ง" : "IT confirmed; final deletion still pending. Verify status and finalize.");
       } else {
-        setNotice(language === "th" ? "ดำเนินการสำเร็จ ระบบบันทึกผลแล้ว" : "Action completed and recorded.");
+        setNotice(language === "th" ? "บันทึกผลการดำเนินการแล้ว กรุณาตรวจสอบสถานะล่าสุด" : "Action recorded. Verify the latest status.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "action_failed");
+      const ambiguous = err instanceof TypeError ||
+        (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError"));
+      if (ambiguous && (action === "delete" || action === "finalize")) {
+        try {
+          if (await verifyDeletionReceipt(row)) {
+            setConfirmation(null);
+            setExpanded(null);
+            setNotice(language === "th"
+              ? "ยืนยันจาก Audit แล้วว่าลบร้านถาวรสำเร็จ แม้คำตอบ API เดิมขาดหาย"
+              : "Audit receipt confirms permanent deletion despite the lost API response.");
+            void load();
+            return;
+          }
+        } catch {
+          // No trustworthy receipt available. Do not infer failure or retry deletion.
+        }
+        setError(language === "th"
+          ? "การเชื่อมต่อหมดเวลา ยังยืนยันผลการลบไม่ได้ กรุณารีเฟรชสถานะก่อนกดซ้ำ"
+          : "Request timed out. Deletion state is unverified; refresh status before retrying.");
+        void load();
+      } else {
+        setError(err instanceof Error ? err.message : "action_failed");
+      }
     } finally {
       setBusy(null);
     }
