@@ -14,6 +14,8 @@ describe("permanent tenant deletion: trustworthy post-commit reconciliation", ()
     expect(control).toContain('"tenants").select("id")');
     expect(control).toContain('if (tenantResult.data || !auditResult.data) return null');
     expect(control).toContain('metadata?.store_code ?? ""');
+    expect(control).toContain('metadata?.internal_code ?? ""');
+    expect(control).toContain('confirmationCode !== receiptCode && confirmationCode !== internalCode');
     expect(control).toContain('String(body.admin_reason ?? "").trim().length < 8');
     expect(control).toContain('assertItSupportAction(admin');
     expect(control).toContain('error.code !== "tenant_not_found"');
