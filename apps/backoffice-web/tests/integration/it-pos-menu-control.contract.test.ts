@@ -66,10 +66,10 @@ describe("IT ↔ POS single-source menu policy", () => {
     expect(availability).toContain('"settings.push_notifications": null');
   });
 
-  it("renders actual effective status as OFF without silently granting package entitlements", () => {
+  it("separates IT toggle intent from actual POS feature availability without silently granting package entitlements", () => {
     expect(ui).toContain("เปิดใช้งานใน POS");
     expect(ui).toContain("feature_allowed");
-    expect(ui).toContain("aria-checked={effective}");
+    expect(ui).toContain("aria-checked={configured}");
     expect(ui).toContain("disabled={busy !== null || alwaysEnabled || !entitlement || (!data?.is_custom && !allowed)}");
     expect(ui).toContain("/features");
     expect(ui).toContain("สิทธิ์พนักงานรายคนตรวจแยก");
