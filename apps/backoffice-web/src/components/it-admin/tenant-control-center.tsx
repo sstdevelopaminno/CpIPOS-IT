@@ -742,12 +742,12 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
 
                 {data.current_package?.code==="custom"?
                   <Link className={dashboardStyles.settingsCard}
-                    href={`/tenants/${encodeURIComponent(tenantId)}/features#optical-finance-approval`}>
+                    href={`/it-admin/tenants/${encodeURIComponent(tenantId)}/optical-finance`}>
                     <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>฿</div>
                       <span className={dashboardStyles.cardBadge}>IT APPROVAL</span></div>
                     <div className={dashboardStyles.cardText}><span>CUSTOM OPTICAL FINANCE</span>
                       <strong>อนุมัติใบสั่งงานและเงินมัดจำ</strong>
-                      <small>IT กดอนุมัติแยกสิทธิ์ก่อนเปิด Finance rollout ใน Vercel</small></div>
+                      <small>เปิดใช้สิทธิ์ระดับร้านครั้งเดียว ไม่ต้องอนุมัติทุกบิล (Owner/Manager ดูแลการรับเงินจริง)</small></div>
                     <div className={dashboardStyles.cardBottom}><span>ควบคุมเฉพาะร้านนี้</span><strong>ตรวจสอบ / อนุมัติ →</strong></div>
                   </Link>:null}
 
