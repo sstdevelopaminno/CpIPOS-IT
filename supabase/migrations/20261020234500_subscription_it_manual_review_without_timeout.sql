@@ -77,7 +77,7 @@ begin
   end if;
   begin
     if coalesce(v_parsed->>'transfer_datetime','') !~
-       '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}' then
+       '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})$' then
       raise exception 'transfer_datetime_invalid';
     end if;
     v_transfer_at := (v_parsed->>'transfer_datetime')::timestamptz;
