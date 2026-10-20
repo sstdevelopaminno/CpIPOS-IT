@@ -336,8 +336,14 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     setSettlementDrafts((value) => ({ ...value, [row.id]: { ...current, ...patch } }));
   }
 
-  async function review(requestId: string, action: "under_review" | "reject") {
-    const note = (notes[requestId] || "").trim();
+  async function review(requestId: string, action: "under_review" | "reject", reopening = false) {
+    const note = reopening
+      ? (window.prompt("เหตุผลการเปิดคำขอที่เคยปฏิเสธ เพื่อดำเนินการตรวจสอบยอดเงินกับธนาคารอีกครั้ง") || "").trim()
+      : (notes[requestId] || "").trim();
+    if(reopening && note.length<8){
+      setError("กรุณาระบุเหตุผลการเปิดตรวจสอบใหม่อย่างน้อย 8 ตัวอักษร");
+      return;
+    }
     if (action === "reject" && !note) {
       setError("กรุณาระบุเหตุผลที่ไม่อนุมัติ");
       return;
@@ -1207,7 +1213,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     className="font-bold text-blue-700 underline">{receipt.receipt_number}</a> : "—"}</td>
                   <td className="p-3"><div className="flex flex-wrap gap-1">
                      {row.status==="rejected" ? <button type="button" disabled={busyId===row.id}
-                       onClick={()=>void review(row.id,"under_review").then(()=>setActivePanel("pending"))}
+                       onClick={()=>void review(row.id,"under_review",true).then(()=>setActivePanel("pending"))}
                        className="rounded-md bg-blue-700 px-2 py-1 text-xs font-bold text-white disabled:opacity-35">
                        เปิดตรวจสอบใหม่
                      </button> : null}
