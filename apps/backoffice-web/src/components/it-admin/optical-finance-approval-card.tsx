@@ -45,8 +45,8 @@ export function OpticalFinanceApprovalCard({tenantId}:{tenantId:string}){
    <button type="button" className="rounded-lg border px-3 py-2 text-sm"
     onClick={()=>void read()} disabled={loading||Boolean(busy)}>โหลดสถานะ</button>
   </div>
-  <p className="mt-2 text-sm text-slate-700">IT อนุมัติแยกสิทธิ์ใบสั่งงานและมัดจำสำหรับร้านที่ได้รับอนุญาตเท่านั้น
-    ไม่เปลี่ยนยอดบัญชี ไม่สร้างธุรกรรม และไม่เปิด Production rollout ให้เอง</p>
+  <p className="mt-2 text-sm text-slate-700">IT เปิดสิทธิ์ใบสั่งงานและมัดจำให้ร้านนี้เพียงครั้งเดียว ไม่ต้องกดอนุมัติทุกบิล
+    หลังเปิดแล้วเจ้าของร้านและพนักงานดำเนินงานตามสิทธิ์ POS ได้ตามปกติ · การรับเงินโอนยังต้องตรวจยอดเงินจริง</p>
   {loading?<p className="mt-2 text-sm">กำลังตรวจสอบสัญญา...</p>:null}
   {data&&!data.eligible?<p role="status" className="mt-2 text-sm text-amber-800">{data.reason}</p>:null}
   {data?.eligible?<div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -62,7 +62,7 @@ export function OpticalFinanceApprovalCard({tenantId}:{tenantId:string}){
       </div>)}
    </div>:null}
    <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
-     ขั้นตอนแยก: หลังทดสอบธุรกรรมผ่านแล้ว ให้ผู้ดูแลเปิด
+     การเปิดสิทธิ์ฟีเจอร์ไม่เปิดรับเงินจริงทันที: หลังทดสอบธุรกรรมผ่านแล้ว ให้ผู้ดูแล Deployment เปิด
      <code> OPTICAL_FINANCE_V1_ENABLED=true </code> ใน Vercel POS Web → Settings → Environment Variables และ Deploy ใหม่
      (หน้านี้ไม่สามารถยืนยันสถานะสวิตช์ Vercel ของ POS ได้)
    </p>

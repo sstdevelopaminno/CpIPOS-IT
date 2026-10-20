@@ -22,7 +22,16 @@ describe("IT Optical finance approval is tenant-scoped and separate from global 
   const sections=read("components/it-admin/tenant-section-console.tsx");
   expect(card).toContain("กดอนุมัติ");
   expect(card).toContain("OPTICAL_FINANCE_V1_ENABLED=true");
-  expect(console).toContain("features#optical-finance-approval");
+  expect(console).toContain("/optical-finance");
+  expect(console).not.toContain("features#optical-finance-approval");
+  const page=read("app/(it-admin)/it-admin/tenants/[tenantId]/optical-finance/page.tsx");
+  const role=read("lib/it-admin-guard.ts");
+  expect(page).toContain("await requireItAdmin()");
+  expect(page).toContain("OpticalFinanceApprovalCard tenantId={tenantId}");
+  expect(page).toContain("ไม่ใช่การอนุมัติการขายแต่ละบิล");
+  expect(role).toContain('auth.platformRole !== "it_support"');
+  expect(page).not.toContain('auth.platformRole !== "it_admin"');
+  expect(card).toContain("บันทึก Audit");
   expect(sections).toContain("OpticalFinanceApprovalCard");
  });
 });
