@@ -41,6 +41,8 @@ type PaymentRequestSummary = {
   submitted_at: string;
   review_note: string | null;
   scan_status: string | null;
+  has_evidence?: boolean;
+  can_attach_evidence?: boolean;
 };
 
 type PaymentRequestStatus = PaymentRequestSummary & {
@@ -223,7 +225,7 @@ export function LinePaymentClient() {
     const result = await api<{ payment: PackagePayment }>("/api/support/line/payment/package");
     setPackagePayment(result.payment);
 
-    if (result.payment.open_request) {
+    if (result.payment.open_request && !result.payment.open_request.can_attach_evidence) {
       setPaymentRequest(result.payment.open_request);
       setStage("review");
       return;
