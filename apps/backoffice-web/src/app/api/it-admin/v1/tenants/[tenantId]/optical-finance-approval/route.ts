@@ -57,6 +57,7 @@ export async function PATCH(req:Request,ctx:{params:Promise<{tenantId:string}>})
    const state=await lookup(admin.supabase,id);
    if(!state.valid||!state.contract)return fail("optical_contract_not_eligible",state.reason??"Contract invalid",409);
    const contract=state.contract;
+   const feature=body.feature as FinanceFeature;
    const old=readGrants(contract);
    if(body.feature==="optical_deposit"&&body.enabled&&!old.optical_work_orders)
      return fail("work_orders_approval_required","ต้องอนุมัติใบสั่งงาน Optical ก่อนเงินมัดจำ",409);
@@ -65,7 +66,7 @@ export async function PATCH(req:Request,ctx:{params:Promise<{tenantId:string}>})
    const metadata=contract.metadata??{};
    const custom=metadata.custom_features;
    const oldCustom=custom&&typeof custom==="object"&&!Array.isArray(custom)?custom as Record<string,unknown>:{};
-   const next={...metadata,custom_features:{...oldCustom,[body.feature]:body.enabled}};
+   const next={...metadata,custom_features:{...oldCustom,[feature]:body.enabled}};
    const update=await admin.supabase.from("tenant_subscription_contracts")
      .update({metadata:next,updated_at:new Date().toISOString()})
      .eq("id",contract.id).eq("tenant_id",id).eq("updated_at",contract.updated_at)
@@ -75,11 +76,11 @@ export async function PATCH(req:Request,ctx:{params:Promise<{tenantId:string}>})
    await appendAuditLog({tenantId:id,actorUserId:admin.auth.userId,actorRole:"it_admin",
      action:body.enabled?"it_optical_finance_feature_approved":"it_optical_finance_feature_revoked",
      targetTable:"tenant_subscription_contracts",targetId:contract.id,
-     beforeData:{feature:body.feature,enabled:old[body.feature as FinanceFeature]},
+     beforeData:{feature:body.feature,enabled:old[feature]},
      afterData:{feature:body.feature,enabled:body.enabled},
      metadata:{source:"it_optical_finance_approval",rollout:"unchanged"},
      ipAddress:admin.requestMeta.ipAddress??undefined,userAgent:admin.requestMeta.userAgent??undefined});
-   return ok({feature:body.feature,enabled:body.enabled,granted:{...old,[body.feature]:body.enabled},
+   return ok({feature:body.feature,enabled:body.enabled,granted:{...old,[feature]:body.enabled},
      rollout:"unchanged"});
  }catch(e){return guardItAdminError(e);}
 }
