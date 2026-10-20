@@ -900,7 +900,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
         </WorkspaceModal> : null}
 
         {activePanel === "pending" ? <WorkspaceModal title="ตรวจสอบรายการรออนุมัติ"
-          description="สลิปที่ Auto Scan ผ่านอาจเปิด POS ชั่วคราวทันที แต่ IT ยังต้องตรวจเงินจริงและอนุมัติภายใน 3 วัน มิฉะนั้นระบบจะล็อกอัตโนมัติ"
+          description="สลิปที่ตรวจวันที่ ยอดเงิน และผู้รับผ่านจะเปิด POS ได้ระหว่างรอ IT ตรวจเงินจริง ไม่มีกำหนดล็อกอัตโนมัติหลัง 3 วัน หาก IT ไม่อนุมัติจะล็อกทันที"
           onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-amber-200 bg-white p-3 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
