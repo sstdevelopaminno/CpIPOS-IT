@@ -35,6 +35,9 @@ type PaymentRequestRow = {
   submitted_at: string;
   review_note: string | null;
   metadata: Record<string, unknown> | null;
+  requested_package_id: string | null;
+  amount_reported: number | null;
+  evidence_url: string | null;
 };
 
 export type PublicPaymentAccount = {
@@ -52,6 +55,8 @@ export type LinePaymentRequestSummary = {
   submitted_at: string;
   review_note: string | null;
   scan_status: string | null;
+  has_evidence: boolean;
+  can_attach_evidence?: boolean;
 };
 
 export type LinePackagePaymentSnapshot = {
@@ -135,7 +140,8 @@ function paymentSummary(row: PaymentRequestRow | null | undefined): LinePaymentR
     status: row.status,
     submitted_at: row.submitted_at,
     review_note: row.review_note,
-    scan_status: scanStatus
+    scan_status: scanStatus,
+    has_evidence:Boolean(row.evidence_url)
   };
 }
 
@@ -192,7 +198,7 @@ export async function getLinePackagePaymentSnapshot(
       .limit(1)
       .maybeSingle<ContractRow>(),
     db.from("tenant_subscription_payment_requests")
-      .select("id,status,submitted_at,review_note,metadata")
+      .select("id,status,submitted_at,review_note,metadata,requested_package_id,amount_reported,evidence_url")
       .eq("tenant_id", session.tenantId)
       .order("created_at", { ascending: false })
       .limit(10)
@@ -230,6 +236,13 @@ export async function getLinePackagePaymentSnapshot(
   const selfService=rawDue.self_service_payment_allowed===true;
   const supportRequired=rawDue.support_required===true;
 
+  const prepared=Boolean(openRow && openRow.status==="pending" && !openRow.evidence_url &&
+    openRow.amount_reported==null && openRow.requested_package_id===packageId &&
+    openRow.metadata?.source==="it_tenant_control" && openRow.metadata?.kind==="payment_notice" &&
+    String(openRow.metadata?.billing_cycle_id||"")===String(rawDue.billing_cycle_id||"") &&
+    Number(openRow.metadata?.expected_amount)===outstanding &&
+    String(openRow.metadata?.billing_interval||"")===String(contract?.billing_interval||"") &&
+    !supportRequired);
   let due: LinePackagePaymentSnapshot["due"] = null;
   let qrUrl: string | null = null;
   let qrPageUrl: string | null = null;
@@ -250,7 +263,7 @@ export async function getLinePackagePaymentSnapshot(
       self_service_payment_allowed:selfService,
       support_required:supportRequired
     };
-    if(account.promptpay_ready && !openRow && selfService && !supportRequired){
+    if(account.promptpay_ready && (!openRow || prepared) && (selfService || prepared) && !supportRequired){
       const urls=buildPromptPayUrls(account.promptpay_id,due.outstanding_amount);
       qrUrl=urls.qrUrl;
       qrPageUrl=urls.pageUrl;
@@ -267,7 +280,7 @@ export async function getLinePackagePaymentSnapshot(
       service_end:contract?.ended_at??null
     },
     due,
-    open_request:paymentSummary(openRow),
+    open_request:openRow?{...paymentSummary(openRow)!,can_attach_evidence:prepared}:null,
     latest_request:paymentSummary(latestRow),
     payment_account:account,
     qr_url:qrUrl,

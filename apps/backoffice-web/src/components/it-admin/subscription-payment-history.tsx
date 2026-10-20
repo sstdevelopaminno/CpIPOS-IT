@@ -336,8 +336,14 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
     setSettlementDrafts((value) => ({ ...value, [row.id]: { ...current, ...patch } }));
   }
 
-  async function review(requestId: string, action: "under_review" | "reject") {
-    const note = (notes[requestId] || "").trim();
+  async function review(requestId: string, action: "under_review" | "reject", reopening = false) {
+    const note = reopening
+      ? (window.prompt("เหตุผลการเปิดคำขอที่เคยปฏิเสธ เพื่อดำเนินการตรวจสอบยอดเงินกับธนาคารอีกครั้ง") || "").trim()
+      : (notes[requestId] || "").trim();
+    if(reopening && note.length<8){
+      setError("กรุณาระบุเหตุผลการเปิดตรวจสอบใหม่อย่างน้อย 8 ตัวอักษร");
+      return;
+    }
     if (action === "reject" && !note) {
       setError("กรุณาระบุเหตุผลที่ไม่อนุมัติ");
       return;
@@ -900,7 +906,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
         </WorkspaceModal> : null}
 
         {activePanel === "pending" ? <WorkspaceModal title="ตรวจสอบรายการรออนุมัติ"
-          description="สลิปที่ Auto Scan ผ่านอาจเปิด POS ชั่วคราวทันที แต่ IT ยังต้องตรวจเงินจริงและอนุมัติภายใน 3 วัน มิฉะนั้นระบบจะล็อกอัตโนมัติ"
+          description="สลิปที่ตรวจวันที่ ยอดเงิน และผู้รับผ่านจะเปิด POS ได้ระหว่างรอ IT ตรวจเงินจริง ไม่มีกำหนดล็อกอัตโนมัติหลัง 3 วัน หาก IT ไม่อนุมัติจะล็อกทันที"
           onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-amber-200 bg-white p-3 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -944,7 +950,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                       <div><dt className="text-xs text-slate-500">ชื่อผู้โอน</dt><dd className="font-semibold">{row.payer_name || "—"}</dd></div>
                       <div><dt className="text-xs text-slate-500">อ้างอิงจากร้าน</dt><dd className="break-all font-semibold">{row.transfer_reference || "—"}</dd></div>
                       <div><dt className="text-xs text-slate-500">Auto Scan</dt><dd className="font-semibold">{row.auto_check_status === "passed" ? "ผ่าน · เปิดชั่วคราวแล้ว" : row.auto_check_status === "needs_review" ? "ต้องตรวจด้วยคน" : row.auto_check_status || "—"}</dd></div>
-                      <div><dt className="text-xs text-slate-500">เส้นตาย IT</dt><dd className="font-semibold">{formatDateTime(row.provisional_access_expires_at)}</dd></div>
+                      <div><dt className="text-xs text-slate-500">การยืนยันจาก IT</dt><dd className="font-semibold">{row.status==="under_review"?"รอยืนยันผลตรวจสอบ ไม่มีการล็อกตามเวลา":"ตรวจสอบตามสถานะคำขอ"}</dd></div>
                     </dl>
                     {row.note ? <p className="mt-3 rounded-lg bg-white p-3 text-sm text-slate-600">หมายเหตุร้าน: {row.note}</p> : null}
                     {row.evidence_source === "it_forwarded_customer_chat" ? (
@@ -1206,6 +1212,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     target="_blank" rel="noopener noreferrer"
                     className="font-bold text-blue-700 underline">{receipt.receipt_number}</a> : "—"}</td>
                   <td className="p-3"><div className="flex flex-wrap gap-1">
+                     {row.status==="rejected" ? <button type="button" disabled={busyId===row.id}
+                       onClick={()=>void review(row.id,"under_review",true).then(()=>setActivePanel("pending"))}
+                       className="rounded-md bg-blue-700 px-2 py-1 text-xs font-bold text-white disabled:opacity-35">
+                       เปิดตรวจสอบใหม่
+                     </button> : null}
                     <button type="button" disabled={busyId===row.id || row.status==="approved"}
                       onClick={()=>void editRequestRecord(row)}
                       className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 disabled:opacity-35">แก้ไข</button>

@@ -41,12 +41,16 @@ type PaymentRequestSummary = {
   submitted_at: string;
   review_note: string | null;
   scan_status: string | null;
+  has_evidence?: boolean;
+  can_attach_evidence?: boolean;
 };
 
 type PaymentRequestStatus = PaymentRequestSummary & {
   reviewed_at?: string | null;
   amount_reported?: number | null;
   currency?: string;
+  provisional_access?: boolean;
+  provisional_access_active?: boolean;
   receipt?: null | {
     id: string;
     number: string;
@@ -221,7 +225,7 @@ export function LinePaymentClient() {
     const result = await api<{ payment: PackagePayment }>("/api/support/line/payment/package");
     setPackagePayment(result.payment);
 
-    if (result.payment.open_request) {
+    if (result.payment.open_request && !result.payment.open_request.can_attach_evidence) {
       setPaymentRequest(result.payment.open_request);
       setStage("review");
       return;
@@ -722,10 +726,14 @@ export function LinePaymentClient() {
                   </div>
                   <h1 className="mt-5 text-2xl font-black">ส่งสลิปเรียบร้อยแล้ว</h1>
                   <p className="mt-2 text-base font-bold text-blue-700">
-                    {paymentRequest.status === "under_review" ? "ฝ่าย IT กำลังตรวจสอบ" : "ชำระเงินแล้ว · รออนุมัติจากฝ่ายตรวจสอบ"}
+                    {paymentRequest.provisional_access === true || paymentRequest.provisional_access_active === true
+                      ? "ตรวจสอบสลิปผ่าน · POS เปิดใช้งานได้แล้ว"
+                      : paymentRequest.status === "under_review"
+                        ? "ฝ่าย IT กำลังตรวจสอบหลักฐานการชำระ"
+                        : "ส่งหลักฐานแล้ว · รอผลตรวจสอบเบื้องต้น"}
                   </p>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    ระบบบันทึกสลิปเข้าฝั่ง IT แล้ว หน้านี้จะตรวจสถานะให้อัตโนมัติโดยไม่ใช้โควตาข้อความ LINE
+                    เมื่อสลิปผ่านการตรวจวันที่ ยอดเงิน และบัญชี ระบบเปิด POS ให้ใช้งานได้ทันที โดยฝ่าย IT ยังตรวจสอบยอดเงินจริงภายหลังได้ หาก IT ไม่อนุมัติ POS จะล็อกทันที
                   </p>
                   <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left">
                     <div className="flex items-center justify-between gap-3">

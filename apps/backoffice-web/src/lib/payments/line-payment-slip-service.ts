@@ -43,7 +43,7 @@ export async function submitLinePackagePaymentSlip(input: {
   if (!snapshot.due || !snapshot.package.id) {
     throw new LinePaymentSlipError("payment_not_due", "ร้านนี้ยังไม่มียอดชำระที่ถึงกำหนด", 409);
   }
-  if (snapshot.due.support_required || !snapshot.due.self_service_payment_allowed) {
+  if (snapshot.due.support_required) {
     throw new LinePaymentSlipError(
       "payment_support_required",
       snapshot.due.support_required
@@ -55,9 +55,8 @@ export async function submitLinePackagePaymentSlip(input: {
   if (!snapshot.due.billing_cycle_id) {
     throw new LinePaymentSlipError("billing_cycle_missing", "ระบบยังไม่สามารถเปิดรอบบิลได้ กรุณาลองใหม่", 503);
   }
-  if (snapshot.open_request) {
-    throw new LinePaymentSlipError("payment_request_exists", "ส่งสลิปแล้ว และรายการกำลังรอตรวจสอบ", 409);
-  }
+  // An IT-created pending request with no slip is a payable notice, not
+  // an already-submitted slip. Reconcile it with the same canonical cycle.
 
   const evidence = input.slip;
   if (!(evidence instanceof File) || evidence.size <= 0) {
@@ -76,17 +75,28 @@ export async function submitLinePackagePaymentSlip(input: {
   const db = getPrimarySupabaseServiceClient();
 
   const open = await db.from("tenant_subscription_payment_requests")
-    .select("id,status")
+    .select("id,status,requested_package_id,amount_reported,evidence_url,metadata")
     .eq("tenant_id", input.session.tenantId)
     .in("status", ["pending", "under_review"])
     .limit(1)
-    .maybeSingle<{ id: string; status: string }>();
+    .maybeSingle<{id:string;status:string;requested_package_id:string|null;
+      amount_reported:number|null;evidence_url:string|null;metadata:Record<string,unknown>|null}>();
   if (open.error) throw new LinePaymentSlipError("payment_request_lookup_failed", "ตรวจสอบรายการเดิมไม่สำเร็จ กรุณาลองใหม่", 503);
-  if (open.data) {
-    throw new LinePaymentSlipError("payment_request_exists", "ส่งสลิปแล้ว และรายการกำลังรอตรวจสอบ", 409);
-  }
+  const cycle=snapshot.due.billing_cycle_id;
+  const prepared=Boolean(open.data && snapshot.open_request?.id===open.data.id &&
+    open.data.status==="pending" && !open.data.evidence_url &&
+    open.data.amount_reported==null &&
+    open.data.metadata?.source==="it_tenant_control" &&
+    open.data.metadata?.kind==="payment_notice" &&
+    open.data.requested_package_id===snapshot.package.id &&
+    String(open.data.metadata?.billing_cycle_id||"")===cycle &&
+    Number(open.data.metadata?.expected_amount)===snapshot.due.outstanding_amount);
+  if(open.data && !prepared)
+    throw new LinePaymentSlipError("payment_request_exists","รายการเดิมส่งสลิปแล้ว กรุณาติดต่อ Support",409);
+  if(!snapshot.due.self_service_payment_allowed && !prepared)
+    throw new LinePaymentSlipError("payment_support_required","รอบนี้ยังไม่เปิดให้ส่งสลิปผ่านระบบ",409);
 
-  const requestId = crypto.randomUUID();
+  const requestId = prepared ? open.data!.id : crypto.randomUUID();
   const filePath = input.session.tenantId + "/" + requestId + "/slip." + FILE_TYPES[detectedMime];
 
   const upload = await db.storage.from(SUBSCRIPTION_SLIP_BUCKET).upload(filePath, buffer, {
@@ -116,10 +126,12 @@ export async function submitLinePackagePaymentSlip(input: {
       : null;
 
   const metadata = {
+    ...(prepared?open.data!.metadata??{}:{}),
     kind: "payment_notice",
     billing_interval: snapshot.package.billing_interval === "yearly" ? "yearly" : "monthly",
     expected_amount: snapshot.due.outstanding_amount,
-    source: "line_payment_center",
+    source: prepared?"it_tenant_control":"line_payment_center",
+    ...(prepared?{checkout_source:"line_payment_center"}:{}),
     line_binding_id: input.session.bindingId,
     store_code: input.session.storeCode,
     due_source: snapshot.due.source,
@@ -141,17 +153,18 @@ export async function submitLinePackagePaymentSlip(input: {
     note: String(input.note ?? "").trim().slice(0, 500)
   };
 
-  const inserted = await db.from("tenant_subscription_payment_requests").insert({
-    id: requestId,
-    tenant_id: input.session.tenantId,
-    requested_package_id: snapshot.package.id,
-    request_type: snapshot.due.kind === "trial" ? "trial_conversion" : "renewal",
-    amount_reported: amountReported,
-    status: "pending",
-    currency: snapshot.due.currency || "THB",
-    evidence_url: filePath,
-    metadata
-  }).select("id,status,submitted_at").maybeSingle<{ id: string; status: string; submitted_at: string }>();
+  const inserted = prepared
+    ?await db.from("tenant_subscription_payment_requests").update({
+      amount_reported:amountReported,evidence_url:filePath,metadata,updated_at:new Date().toISOString()
+    }).eq("id",requestId).eq("tenant_id",input.session.tenantId)
+      .eq("status","pending").is("evidence_url",null).is("amount_reported",null)
+      .select("id,status,submitted_at").maybeSingle<{id:string;status:string;submitted_at:string}>()
+    :await db.from("tenant_subscription_payment_requests").insert({
+      id:requestId,tenant_id:input.session.tenantId,requested_package_id:snapshot.package.id,
+      request_type:snapshot.due.kind==="trial"?"trial_conversion":"renewal",
+      amount_reported:amountReported,status:"pending",currency:snapshot.due.currency||"THB",
+      evidence_url:filePath,metadata
+    }).select("id,status,submitted_at").maybeSingle<{id:string;status:string;submitted_at:string}>();
 
   if (inserted.error || !inserted.data) {
     await db.storage.from(SUBSCRIPTION_SLIP_BUCKET).remove([filePath]);
@@ -162,7 +175,7 @@ export async function submitLinePackagePaymentSlip(input: {
   }
 
   let provisional: { granted?: boolean; review_deadline?: string; provisional_access_expires_at?: string } | null = null;
-  if (scan.status === "verified" && scan.checks.passed) {
+  if (scan.status === "verified" && scan.checks.passed && scan.model !== "mock") {
     const granted = await db.rpc("grant_provisional_subscription_access", {
       p_request_id: inserted.data.id,
       p_scan: scan,
@@ -288,8 +301,7 @@ export async function getLinePaymentRequestStatus(input: {
       provisional_access_active: Boolean(
         request.data.provisional_access_granted_at
         && !request.data.provisional_access_revoked_at
-        && request.data.provisional_access_expires_at
-        && Date.parse(request.data.provisional_access_expires_at)>Date.now()
+        && request.data.auto_check_status==="passed"
         && request.data.status==="under_review"
       ),
       receipt

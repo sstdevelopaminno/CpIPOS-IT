@@ -33,16 +33,16 @@ describe("LINE Payment Center", () => {
     expect(service).toContain("self_service_payment_allowed");
     expect(service).toContain("support_required");
     expect(service).toContain("let qrUrl: string | null = null");
-    expect(service).toContain("!openRow && selfService && !supportRequired");
+    expect(service).toContain("(!openRow || prepared) && (selfService || prepared) && !supportRequired");
     expect(paymentClient).toContain("ยังไม่มียอดชำระ");
     expect(paymentClient).toContain("ร้านยังไม่ถึงวันครบกำหนดชำระ");
   });
 
   it("suppresses a new QR while a payment request is pending review", () => {
     expect(service).toContain('row.status === "pending" || row.status === "under_review"');
-    expect(service).toContain("open_request:paymentSummary(openRow)");
+    expect(service).toContain("open_request:openRow?{...paymentSummary(openRow)!,can_attach_evidence:prepared}:null");
     expect(service).toContain("!openRow");
-    expect(paymentClient).toContain("ชำระเงินแล้ว · รออนุมัติจากฝ่ายตรวจสอบ");
+    expect(paymentClient).toContain("ตรวจสอบสลิปผ่าน · POS เปิดใช้งานได้แล้ว");
   });
 
   it("requires LINE identity for general payment information", () => {
@@ -68,8 +68,8 @@ describe("LINE Payment Center", () => {
     expect(slipService).toContain('SUBSCRIPTION_SLIP_BUCKET = "subscription-payment-evidence"');
     expect(slipService).toContain("scanSubscriptionSlipFromPrimary");
     expect(slipService).toContain('kind: "payment_notice"');
-    expect(slipService).toContain('source: "line_payment_center"');
-    expect(slipService).toContain('status: "pending"');
+    expect(slipService).toContain('"line_payment_center"');
+    expect(slipService).toContain('status:"pending"');
     expect(slipService).toContain("tenant_subscription_payment_requests");
   });
 
@@ -88,7 +88,7 @@ describe("LINE Payment Center", () => {
     expect(paymentClient).toContain('window.setInterval(refresh, 3_000)');
     expect(paymentClient).toContain("อนุมัติการชำระแล้ว");
     expect(paymentClient).toContain("รายการยังไม่ผ่านการตรวจสอบ");
-    expect(paymentClient).toContain("หน้านี้จะตรวจสถานะให้อัตโนมัติโดยไม่ใช้โควตาข้อความ LINE");
+    expect(paymentClient).toContain("หาก IT ไม่อนุมัติ POS จะล็อกทันที");
   });
 
   it("provides the two requested mobile payment choices", () => {

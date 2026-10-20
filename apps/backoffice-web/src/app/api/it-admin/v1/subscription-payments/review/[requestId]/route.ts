@@ -6,7 +6,7 @@ import { dispatchSupportPush } from "@/lib/support-chat/support-push";
 export const dynamic = "force-dynamic";
 type Params = { params: Promise<{requestId:string}> };
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type ReviewRow = {id:string;tenant_id:string;status:string;review_note:string|null};
+type ReviewRow = {id:string;tenant_id:string;status:string;review_note:string|null;evidence_url?:string|null;requested_package_id?:string|null};
 
 export async function POST(request:Request,{params}:Params) {
   try {
@@ -23,12 +23,23 @@ export async function POST(request:Request,{params}:Params) {
       throw new ItAdminGuardError("rejection_note_required","Explain why the request was rejected.",422);
     }
     const existing=await supabase.from("tenant_subscription_payment_requests")
-      .select("id,tenant_id,status,review_note").eq("id",requestId).maybeSingle<ReviewRow>();
+      .select("id,tenant_id,status,review_note,evidence_url,requested_package_id").eq("id",requestId).maybeSingle<ReviewRow>();
     if(existing.error) throw new Error("Subscription request lookup failed.");
     if(!existing.data) return fail("request_not_found","Subscription request not found.",404);
     const previous=existing.data;
-    if(action==="under_review" && previous.status!=="pending") {
-      return fail("review_conflict","Only pending requests can be moved into review.",409);
+    if(action==="under_review" && !["pending","rejected"].includes(previous.status)) {
+      return fail("review_conflict","Only pending or previously rejected requests can be moved into review.",409);
+    }
+    const reopening=action==="under_review" && previous.status==="rejected";
+    if(reopening && (!previous.evidence_url || !previous.requested_package_id || note.length<8)){
+      return fail("review_reopen_requires_reason","Reopening requires existing evidence and an IT reason; POS remains locked until a bank settlement is confirmed.",422);
+    }
+    if(reopening){
+      const open=await supabase.from("tenant_subscription_payment_requests").select("id")
+        .eq("tenant_id",previous.tenant_id).in("status",["pending","under_review"])
+        .limit(1).maybeSingle();
+      if(open.error)return fail("review_lookup_failed","Unable to check other open payment requests.",503);
+      if(open.data)return fail("review_conflict","Another open payment request exists.",409);
     }
     if(action==="reject" && !["pending","under_review"].includes(previous.status)) {
       return fail("review_conflict","This request is already terminal.",409);
@@ -51,7 +62,7 @@ export async function POST(request:Request,{params}:Params) {
     }
     await appendAuditLog({
       tenantId:previous.tenant_id,actorUserId:auth.userId,actorRole:"it_admin",
-      action:action==="reject"?"subscription_request_rejected":"subscription_request_under_review",
+      action:action==="reject"?"subscription_request_rejected":previous.status==="rejected"?"subscription_request_reopened":"subscription_request_under_review",
       targetTable:"tenant_subscription_payment_requests",targetId:requestId,module:"it_admin",
       beforeData:{status:previous.status},afterData:{status},
       metadata:{note},ipAddress:requestMeta.ipAddress??undefined,userAgent:requestMeta.userAgent??undefined
@@ -60,8 +71,8 @@ export async function POST(request:Request,{params}:Params) {
       audience:"store",
       tenant_id:previous.tenant_id,
       kind:"request",
-      title:action==="reject" ? "คำขอถูกปฏิเสธ" : "IT รับคำขอแล้ว",
-      body:action==="reject" ? (note || "กรุณาตรวจสอบรายละเอียดคำขอ") : "คำขอของคุณอยู่ระหว่างการตรวจสอบ",
+      title:action==="reject" ? "คำขอถูกปฏิเสธ" : reopening ? "ฝ่าย IT เปิดตรวจสอบใหม่" : "IT รับคำขอแล้ว",
+      body:action==="reject" ? (note || "กรุณาตรวจสอบรายละเอียดคำขอ") : reopening ? "รายการยังล็อกอยู่จนกว่า IT จะยืนยันเงินเข้าและอนุมัติ" : "คำขอของคุณอยู่ระหว่างการตรวจสอบ",
       url:"/preview/pos/payments/package",
       tag:`subscription-request:${requestId}`
     }).catch(()=>null);
