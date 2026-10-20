@@ -740,6 +740,17 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                   <div className={dashboardStyles.cardBottom}><span>{customRequestOpen ? "มีคำขอรอตกลง" : customRelevant ? "กำหนดรายร้าน" : "ใช้เมื่อเลือกรูปแบบ CUSTOM"}</span><strong>เปิดตั้งค่า →</strong></div>
                 </button>
 
+                {data.current_package?.code==="custom"?
+                  <Link className={dashboardStyles.settingsCard}
+                    href={`/tenants/${encodeURIComponent(tenantId)}/features#optical-finance-approval`}>
+                    <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>฿</div>
+                      <span className={dashboardStyles.cardBadge}>IT APPROVAL</span></div>
+                    <div className={dashboardStyles.cardText}><span>CUSTOM OPTICAL FINANCE</span>
+                      <strong>อนุมัติใบสั่งงานและเงินมัดจำ</strong>
+                      <small>IT กดอนุมัติแยกสิทธิ์ก่อนเปิด Finance rollout ใน Vercel</small></div>
+                    <div className={dashboardStyles.cardBottom}><span>ควบคุมเฉพาะร้านนี้</span><strong>ตรวจสอบ / อนุมัติ →</strong></div>
+                  </Link>:null}
+
                 <button type="button" className={dashboardStyles.settingsCard} onClick={() => setTab("salesModes")}>
                   <div className={dashboardStyles.cardTop}><div className={dashboardStyles.cardIcon}>ขาย</div><span className={dashboardStyles.cardBadge}>{salesModeEnabledCount}/{salesModeTotal} เปิด</span></div>
                   <div className={dashboardStyles.cardText}><span>POS SALES MODES</span><strong>โหมดขาย</strong><small>เปิดหรือปิดโหมดหน้าขายสำหรับร้านนี้</small></div>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { TenantAdminNav } from "@/components/it-admin/tenant-admin-nav";
+import { OpticalFinanceApprovalCard } from "@/components/it-admin/optical-finance-approval-card";
 
 type SectionKey = "branches" | "users" | "devices" | "login-policies" | "sessions" | "shifts" | "features";
 
@@ -1022,6 +1023,7 @@ function FeaturesPane({
         </div>
       </div>
 
+      <OpticalFinanceApprovalCard tenantId={tenantId} />
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
