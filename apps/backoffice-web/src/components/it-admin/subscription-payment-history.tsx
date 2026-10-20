@@ -1206,6 +1206,11 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                     target="_blank" rel="noopener noreferrer"
                     className="font-bold text-blue-700 underline">{receipt.receipt_number}</a> : "—"}</td>
                   <td className="p-3"><div className="flex flex-wrap gap-1">
+                     {row.status==="rejected" ? <button type="button" disabled={busyId===row.id}
+                       onClick={()=>void review(row.id,"under_review").then(()=>setActivePanel("pending"))}
+                       className="rounded-md bg-blue-700 px-2 py-1 text-xs font-bold text-white disabled:opacity-35">
+                       เปิดตรวจสอบใหม่
+                     </button> : null}
                     <button type="button" disabled={busyId===row.id || row.status==="approved"}
                       onClick={()=>void editRequestRecord(row)}
                       className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700 disabled:opacity-35">แก้ไข</button>
