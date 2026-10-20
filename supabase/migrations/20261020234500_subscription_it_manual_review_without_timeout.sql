@@ -181,7 +181,7 @@ begin
     'provisional_access_expires_at',null
   );
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app.refresh_subscription_billing_lifecycle(p_as_of timestamp with time zone DEFAULT now())
@@ -353,5 +353,5 @@ begin
     'ran_at',p_as_of
   );
 end;
-$function$
+$function$;
 
