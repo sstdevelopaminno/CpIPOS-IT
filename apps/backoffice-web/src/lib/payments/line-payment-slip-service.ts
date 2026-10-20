@@ -162,7 +162,7 @@ export async function submitLinePackagePaymentSlip(input: {
   }
 
   let provisional: { granted?: boolean; review_deadline?: string; provisional_access_expires_at?: string } | null = null;
-  if (scan.status === "verified" && scan.checks.passed) {
+  if (scan.status === "verified" && scan.checks.passed && scan.model !== "mock") {
     const granted = await db.rpc("grant_provisional_subscription_access", {
       p_request_id: inserted.data.id,
       p_scan: scan,
@@ -288,8 +288,7 @@ export async function getLinePaymentRequestStatus(input: {
       provisional_access_active: Boolean(
         request.data.provisional_access_granted_at
         && !request.data.provisional_access_revoked_at
-        && request.data.provisional_access_expires_at
-        && Date.parse(request.data.provisional_access_expires_at)>Date.now()
+        && request.data.auto_check_status==="passed"
         && request.data.status==="under_review"
       ),
       receipt
