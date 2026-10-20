@@ -27,8 +27,8 @@ export async function POST(request:Request,{params}:Params) {
     if(existing.error) throw new Error("Subscription request lookup failed.");
     if(!existing.data) return fail("request_not_found","Subscription request not found.",404);
     const previous=existing.data;
-    if(action==="under_review" && previous.status!=="pending") {
-      return fail("review_conflict","Only pending requests can be moved into review.",409);
+    if(action==="under_review" && !["pending","rejected"].includes(previous.status)) {
+      return fail("review_conflict","Only pending or previously rejected requests can be moved into review.",409);
     }
     if(action==="reject" && !["pending","under_review"].includes(previous.status)) {
       return fail("review_conflict","This request is already terminal.",409);
@@ -51,7 +51,7 @@ export async function POST(request:Request,{params}:Params) {
     }
     await appendAuditLog({
       tenantId:previous.tenant_id,actorUserId:auth.userId,actorRole:"it_admin",
-      action:action==="reject"?"subscription_request_rejected":"subscription_request_under_review",
+      action:action==="reject"?"subscription_request_rejected":previous.status==="rejected"?"subscription_request_reopened":"subscription_request_under_review",
       targetTable:"tenant_subscription_payment_requests",targetId:requestId,module:"it_admin",
       beforeData:{status:previous.status},afterData:{status},
       metadata:{note},ipAddress:requestMeta.ipAddress??undefined,userAgent:requestMeta.userAgent??undefined
