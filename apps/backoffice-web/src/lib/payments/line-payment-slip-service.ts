@@ -86,13 +86,24 @@ export async function submitLinePackagePaymentSlip(input: {
   const prepared=Boolean(open.data && snapshot.open_request?.id===open.data.id &&
     open.data.status==="pending" && !open.data.evidence_url &&
     open.data.amount_reported==null &&
-    open.data.metadata?.source==="it_tenant_control" &&
+    (open.data.metadata?.source==="it_tenant_control" ||
+      (open.data.metadata?.source==="it_custom_agreement" &&
+       !!open.data.metadata?.custom_terms_snapshot && snapshot.package.code==="custom")) &&
     open.data.metadata?.kind==="payment_notice" &&
     open.data.requested_package_id===snapshot.package.id &&
-    String(open.data.metadata?.billing_cycle_id||"")===cycle &&
-    Number(open.data.metadata?.expected_amount)===snapshot.due.outstanding_amount);
+    (String(open.data.metadata?.billing_cycle_id||"")===cycle ||
+      (open.data.metadata?.source==="it_custom_agreement" &&
+       !open.data.metadata?.billing_cycle_id && snapshot.package.code==="custom")) &&
+    snapshot.open_request?.can_attach_evidence===true &&
+    snapshot.due.currency==="THB" &&
+    Number(open.data.metadata?.expected_amount)===snapshot.due.outstanding_amount &&
+    snapshot.due.outstanding_amount>0);
+  if(open.data?.metadata?.kind==="custom_quote_request")
+    throw new LinePaymentSlipError("custom_quote_not_approved",
+      "แพ็กเกจ CUSTOM ยังรอ IT ตกลงราคา กรุณาติดต่อ Support ก่อนชำระเงิน",409);
   if(open.data && !prepared)
-    throw new LinePaymentSlipError("payment_request_exists","รายการเดิมส่งสลิปแล้ว กรุณาติดต่อ Support",409);
+    throw new LinePaymentSlipError("payment_request_exists",
+      open.data.evidence_url?"รายการเดิมส่งสลิปแล้ว กรุณาติดต่อ Support":"คำขอยังไม่พร้อมชำระหรือยอดไม่ตรงกับรอบบิล กรุณาติดต่อ Support",409);
   if(!snapshot.due.self_service_payment_allowed && !prepared)
     throw new LinePaymentSlipError("payment_support_required","รอบนี้ยังไม่เปิดให้ส่งสลิปผ่านระบบ",409);
 
@@ -289,6 +300,9 @@ export async function getLinePaymentRequestStatus(input: {
     request: {
       id: request.data.id,
       status: request.data.status,
+      kind:request.data.metadata?.kind==="custom_quote_request"?"custom_quote_request"
+        :request.data.metadata?.kind==="payment_notice"?"payment_notice"
+        :request.data.metadata?.kind==="ai_addon_payment"?"ai_addon_payment":"renewal_intent",
       submitted_at: request.data.submitted_at,
       reviewed_at: request.data.reviewed_at,
       review_note: request.data.review_note,

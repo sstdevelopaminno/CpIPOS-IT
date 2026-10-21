@@ -43,6 +43,7 @@ type PaymentRequestSummary = {
   scan_status: string | null;
   has_evidence?: boolean;
   can_attach_evidence?: boolean;
+  kind?: "custom_quote_request" | "payment_notice" | "renewal_intent" | "ai_addon_payment";
 };
 
 type PaymentRequestStatus = PaymentRequestSummary & {
@@ -684,7 +685,23 @@ export function LinePaymentClient() {
 
           {stage === "review" && paymentRequest ? (
             <div className="flex flex-1 flex-col justify-center overflow-y-auto p-5 text-center">
-              {paymentRequest.status === "approved" ? (
+              {paymentRequest.kind === "custom_quote_request" ? (
+                <>
+                  <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-violet-100 text-4xl text-violet-800" aria-hidden="true">⌛</div>
+                  <h1 className="mt-5 text-2xl font-black text-slate-900">รอฝ่าย IT ยืนยันราคา CUSTOM</h1>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    คำขอนี้เป็นการขอแพ็กเกจเฉพาะร้าน ยังไม่ใช่การชำระเงินและยังไม่มีสลิปให้ตรวจสอบ
+                    เมื่อ IT ตกลงราคาและรอบบิลแล้ว ระบบจะแสดงยอดที่ต้องชำระ บัญชีรับเงิน และ QR Code
+                  </p>
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+                    กรุณาอย่าโอนเงินก่อนเห็นยอดชำระที่ IT ยืนยันในระบบ
+                  </div>
+                  <button type="button" onClick={() => void loadPackagePayment()}
+                    className="mt-5 w-full rounded-2xl bg-blue-700 px-4 py-4 text-sm font-black text-white">
+                    ตรวจสอบราคาที่ IT อนุมัติอีกครั้ง
+                  </button>
+                </>
+              ) : paymentRequest.status === "approved" ? (
                 <>
                   <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-100 text-4xl text-emerald-700">✓</div>
                   <h1 className="mt-5 text-2xl font-black text-emerald-800">อนุมัติการชำระแล้ว</h1>

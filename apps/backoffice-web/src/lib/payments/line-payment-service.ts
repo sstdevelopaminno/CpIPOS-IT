@@ -57,6 +57,7 @@ export type LinePaymentRequestSummary = {
   scan_status: string | null;
   has_evidence: boolean;
   can_attach_evidence?: boolean;
+  kind: "custom_quote_request" | "payment_notice" | "renewal_intent" | "ai_addon_payment";
 };
 
 export type LinePackagePaymentSnapshot = {
@@ -141,7 +142,10 @@ function paymentSummary(row: PaymentRequestRow | null | undefined): LinePaymentR
     submitted_at: row.submitted_at,
     review_note: row.review_note,
     scan_status: scanStatus,
-    has_evidence:Boolean(row.evidence_url)
+    has_evidence:Boolean(row.evidence_url),
+    kind:row.metadata?.kind==="custom_quote_request"?"custom_quote_request"
+      :row.metadata?.kind==="payment_notice"?"payment_notice"
+      :row.metadata?.kind==="ai_addon_payment"?"ai_addon_payment":"renewal_intent"
   };
 }
 
@@ -238,9 +242,15 @@ export async function getLinePackagePaymentSnapshot(
 
   const prepared=Boolean(openRow && openRow.status==="pending" && !openRow.evidence_url &&
     openRow.amount_reported==null && openRow.requested_package_id===packageId &&
-    openRow.metadata?.source==="it_tenant_control" && openRow.metadata?.kind==="payment_notice" &&
-    String(openRow.metadata?.billing_cycle_id||"")===String(rawDue.billing_cycle_id||"") &&
-    Number(openRow.metadata?.expected_amount)===outstanding &&
+    (openRow.metadata?.source==="it_tenant_control" ||
+      (openRow.metadata?.source==="it_custom_agreement" && !!openRow.metadata?.custom_terms_snapshot)) &&
+    openRow.metadata?.kind==="payment_notice" &&
+    (String(openRow.metadata?.billing_cycle_id||"")===String(rawDue.billing_cycle_id||"") ||
+      (openRow.metadata?.source==="it_custom_agreement" &&
+       !openRow.metadata?.billing_cycle_id && packageRow?.code==="custom")) &&
+    Number(openRow.metadata?.expected_amount)===outstanding && outstanding>0 &&
+    rawDue.open_request_id===openRow.id && rawDue.open_request_status==="pending" &&
+    String(rawDue.currency??"THB")==="THB" &&
     String(openRow.metadata?.billing_interval||"")===String(contract?.billing_interval||"") &&
     !supportRequired);
   let due: LinePackagePaymentSnapshot["due"] = null;

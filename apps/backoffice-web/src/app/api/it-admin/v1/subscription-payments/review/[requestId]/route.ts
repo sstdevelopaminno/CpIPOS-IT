@@ -6,7 +6,7 @@ import { dispatchSupportPush } from "@/lib/support-chat/support-push";
 export const dynamic = "force-dynamic";
 type Params = { params: Promise<{requestId:string}> };
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type ReviewRow = {id:string;tenant_id:string;status:string;review_note:string|null;evidence_url?:string|null;requested_package_id?:string|null};
+type ReviewRow = {id:string;tenant_id:string;status:string;review_note:string|null;evidence_url?:string|null;requested_package_id?:string|null;metadata?:Record<string,unknown>|null};
 
 export async function POST(request:Request,{params}:Params) {
   try {
@@ -23,10 +23,15 @@ export async function POST(request:Request,{params}:Params) {
       throw new ItAdminGuardError("rejection_note_required","Explain why the request was rejected.",422);
     }
     const existing=await supabase.from("tenant_subscription_payment_requests")
-      .select("id,tenant_id,status,review_note,evidence_url,requested_package_id").eq("id",requestId).maybeSingle<ReviewRow>();
+      .select("id,tenant_id,status,review_note,evidence_url,requested_package_id,metadata").eq("id",requestId).maybeSingle<ReviewRow>();
     if(existing.error) throw new Error("Subscription request lookup failed.");
     if(!existing.data) return fail("request_not_found","Subscription request not found.",404);
     const previous=existing.data;
+    // A quote is NOT a bank payment. Rejecting a quote via the payment
+    // review workflow would invoke the tenant subscription rejection lock.
+    if(previous.metadata?.kind==="custom_quote_request"){
+      return fail("custom_quote_not_a_payment","คำขอ CUSTOM ยังไม่ได้รับรองราคา ให้เปิดเมนู Tenants / Stores → CUSTOM PACKAGE เพื่อตกลงเงื่อนไขก่อน",409);
+    }
     if(action==="under_review" && !["pending","rejected"].includes(previous.status)) {
       return fail("review_conflict","Only pending or previously rejected requests can be moved into review.",409);
     }

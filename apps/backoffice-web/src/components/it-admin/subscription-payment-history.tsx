@@ -906,7 +906,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
         </WorkspaceModal> : null}
 
         {activePanel === "pending" ? <WorkspaceModal title="ตรวจสอบรายการรออนุมัติ"
-          description="สลิปที่ตรวจวันที่ ยอดเงิน และผู้รับผ่านจะเปิด POS ได้ระหว่างรอ IT ตรวจเงินจริง ไม่มีกำหนดล็อกอัตโนมัติหลัง 3 วัน หาก IT ไม่อนุมัติจะล็อกทันที"
+          description="แยกคำขอ CUSTOM ที่รออนุมัติราคาออกจากการแจ้งชำระจริง สลิปที่ตรวจสอบผ่านจะเปิด POS ระหว่างรอ IT ตรวจเงินเข้าจริง และล็อกเฉพาะเมื่อ IT ไม่อนุมัติ"
           onClose={() => setActivePanel(null)}><section className="rounded-2xl border border-amber-200 bg-white p-3 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -924,6 +924,26 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
 
           {openRequests.length === 0 ? <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">ไม่มีรายการรอตรวจสอบ</p> :
             <div className="mt-4 space-y-4">{openRequests.map((row) => {
+              if(row.kind==="custom_quote_request")return <article key={row.id}
+                data-testid="it-custom-quote-awaiting-terms"
+                className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 sm:p-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-base text-violet-950">{row.requested_package_name || "CUSTOM"}</strong>
+                  <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-800">คำขอกำหนดราคา CUSTOM</span>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700">{REQUEST_STATUS[row.status] || row.status}</span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  รายการนี้ยังเป็นคำขอตกลงแพ็กเกจ ไม่ใช่รายการโอนเงิน ไม่มีสลิปให้สแกน และไม่ควรอนุมัติหรือปฏิเสธในฐานะการชำระเงิน
+                </p>
+                <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3 text-sm">
+                  <p className="font-bold text-slate-800">ขั้นต่อไปสำหรับ IT</p>
+                  <p className="mt-1 text-slate-600">ไปที่ Tenants / Stores → เลือกร้านนี้ → CUSTOM PACKAGE → ตรวจราคา โควตา และรอบบิล → กด “อนุมัติและส่งยอดให้ POS” ก่อนให้ลูกค้าชำระผ่าน POS หรือ LINE</p>
+                  <p className="mt-2 text-xs text-slate-500">รับคำขอเมื่อ {formatDateTime(row.submitted_at)} · ยอดเรียกเก็บยังไม่ได้ยืนยัน · Auto Scan ไม่เกี่ยวกับรายการนี้</p>
+                  <Link href="/it-admin/tenants" className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-violet-700 px-4 py-2 text-sm font-bold text-white hover:bg-violet-800">
+                    ไปจัดการ CUSTOM ใน Tenants / Stores
+                  </Link>
+                </div>
+              </article>;
               const draft = draftFor(row);
               const diff = amountDifference(row);
               const canApprove = row.status === "under_review" && row.kind === "payment_notice";
@@ -1204,7 +1224,9 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                 return <tr className="border-b" key={row.id}>
                   <td className="p-3">{formatDateTime(row.submitted_at)}</td>
                   <td className="p-3">{row.requested_package_name || "—"} · {billingLabel(row.billing_interval)}</td>
-                  <td className="p-3">{row.kind === "payment_notice" ? "แจ้งชำระเงิน" : "ขอต่ออายุ"}</td>
+                  <td className="p-3">{row.kind === "payment_notice" ? "แจ้งชำระเงิน"
+                        : row.kind === "custom_quote_request" ? "คำขอราคา CUSTOM"
+                        : row.kind === "ai_addon_payment" ? "AI Add-on" : "ขอต่ออายุ"}</td>
                   <td className="p-3">{formatMoney(row.amount_reported,row.currency || "THB")}</td>
                   <td className="p-3"><strong>{REQUEST_STATUS[row.status] || row.status}</strong>{row.review_note ? <p className="mt-1 text-xs text-slate-500">{row.review_note}</p> : null}</td>
                   <td className="p-3">{receipt ? <a
