@@ -4,6 +4,15 @@ import {describe,it,expect} from "vitest";
 const src=(p:string)=>readFileSync(resolve(process.cwd(),"src",p),"utf8");
 const sql=readFileSync(resolve(process.cwd(),"../../supabase/migrations/20261021210000_custom_it_operational_provisioning_limits.sql"),"utf8");
 describe("CUSTOM IT-approved store capacity is independent of price approval",()=>{
+  it("migration must contain exactly one complete CREATE FUNCTION body (protect dollar-quoted regex)",()=>{
+   expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
+   expect(sql.split("AS $function$").length-1).toBe(1);
+   expect(sql.split("\n$function$;").length-1).toBe(1);
+   expect(sql.match(/-- Trial registrations do not yet/g)).toHaveLength(1);
+   expect(sql).toContain("'^[1-9][0-9]*$'");
+   expect(sql.match(/custom_provisioning_approval_invalid/g)).toHaveLength(1);
+  });
+
  it("accepts only the exact saved IT terms and preserves previously applied capacity when draft pricing changes",()=>{
   for(const needle of ["it_approved_custom_limits","v_approval->>'terms_version'","v_terms.version","v_terms.max_branches","v_terms.max_devices","v_terms.max_users","v_stored_previous=v_approval","new.max_branches:=","new.max_devices:=","new.max_users:="]){
     expect(sql).toContain(needle);
