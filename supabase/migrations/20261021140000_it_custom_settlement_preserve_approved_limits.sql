@@ -112,7 +112,13 @@ begin
     select * into v_approved_terms from public.tenant_custom_package_terms
       where tenant_id=v_req.tenant_id and package_id=v_package.id and status='approved';
     if not found or v_approved_terms.approved_at is null
-       or coalesce(v_terms_snapshot->>'terms_version','')<>v_approved_terms.version::text
+       -- IT's quote approval may increment terms.version once. The exact
+       -- snapshotted quotas and price are separately matched below.
+       or coalesce(v_terms_snapshot->>'terms_version','') !~ '^[0-9]+$'
+       or v_approved_terms.version not in (
+         (v_terms_snapshot->>'terms_version')::bigint,
+         (v_terms_snapshot->>'terms_version')::bigint+1
+       )
        or coalesce(v_terms_snapshot->>'proposed_billing_interval','')<>v_interval then
       raise exception 'custom_terms_approval_mismatch';
     end if;
@@ -135,6 +141,12 @@ begin
     if (v_interval='yearly' and v_expected is distinct from v_approved_terms.yearly_price)
        or (v_interval='monthly' and v_expected is distinct from v_approved_terms.monthly_price) then
       raise exception 'custom_terms_price_mismatch';
+    end if;
+    if v_terms_snapshot->>'retention_months' is not null
+       and (coalesce(v_terms_snapshot->>'retention_months','') !~ '^[0-9]+$'
+            or (v_terms_snapshot->>'retention_months')::integer
+               is distinct from v_approved_terms.retention_months) then
+      raise exception 'custom_terms_retention_mismatch';
     end if;
     if coalesce(v_terms_snapshot->>'retention_months','') ~ '^[0-9]+$' then
       v_effective_retention_months:=(v_terms_snapshot->>'retention_months')::integer;
