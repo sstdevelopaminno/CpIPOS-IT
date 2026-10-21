@@ -1,6 +1,4 @@
--- Applied capacity is an explicit IT authorization stored in contract metadata.
--- This never activates pricing, changes billing, or alters existing payment records.
--- Payment-specific CUSTOM snapshots retain highest precedence.
+-- IT-authorized capacity is distinct from CUSTOM quotation approval.
 CREATE OR REPLACE FUNCTION app.apply_custom_contract_limits()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -55,89 +53,12 @@ begin
     return new;
   end if;
 
-  -- IT may authorize quota provisioning independently from CUSTOM price.
-  -- Merely saving a draft is never sufficient: this explicit snapshot must be
-  -- written by the guarded IT tenant-control action.
-  v_explicit_limits:=coalesce(new.metadata,'{}'::jsonb)->'it_approved_custom_limits';
+  -- Explicitly authorized provisioning limits remain separate from draft pricing.
+  v_explicit_limits := coalesce(new.metadata,'{}'::jsonb)->'it_approved_custom_limits';
   if v_explicit_limits is not null and jsonb_typeof(v_explicit_limits)='object' then
-    if coalesce(v_explicit_limits->>'max_branches','') !~ '^[1-9][0-9]*
-  -- IT-reviewed tenant terms row; otherwise remain at the minimum safe quota.
-  select * into v_terms
-  from public.tenant_custom_package_terms
-  where tenant_id = new.tenant_id
-    and package_id = new.package_id
-    and status in ('approved','active');
-
-  if found then
-    new.max_branches := v_terms.max_branches;
-    new.branch_limit := v_terms.max_branches;
-    new.max_devices := v_terms.max_devices;
-    new.terminal_limit_per_branch := v_terms.max_devices;
-    new.max_users := v_terms.max_users;
-  else
-    new.max_branches := 1;
-    new.branch_limit := 1;
-    new.max_devices := 1;
-    new.terminal_limit_per_branch := 1;
-    new.max_users := 1;
-  end if;
-
-  return new;
-end;
-$function$
-
-       or coalesce(v_explicit_limits->>'max_devices','') !~ '^[1-9][0-9]*
-  -- IT-reviewed tenant terms row; otherwise remain at the minimum safe quota.
-  select * into v_terms
-  from public.tenant_custom_package_terms
-  where tenant_id = new.tenant_id
-    and package_id = new.package_id
-    and status in ('approved','active');
-
-  if found then
-    new.max_branches := v_terms.max_branches;
-    new.branch_limit := v_terms.max_branches;
-    new.max_devices := v_terms.max_devices;
-    new.terminal_limit_per_branch := v_terms.max_devices;
-    new.max_users := v_terms.max_users;
-  else
-    new.max_branches := 1;
-    new.branch_limit := 1;
-    new.max_devices := 1;
-    new.terminal_limit_per_branch := 1;
-    new.max_users := 1;
-  end if;
-
-  return new;
-end;
-$function$
-
-       or coalesce(v_explicit_limits->>'max_users','') !~ '^[1-9][0-9]*
-  -- IT-reviewed tenant terms row; otherwise remain at the minimum safe quota.
-  select * into v_terms
-  from public.tenant_custom_package_terms
-  where tenant_id = new.tenant_id
-    and package_id = new.package_id
-    and status in ('approved','active');
-
-  if found then
-    new.max_branches := v_terms.max_branches;
-    new.branch_limit := v_terms.max_branches;
-    new.max_devices := v_terms.max_devices;
-    new.terminal_limit_per_branch := v_terms.max_devices;
-    new.max_users := v_terms.max_users;
-  else
-    new.max_branches := 1;
-    new.branch_limit := 1;
-    new.max_devices := 1;
-    new.terminal_limit_per_branch := 1;
-    new.max_users := 1;
-  end if;
-
-  return new;
-end;
-$function$
-
+    if coalesce(v_explicit_limits->>'max_branches','') !~ '^[1-9][0-9]*$'
+       or coalesce(v_explicit_limits->>'max_devices','') !~ '^[1-9][0-9]*$'
+       or coalesce(v_explicit_limits->>'max_users','') !~ '^[1-9][0-9]*$'
        or coalesce(v_explicit_limits->>'approved_at','')=''
        or coalesce(v_explicit_limits->>'approved_by','')=''
        or (v_explicit_limits->>'max_branches')::numeric > 2000000000
