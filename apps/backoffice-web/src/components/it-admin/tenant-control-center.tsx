@@ -1011,6 +1011,13 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                           custom_feature_overrides:customDraft.feature_overrides,
                           custom_notes:customDraft.notes
                         },"บันทึกร่าง CUSTOM แล้ว",true)}>บันทึกร่าง</button>
+                      {data.current_package?.code === "custom" && customTerms ? (
+                        <button className={styles.primaryButton} type="button" disabled={busy}
+                          onClick={() => void mutate({action:"apply_custom_provisioning_limits"},
+                            "ใช้โควตาสาขา เครื่องขาย และผู้ใช้งานจาก IT กับร้านแล้ว (ไม่อนุมัติราคาหรือรับเงิน)",true)}>
+                          ใช้โควตาที่บันทึกกับร้านทันที (ไม่อนุมัติราคา)
+                        </button>
+                      ) : null}
                       {customTerms?.status === "draft" && !customRequestOpen ? <button
                         className={styles.primaryButton} type="button" disabled={busy}
                         onClick={() => void mutate({action:"approve_custom_terms_draft"},
@@ -1024,6 +1031,17 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                           admin_reason:customDraft.notes
                         },"อนุมัติ CUSTOM แล้ว · POS พร้อมรับรายการชำระ",true)}>อนุมัติและส่งยอดให้ POS</button> : null}
                     </div>
+                    {data.current_package?.code === "custom" && customTerms ? (
+                      <div className={styles.securityNote}>
+                        <strong>โควตาปัจจุบันที่ POS ตรวจจริง:</strong>{" "}
+                        สาขา {data.contract?.max_branches ?? "—"} ·
+                        เครื่องขาย {data.contract?.max_devices ?? "—"} ·
+                        ผู้ใช้ {data.contract?.max_users ?? "—"}
+                        <div>โควตาร่าง IT ที่บันทึก: สาขา {customTerms.max_branches} ·
+                          เครื่องขาย {customTerms.max_devices} · ผู้ใช้ {customTerms.max_users}</div>
+                        <div>กดปุ่มใช้โควตาหลังบันทึกร่างเพื่อเปลี่ยนจำนวนที่ร้านเพิ่มได้ โดยไม่เปลี่ยนราคา สัญญา หรือสถานะชำระเงิน</div>
+                      </div>
+                    ) : null}
                     {customRequestOpen ? <div className={styles.securityNote}>หลังอนุมัติ ลูกค้าจะเห็นยอดที่ตกลงในเมนูชำระเงิน และยังต้องผ่านการตรวจเงินเข้า/Settlement ก่อนเปลี่ยนแพ็กเกจจริง</div> :
                       customTerms?.status === "draft" ? <div className={styles.securityNote}>ร่างนี้จะใช้เมื่อมีคำขอ CUSTOM และ IT กดอนุมัติรอบถัดไป</div> : null}
                   </section> : null}

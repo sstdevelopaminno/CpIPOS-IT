@@ -164,6 +164,7 @@ export type TenantControlAction =
   | "update_contract"
   | "grant_promo_extension"
   | "update_custom_package_terms"
+  | "apply_custom_provisioning_limits"
   | "approve_custom_terms_draft"
   | "approve_custom_package_request"
   | "prepare_paid_package"
@@ -248,6 +249,7 @@ function requireAction(raw: unknown): TenantControlAction {
     "update_contract",
     "grant_promo_extension",
     "update_custom_package_terms",
+    "apply_custom_provisioning_limits",
     "approve_custom_terms_draft",
     "approve_custom_package_request",
     "prepare_paid_package",
@@ -1053,9 +1055,9 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (proposedBilling === "yearly" && discountedYearly <= 0 && discountedMonthly > 0) {
       throw new ItAdminGuardError("custom_cycle_price_missing", "ข้อเสนอรายปีต้องมีราคาต่อปีหลังหักส่วนลดมากกว่า 0 กรุณาเลือกรายเดือน", 422);
     }
-    const maxBranches = Math.trunc(readNumber(input.custom_max_branches, current?.max_branches ?? 1, 1, 10000, "จำนวนสาขา"));
-    const maxDevices = Math.trunc(readNumber(input.custom_max_devices, current?.max_devices ?? 1, 1, 10000, "จำนวนเครื่องขาย"));
-    const maxUsers = Math.trunc(readNumber(input.custom_max_users, current?.max_users ?? 1, 1, 100000, "จำนวนผู้ใช้งาน"));
+    const maxBranches = Math.trunc(readNumber(input.custom_max_branches, current?.max_branches ?? 1, 1, 2_000_000_000, "จำนวนสาขา"));
+    const maxDevices = Math.trunc(readNumber(input.custom_max_devices, current?.max_devices ?? 1, 1, 2_000_000_000, "จำนวนเครื่องขาย"));
+    const maxUsers = Math.trunc(readNumber(input.custom_max_users, current?.max_users ?? 1, 1, 2_000_000_000, "จำนวนผู้ใช้งาน"));
     const retentionMonths = Math.trunc(readNumber(input.custom_retention_months, current?.retention_months ?? 6, 1, 120, "ระยะเก็บข้อมูล"));
 
     const nullablePositiveInt = (value: unknown, fallback: number | null, max: number) => {
@@ -1127,6 +1129,80 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
 
     await audit(context,tenantId,"custom_package_terms_draft_saved","tenant_custom_package_terms",tenantId,
       current ? asRecord(current) : {}, asRecord(saved.data), { package_id: customPackage.data.id });
+  }
+
+  if (action === "apply_custom_provisioning_limits") {
+    // Explicit IT capacity authorization for the CURRENT CUSTOM contract.
+    // Pricing approval, subscription status, billing cycles and bank settlement
+    // remain independent; editing a draft must never silently change live limits.
+    const contractResult = await context.supabase.from("tenant_subscription_contracts")
+      .select("id,package_id,status,max_branches,max_devices,max_users,metadata")
+      .eq("tenant_id",tenantId).order("created_at",{ascending:false}).limit(1)
+      .maybeSingle<{id:string;package_id:string;status:string;max_branches:number|null;
+        max_devices:number|null;max_users:number|null;metadata:Record<string,unknown>|null}>();
+    if(contractResult.error)throw new Error("custom_capacity_contract_lookup_failed");
+    const contract=contractResult.data;
+    if(!contract || !["active","trial"].includes(contract.status))
+      throw new ItAdminGuardError("custom_capacity_contract_inactive",
+        "ต้องมีสัญญา CUSTOM ที่ใช้งานหรือทดลองอยู่ก่อนกำหนดโควตา",409);
+    const pkg=await context.supabase.from("subscription_packages")
+      .select("code").eq("id",contract.package_id).maybeSingle<{code:string}>();
+    if(pkg.error)throw new Error("custom_capacity_package_lookup_failed");
+    if(pkg.data?.code!=="custom")
+      throw new ItAdminGuardError("custom_capacity_package_required",
+        "กำหนดโควตาโดยตรงได้เฉพาะร้านที่ใช้แพ็กเกจ CUSTOM จริง",409);
+    const terms=await context.supabase.from("tenant_custom_package_terms")
+      .select("tenant_id,package_id,max_branches,max_devices,max_users,version,status")
+      .eq("tenant_id",tenantId).eq("package_id",contract.package_id)
+      .maybeSingle<{tenant_id:string;package_id:string;max_branches:number;
+        max_devices:number;max_users:number;version:number;status:string}>();
+    if(terms.error)throw new Error("custom_capacity_terms_lookup_failed");
+    if(!terms.data)throw new ItAdminGuardError("custom_capacity_terms_missing",
+      "ต้องบันทึกร่างจำนวนสาขา เครื่องขาย และผู้ใช้งานก่อน",409);
+    const limits=terms.data;
+    if(![limits.max_branches,limits.max_devices,limits.max_users].every(
+      v=>Number.isSafeInteger(v)&&v>=1&&v<=2_000_000_000))
+      throw new ItAdminGuardError("custom_capacity_terms_invalid","โควตา CUSTOM ต้องเป็นจำนวนเต็มบวก",422);
+    const [branches,devices,roles]=await Promise.all([
+      context.supabase.from("branches").select("id",{head:true,count:"exact"})
+        .eq("tenant_id",tenantId).eq("is_active",true),
+      context.supabase.from("branch_devices").select("id",{head:true,count:"exact"})
+        .eq("tenant_id",tenantId).eq("status","active"),
+      context.supabase.from("user_branch_roles").select("user_id").eq("tenant_id",tenantId)
+    ]);
+    if(branches.error||devices.error||roles.error)
+      throw new Error("custom_capacity_usage_lookup_failed");
+    const userCount=new Set((roles.data??[]).map(x=>String(x.user_id))).size;
+    if(limits.max_branches<Number(branches.count??0)||
+       limits.max_devices<Number(devices.count??0)||limits.max_users<userCount)
+      throw new ItAdminGuardError("custom_capacity_below_usage",
+        "โควตาใหม่ต้องไม่ต่ำกว่าการใช้งานจริง",409);
+    const approvedCapacity={
+      max_branches:limits.max_branches,max_devices:limits.max_devices,
+      max_users:limits.max_users,terms_version:limits.version,
+      approved_at:now,approved_by:context.auth.userId
+    };
+    const metadata={...asRecord(contract.metadata),
+      it_approved_custom_limits:approvedCapacity};
+    // Supabase's CUSTOM-contract trigger validates and copies these explicit
+    // IT-authorized limits onto enforceQuota's actual contract fields.
+    const updated=await context.supabase.from("tenant_subscription_contracts")
+      .update({metadata,updated_at:now}).eq("id",contract.id).eq("tenant_id",tenantId)
+      .eq("package_id",contract.package_id).in("status",["active","trial"])
+      .select("id,max_branches,max_devices,max_users").maybeSingle<{
+        id:string;max_branches:number;max_devices:number;max_users:number}>();
+    if(updated.error)throw new Error("custom_capacity_contract_update_failed:"+updated.error.message);
+    if(!updated.data||updated.data.max_branches!==limits.max_branches||
+       updated.data.max_devices!==limits.max_devices||updated.data.max_users!==limits.max_users)
+      throw new Error("custom_capacity_trigger_mismatch");
+    invalidateTenantFeatureGateCache(tenantId);
+    await audit(context,tenantId,"custom_provisioning_limits_applied",
+      "tenant_subscription_contracts",contract.id,
+      {max_branches:contract.max_branches,max_devices:contract.max_devices,
+        max_users:contract.max_users},
+      {max_branches:updated.data.max_branches,max_devices:updated.data.max_devices,
+        max_users:updated.data.max_users,terms_version:limits.version},
+      {price_approval:false,subscription_settlement:false});
   }
 
   if (action === "approve_custom_terms_draft") {
