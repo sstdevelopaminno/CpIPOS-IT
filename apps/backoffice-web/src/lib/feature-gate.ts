@@ -303,22 +303,25 @@ export async function enforceQuota(tenantId: string, resourceType: QuotaResource
   }
 
   if (resourceType === "devices" && limits.maxDevices !== null) {
-    let deviceUsage = limits.usage.devices;
-    if (branchId) {
-      const supabase = getSupabaseServiceClient();
-      const { count, error } = await supabase
-        .from("branch_devices")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId)
-        .eq("branch_id", branchId)
-        .eq("status", "active");
-      if (error) {
-        throw new FeatureGateError("quota_usage_devices_query_failed", error.message, 500);
-      }
-      deviceUsage = Number(count ?? 0);
+    // IT CUSTOM terms specify the TOTAL registered devices across the tenant.
+    // Other plans still interpret their device quota per branch.
+    const supabase = getSupabaseServiceClient();
+    const packageResult = await supabase.from("subscription_packages")
+      .select("code").eq("id", limits.planId ?? "").maybeSingle<{code:string}>();
+    if (packageResult.error) {
+      throw new FeatureGateError("quota_package_lookup_failed", packageResult.error.message, 500);
     }
-    if (deviceUsage >= limits.maxDevices) {
-      throw new FeatureGateError("quota_blocked", `Device quota exceeded (${deviceUsage}/${limits.maxDevices}).`, 409);
+    const isCustom=String(packageResult.data?.code??"").toLowerCase()==="custom";
+    let deviceUsage=limits.usage.devices;
+    if (branchId && !isCustom) {
+      const {count,error}=await supabase.from("branch_devices")
+        .select("id",{count:"exact",head:true})
+        .eq("tenant_id",tenantId).eq("branch_id",branchId).eq("status","active");
+      if(error)throw new FeatureGateError("quota_usage_devices_query_failed",error.message,500);
+      deviceUsage=Number(count??0);
+    }
+    if(deviceUsage>=limits.maxDevices){
+      throw new FeatureGateError("quota_blocked",`Device quota exceeded (${deviceUsage}/${limits.maxDevices}).`,409);
     }
   }
 
