@@ -300,6 +300,9 @@ export async function getLinePaymentRequestStatus(input: {
     request: {
       id: request.data.id,
       status: request.data.status,
+      kind:request.data.metadata?.kind==="custom_quote_request"?"custom_quote_request"
+        :request.data.metadata?.kind==="payment_notice"?"payment_notice"
+        :request.data.metadata?.kind==="ai_addon_payment"?"ai_addon_payment":"renewal_intent",
       submitted_at: request.data.submitted_at,
       reviewed_at: request.data.reviewed_at,
       review_note: request.data.review_note,
