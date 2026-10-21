@@ -134,7 +134,8 @@ type SettleEnvelope = {
 };
 type SettlementDraft = {
   bank_transaction_reference: string;
-  bank_received_at: string;
+  bank_received_date: string;
+  bank_received_time: string;
   amount_received: string;
   confirmed_bank_receipt: boolean;
 };
@@ -192,6 +193,20 @@ const SERVICE_STATUS: Record<string,string> = {
   cancelled: "ยกเลิก"
 };
 
+/**
+ * IT settlement dates use the bank statement's Thailand wall-clock time.
+ * Do not parse an incomplete datetime-local value or silently use browser
+ * timezone: that can shift the credit date on an overseas support computer.
+ */
+function parseBankReceivedAt(date:string,time:string):string|null {
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^\d{2}:\d{2}$/.test(time))return null;
+  const ms=Date.parse(`${date}T${time}:00+07:00`);
+  if(!Number.isFinite(ms))return null;
+  const roundtrip=new Date(ms+7*3600_000).toISOString().slice(0,16);
+  if(roundtrip!==`${date}T${time}`)return null;
+  if(ms>Date.now()+3600_000||ms<Date.now()-2*365.25*86400_000)return null;
+  return new Date(ms).toISOString();
+}
 function formatDateTime(value: string | null) {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -240,6 +255,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   const [chatSlipFeedback, setChatSlipFeedback] = useState<{ id: string; message: string; success: boolean } | null>(null);
   const [notes, setNotes] = useState<Record<string,string>>({});
   const [settlementDrafts, setSettlementDrafts] = useState<Record<string,SettlementDraft>>({});
+  const [settlementErrors, setSettlementErrors] = useState<Record<string,string>>({});
   const [annualPriceDrafts, setAnnualPriceDrafts] = useState<Record<string,string>>({});
   const [savingPackageId, setSavingPackageId] = useState("");
   const [activePanel, setActivePanel] = useState<WorkspacePanel>(null);
@@ -323,7 +339,10 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   function draftFor(row: PaymentRequest): SettlementDraft {
     return settlementDrafts[row.id] ?? {
       bank_transaction_reference: "",
-      bank_received_at: row.transfer_at || "",
+      // IT must select BOTH the actual bank date and bank time independently;
+      // customer-reported transfer_at is not proof of bank settlement.
+      bank_received_date: "",
+      bank_received_time: "",
       amount_received: row.expected_amount != null
         ? Number(row.expected_amount).toFixed(2)
         : row.amount_reported != null ? Number(row.amount_reported).toFixed(2) : "",
@@ -334,6 +353,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   function patchDraft(row: PaymentRequest, patch: Partial<SettlementDraft>) {
     const current = draftFor(row);
     setSettlementDrafts((value) => ({ ...value, [row.id]: { ...current, ...patch } }));
+    setSettlementErrors((value)=>({...value,[row.id]:""}));
   }
 
   async function review(requestId: string, action: "under_review" | "reject", reopening = false) {
@@ -616,21 +636,34 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
   async function settle(row: PaymentRequest) {
     const draft = draftFor(row);
     const amount = Number(draft.amount_received);
+    const actualReceivedAt=parseBankReceivedAt(draft.bank_received_date,draft.bank_received_time);
+    const rejectForm=(reason:string)=>{
+      setSettlementErrors((prev)=>({...prev,[row.id]:reason}));
+      setError(reason);
+    };
     if (row.kind !== "payment_notice") {
-      setError("ยังอนุมัติไม่ได้ รายการนี้ต้องเป็นการแจ้งชำระเงินจริงก่อน");
+      rejectForm("ยังอนุมัติไม่ได้ รายการนี้ต้องเป็นการแจ้งชำระเงินจริงก่อน");
       return;
     }
     if (!draft.confirmed_bank_receipt) {
-      setError("กรุณายืนยันว่าได้ตรวจสอบเงินเข้าบัญชีบริษัทจากรายการธนาคารแล้ว");
+      rejectForm("กรุณายืนยันว่าได้ตรวจสอบเงินเข้าบัญชีบริษัทจากรายการธนาคารแล้ว");
       return;
     }
-    if (!draft.bank_transaction_reference.trim() || !draft.bank_received_at ||
-        !Number.isFinite(amount) || amount <= 0) {
-      setError("กรอกเลขอ้างอิงธนาคาร วันเวลาเงินเข้า และยอดเงินจริงให้ครบ");
-      return;
+    if (!draft.bank_transaction_reference.trim()) {
+      rejectForm("กรุณากรอกเลขอ้างอิงจากรายการเดินบัญชีธนาคาร");return;
+    }
+    if(!actualReceivedAt) {
+      rejectForm("กรุณาเลือกวันและกรอกเวลาเงินเข้าจริงเป็นชั่วโมง:นาที (เช่น 13:25) ให้ครบตามรายการธนาคาร");return;
+    }
+    if(!Number.isFinite(amount)||amount<=0) {
+      rejectForm("กรุณากรอกยอดที่เข้าบัญชีจริงให้ถูกต้อง");return;
+    }
+    if(row.expected_amount!=null && Math.abs(amount-Number(row.expected_amount))>=0.005){
+      rejectForm("ยอดเงินเข้าจริงไม่ตรงกับยอดแจ้งชำระแพ็กเกจ โปรดตรวจสอบยอดกับธนาคารก่อนอนุมัติ");return;
     }
 
     setBusyId(row.id);
+    setSettlementErrors((prev)=>({...prev,[row.id]:""}));
     setError("");
     setNotice("");
     try {
@@ -641,7 +674,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             bank_transaction_reference: draft.bank_transaction_reference.trim(),
-            bank_received_at: new Date(draft.bank_received_at).toISOString(),
+            bank_received_at: actualReceivedAt,
             amount_received: Number(amount.toFixed(2)),
             note: (notes[row.id] || "").trim(),
             confirmed_bank_receipt: true
@@ -666,7 +699,9 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
         if (mail?.message) setError("รับชำระและออกใบเสร็จสำเร็จ แต่อีเมลยังไม่ส่ง: " + mail.message);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "ยืนยันรายการไม่สำเร็จ");
+      const msg=cause instanceof Error ? cause.message : "ยืนยันรายการไม่สำเร็จ";
+      setSettlementErrors((prev)=>({...prev,[row.id]:msg}));
+      setError(msg);
     } finally {
       setBusyId("");
     }
@@ -1088,11 +1123,26 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                               placeholder="Bank Transaction Ref." />
                           </label>
                           <div className="grid gap-2 sm:grid-cols-2">
-                            <label className="grid gap-1 text-xs font-bold text-slate-700">วันเวลาเงินเข้าจริง
-                              <input type="datetime-local" value={draft.bank_received_at}
-                                onChange={(event) => patchDraft(row,{bank_received_at:event.target.value})}
-                                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
-                            </label>
+                            <fieldset className="grid gap-1.5 text-xs font-bold text-slate-700">
+                              <legend>วันและเวลาเงินเข้าจริง (เวลาประเทศไทย)</legend>
+                              <div className="grid grid-cols-[minmax(0,1fr)_minmax(100px,.6fr)] gap-2">
+                                <label className="min-w-0">
+                                  <span className="mb-1 block text-xs text-slate-600">วันที่</span>
+                                  <input type="date" aria-label="วันที่เงินเข้าจริง" lang="en"
+                                    value={draft.bank_received_date}
+                                    onChange={(event)=>patchDraft(row,{bank_received_date:event.target.value})}
+                                    className="w-full min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-normal"/>
+                                </label>
+                                <label className="min-w-0">
+                                  <span className="mb-1 block text-xs text-slate-600">เวลา (24 ชั่วโมง)</span>
+                                  <input type="time" aria-label="เวลาเงินเข้าจริง"
+                                    value={draft.bank_received_time}
+                                    onChange={(event)=>patchDraft(row,{bank_received_time:event.target.value})}
+                                    className="w-full min-w-0 rounded-lg border border-slate-300 px-2 py-2 text-sm font-normal"/>
+                                </label>
+                              </div>
+                              <span className="font-normal leading-5 text-slate-600">ต้องเลือกวันที่และเวลาให้ครบตามรายการเดินบัญชี ไม่ใช้เวลาที่ลูกค้าแจ้งแทน</span>
+                            </fieldset>
                             <label className="grid gap-1 text-xs font-bold text-slate-700">ยอดเงินจริงที่เข้าบัญชี
                               <input type="number" min="0.01" step="0.01" value={draft.amount_received}
                                 onChange={(event) => patchDraft(row,{amount_received:event.target.value})}
@@ -1108,6 +1158,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                         </div>}
 
                       <div className="mt-3 grid gap-2">
+                        {settlementErrors[row.id] ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">{settlementErrors[row.id]}</p> : null}
                         {canApprove ? <button type="button"
                           disabled={Boolean(busyId) || !draft.confirmed_bank_receipt}
                           onClick={() => void settle(row)}
