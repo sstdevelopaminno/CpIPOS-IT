@@ -127,7 +127,9 @@ export async function GET(_request: Request, { params }: Params) {
         ...visible,
         has_evidence: Boolean(evidence_url),
         slip_url,
-        kind: info.kind === "payment_notice" ? "payment_notice" : "renewal_intent",
+        kind: info.kind === "payment_notice" ? "payment_notice"
+          : info.kind === "custom_quote_request" ? "custom_quote_request"
+          : info.kind === "ai_addon_payment" ? "ai_addon_payment" : "renewal_intent",
         billing_interval: info.billing_interval === "yearly" ? "yearly" : "monthly",
         expected_amount: info.expected_amount == null || !Number.isFinite(quoted) ? null : quoted,
         transfer_reference: typeof info.transfer_reference === "string" ? info.transfer_reference : "",
