@@ -1,4 +1,5 @@
 import { appendAuditLog } from "@/lib/audit-log";
+import { isCurrentSubscriptionContract, summarizeContractIntegrity, type ContractIntegrityCandidate } from "@/lib/contract-integrity";
 import { getTenantLimits, invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
@@ -47,13 +48,15 @@ type PlanPriceRow = {
 const CONTRACT_SELECT =
   "id,tenant_id,package_id,status,started_at,ended_at,branch_limit,terminal_limit_per_branch,max_branches,max_devices,max_users,billing_interval,amount_per_cycle,currency,created_at";
 
+const CONTRACT_INTEGRITY_SELECT = "id,status,started_at,ended_at";
+
 export async function GET(_req: Request, context: { params: Promise<{ tenantId: string }> }) {
   try {
     const { supabase } = await requireItAdmin();
     const { tenantId: tenantIdParam } = await context.params;
     const tenantId = parseTenantParam(tenantIdParam);
 
-    const [{ data: plans, error: plansError }, { data: contract, error: contractError }, limits] = await Promise.all([
+    const [{ data: plans, error: plansError }, { data: contract, error: contractError }, { data: integrityRows, error: integrityError }, limits] = await Promise.all([
       supabase
         .from("subscription_packages")
         .select("id,code,name,monthly_price,yearly_price,max_branches,max_devices,max_users,metadata,status,is_active")
@@ -65,6 +68,12 @@ export async function GET(_req: Request, context: { params: Promise<{ tenantId: 
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle<ContractRow>(),
+      supabase
+        .from("tenant_subscription_contracts")
+        .select(CONTRACT_INTEGRITY_SELECT)
+        .eq("tenant_id", tenantId)
+        .in("status", ["active", "trial"])
+        .returns<ContractIntegrityCandidate[]>(),
       getTenantLimits(tenantId)
     ]);
 
@@ -74,10 +83,12 @@ export async function GET(_req: Request, context: { params: Promise<{ tenantId: 
     if (contractError) {
       throw new Error(contractError.message);
     }
+    if (integrityError) throw new Error("contract_integrity_read_failed:" + integrityError.message);
 
     return ok({
       plans: plans ?? [],
       active_contract: contract ?? null,
+      contract_integrity: summarizeContractIntegrity(integrityRows ?? []),
       limits
     });
   } catch (error) {
@@ -102,6 +113,27 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
 
     if (latestError) {
       throw new Error(latestError.message);
+    }
+
+    const { data: integrityRows, error: integrityError } = await supabase
+      .from("tenant_subscription_contracts")
+      .select(CONTRACT_INTEGRITY_SELECT)
+      .eq("tenant_id", tenantId)
+      .in("status", ["active", "trial"])
+      .returns<ContractIntegrityCandidate[]>();
+    if (integrityError) throw new Error("contract_integrity_read_failed:" + integrityError.message);
+    const integrity = summarizeContractIntegrity(integrityRows ?? []);
+    if (integrity.has_conflict || integrity.has_invalid_dates) {
+      return fail("contract_integrity_conflict",
+        "พบสัญญาที่มีผลใช้งานซ้อนกันหรือช่วงวันผิดปกติ กรุณาตรวจสอบสัญญาและการเงินกับฝ่าย IT ก่อนแก้ไข", 409);
+    }
+    // A PATCH must not reactivate another contract while a different grant
+    // is currently effective. A financial handover needs an atomic workflow.
+    if ((body.status === "active" || body.status === "trial") &&
+        (integrityRows ?? []).some(row => isCurrentSubscriptionContract(row) &&
+          row.id !== latestContract?.id)) {
+      return fail("contract_transition_requires_review",
+        "ต้องตรวจสอบและสิ้นสุดสัญญาปัจจุบันโดยฝ่าย IT ก่อนเปิดสัญญาใหม่", 409);
     }
 
     const nowIso = new Date().toISOString();
