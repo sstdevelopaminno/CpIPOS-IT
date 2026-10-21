@@ -48,6 +48,13 @@ function friendlySettlementError(message: string) {
     billing_cycle_package_mismatch: ["แพ็กเกจในรอบบิลไม่ตรงกับรายการแจ้งชำระ", 409],
     billing_cycle_not_payable: ["รอบบิลนี้ไม่เปิดรับการชำระแล้ว หรือถูกปรับสถานะ กรุณารีเฟรชรายการ", 409],
     billing_cycle_already_paid: ["รอบบิลนี้มียอดชำระครบแล้ว ไม่สามารถบันทึกรับเงินซ้ำ", 409],
+    custom_terms_snapshot_missing: ["รายการ CUSTOM ไม่มีเงื่อนไขราคาที่ IT อนุมัติ กรุณากลับไปอนุมัติแพ็กเกจในเมนู Tenants / Stores", 409],
+    custom_terms_approval_mismatch: ["ข้อเสนอ CUSTOM เปลี่ยนแปลงหลังสร้างใบแจ้งยอด กรุณาตรวจสอบและส่งยอดใหม่ผ่าน IT", 409],
+    custom_terms_limits_invalid: ["โควตา CUSTOM ไม่ถูกต้อง กรุณาตรวจสอบการกำหนดสาขา เครื่องขาย และผู้ใช้งานใน IT", 409],
+    custom_terms_limits_mismatch: ["โควตา CUSTOM ในคำขอไม่ตรงกับข้อมูล IT กรุณาตรวจสอบข้อเสนอแพ็กเกจ", 409],
+    custom_terms_price_mismatch: ["ราคา CUSTOM ในคำขอไม่ตรงกับราคาที่ IT อนุมัติ กรุณาตรวจสอบก่อนรับชำระ", 409],
+    custom_terms_retention_mismatch: ["ระยะเก็บข้อมูล CUSTOM เปลี่ยนแปลง กรุณาตรวจสอบการอนุมัติใหม่", 409],
+
     bank_reference_already_used: ["เลขอ้างอิงธนาคารนี้ถูกใช้ยืนยันรายการอื่นแล้ว", 409],
     ai_addon_payment_required: ["รายการนี้ไม่ใช่คำขอชำระ CpiPOS AI Add-on", 422],
     ai_addon_quota_missing: ["AI Add-on รายการนี้ไม่มีโควตาที่เชื่อถือได้", 422]
