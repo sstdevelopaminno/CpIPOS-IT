@@ -939,9 +939,9 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
                   <p className="font-bold text-slate-800">ขั้นต่อไปสำหรับ IT</p>
                   <p className="mt-1 text-slate-600">ไปที่ Tenants / Stores → เลือกร้านนี้ → CUSTOM PACKAGE → ตรวจราคา โควตา และรอบบิล → กด “อนุมัติและส่งยอดให้ POS” ก่อนให้ลูกค้าชำระผ่าน POS หรือ LINE</p>
                   <p className="mt-2 text-xs text-slate-500">รับคำขอเมื่อ {formatDateTime(row.submitted_at)} · ยอดเรียกเก็บยังไม่ได้ยืนยัน · Auto Scan ไม่เกี่ยวกับรายการนี้</p>
-                  <a href="/it-admin/tenants" className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-violet-700 px-4 py-2 text-sm font-bold text-white hover:bg-violet-800">
+                  <Link href="/it-admin/tenants" className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-violet-700 px-4 py-2 text-sm font-bold text-white hover:bg-violet-800">
                     ไปจัดการ CUSTOM ใน Tenants / Stores
-                  </a>
+                  </Link>
                 </div>
               </article>;
               const draft = draftFor(row);
