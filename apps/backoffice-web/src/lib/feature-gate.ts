@@ -206,6 +206,33 @@ export async function hasBranchFeature(tenantId: string, branchId: string | null
     enabled = branchOverride.is_enabled;
   }
 
+  // Match POS entitlement behavior for IT-authorized Optical CUSTOM stores.
+  // Branch/user provisioning is permitted only where IT enabled the matching
+  // menu; this never overrides an explicit feature denial or quota.
+  const opticalManagementMenu = featureCode === "user_management" ? "settings.users"
+    : featureCode === "branch_management" ? "settings.branches" : null;
+  const salesModes = contract?.metadata?.sales_modes;
+  const opticalRetail = Boolean(
+    salesModes && typeof salesModes === "object" &&
+    !Array.isArray(salesModes) &&
+    (salesModes as Record<string, unknown>).optical_retail === true
+  );
+  if (!enabled && !tenantOverride && !branchOverride && opticalManagementMenu && opticalRetail) {
+    const [packageResult, menuResult] = await Promise.all([
+      supabase.from("subscription_packages").select("code")
+        .eq("id", contract!.package_id).maybeSingle<{code:string}>(),
+      supabase.from("tenant_pos_menu_policies").select("is_enabled")
+        .eq("tenant_id", tenantId).eq("menu_key", opticalManagementMenu)
+        .maybeSingle<{is_enabled:boolean}>()
+    ]);
+    if (packageResult.error || menuResult.error) throw new FeatureGateError(
+      "optical_management_policy_check_failed",
+      (packageResult.error ?? menuResult.error)!.message, 500
+    );
+    enabled = String(packageResult.data?.code ?? "").toLowerCase() === "custom"
+      && menuResult.data?.is_enabled === true;
+  }
+
   writeFeatureDecisionCache(cacheKey, enabled);
   return enabled;
 }
