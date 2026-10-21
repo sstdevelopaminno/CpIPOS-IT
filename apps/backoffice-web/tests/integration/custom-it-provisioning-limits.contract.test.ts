@@ -25,10 +25,14 @@ describe("IT CUSTOM live capacity independent from unpaid draft pricing",()=>{
   expect(ui).toContain("ไม่อนุมัติราคา");
  });
  it("DB trigger prefers settled invoice snapshot then explicit IT capacity then approved terms",()=>{
-  expect(sql).toContain("v_explicit_limits:=coalesce(new.metadata,'{}'::jsonb)->'it_approved_custom_limits'");
-  expect(sql.indexOf("v_explicit_limits:=")).toBeGreaterThan(sql.indexOf("if v_snapshot is not null"));
-  expect(sql.indexOf("v_explicit_limits:=")).toBeLessThan(sql.indexOf("status in ('approved','active')"));
+  expect(sql).toContain("v_explicit_limits := coalesce(new.metadata,'{}'::jsonb)->'it_approved_custom_limits'");
+  expect(sql.indexOf("v_explicit_limits :=")).toBeGreaterThan(sql.indexOf("if v_snapshot is not null"));
+  expect(sql.indexOf("v_explicit_limits :=")).toBeLessThan(sql.indexOf("status in ('approved','active')"));
   expect(sql).toContain('it_custom_capacity_authorization_invalid');
+  expect(sql.split("CREATE OR REPLACE FUNCTION").length).toBe(2);
+  expect(sql.split("$function$").length).toBe(3);
+  expect(sql.trimEnd().endsWith("$function$;")).toBe(true);
+  expect(sql).not.toContain("$function$\\n\\n       or");
   expect(sql).toContain('new.max_branches := (v_explicit_limits');
   expect(sql).toContain('new.max_devices := (v_explicit_limits');
   expect(sql).toContain('new.max_users := (v_explicit_limits');
