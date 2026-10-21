@@ -6,8 +6,8 @@ const sql=readFileSync(resolve(process.cwd(),"../../supabase/migrations/20261021
 describe("CUSTOM IT-approved store capacity is independent of price approval",()=>{
   it("migration must contain exactly one complete CREATE FUNCTION body (protect dollar-quoted regex)",()=>{
    expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
-   expect(sql.match(/AS \\$function\\$/g)).toHaveLength(1);
-   expect(sql.match(/\\n\\$function\\$;/g)).toHaveLength(1);
+   expect(sql.split("AS $function$").length-1).toBe(1);
+   expect(sql.split("\n$function$;").length-1).toBe(1);
    expect(sql.match(/-- Trial registrations do not yet/g)).toHaveLength(1);
    expect(sql).toContain("'^[1-9][0-9]*$'");
    expect(sql.match(/custom_provisioning_approval_invalid/g)).toHaveLength(1);
