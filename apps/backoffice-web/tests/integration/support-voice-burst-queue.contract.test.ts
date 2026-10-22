@@ -13,7 +13,12 @@ describe("Support voice burst queue", () => {
     expect(edge).toContain('"get_voice_queue_status"');
     expect(edge).toContain("voiceQueueSnapshot");
     expect(edge).toContain("CONNECTED_CALL_STATUSES");
-    expect(edge.indexOf("signaling_key: newSignalingKey()")).toBeGreaterThan(edge.indexOf('action === "accept_voice_call"'));
+    const requestBlock = edge.slice(
+      edge.indexOf('action === "request_voice_call"'),
+      edge.indexOf('action === "invite_voice_call"')
+    );
+    expect(requestBlock).not.toContain("signaling_key: newSignalingKey()");
+    expect(edge).toContain('action === "accept_voice_call"');
   });
 
   it("uses a renewable waiting-call lease to remove ghost callers", () => {
