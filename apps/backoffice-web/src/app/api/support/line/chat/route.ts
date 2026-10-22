@@ -7,6 +7,7 @@ import {
 import {
   closeLineSupportConversation,
   getLineSupportVoiceIceConfig,
+  getLineSupportVoiceQueueStatus,
   loadLineSupportConversation,
   openLineSupportConversation,
   performLineSupportVoiceAction,
@@ -89,6 +90,20 @@ export async function POST(request: Request) {
       return ok(await sendLineSupportMessage(session, conversationId, message));
     }
 
+
+    if (action === "voice_queue") {
+      const callId = String(body?.call_id ?? "").trim();
+      if (!callId) return fail("call_id_required", "ไม่พบคำขอคุยด้วยเสียง", 422);
+      const rate = await enforceRateLimit({
+        namespace: "line-support-voice-queue",
+        key: [session.bindingId, conversationId, ip].join(":"),
+        max: 120,
+        windowMs: 10 * 60_000,
+        failClosedOnBackendError: true
+      });
+      if (!rate.ok) return fail("voice_queue_rate_limited", "ตรวจสอบคิวถี่เกินไป กรุณารอสักครู่", 429);
+      return ok(await getLineSupportVoiceQueueStatus(session, conversationId, callId));
+    }
 
     if (action === "voice_ice") {
       const callId = String(body?.call_id ?? "").trim();
