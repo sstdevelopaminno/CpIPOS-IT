@@ -36,6 +36,13 @@ describe("Support voice burst queue", () => {
     expect(edge).toContain("ahead_count");
     expect(edge).toContain("waiting_count");
     expect(edge).toContain("active_calls");
+    expect(edge).toContain("queue: await voiceQueueSnapshot(db, row)");
+  });
+
+  it("shows queue backlog to the agent receiving the oldest call", () => {
+    expect(provider).toContain("VoiceQueueSnapshot");
+    expect(provider).toContain("คิวรอทั้งหมด");
+    expect(provider).toContain("queue?.waiting_count");
   });
 
   it("jitters idle IT polling to avoid a synchronized thundering herd", () => {
