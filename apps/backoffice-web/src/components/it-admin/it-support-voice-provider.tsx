@@ -149,11 +149,14 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       return json.data;
     } catch (cause) {
       setControlError(cause instanceof Error ? cause.message : "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
+      if (action === "voice_accept" || action === "voice_transfer_accept") {
+        window.setTimeout(() => void refresh(), 150);
+      }
       throw cause;
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [refresh]);
 
   const loadVoiceIceServers = useCallback(async () => {
     if (!conversation?.id || !call?.id) throw new Error("ไม่พบห้องเสียง");
