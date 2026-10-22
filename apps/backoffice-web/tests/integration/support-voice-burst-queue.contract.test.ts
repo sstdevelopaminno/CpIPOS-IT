@@ -32,6 +32,14 @@ describe("Support voice burst queue", () => {
     expect(edge).toContain('end_reason: "waiting_client_timeout"');
     expect(edge).toContain('.lt("updated_at", waitingCallCutoffIso())');
     expect(edge).toContain('activeCall.status === "requested"');
+    const requestBlock = edge.slice(
+      edge.indexOf('action === "request_voice_call"'),
+      edge.indexOf('action === "get_voice_queue_status"')
+    );
+    expect(requestBlock).toContain("await expireStaleWaitingCalls(db)");
+    expect(requestBlock.indexOf("await expireStaleWaitingCalls(db)")).toBeLessThan(
+      requestBlock.indexOf("activeCallForConversation")
+    );
   });
 
   it("returns FIFO queue position without counting stale waiting calls", () => {
