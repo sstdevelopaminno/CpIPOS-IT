@@ -17,7 +17,14 @@ type ItVoiceConversation = {
 
 type Envelope<T> = {
   data?: T;
-  error?: { message?: string };
+  error?: { code?: string; message?: string };
+};
+
+type VoiceQueueSnapshot = {
+  position: number;
+  ahead_count: number;
+  waiting_count: number;
+  active_calls: number;
 };
 
 type VoiceAction =
@@ -70,6 +77,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   const [conversation, setConversation] = useState<ItVoiceConversation | null>(null);
   const [busy, setBusy] = useState(false);
   const [controlError, setControlError] = useState("");
+  const [queue, setQueue] = useState<VoiceQueueSnapshot | null>(null);
   const [minimized, setMinimized] = useState(false);
   const [transferPickerOpen, setTransferPickerOpen] = useState(false);
   const [transferLoading, setTransferLoading] = useState(false);
@@ -84,6 +92,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       const json = await response.json().catch(() => null) as Envelope<{
         call: SupportVoiceCall | null;
         conversation: ItVoiceConversation | null;
+        queue?: VoiceQueueSnapshot | null;
       }> | null;
       if (!response.ok || !json?.data) return;
 
@@ -97,6 +106,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       }
       setCall(nextCall);
       setConversation(nextCall ? json.data.conversation : null);
+      setQueue(nextCall?.status === "requested" ? json.data.queue ?? null : null);
     } catch {
       // Recovery polling must never interrupt an active WebRTC media session.
     }
@@ -183,6 +193,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     }).catch(() => null);
     setCall(null);
     setConversation(null);
+    setQueue(null);
     setMinimized(false);
     lastCallIdRef.current = "";
     window.setTimeout(() => void refresh(), 500);
@@ -368,7 +379,9 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
           transferOffer
             ? `โอนจาก ${call?.previous_it_name || call?.transfer_requested_by_name || "เจ้าหน้าที่"} · ${conversation?.store_code || ""}`
             : conversation
-              ? `ร้านค้า · ${conversation.store_code}`
+              ? call?.status === "requested" && queue?.waiting_count
+                ? `ร้านค้า · ${conversation.store_code} · คิวรอทั้งหมด ${queue.waiting_count} สาย`
+                : `ร้านค้า · ${conversation.store_code}`
               : "CpIPOS Support"
         }
         phase={voice.phase}
