@@ -792,6 +792,10 @@ Deno.serve(async (request) => {
         return json(409, { error: { code: "conversation_closed", message: "การสนทนานี้จบแล้ว กรุณาเริ่มแชทใหม่" } });
       }
 
+      // Clean abandoned queue leases before resolving this caller's active
+      // request so a returning customer receives a fresh FIFO timestamp.
+      await expireStaleWaitingCalls(db);
+
       let existing = await activeCallForConversation(db, conversationId);
       if (existing) {
         let queue = null;
