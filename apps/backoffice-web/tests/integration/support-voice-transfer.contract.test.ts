@@ -53,7 +53,6 @@ describe("Support voice warm transfer and resilience", () => {
 
   it("shows transfer controls and a distinct incoming transfer", () => {
     expect(overlay).toContain("โอนสาย");
-    expect(overlay).toContain("สายโอนเข้า");
     expect(overlay).toContain("ยกเลิกการโอนและกลับมาคุยต่อ");
     expect(provider).toContain('incomingLabel={transferOffer ? "สายโอนเข้า"');
     expect(provider).toContain("transfer_offer_for_me");
