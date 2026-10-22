@@ -13,7 +13,7 @@ export function getSupabaseBrowserClient() {
   client = createBrowserClient(url, anonKey, {
     realtime: {
       worker: true,
-      heartbeatCallback: (status) => {
+      heartbeatCallback: (status: string) => {
         if (status === "disconnected") {
           client.realtime.connect();
         }
