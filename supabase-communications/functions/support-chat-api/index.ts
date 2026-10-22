@@ -552,6 +552,7 @@ Deno.serve(async (request) => {
       return json(200, {
         data: {
           call: callForActor(row, actor),
+          queue: await voiceQueueSnapshot(db, row),
           conversation: conversationForActor(conversation.data, actor),
           head: headFromConversation(conversation.data)
         }
