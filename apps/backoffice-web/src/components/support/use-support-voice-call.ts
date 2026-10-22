@@ -105,6 +105,7 @@ export function useSupportVoiceCall({
   const instanceIdRef = useRef("");
   const remoteInstanceRef = useRef("");
   const recoveryAttemptsRef = useRef(0);
+  const recoverConnectionRef = useRef<() => void>(() => undefined);
   const signalingKeyRef = useRef(call?.signaling_key ?? "");
   const holdAudioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode } | null>(null);
 
@@ -324,10 +325,19 @@ export function useSupportVoiceCall({
     if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
     disconnectTimerRef.current = window.setTimeout(() => {
       if (peerRef.current && peerRef.current.connectionState !== "connected") {
-        void recoverConnection();
+        recoverConnectionRef.current();
       }
     }, 10_000);
   }, [createOffer, isInitiator, loadIceServers, side]);
+
+  useEffect(() => {
+    recoverConnectionRef.current = () => {
+      void recoverConnection();
+    };
+    return () => {
+      recoverConnectionRef.current = () => undefined;
+    };
+  }, [recoverConnection]);
 
   const start = useCallback(async () => {
     if (!call || !["accepted", "connecting", "connected"].includes(call.status)) {
@@ -613,7 +623,7 @@ export function useSupportVoiceCall({
         window.setTimeout(() => void start(), 0);
       });
     }
-  }, [call?.signaling_key, call?.status, cleanup, start]);
+  }, [call, cleanup, start]);
 
   useEffect(() => {
     const onVisibility = () => {
