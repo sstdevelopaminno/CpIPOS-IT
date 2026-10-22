@@ -192,12 +192,18 @@ export function LineSupportClient() {
     await loadConversation(conversation.id).catch(() => null);
   }, [conversation?.id, activeCall?.id, loadConversation]);
 
+  const voiceHeld = Boolean(
+    activeCall?.transfer_status &&
+    ["requested", "accepted", "returning"].includes(activeCall.transfer_status)
+  );
+
   const voice = useSupportVoiceCall({
     call: activeCall,
     side: "store",
     loadIceServers: loadVoiceIceServers,
     onState: updateVoiceState,
-    onRemoteHangup: handleRemoteHangup
+    onRemoteHangup: handleRemoteHangup,
+    held: voiceHeld
   });
 
   const openChat = useCallback(async () => {
@@ -890,6 +896,8 @@ export function LineSupportClient() {
         speakerMuted={voice.speakerMuted}
         needsAudioResume={voice.needsAudioResume}
         elapsedSeconds={voice.elapsedSeconds}
+        held={voiceHeld}
+        holdLabel={activeCall?.transfer_target_name ? `กำลังโอนไปยัง ${activeCall.transfer_target_name}` : "กำลังโอนสาย"}
         onAccept={activeCall ? () => void performVoiceAction("voice_accept", activeCall.id) : undefined}
         onDecline={activeCall ? () => void performVoiceAction("voice_decline", activeCall.id) : undefined}
         onCancel={activeCall ? () => void performVoiceAction("voice_cancel", activeCall.id) : undefined}
