@@ -318,7 +318,7 @@ export function LineSupportClient() {
 
     // Reopening the LIFF page can resume the visible waiting state. Audio may
     // require a user gesture on some WebViews; the queue text remains visible.
-    startWaitingMedia(voiceQueue);
+    startWaitingMedia();
 
     const schedule = (delayMs: number) => {
       if (stopped) return;
