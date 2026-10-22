@@ -7,6 +7,11 @@ const src = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8")
 describe("Support voice burst queue", () => {
   const edge = src("../../supabase-communications/functions/support-chat-api/index.ts");
   const provider = src("src/components/it-admin/it-support-voice-provider.tsx");
+  const lineClient = src("src/components/support/line-support-client.tsx");
+  const lineRoute = src("src/app/api/support/line/chat/route.ts");
+  const lineService = src("src/lib/support-chat/line-support-chat-service.ts");
+  const waitingMedia = src("src/components/support/use-support-voice-waiting-media.ts");
+  const overlay = src("src/components/support/support-voice-call-overlay.tsx");
 
   it("keeps waiting callers out of media signaling until an agent accepts", () => {
     expect(edge).toContain('status: "requested"');
@@ -43,6 +48,21 @@ describe("Support voice burst queue", () => {
     expect(provider).toContain("VoiceQueueSnapshot");
     expect(provider).toContain("คิวรอทั้งหมด");
     expect(provider).toContain("queue?.waiting_count");
+  });
+
+  it("gives LINE callers the same lightweight spoken queue without full-history polling", () => {
+    expect(lineRoute).toContain('"voice_queue"');
+    expect(lineRoute).toContain("getLineSupportVoiceQueueStatus");
+    expect(lineService).toContain('"get_voice_queue_status"');
+    expect(lineService).toContain("voice_queue");
+    expect(lineClient).toContain("isStoreVoiceWaiting(activeCall)");
+    expect(lineClient).toContain('"voice_queue"');
+    expect(lineClient).toContain("12_000 + Math.floor(Math.random() * 8_000)");
+    expect(lineClient).toContain("2 ** Math.min(failures, 2)");
+    expect(lineClient).toContain("startWaitingMedia(null)");
+    expect(waitingMedia).toContain("SpeechSynthesisUtterance");
+    expect(waitingMedia).toContain("source.loop = true");
+    expect(overlay).toContain("กำลังรอคิว Support");
   });
 
   it("jitters idle IT polling to avoid a synchronized thundering herd", () => {
