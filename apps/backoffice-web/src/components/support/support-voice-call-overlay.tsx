@@ -433,10 +433,8 @@ export function SupportVoiceCallOverlay({
                         disabled={busy}
                         className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-left disabled:opacity-50"
                       >
-                        <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-100 text-sm font-black">
-                          {target.avatar_url ? (
-                            <img src={target.avatar_url} alt="" className="h-full w-full object-cover" />
-                          ) : target.full_name.slice(0, 1).toUpperCase()}
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-black">
+                          {target.full_name.slice(0, 1).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-black">{target.full_name}</div>
