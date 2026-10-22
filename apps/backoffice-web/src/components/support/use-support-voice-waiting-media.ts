@@ -105,10 +105,10 @@ export function useSupportVoiceWaitingMedia() {
     }
   }, []);
 
-  const start = useCallback((initialQueue: VoiceQueueSnapshot | null = null) => {
-    setQueue(initialQueue);
+  const start = useCallback((initialQueue?: VoiceQueueSnapshot | null) => {
+    if (initialQueue !== undefined) setQueue(initialQueue);
     void startMusic();
-    announce(initialQueue);
+    announce(initialQueue === undefined ? queueRef.current : initialQueue);
 
     if (!announcementTimerRef.current) {
       announcementTimerRef.current = window.setInterval(() => {
