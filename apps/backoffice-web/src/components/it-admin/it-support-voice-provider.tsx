@@ -252,17 +252,20 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     await control("voice_transfer_decline", conversation.id, call.id).catch(() => null);
   }, [call?.id, conversation?.id, control]);
 
+  const transferVoicePhase = voice.phase;
+  const startTransferredVoice = voice.start;
+
   useEffect(() => {
     if (
       autoStartTransferRef.current &&
       call?.transfer_status === "accepted" &&
       Boolean(call.signaling_key) &&
-      voice.phase === "idle"
+      transferVoicePhase === "idle"
     ) {
       autoStartTransferRef.current = false;
-      void voice.start();
+      void startTransferredVoice();
     }
-  }, [call?.signaling_key, call?.transfer_status, voice.phase, voice.start]);
+  }, [call?.signaling_key, call?.transfer_status, startTransferredVoice, transferVoicePhase]);
 
   useEffect(() => {
     void refresh();
