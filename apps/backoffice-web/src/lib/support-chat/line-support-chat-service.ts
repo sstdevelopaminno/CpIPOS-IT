@@ -28,6 +28,15 @@ type Message = Record<string, unknown> & {
   created_at: string;
 };
 
+export type VoiceQueueSnapshot = {
+  position: number;
+  ahead_count: number;
+  waiting_count: number;
+  active_calls: number;
+  queued_since: string | null;
+  lease_seconds: number;
+};
+
 export type SupportVoiceCall = Record<string, unknown> & {
   id: string;
   conversation_id: string;
@@ -101,6 +110,7 @@ export async function loadLineSupportConversation(
     conversation: Conversation;
     messages: Message[];
     active_call: SupportVoiceCall | null;
+    voice_queue?: VoiceQueueSnapshot | null;
     head: SupportChatHead;
     head_changed?: boolean;
   }>(bridge, "get_messages", {
@@ -112,7 +122,12 @@ export async function loadLineSupportConversation(
     await mirrorSupportChatHead(data.head);
   }
 
-  return { conversation: data.conversation, messages: data.messages, active_call: data.active_call ?? null };
+  return {
+    conversation: data.conversation,
+    messages: data.messages,
+    active_call: data.active_call ?? null,
+    voice_queue: data.voice_queue ?? null
+  };
 }
 
 export async function sendLineSupportMessage(
@@ -171,6 +186,7 @@ export async function performLineSupportVoiceAction(
     head: SupportChatHead;
     already_active?: boolean;
     already_accepted?: boolean;
+    queue?: VoiceQueueSnapshot | null;
   }>(bridge, action, {
     conversation_id: conversationId,
     call_id: callId ?? null,
@@ -180,6 +196,23 @@ export async function performLineSupportVoiceAction(
   return data;
 }
 
+
+export async function getLineSupportVoiceQueueStatus(
+  session: LineSupportSession,
+  conversationId: string,
+  callId: string
+) {
+  const bridge = await issueLineSupportBridge(session);
+  return callSupportChat<{
+    call: SupportVoiceCall;
+    queue: VoiceQueueSnapshot | null;
+    conversation: Conversation;
+    head: SupportChatHead;
+  }>(bridge, "get_voice_queue_status", {
+    conversation_id: conversationId,
+    call_id: callId
+  });
+}
 
 export async function getLineSupportVoiceIceConfig(
   session: LineSupportSession,

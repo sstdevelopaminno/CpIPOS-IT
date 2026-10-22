@@ -11,6 +11,10 @@ import {
   type SupportVoiceCall
 } from "@/components/support/use-support-voice-call";
 import { SupportVoiceCallOverlay } from "@/components/support/support-voice-call-overlay";
+import {
+  useSupportVoiceWaitingMedia,
+  type VoiceQueueSnapshot
+} from "@/components/support/use-support-voice-waiting-media";
 
 type LiffApi = {
   init(input: { liffId: string }): Promise<void>;
@@ -65,6 +69,7 @@ type ChatDetail = {
   conversation: Conversation;
   messages: Message[];
   active_call: SupportVoiceCall | null;
+  voice_queue?: VoiceQueueSnapshot | null;
 };
 
 type Envelope<T> = {
@@ -110,6 +115,10 @@ function statusText(status: string) {
   return "กำลังเชื่อมต่อ";
 }
 
+function isStoreVoiceWaiting(call: SupportVoiceCall | null) {
+  return Boolean(call && call.direction === "store_to_it" && call.status === "requested");
+}
+
 export function LineSupportClient() {
   const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID || DEFAULT_LIFF_ID;
   const paymentLiffUrl = process.env.NEXT_PUBLIC_LINE_PAYMENT_LIFF_ID
@@ -135,6 +144,14 @@ export function LineSupportClient() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
+  const {
+    queue: voiceQueue,
+    setQueue: setVoiceQueue,
+    start: startWaitingMedia,
+    stop: stopWaitingMedia,
+    announce: announceVoiceQueue
+  } = useSupportVoiceWaitingMedia();
+
   const loadConversation = useCallback(async (conversationId: string) => {
     const detail = await api<ChatDetail>(
       "/api/support/line/chat?conversation_id=" + encodeURIComponent(conversationId)
@@ -142,15 +159,17 @@ export function LineSupportClient() {
     setConversation(detail.conversation);
     setMessages(detail.messages);
     setActiveCall(detail.active_call ?? null);
+    setVoiceQueue(detail.voice_queue ?? null);
     return detail;
-  }, []);
+  }, [setVoiceQueue]);
 
   const applyChat = useCallback((detail: ChatDetail) => {
     setConversation(detail.conversation);
     setMessages(detail.messages);
     setActiveCall(detail.active_call ?? null);
+    setVoiceQueue(detail.voice_queue ?? null);
     setStage("chat");
-  }, []);
+  }, [setVoiceQueue]);
 
   const loadVoiceIceServers = useCallback(async () => {
     if (!conversation?.id || !activeCall?.id) throw new Error("ไม่พบห้องเสียง");
@@ -181,6 +200,8 @@ export function LineSupportClient() {
 
   const handleRemoteHangup = useCallback(async () => {
     if (!conversation?.id || !activeCall?.id) return;
+    stopWaitingMedia();
+    setVoiceQueue(null);
     await api("/api/support/line/chat", {
       method: "POST",
       body: JSON.stringify({
@@ -190,7 +211,7 @@ export function LineSupportClient() {
       })
     }).catch(() => null);
     await loadConversation(conversation.id).catch(() => null);
-  }, [conversation?.id, activeCall?.id, loadConversation]);
+  }, [conversation?.id, activeCall?.id, loadConversation, setVoiceQueue, stopWaitingMedia]);
 
   const voiceHeld = Boolean(
     activeCall?.transfer_status &&
@@ -260,24 +281,103 @@ export function LineSupportClient() {
 
   useEffect(() => {
     if (stage !== "chat" || !conversation?.id || conversation.status === "closed") return;
-    const id = window.setInterval(() => {
+    const voiceWaiting = isStoreVoiceWaiting(activeCall);
+    const id = voiceWaiting ? null : window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
       void loadConversation(conversation.id).catch(() => null);
     }, 3_000);
 
     const refresh = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && !voiceWaiting) {
         void loadConversation(conversation.id).catch(() => null);
       }
     };
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     return () => {
-      window.clearInterval(id);
+      if (id) window.clearInterval(id);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [stage, conversation?.id, conversation?.status, loadConversation]);
+  }, [stage, conversation?.id, conversation?.status, activeCall?.id, activeCall?.status, activeCall?.direction, loadConversation]);
+
+  useEffect(() => {
+    if (!conversation?.id || !isStoreVoiceWaiting(activeCall) || !activeCall?.id) {
+      if (!isStoreVoiceWaiting(activeCall)) {
+        setVoiceQueue(null);
+        stopWaitingMedia();
+      }
+      return;
+    }
+
+    let stopped = false;
+    let timer: number | null = null;
+    let failures = 0;
+    const conversationId = conversation.id;
+    const callId = activeCall.id;
+
+    // Reopening the LIFF page can resume the visible waiting state. Audio may
+    // require a user gesture on some WebViews; the queue text remains visible.
+    startWaitingMedia();
+
+    const schedule = (delayMs: number) => {
+      if (stopped) return;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        if (stopped) return;
+        if (document.visibilityState === "hidden") {
+          schedule(30_000);
+          return;
+        }
+
+        try {
+          const result = await api<{
+            call: SupportVoiceCall;
+            queue: VoiceQueueSnapshot | null;
+          }>("/api/support/line/chat", {
+            method: "POST",
+            body: JSON.stringify({
+              action: "voice_queue",
+              conversation_id: conversationId,
+              call_id: callId
+            })
+          });
+
+          failures = 0;
+          setActiveCall(result.call);
+          setVoiceQueue(result.queue ?? null);
+
+          if (result.call.status !== "requested") {
+            stopWaitingMedia();
+            await loadConversation(conversationId).catch(() => null);
+            return;
+          }
+
+          schedule(12_000 + Math.floor(Math.random() * 8_000));
+        } catch {
+          failures += 1;
+          const backoff = Math.min(60_000, 12_000 * (2 ** Math.min(failures, 2)));
+          schedule(backoff + Math.floor(Math.random() * 5_000));
+        }
+      }, delayMs);
+    };
+
+    schedule(5_000 + Math.floor(Math.random() * 4_000));
+
+    return () => {
+      stopped = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [
+    conversation?.id,
+    activeCall?.id,
+    activeCall?.status,
+    activeCall?.direction,
+    loadConversation,
+    setVoiceQueue,
+    startWaitingMedia,
+    stopWaitingMedia
+  ]);
 
   useEffect(() => {
     if (stage !== "chat" || !conversation?.id || conversation.status === "closed") {
@@ -443,6 +543,8 @@ export function LineSupportClient() {
       window.liff.closeWindow();
       return;
     }
+    stopWaitingMedia();
+    setVoiceQueue(null);
     setConversation(null);
     setMessages([]);
     setActiveCall(null);
@@ -454,10 +556,16 @@ export function LineSupportClient() {
     callId?: string
   ) {
     if (!conversation?.id) return;
+    if (action === "voice_request") startWaitingMedia(null);
+    if (action === "voice_cancel" || action === "voice_end") stopWaitingMedia();
+
     setBusy("voice");
     setError("");
     try {
-      await api("/api/support/line/chat", {
+      const result = await api<{
+        call: SupportVoiceCall;
+        queue?: VoiceQueueSnapshot | null;
+      }>("/api/support/line/chat", {
         method: "POST",
         body: JSON.stringify({
           action,
@@ -465,9 +573,22 @@ export function LineSupportClient() {
           call_id: callId ?? null
         })
       });
+      setActiveCall(result.call);
+
+      if (result.call.status === "requested" && result.call.direction === "store_to_it") {
+        setVoiceQueue(result.queue ?? null);
+        if (result.queue) announceVoiceQueue(result.queue);
+      } else {
+        setVoiceQueue(null);
+        stopWaitingMedia();
+      }
+
       await loadConversation(conversation.id);
+      return result;
     } catch (cause) {
+      if (action === "voice_request") stopWaitingMedia();
       setError(cause instanceof Error ? cause.message : "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
+      return null;
     } finally {
       setBusy("");
     }
@@ -663,8 +784,15 @@ export function LineSupportClient() {
                   </button>
                 ) : activeCall.status === "requested" && activeCall.direction === "store_to_it" ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                    <div className="text-sm font-black text-amber-800">📞 กำลังรอทีม Support รับคำขอ</div>
-                    <div className="mt-1 text-xs leading-5 text-amber-700">คุณยังพิมพ์แชทต่อได้ระหว่างรอ</div>
+                    <div className="text-sm font-black text-amber-800">
+                      📞 {voiceQueue?.position ? `กำลังรอคิว Support · ลำดับที่ ${voiceQueue.position}` : "กำลังรอทีม Support รับคำขอ"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-amber-700">
+                      {voiceQueue?.position && voiceQueue.position > 1
+                        ? `มีผู้ติดต่อก่อนหน้าคุณ ${voiceQueue.position - 1} สาย · `
+                        : ""}
+                      คุณยังพิมพ์แชทต่อได้ระหว่างรอ · ระบบเปิดเพลงรอบนอุปกรณ์นี้
+                    </div>
                     <button
                       type="button"
                       onClick={() => void performVoiceAction("voice_cancel", activeCall.id)}
@@ -898,6 +1026,9 @@ export function LineSupportClient() {
         elapsedSeconds={voice.elapsedSeconds}
         held={voiceHeld}
         holdLabel={activeCall?.transfer_target_name ? `กำลังโอนไปยัง ${activeCall.transfer_target_name}` : "กำลังโอนสาย"}
+        queuePosition={voiceQueue?.position}
+        queueWaitingCount={voiceQueue?.waiting_count}
+        queueActiveCalls={voiceQueue?.active_calls}
         onAccept={activeCall ? () => void performVoiceAction("voice_accept", activeCall.id) : undefined}
         onDecline={activeCall ? () => void performVoiceAction("voice_decline", activeCall.id) : undefined}
         onCancel={activeCall ? () => void performVoiceAction("voice_cancel", activeCall.id) : undefined}

@@ -20,6 +20,8 @@ const IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 const CONVERSATION_STATUSES = new Set(["in_progress", "waiting_store", "waiting_it", "closed"]);
 const ACTIVE_CALL_STATUSES = ["requested", "accepted", "connecting", "connected"];
 const CALL_ORIGINS = new Set(["line_liff", "it_web", "support_mobile", "cpipos_app", "web"]);
+const WAITING_CALL_LEASE_MS = 3 * 60_000;
+const CONNECTED_CALL_STATUSES = ["accepted", "connecting", "connected"];
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -172,6 +174,73 @@ async function activeCallForConversation(
     .maybeSingle();
   if (result.error) throw result.error;
   return result.data;
+}
+
+function waitingCallCutoffIso() {
+  return new Date(Date.now() - WAITING_CALL_LEASE_MS).toISOString();
+}
+
+async function expireStaleWaitingCalls(db: ReturnType<typeof createClient>) {
+  const now = new Date().toISOString();
+  const expired = await db.from("support_call_sessions").update({
+    status: "cancelled",
+    ended_at: now,
+    end_reason: "waiting_client_timeout",
+    updated_at: now
+  })
+    .eq("direction", "store_to_it")
+    .eq("status", "requested")
+    .is("assigned_it_user_id", null)
+    .lt("updated_at", waitingCallCutoffIso())
+    .select("id");
+  if (expired.error) throw expired.error;
+  return expired.data?.length ?? 0;
+}
+
+async function voiceQueueSnapshot(
+  db: ReturnType<typeof createClient>,
+  row: Record<string, unknown>
+) {
+  if (row.direction !== "store_to_it" || row.status !== "requested") return null;
+
+  const requestedAt = String(row.requested_at ?? "");
+  const freshSince = waitingCallCutoffIso();
+
+  const [positionResult, waitingResult, activeResult] = await Promise.all([
+    db.from("support_call_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "store_to_it")
+      .eq("status", "requested")
+      .is("assigned_it_user_id", null)
+      .gte("updated_at", freshSince)
+      .lte("requested_at", requestedAt),
+    db.from("support_call_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "store_to_it")
+      .eq("status", "requested")
+      .is("assigned_it_user_id", null)
+      .gte("updated_at", freshSince),
+    db.from("support_call_sessions")
+      .select("id", { count: "exact", head: true })
+      .in("status", CONNECTED_CALL_STATUSES)
+      .not("assigned_it_user_id", "is", null)
+  ]);
+
+  if (positionResult.error) throw positionResult.error;
+  if (waitingResult.error) throw waitingResult.error;
+  if (activeResult.error) throw activeResult.error;
+
+  const position = Math.max(1, Number(positionResult.count ?? 1));
+  const waitingCount = Math.max(position, Number(waitingResult.count ?? position));
+
+  return {
+    position,
+    ahead_count: Math.max(0, position - 1),
+    waiting_count: waitingCount,
+    active_calls: Math.max(0, Number(activeResult.count ?? 0)),
+    queued_since: requestedAt || null,
+    lease_seconds: Math.floor(WAITING_CALL_LEASE_MS / 1000)
+  };
 }
 
 function transferOfferForActor(row: Record<string, unknown>, actor: Actor) {
@@ -406,6 +475,11 @@ Deno.serve(async (request) => {
         return json(403, { error: { code: "it_role_required" } });
       }
 
+      // A waiting call is a short renewable lease. If the customer closes the
+      // app/page and stops refreshing, remove the ghost request before agents
+      // are offered it. Connected calls are never expired by this lease.
+      await expireStaleWaitingCalls(db);
+
       const assigned = await db.from("support_call_sessions")
         .select("*")
         .eq("assigned_it_user_id", actor.uid)
@@ -478,6 +552,7 @@ Deno.serve(async (request) => {
       return json(200, {
         data: {
           call: callForActor(row, actor),
+          queue: await voiceQueueSnapshot(db, row),
           conversation: conversationForActor(conversation.data, actor),
           head: headFromConversation(conversation.data)
         }
@@ -569,7 +644,21 @@ Deno.serve(async (request) => {
 
       const messages = await messagesWithAttachments(db, conversationId);
       let activeCall = await activeCallForConversation(db, conversationId);
+      let voiceQueue = null;
       if (activeCall) {
+        if (
+          actor.actor === "store" &&
+          activeCall.direction === "store_to_it" &&
+          activeCall.status === "requested"
+        ) {
+          const touched = await db.from("support_call_sessions").update({
+            updated_at: new Date().toISOString()
+          }).eq("id", String(activeCall.id)).eq("status", "requested")
+            .select("*").maybeSingle();
+          if (touched.error) throw touched.error;
+          if (touched.data) activeCall = touched.data;
+          voiceQueue = await voiceQueueSnapshot(db, activeCall);
+        }
         activeCall = await ensureCallSignalingKey(db, activeCall);
       }
       return json(200, {
@@ -577,6 +666,7 @@ Deno.serve(async (request) => {
           conversation: conversationForActor(conversation, actor),
           messages,
           active_call: callForActor(activeCall, actor),
+          voice_queue: voiceQueue,
           head: headFromConversation(conversation),
           head_changed: headChanged,
           claimed
@@ -702,11 +792,26 @@ Deno.serve(async (request) => {
         return json(409, { error: { code: "conversation_closed", message: "การสนทนานี้จบแล้ว กรุณาเริ่มแชทใหม่" } });
       }
 
-      const existing = await activeCallForConversation(db, conversationId);
+      // Clean abandoned queue leases before resolving this caller's active
+      // request so a returning customer receives a fresh FIFO timestamp.
+      await expireStaleWaitingCalls(db);
+
+      let existing = await activeCallForConversation(db, conversationId);
       if (existing) {
+        let queue = null;
+        if (existing.direction === "store_to_it" && existing.status === "requested") {
+          const touched = await db.from("support_call_sessions").update({
+            updated_at: new Date().toISOString()
+          }).eq("id", String(existing.id)).eq("status", "requested")
+            .select("*").maybeSingle();
+          if (touched.error) throw touched.error;
+          if (touched.data) existing = touched.data;
+          queue = await voiceQueueSnapshot(db, existing);
+        }
         return json(200, {
           data: {
             call: callForActor(existing, actor),
+            queue,
             conversation: conversationForActor(current.data, actor),
             head: headFromConversation(current.data),
             already_active: true
@@ -752,9 +857,50 @@ Deno.serve(async (request) => {
       return json(201, {
         data: {
           call: callForActor(inserted.data, actor),
+          queue: await voiceQueueSnapshot(db, inserted.data),
           conversation: conversationForActor(updated, actor),
           head: headFromConversation(updated),
           already_active: false
+        }
+      });
+    }
+
+    if (action === "get_voice_queue_status") {
+      if (actor.actor !== "store" || actor.tenant_id !== current.data.tenant_id) {
+        return json(403, { error: { code: "store_required" } });
+      }
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+
+      let row = selected.data as Record<string, unknown>;
+      if (row.direction !== "store_to_it") {
+        return json(409, { error: { code: "queue_not_store_to_it" } });
+      }
+
+      if (row.status === "requested") {
+        const touched = await db.from("support_call_sessions").update({
+          updated_at: new Date().toISOString()
+        }).eq("id", callId).eq("status", "requested")
+          .select("*").maybeSingle();
+        if (touched.error) throw touched.error;
+        if (touched.data) row = touched.data;
+      }
+
+      if (CONNECTED_CALL_STATUSES.includes(String(row.status ?? ""))) {
+        row = await ensureCallSignalingKey(db, row);
+      }
+
+      return json(200, {
+        data: {
+          call: callForActor(row, actor),
+          queue: await voiceQueueSnapshot(db, row),
+          conversation: conversationForActor(current.data, actor),
+          head: headFromConversation(current.data)
         }
       });
     }

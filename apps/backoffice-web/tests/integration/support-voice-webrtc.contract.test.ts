@@ -82,7 +82,9 @@ describe("Support voice WebRTC Phase 2", () => {
     expect(itLayout).toContain("<ItSupportVoiceProvider>");
     expect(activeCallRoute).toContain('"get_it_voice_call"');
     expect(edge).toContain('action === "get_it_voice_call"');
-    expect(itVoiceProvider).toContain('window.setInterval');
+    expect(itVoiceProvider).toContain('window.setTimeout');
+    expect(itVoiceProvider).toContain('Math.random()');
+    expect(itVoiceProvider).toContain('window.clearTimeout');
     expect(itVoiceProvider).toContain('allowMinimize={mode === "active"}');
     expect(voiceOverlay).toContain("ย่อหน้าสาย");
     expect(voiceOverlay).toContain("สายยังเชื่อมต่ออยู่ สามารถเปิดเมนูอื่นในระบบ IT ได้");

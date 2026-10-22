@@ -17,7 +17,14 @@ type ItVoiceConversation = {
 
 type Envelope<T> = {
   data?: T;
-  error?: { message?: string };
+  error?: { code?: string; message?: string };
+};
+
+type VoiceQueueSnapshot = {
+  position: number;
+  ahead_count: number;
+  waiting_count: number;
+  active_calls: number;
 };
 
 type VoiceAction =
@@ -70,6 +77,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   const [conversation, setConversation] = useState<ItVoiceConversation | null>(null);
   const [busy, setBusy] = useState(false);
   const [controlError, setControlError] = useState("");
+  const [queue, setQueue] = useState<VoiceQueueSnapshot | null>(null);
   const [minimized, setMinimized] = useState(false);
   const [transferPickerOpen, setTransferPickerOpen] = useState(false);
   const [transferLoading, setTransferLoading] = useState(false);
@@ -84,6 +92,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       const json = await response.json().catch(() => null) as Envelope<{
         call: SupportVoiceCall | null;
         conversation: ItVoiceConversation | null;
+        queue?: VoiceQueueSnapshot | null;
       }> | null;
       if (!response.ok || !json?.data) return;
 
@@ -97,6 +106,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       }
       setCall(nextCall);
       setConversation(nextCall ? json.data.conversation : null);
+      setQueue(nextCall?.status === "requested" ? json.data.queue ?? null : null);
     } catch {
       // Recovery polling must never interrupt an active WebRTC media session.
     }
@@ -139,11 +149,14 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       return json.data;
     } catch (cause) {
       setControlError(cause instanceof Error ? cause.message : "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
+      if (action === "voice_accept" || action === "voice_transfer_accept") {
+        window.setTimeout(() => void refresh(), 150);
+      }
       throw cause;
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [refresh]);
 
   const loadVoiceIceServers = useCallback(async () => {
     if (!conversation?.id || !call?.id) throw new Error("ไม่พบห้องเสียง");
@@ -183,6 +196,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     }).catch(() => null);
     setCall(null);
     setConversation(null);
+    setQueue(null);
     setMinimized(false);
     lastCallIdRef.current = "";
     window.setTimeout(() => void refresh(), 500);
@@ -268,11 +282,23 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   }, [call?.signaling_key, call?.transfer_status, startTransferredVoice, transferVoicePhase]);
 
   useEffect(() => {
-    void refresh();
-    const fastTransferRefresh = call?.transfer_status === "requested";
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "hidden") void refresh();
-    }, fastTransferRefresh ? 2_500 : 30_000);
+    let stopped = false;
+    let timer: number | null = null;
+
+    const schedule = () => {
+      if (stopped) return;
+      const transferFast = call?.transfer_status === "requested";
+      const waitingOffer = call?.status === "requested";
+      const baseMs = transferFast ? 2_500 : waitingOffer ? 4_500 : call ? 30_000 : 9_000;
+      const jitterMs = transferFast ? 500 : waitingOffer ? 1_500 : call ? 3_000 : 3_000;
+      const delay = baseMs + Math.floor(Math.random() * jitterMs);
+      timer = window.setTimeout(async () => {
+        if (document.visibilityState !== "hidden") await refresh();
+        schedule();
+      }, delay);
+    };
+
+    void refresh().finally(schedule);
     const onFocus = () => void refresh();
     const onVisibility = () => {
       if (document.visibilityState === "visible") void refresh();
@@ -284,12 +310,13 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      window.clearInterval(timer);
+      stopped = true;
+      if (timer) window.clearTimeout(timer);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("cpipos-support-chat-update", onSupportUpdate);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [refresh, call?.transfer_status]);
+  }, [refresh, call?.id, call?.status, call?.transfer_status]);
 
   const transferOffer = call?.transfer_offer_for_me === true && call.transfer_status === "requested";
   const mode = transferOffer
@@ -355,7 +382,9 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
           transferOffer
             ? `โอนจาก ${call?.previous_it_name || call?.transfer_requested_by_name || "เจ้าหน้าที่"} · ${conversation?.store_code || ""}`
             : conversation
-              ? `ร้านค้า · ${conversation.store_code}`
+              ? call?.status === "requested" && queue?.waiting_count
+                ? `ร้านค้า · ${conversation.store_code} · คิวรอทั้งหมด ${queue.waiting_count} สาย`
+                : `ร้านค้า · ${conversation.store_code}`
               : "CpIPOS Support"
         }
         phase={voice.phase}
