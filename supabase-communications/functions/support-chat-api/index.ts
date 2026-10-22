@@ -174,9 +174,17 @@ async function activeCallForConversation(
   return result.data;
 }
 
+function transferOfferForActor(row: Record<string, unknown>, actor: Actor) {
+  if (actor.actor !== "it" || row.transfer_status !== "requested") return false;
+  const targetUserId = row.transfer_target_user_id ? String(row.transfer_target_user_id) : "";
+  const targetRole = row.transfer_target_role ? String(row.transfer_target_role) : "";
+  if (targetUserId) return targetUserId === actor.uid;
+  return Boolean(targetRole && targetRole === actor.role);
+}
+
 function callForActor(row: Record<string, unknown> | null, actor: Actor) {
   if (!row) return null;
-  const safe = { ...row };
+  const safe = { ...row } as Record<string, unknown>;
   const mediaActive = ["accepted", "connecting", "connected"].includes(String(row.status ?? ""));
   const canSignal = mediaActive && (
     actor.actor === "store"
@@ -186,9 +194,16 @@ function callForActor(row: Record<string, unknown> | null, actor: Actor) {
 
   if (!canSignal) delete safe.signaling_key;
 
+  if (actor.actor === "it") {
+    safe.transfer_offer_for_me = transferOfferForActor(row, actor);
+  }
+
   if (actor.actor === "store") {
     delete safe.requested_by_user_id;
     delete safe.assigned_it_user_id;
+    delete safe.transfer_target_user_id;
+    delete safe.transfer_requested_by_user_id;
+    delete safe.previous_it_user_id;
   }
   return safe;
 }
@@ -401,6 +416,34 @@ Deno.serve(async (request) => {
       if (assigned.error) throw assigned.error;
 
       let row = assigned.data as Record<string, unknown> | null;
+
+      if (!row) {
+        const directTransfer = await db.from("support_call_sessions")
+          .select("*")
+          .eq("transfer_status", "requested")
+          .eq("transfer_target_user_id", actor.uid)
+          .in("status", ["accepted", "connecting", "connected"])
+          .order("transfer_requested_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (directTransfer.error) throw directTransfer.error;
+        row = directTransfer.data as Record<string, unknown> | null;
+      }
+
+      if (!row) {
+        const roleTransfer = await db.from("support_call_sessions")
+          .select("*")
+          .eq("transfer_status", "requested")
+          .is("transfer_target_user_id", null)
+          .eq("transfer_target_role", actor.role)
+          .in("status", ["accepted", "connecting", "connected"])
+          .order("transfer_requested_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (roleTransfer.error) throw roleTransfer.error;
+        row = roleTransfer.data as Record<string, unknown> | null;
+      }
+
       if (!row) {
         const waiting = await db.from("support_call_sessions")
           .select("*")
@@ -988,6 +1031,193 @@ Deno.serve(async (request) => {
     }
 
 
+    if (action === "request_voice_transfer") {
+      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+        return json(403, { error: { code: "it_role_required" } });
+      }
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+
+      const targetUserId = input.target_user_id ? uuid(input.target_user_id) : null;
+      const targetRole = text(input.target_role, 30);
+      const targetName = text(input.target_name, 120);
+      if (!["it_admin", "it_support"].includes(targetRole)) {
+        return json(422, { error: { code: "transfer_target_role_invalid" } });
+      }
+      if (targetUserId === actor.uid) {
+        return json(409, { error: { code: "transfer_to_self", message: "ไม่สามารถโอนสายให้บัญชีที่กำลังรับสายอยู่" } });
+      }
+
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      if (selected.data.assigned_it_user_id !== actor.uid) {
+        return json(403, { error: { code: "transfer_owner_required" } });
+      }
+      if (selected.data.status !== "connected") {
+        return json(409, { error: { code: "transfer_requires_connected_call", message: "โอนสายได้เมื่อเชื่อมต่อเสียงกับลูกค้าแล้ว" } });
+      }
+      if (["requested", "accepted", "returning"].includes(String(selected.data.transfer_status ?? ""))) {
+        return json(409, { error: { code: "transfer_already_active", message: "สายนี้กำลังอยู่ระหว่างการโอน" } });
+      }
+
+      const now = new Date().toISOString();
+      const transferred = await db.from("support_call_sessions").update({
+        transfer_status: "requested",
+        transfer_target_user_id: targetUserId,
+        transfer_target_name: targetName || (targetRole === "it_admin" ? "Admin IT" : "Support IT"),
+        transfer_target_role: targetRole,
+        transfer_requested_by_user_id: actor.uid,
+        transfer_requested_by_name: text(actor.name, 120) || "IT Support",
+        transfer_requested_at: now,
+        transfer_accepted_at: null,
+        transfer_completed_at: null,
+        previous_it_user_id: selected.data.assigned_it_user_id,
+        previous_it_name: selected.data.assigned_it_name,
+        previous_it_role: selected.data.assigned_it_role,
+        updated_at: now
+      }).eq("id", callId).eq("assigned_it_user_id", actor.uid).eq("status", "connected")
+        .select("*").maybeSingle();
+      if (transferred.error) throw transferred.error;
+      if (!transferred.data) return json(409, { error: { code: "transfer_state_changed" } });
+
+      const label = targetName || (targetRole === "it_admin" ? "Admin IT" : "Support IT");
+      const updated = await appendCallSystemEvent(
+        db,
+        current.data,
+        "⏸️ กำลังพักสายและโอนไปยัง " + label,
+        "store",
+        { status: "in_progress" }
+      );
+      return json(200, {
+        data: {
+          call: callForActor(transferred.data, actor),
+          conversation: conversationForActor(updated, actor),
+          head: headFromConversation(updated)
+        }
+      });
+    }
+
+    if (action === "cancel_voice_transfer") {
+      if (actor.actor !== "it") return json(403, { error: { code: "it_role_required" } });
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+      const now = new Date().toISOString();
+      const cancelled = await db.from("support_call_sessions").update({
+        transfer_status: "cancelled",
+        updated_at: now
+      }).eq("id", callId).eq("conversation_id", conversationId)
+        .eq("assigned_it_user_id", actor.uid).eq("transfer_status", "requested")
+        .select("*").maybeSingle();
+      if (cancelled.error) throw cancelled.error;
+      if (!cancelled.data) return json(409, { error: { code: "transfer_not_cancellable" } });
+      return json(200, {
+        data: {
+          call: callForActor(cancelled.data, actor),
+          conversation: conversationForActor(current.data, actor),
+          head: headFromConversation(current.data)
+        }
+      });
+    }
+
+    if (action === "decline_voice_transfer") {
+      if (actor.actor !== "it") return json(403, { error: { code: "it_role_required" } });
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data || selected.data.transfer_status !== "requested") {
+        return json(409, { error: { code: "transfer_not_requesting" } });
+      }
+      if (!transferOfferForActor(selected.data, actor)) {
+        return json(403, { error: { code: "transfer_target_required" } });
+      }
+      const declined = await db.from("support_call_sessions").update({
+        transfer_status: "declined",
+        updated_at: new Date().toISOString()
+      }).eq("id", callId).eq("transfer_status", "requested").select("*").maybeSingle();
+      if (declined.error) throw declined.error;
+      if (!declined.data) return json(409, { error: { code: "transfer_already_answered" } });
+      return json(200, {
+        data: {
+          call: callForActor(declined.data, actor),
+          conversation: conversationForActor(current.data, actor),
+          head: headFromConversation(current.data)
+        }
+      });
+    }
+
+    if (action === "accept_voice_transfer") {
+      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+        return json(403, { error: { code: "it_role_required" } });
+      }
+      const callId = uuid(input.call_id);
+      if (!callId) return json(422, { error: { code: "call_id_invalid" } });
+      const selected = await db.from("support_call_sessions").select("*")
+        .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
+      if (selected.error) throw selected.error;
+      if (!selected.data || selected.data.transfer_status !== "requested") {
+        return json(409, { error: { code: "transfer_not_requesting", message: "สายโอนนี้มีผู้รับหรือถูกยกเลิกแล้ว" } });
+      }
+      if (!transferOfferForActor(selected.data, actor)) {
+        return json(403, { error: { code: "transfer_target_required" } });
+      }
+
+      const busyCall = await db.from("support_call_sessions").select("id")
+        .eq("assigned_it_user_id", actor.uid)
+        .in("status", ["accepted", "connecting", "connected"])
+        .neq("id", callId)
+        .limit(1)
+        .maybeSingle();
+      if (busyCall.error) throw busyCall.error;
+      if (busyCall.data) {
+        return json(409, { error: { code: "it_already_in_call", message: "บัญชีนี้กำลังรับสายอื่นอยู่" } });
+      }
+
+      const now = new Date().toISOString();
+      const accepted = await db.from("support_call_sessions").update({
+        assigned_it_user_id: actor.uid,
+        assigned_it_name: text(actor.name, 120) || "IT Support",
+        assigned_it_role: actor.role,
+        signaling_key: newSignalingKey(),
+        status: "accepted",
+        transfer_status: "accepted",
+        transfer_accepted_at: now,
+        updated_at: now
+      }).eq("id", callId).eq("transfer_status", "requested")
+        .select("*").maybeSingle();
+      if (accepted.error) {
+        if (accepted.error.code === "23505") {
+          return json(409, { error: { code: "it_already_in_call", message: "บัญชีนี้กำลังรับสายอื่นอยู่" } });
+        }
+        throw accepted.error;
+      }
+      if (!accepted.data) return json(409, { error: { code: "transfer_already_answered" } });
+
+      const updated = await appendCallSystemEvent(
+        db,
+        current.data,
+        "📞 โอนสายให้ " + (text(actor.name, 120) || "IT Support") + " แล้ว",
+        "store",
+        {
+          status: "in_progress",
+          assigned_role: actor.role,
+          assigned_user_id: actor.uid,
+          assigned_user_name: text(actor.name, 120) || "IT Support",
+          assigned_user_avatar_url: actor.avatar_url
+        }
+      );
+      return json(200, {
+        data: {
+          call: callForActor(accepted.data, actor),
+          conversation: conversationForActor(updated, actor),
+          head: headFromConversation(updated)
+        }
+      });
+    }
+
     if (action === "get_voice_ice_config") {
       const callId = uuid(input.call_id);
       if (!callId) return json(422, { error: { code: "call_id_invalid" } });
@@ -1038,6 +1268,10 @@ Deno.serve(async (request) => {
       };
       if (nextState === "connected" && !selected.data.connected_at) {
         patch.connected_at = now;
+      }
+      if (nextState === "connected" && ["accepted", "returning"].includes(String(selected.data.transfer_status ?? ""))) {
+        patch.transfer_status = "completed";
+        patch.transfer_completed_at = now;
       }
 
       const updated = await db.from("support_call_sessions").update(patch)
