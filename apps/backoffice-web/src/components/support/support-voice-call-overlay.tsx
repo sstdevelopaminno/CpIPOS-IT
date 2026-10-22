@@ -28,6 +28,9 @@ type SupportVoiceCallOverlayProps = {
   elapsedSeconds?: number;
   held?: boolean;
   holdLabel?: string;
+  queuePosition?: number;
+  queueWaitingCount?: number;
+  queueActiveCalls?: number;
   onAccept?: () => void;
   onDecline?: () => void;
   onCancel?: () => void;
@@ -123,6 +126,9 @@ export function SupportVoiceCallOverlay({
   elapsedSeconds = 0,
   held = false,
   holdLabel,
+  queuePosition,
+  queueWaitingCount,
+  queueActiveCalls,
   onAccept,
   onDecline,
   onCancel,
@@ -251,7 +257,9 @@ export function SupportVoiceCallOverlay({
             {mode === "incoming"
               ? incomingLabel || "สายเรียกเข้า"
               : mode === "outgoing"
-                ? "กำลังโทรหา…"
+                ? queuePosition
+                  ? `กำลังรอคิว Support · ลำดับที่ ${queuePosition}`
+                  : "กำลังจัดคิว Support…"
                 : held
                   ? "พักสาย · " + (holdLabel || "กำลังโอนสาย")
                   : transferPending
@@ -292,6 +300,24 @@ export function SupportVoiceCallOverlay({
               </div>
             </div>
           ) : null}
+          {mode === "outgoing" ? (
+            <div className="mt-5 w-full max-w-md rounded-3xl border border-sky-300/20 bg-sky-500/10 px-5 py-4 text-left">
+              <div className="text-sm font-black text-sky-100">🎵 ระบบกำลังดูแลคิวของคุณ</div>
+              <div className="mt-1 text-sm leading-6 text-sky-100/85">
+                {queuePosition && queuePosition > 1
+                  ? `มีผู้ติดต่อก่อนหน้าคุณ ${queuePosition - 1} สาย · กรุณารอสักครู่`
+                  : queuePosition === 1
+                    ? "คุณอยู่คิวแรก · เจ้าหน้าที่จะรับสายโดยเร็วที่สุด"
+                    : "กำลังตรวจสอบคิวและเจ้าหน้าที่ที่พร้อมรับสาย"}
+              </div>
+              <div className="mt-2 text-xs leading-5 text-white/55">
+                เพลงรอและเสียงแจ้งคิวเล่นบนเครื่องนี้โดยตรง ระหว่างรอยังไม่เปิดไมค์และยังไม่สร้างสาย WebRTC
+                {typeof queueWaitingCount === "number" ? ` · รอทั้งหมด ${queueWaitingCount} สาย` : ""}
+                {typeof queueActiveCalls === "number" && queueActiveCalls > 0 ? ` · กำลังให้บริการ ${queueActiveCalls} สาย` : ""}
+              </div>
+            </div>
+          ) : null}
+
 
           {error ? (
             <div className="mt-6 w-full max-w-md rounded-3xl border border-red-300/20 bg-red-500/10 px-5 py-4 text-left">
