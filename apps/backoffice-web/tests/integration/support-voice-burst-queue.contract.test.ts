@@ -73,6 +73,11 @@ describe("Support voice burst queue", () => {
     expect(overlay).toContain("กำลังรอคิว Support");
   });
 
+  it("recovers an IT accept race by fetching the next queued caller immediately", () => {
+    expect(provider).toContain('action === "voice_accept" || action === "voice_transfer_accept"');
+    expect(provider).toContain("window.setTimeout(() => void refresh(), 150)");
+  });
+
   it("jitters idle IT polling to avoid a synchronized thundering herd", () => {
     expect(provider).toContain("Math.random()");
     expect(provider).toContain("9_000");
