@@ -305,7 +305,7 @@ export function useSupportVoiceCall({
 
     try {
       const iceServers = await loadIceServers();
-      pc.setConfiguration({ iceServers, bundlePolicy: "max-bundle" });
+      pc.setConfiguration({ iceServers });
       if (isInitiator) {
         remoteReadyRef.current = true;
         offerSentRef.current = false;
