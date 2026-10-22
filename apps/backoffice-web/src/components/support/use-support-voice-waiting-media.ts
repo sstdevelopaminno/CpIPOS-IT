@@ -106,9 +106,11 @@ export function useSupportVoiceWaitingMedia() {
   }, []);
 
   const start = useCallback((initialQueue?: VoiceQueueSnapshot | null) => {
-    if (initialQueue !== undefined) setQueue(initialQueue);
+    if (initialQueue !== undefined) {
+      setQueue(initialQueue);
+      announce(initialQueue);
+    }
     void startMusic();
-    announce(initialQueue === undefined ? queueRef.current : initialQueue);
 
     if (!announcementTimerRef.current) {
       announcementTimerRef.current = window.setInterval(() => {
