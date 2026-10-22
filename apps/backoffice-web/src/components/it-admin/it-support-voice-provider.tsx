@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { SupportVoiceCallOverlay } from "@/components/support/support-voice-call-overlay";
+import { SupportVoiceCallOverlay, type SupportVoiceTransferTarget } from "@/components/support/support-voice-call-overlay";
 import {
   useSupportVoiceCall,
   type SupportVoiceCall,
@@ -20,7 +20,15 @@ type Envelope<T> = {
   error?: { message?: string };
 };
 
-type VoiceAction = "voice_invite" | "voice_accept" | "voice_cancel" | "voice_end";
+type VoiceAction =
+  | "voice_invite"
+  | "voice_accept"
+  | "voice_cancel"
+  | "voice_end"
+  | "voice_transfer"
+  | "voice_transfer_accept"
+  | "voice_transfer_decline"
+  | "voice_transfer_cancel";
 
 type ItSupportVoiceContextValue = {
   call: SupportVoiceCall | null;
@@ -46,6 +54,11 @@ type ItSupportVoiceContextValue = {
   restore: () => void;
 };
 
+type TransferTargetsResponse = {
+  departments: Array<{ role: "it_admin" | "it_support"; label: string }>;
+  users: SupportVoiceTransferTarget[];
+};
+
 const ItSupportVoiceContext = createContext<ItSupportVoiceContextValue | null>(null);
 
 function active(status: string | undefined) {
@@ -58,7 +71,12 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [controlError, setControlError] = useState("");
   const [minimized, setMinimized] = useState(false);
+  const [transferPickerOpen, setTransferPickerOpen] = useState(false);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferDepartments, setTransferDepartments] = useState<TransferTargetsResponse["departments"]>([]);
+  const [transferUsers, setTransferUsers] = useState<SupportVoiceTransferTarget[]>([]);
   const lastCallIdRef = useRef("");
+  const autoStartTransferRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -75,18 +93,20 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
         lastCallIdRef.current = nextId;
         setMinimized(false);
         setControlError("");
+        setTransferPickerOpen(false);
       }
       setCall(nextCall);
       setConversation(nextCall ? json.data.conversation : null);
     } catch {
-      // Polling failure must not interrupt an active WebRTC media session.
+      // Recovery polling must never interrupt an active WebRTC media session.
     }
   }, []);
 
   const control = useCallback(async (
     action: VoiceAction,
     conversationId: string,
-    callId?: string
+    callId?: string,
+    extra: Record<string, unknown> = {}
   ) => {
     setBusy(true);
     setControlError("");
@@ -94,7 +114,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${conversationId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, call_id: callId ?? null })
+        body: JSON.stringify({ action, call_id: callId ?? null, ...extra })
       });
       const json = await response.json().catch(() => null) as Envelope<{
         call: SupportVoiceCall;
@@ -116,6 +136,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
           detail: { head: json.data.head }
         }));
       }
+      return json.data;
     } catch (cause) {
       setControlError(cause instanceof Error ? cause.message : "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
       throw cause;
@@ -181,13 +202,77 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     await control("voice_end", conversation.id, call.id).catch(() => null);
   }, [call?.id, conversation?.id, voice, control]);
 
+  const openTransferPicker = useCallback(async () => {
+    if (!call?.id || call.status !== "connected" || call.transfer_offer_for_me) return;
+    setTransferPickerOpen(true);
+    setTransferLoading(true);
+    setControlError("");
+    try {
+      const response = await fetch("/api/it-admin/v1/support-chat/transfer-targets", { cache: "no-store" });
+      const json = await response.json().catch(() => null) as Envelope<TransferTargetsResponse> | null;
+      if (!response.ok || !json?.data) throw new Error(json?.error?.message || "โหลดรายชื่อผู้รับโอนไม่สำเร็จ");
+      setTransferDepartments(json.data.departments);
+      setTransferUsers(json.data.users);
+    } catch (cause) {
+      setControlError(cause instanceof Error ? cause.message : "โหลดรายชื่อผู้รับโอนไม่สำเร็จ");
+    } finally {
+      setTransferLoading(false);
+    }
+  }, [call?.id, call?.status, call?.transfer_offer_for_me]);
+
+  const transferTo = useCallback(async (target: {
+    id?: string;
+    full_name: string;
+    platform_role: "it_admin" | "it_support";
+  }) => {
+    if (!call?.id || !conversation?.id) return;
+    await control("voice_transfer", conversation.id, call.id, {
+      target_user_id: target.id ?? null,
+      target_name: target.full_name,
+      target_role: target.platform_role
+    });
+    setTransferPickerOpen(false);
+  }, [call?.id, conversation?.id, control]);
+
+  const cancelTransfer = useCallback(async () => {
+    if (!call?.id || !conversation?.id) return;
+    await control("voice_transfer_cancel", conversation.id, call.id).catch(() => null);
+  }, [call?.id, conversation?.id, control]);
+
+  const acceptTransfer = useCallback(async () => {
+    if (!call?.id || !conversation?.id) return;
+    autoStartTransferRef.current = true;
+    await control("voice_transfer_accept", conversation.id, call.id).catch(() => {
+      autoStartTransferRef.current = false;
+    });
+  }, [call?.id, conversation?.id, control]);
+
+  const declineTransfer = useCallback(async () => {
+    if (!call?.id || !conversation?.id) return;
+    await control("voice_transfer_decline", conversation.id, call.id).catch(() => null);
+  }, [call?.id, conversation?.id, control]);
+
+  const transferVoicePhase = voice.phase;
+  const startTransferredVoice = voice.start;
+
+  useEffect(() => {
+    if (
+      autoStartTransferRef.current &&
+      call?.transfer_status === "accepted" &&
+      Boolean(call.signaling_key) &&
+      transferVoicePhase === "idle"
+    ) {
+      autoStartTransferRef.current = false;
+      void startTransferredVoice();
+    }
+  }, [call?.signaling_key, call?.transfer_status, startTransferredVoice, transferVoicePhase]);
+
   useEffect(() => {
     void refresh();
-    // Support-chat Realtime events and focus/visibility changes are the fast path.
-    // Keep a low-frequency HTTP refresh only as a recovery safety net.
+    const fastTransferRefresh = call?.transfer_status === "requested";
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "hidden") void refresh();
-    }, 30000);
+    }, fastTransferRefresh ? 2_500 : 30_000);
     const onFocus = () => void refresh();
     const onVisibility = () => {
       if (document.visibilityState === "visible") void refresh();
@@ -204,13 +289,16 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("cpipos-support-chat-update", onSupportUpdate);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [refresh]);
+  }, [refresh, call?.transfer_status]);
 
-  const mode = call?.status === "requested"
-    ? call.direction === "store_to_it"
-      ? "incoming"
-      : "outgoing"
-    : "active";
+  const transferOffer = call?.transfer_offer_for_me === true && call.transfer_status === "requested";
+  const mode = transferOffer
+    ? "incoming"
+    : call?.status === "requested"
+      ? call.direction === "store_to_it"
+        ? "incoming"
+        : "outgoing"
+      : "active";
 
   const value = useMemo<ItSupportVoiceContextValue>(() => ({
     call,
@@ -224,9 +312,9 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     error: controlError || voice.error,
     minimized,
     refresh,
-    invite: (conversationId) => control("voice_invite", conversationId),
-    accept: (conversationId, callId) => control("voice_accept", conversationId, callId),
-    cancel: (conversationId, callId) => control("voice_cancel", conversationId, callId),
+    invite: (conversationId) => control("voice_invite", conversationId).then(() => undefined),
+    accept: (conversationId, callId) => control("voice_accept", conversationId, callId).then(() => undefined),
+    cancel: (conversationId, callId) => control("voice_cancel", conversationId, callId).then(() => undefined),
     end,
     start: voice.start,
     toggleMic: voice.toggleMic,
@@ -261,8 +349,15 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       <SupportVoiceCallOverlay
         open={Boolean(call && conversation)}
         mode={mode}
+        incomingLabel={transferOffer ? "สายโอนเข้า" : undefined}
         counterpartyName={conversation?.store_name || conversation?.contact_name || "ลูกค้า CpIPOS"}
-        counterpartyDetail={conversation ? `ร้านค้า · ${conversation.store_code}` : "CpIPOS Support"}
+        counterpartyDetail={
+          transferOffer
+            ? `โอนจาก ${call?.previous_it_name || call?.transfer_requested_by_name || "เจ้าหน้าที่"} · ${conversation?.store_code || ""}`
+            : conversation
+              ? `ร้านค้า · ${conversation.store_code}`
+              : "CpIPOS Support"
+        }
         phase={voice.phase}
         error={controlError || voice.error}
         busy={busy}
@@ -275,13 +370,32 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
         minimized={minimized}
         onMinimize={() => setMinimized(true)}
         onRestore={() => setMinimized(false)}
-        onAccept={call && conversation ? () => void control("voice_accept", conversation.id, call.id) : undefined}
+        onAccept={
+          transferOffer
+            ? () => void acceptTransfer()
+            : call && conversation
+              ? () => void control("voice_accept", conversation.id, call.id)
+              : undefined
+        }
+        onDecline={transferOffer ? () => void declineTransfer() : undefined}
         onCancel={call && conversation ? () => void control("voice_cancel", conversation.id, call.id) : undefined}
         onStart={() => void voice.start()}
         onEnd={() => void end()}
         onToggleMic={voice.toggleMic}
         onToggleSpeaker={voice.toggleSpeaker}
         onResumeAudio={() => void voice.resumeAudio()}
+        canTransfer={mode === "active" && call?.status === "connected" && call?.transfer_status !== "requested"}
+        transferPending={call?.transfer_status === "requested" && !transferOffer}
+        transferTargetLabel={call?.transfer_target_name || undefined}
+        transferPickerOpen={transferPickerOpen}
+        transferTargetsLoading={transferLoading}
+        transferDepartments={transferDepartments}
+        transferTargets={transferUsers}
+        onOpenTransfer={() => void openTransferPicker()}
+        onCloseTransfer={() => setTransferPickerOpen(false)}
+        onTransferToDepartment={(role, label) => void transferTo({ full_name: label, platform_role: role })}
+        onTransferToUser={(target) => void transferTo(target)}
+        onCancelTransfer={() => void cancelTransfer()}
       />
     </ItSupportVoiceContext.Provider>
   );

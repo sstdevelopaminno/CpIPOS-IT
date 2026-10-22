@@ -17,6 +17,19 @@ export type SupportVoiceCall = {
   requested_at: string;
   accepted_at?: string | null;
   connected_at?: string | null;
+  transfer_status?: "requested" | "accepted" | "completed" | "declined" | "cancelled" | "returning" | null;
+  transfer_target_user_id?: string | null;
+  transfer_target_name?: string | null;
+  transfer_target_role?: "it_admin" | "it_support" | null;
+  transfer_requested_by_user_id?: string | null;
+  transfer_requested_by_name?: string | null;
+  transfer_requested_at?: string | null;
+  transfer_accepted_at?: string | null;
+  transfer_completed_at?: string | null;
+  previous_it_user_id?: string | null;
+  previous_it_name?: string | null;
+  previous_it_role?: "it_admin" | "it_support" | null;
+  transfer_offer_for_me?: boolean;
 };
 
 export type SupportVoicePhase =
@@ -36,6 +49,7 @@ type UseSupportVoiceCallOptions = {
   loadIceServers: () => Promise<RTCIceServer[]>;
   onState: (state: "connecting" | "connected") => Promise<void> | void;
   onRemoteHangup?: () => Promise<void> | void;
+  held?: boolean;
 };
 
 type SignalPayload = {
@@ -71,7 +85,8 @@ export function useSupportVoiceCall({
   side,
   loadIceServers,
   onState,
-  onRemoteHangup
+  onRemoteHangup,
+  held = false
 }: UseSupportVoiceCallOptions) {
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -82,12 +97,17 @@ export function useSupportVoiceCall({
   const readyIntervalRef = useRef<number | null>(null);
   const disconnectTimerRef = useRef<number | null>(null);
   const elapsedTimerRef = useRef<number | null>(null);
+  const elapsedStartedAtRef = useRef<number | null>(null);
   const queuedIceRef = useRef<RTCIceCandidateInit[]>([]);
   const remoteReadyRef = useRef(false);
   const offerSentRef = useRef(false);
   const runningRef = useRef(false);
   const instanceIdRef = useRef("");
   const remoteInstanceRef = useRef("");
+  const recoveryAttemptsRef = useRef(0);
+  const recoverConnectionRef = useRef<() => void>(() => undefined);
+  const signalingKeyRef = useRef(call?.signaling_key ?? "");
+  const holdAudioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode } | null>(null);
 
   const [phase, setPhase] = useState<SupportVoicePhase>("idle");
   const [error, setError] = useState("");
@@ -108,12 +128,52 @@ export function useSupportVoiceCall({
 
   const startElapsed = useCallback(() => {
     stopElapsed();
-    const startedAt = Date.now();
-    setElapsedSeconds(0);
-    elapsedTimerRef.current = window.setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
-    }, 1000);
+    if (!elapsedStartedAtRef.current) elapsedStartedAtRef.current = Date.now();
+    const tick = () => {
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - (elapsedStartedAtRef.current ?? Date.now())) / 1000)));
+    };
+    tick();
+    elapsedTimerRef.current = window.setInterval(tick, 1000);
   }, [stopElapsed]);
+
+  const stopHoldMusic = useCallback(() => {
+    const current = holdAudioRef.current;
+    holdAudioRef.current = null;
+    if (!current) return;
+    try { current.source.stop(); } catch {}
+    void current.context.close().catch(() => null);
+  }, []);
+
+  const startHoldMusic = useCallback(async () => {
+    if (holdAudioRef.current || typeof window === "undefined") return;
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    try {
+      const context = new AudioContextCtor();
+      const seconds = 8;
+      const frameCount = Math.floor(context.sampleRate * seconds);
+      const buffer = context.createBuffer(1, frameCount, context.sampleRate);
+      const data = buffer.getChannelData(0);
+      const notes = [261.63, 329.63, 392.0, 329.63, 293.66, 349.23, 440.0, 349.23];
+      const noteFrames = Math.floor(context.sampleRate);
+      for (let i = 0; i < frameCount; i += 1) {
+        const noteIndex = Math.min(notes.length - 1, Math.floor(i / noteFrames));
+        const phaseInNote = (i % noteFrames) / noteFrames;
+        const envelope = Math.sin(Math.PI * Math.min(1, phaseInNote * 4)) * Math.sin(Math.PI * Math.min(1, (1 - phaseInNote) * 4));
+        data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) * envelope * 0.045;
+      }
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(context.destination);
+      holdAudioRef.current = { context, source };
+      source.start();
+      if (context.state === "suspended") await context.resume().catch(() => null);
+    } catch {
+      stopHoldMusic();
+    }
+  }, [stopHoldMusic]);
 
   const cleanup = useCallback(async (notifyPeer: boolean) => {
     runningRef.current = false;
@@ -121,12 +181,14 @@ export function useSupportVoiceCall({
     offerSentRef.current = false;
     queuedIceRef.current = [];
     remoteInstanceRef.current = "";
+    recoveryAttemptsRef.current = 0;
 
     if (readyIntervalRef.current) window.clearInterval(readyIntervalRef.current);
     if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
     readyIntervalRef.current = null;
     disconnectTimerRef.current = null;
     stopElapsed();
+    elapsedStartedAtRef.current = null;
 
     const channel = channelRef.current;
     channelRef.current = null;
@@ -155,6 +217,7 @@ export function useSupportVoiceCall({
       audioElementRef.current.pause();
       audioElementRef.current.srcObject = null;
     }
+    audioElementRef.current = null;
 
     setMicMuted(false);
     setSpeakerMuted(false);
@@ -169,14 +232,14 @@ export function useSupportVoiceCall({
     audio.autoplay = true;
     audio.preload = "auto";
     audio.srcObject = stream;
-    audio.muted = speakerMuted;
+    audio.muted = held || speakerMuted;
     audioElementRef.current = audio;
     void audio.play().then(() => {
       setNeedsAudioResume(false);
     }).catch(() => {
       setNeedsAudioResume(true);
     });
-  }, [speakerMuted]);
+  }, [held, speakerMuted]);
 
   const flushQueuedIce = useCallback(async () => {
     const pc = peerRef.current;
@@ -197,16 +260,16 @@ export function useSupportVoiceCall({
     });
   }, [side]);
 
-  const createOffer = useCallback(async () => {
+  const createOffer = useCallback(async (iceRestart = false) => {
     const pc = peerRef.current;
     const channel = channelRef.current;
-    if (!pc || !channel || !runningRef.current || offerSentRef.current) return;
+    if (!pc || !channel || !runningRef.current || (offerSentRef.current && !iceRestart)) return;
     if (!remoteReadyRef.current || !isInitiator) return;
 
     offerSentRef.current = true;
     try {
-      setPhase("connecting");
-      const offer = await pc.createOffer({ offerToReceiveAudio: true });
+      setPhase(iceRestart ? "reconnecting" : "connecting");
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, iceRestart });
       await pc.setLocalDescription(offer);
       await channel.send({
         type: "broadcast",
@@ -219,10 +282,62 @@ export function useSupportVoiceCall({
       });
     } catch (cause) {
       offerSentRef.current = false;
-      setPhase("failed");
-      setError(cause instanceof Error ? cause.message : "สร้างการเชื่อมต่อเสียงไม่สำเร็จ");
+      if (!iceRestart) {
+        setPhase("failed");
+        setError(cause instanceof Error ? cause.message : "สร้างการเชื่อมต่อเสียงไม่สำเร็จ");
+      }
     }
   }, [isInitiator, side]);
+
+  const recoverConnection = useCallback(async () => {
+    const pc = peerRef.current;
+    const channel = channelRef.current;
+    if (!pc || !channel || !runningRef.current || pc.connectionState === "connected") return;
+
+    if (recoveryAttemptsRef.current >= 3) {
+      setPhase("failed");
+      setError("การเชื่อมต่อเสียงขาดและลองเชื่อมต่อใหม่แล้ว กรุณาตรวจเครือข่ายหรือ TURN Server");
+      return;
+    }
+
+    recoveryAttemptsRef.current += 1;
+    setPhase("reconnecting");
+    setError("");
+
+    try {
+      const iceServers = await loadIceServers();
+      pc.setConfiguration({ iceServers });
+      if (isInitiator) {
+        remoteReadyRef.current = true;
+        offerSentRef.current = false;
+        await createOffer(true);
+      } else {
+        await channel.send({
+          type: "broadcast",
+          event: "webrtc_restart_request",
+          payload: { side, instance_id: instanceIdRef.current }
+        });
+      }
+    } catch {
+      // Retry timer below handles transient API/network failures.
+    }
+
+    if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
+    disconnectTimerRef.current = window.setTimeout(() => {
+      if (peerRef.current && peerRef.current.connectionState !== "connected") {
+        recoverConnectionRef.current();
+      }
+    }, 10_000);
+  }, [createOffer, isInitiator, loadIceServers, side]);
+
+  useEffect(() => {
+    recoverConnectionRef.current = () => {
+      void recoverConnection();
+    };
+    return () => {
+      recoverConnectionRef.current = () => undefined;
+    };
+  }, [recoverConnection]);
 
   const start = useCallback(async () => {
     if (!call || !["accepted", "connecting", "connected"].includes(call.status)) {
@@ -239,6 +354,7 @@ export function useSupportVoiceCall({
     }
 
     await cleanup(false);
+    signalingKeyRef.current = call.signaling_key;
     setError("");
     setPhase("requesting_mic");
     runningRef.current = true;
@@ -256,6 +372,9 @@ export function useSupportVoiceCall({
       });
       localStream = stream;
       localStreamRef.current = stream;
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = !held;
+      });
       const iceServers = await loadIceServers();
 
       const pc = new RTCPeerConnection({
@@ -298,24 +417,15 @@ export function useSupportVoiceCall({
         if (state === "connected") {
           if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
           disconnectTimerRef.current = null;
+          recoveryAttemptsRef.current = 0;
           setPhase("connected");
           setError("");
           startElapsed();
           void Promise.resolve(onState("connected")).catch(() => null);
         } else if (state === "connecting") {
           setPhase("connecting");
-        } else if (state === "disconnected") {
-          setPhase("reconnecting");
-          if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
-          disconnectTimerRef.current = window.setTimeout(() => {
-            if (peerRef.current?.connectionState === "disconnected") {
-              setPhase("failed");
-              setError("การเชื่อมต่อเสียงขาด กรุณาลองเชื่อมต่อใหม่");
-            }
-          }, 8000);
-        } else if (state === "failed") {
-          setPhase("failed");
-          setError("เชื่อมต่อเสียงไม่สำเร็จ เครือข่ายนี้อาจต้องใช้ TURN Server");
+        } else if (state === "disconnected" || state === "failed") {
+          void recoverConnection();
         }
       };
 
@@ -345,7 +455,7 @@ export function useSupportVoiceCall({
             const activeChannel = channelRef.current;
             if (!activePeer || !activeChannel) return;
             try {
-              setPhase("connecting");
+              setPhase(activePeer.connectionState === "connected" ? "reconnecting" : "connecting");
               await activePeer.setRemoteDescription(description);
               await flushQueuedIce();
               const answer = await activePeer.createAnswer();
@@ -392,6 +502,11 @@ export function useSupportVoiceCall({
           }
           void activePeer.addIceCandidate(event.candidate).catch(() => null);
         })
+        .on("broadcast", { event: "webrtc_restart_request" }, ({ payload }) => {
+          const event = payload as SignalPayload;
+          if (event.side === side || !isInitiator) return;
+          void recoverConnection();
+        })
         .on("broadcast", { event: "voice_hangup" }, ({ payload }) => {
           const event = payload as SignalPayload;
           if (event.side === side) return;
@@ -403,7 +518,7 @@ export function useSupportVoiceCall({
         .subscribe((status) => {
           if (!runningRef.current) return;
           if (status === "SUBSCRIBED") {
-            setPhase("waiting_peer");
+            if (peerRef.current?.connectionState !== "connected") setPhase("waiting_peer");
             void Promise.resolve(onState("connecting")).catch(() => null);
             sendReady();
             if (readyIntervalRef.current) window.clearInterval(readyIntervalRef.current);
@@ -416,9 +531,13 @@ export function useSupportVoiceCall({
               }
               sendReady();
             }, 900);
-          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            setPhase("failed");
-            setError("เชื่อมต่อช่องสัญญาณเสียงไม่สำเร็จ กรุณาลองใหม่");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            // Realtime signaling can reconnect independently. Do not kill a healthy
+            // WebRTC media path merely because a browser backgrounded its WebSocket.
+            if (peerRef.current?.connectionState !== "connected") {
+              setPhase("reconnecting");
+              void recoverConnection();
+            }
           }
         });
 
@@ -435,10 +554,12 @@ export function useSupportVoiceCall({
     cleanup,
     createOffer,
     flushQueuedIce,
+    held,
     isInitiator,
     loadIceServers,
     onRemoteHangup,
     onState,
+    recoverConnection,
     sendReady,
     side,
     startElapsed
@@ -452,16 +573,16 @@ export function useSupportVoiceCall({
   const toggleMic = useCallback(() => {
     const nextMuted = !micMuted;
     localStreamRef.current?.getAudioTracks().forEach((track) => {
-      track.enabled = !nextMuted;
+      track.enabled = !nextMuted && !held;
     });
     setMicMuted(nextMuted);
-  }, [micMuted]);
+  }, [held, micMuted]);
 
   const toggleSpeaker = useCallback(() => {
     const nextMuted = !speakerMuted;
-    if (audioElementRef.current) audioElementRef.current.muted = nextMuted;
+    if (audioElementRef.current) audioElementRef.current.muted = nextMuted || held;
     setSpeakerMuted(nextMuted);
-  }, [speakerMuted]);
+  }, [held, speakerMuted]);
 
   const resumeAudio = useCallback(async () => {
     if (!audioElementRef.current) return;
@@ -474,23 +595,57 @@ export function useSupportVoiceCall({
   }, []);
 
   useEffect(() => {
-    const notifyPeerOnPageHide = () => {
-      if (!runningRef.current || !channelRef.current) return;
-      void channelRef.current.send({
-        type: "broadcast",
-        event: "voice_hangup",
-        payload: { side, instance_id: instanceIdRef.current }
+    localStreamRef.current?.getAudioTracks().forEach((track) => {
+      track.enabled = !held && !micMuted;
+    });
+    if (audioElementRef.current) {
+      audioElementRef.current.muted = held || speakerMuted;
+    }
+    if (held) void startHoldMusic();
+    else stopHoldMusic();
+  }, [held, micMuted, speakerMuted, startHoldMusic, stopHoldMusic]);
+
+  useEffect(() => {
+    const nextKey = call?.signaling_key ?? "";
+    const previousKey = signalingKeyRef.current;
+    signalingKeyRef.current = nextKey;
+
+    if (
+      runningRef.current &&
+      previousKey &&
+      nextKey &&
+      previousKey !== nextKey &&
+      call &&
+      ["accepted", "connecting", "connected"].includes(call.status)
+    ) {
+      void cleanup(false).then(() => {
+        setPhase("idle");
+        window.setTimeout(() => void start(), 0);
       });
+    }
+  }, [call, cleanup, start]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (
+        document.visibilityState === "visible" &&
+        runningRef.current &&
+        peerRef.current &&
+        peerRef.current.connectionState !== "connected"
+      ) {
+        void recoverConnection();
+      }
     };
-    window.addEventListener("pagehide", notifyPeerOnPageHide);
-    return () => window.removeEventListener("pagehide", notifyPeerOnPageHide);
-  }, [side]);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [recoverConnection]);
 
   useEffect(() => {
     return () => {
+      stopHoldMusic();
       void cleanup(false);
     };
-  }, [cleanup]);
+  }, [cleanup, stopHoldMusic]);
 
   useEffect(() => {
     if (!call || !["accepted", "connecting", "connected"].includes(call.status)) {

@@ -97,6 +97,9 @@ export async function POST(
       internal_note?: string;
       call_id?: string;
       state?: string;
+      target_user_id?: string;
+      target_role?: string;
+      target_name?: string;
       attachment?: { name?: string; mime_type?: string; size_bytes?: number; data_base64?: string };
     } | null;
     const action = String(body?.action ?? "").trim();
@@ -236,6 +239,97 @@ export async function POST(
         state
       });
       await mirrorSupportChatHead(data.head);
+      return ok(data);
+    }
+
+    if (["voice_transfer", "voice_transfer_accept", "voice_transfer_decline", "voice_transfer_cancel"].includes(action)) {
+      const callId = String(body?.call_id ?? "").trim();
+      if (!callId) return fail("call_id_required", "ไม่พบสายเสียง", 422);
+
+      const rate = await enforceRateLimit({
+        namespace: "it-support-voice-transfer",
+        key: `${auth.auth.userId}:${conversationId}:${getClientIpAddress(request)}`,
+        max: 30,
+        windowMs: 10 * 60_000,
+        failClosedOnBackendError: true
+      });
+      if (!rate.ok) return fail("voice_transfer_rate_limited", "ทำรายการโอนสายถี่เกินไป กรุณารอสักครู่", 429);
+
+      let targetUserId: string | null = null;
+      let targetRole = "";
+      let targetName = "";
+
+      if (action === "voice_transfer") {
+        targetUserId = String(body?.target_user_id ?? "").trim() || null;
+        targetRole = String(body?.target_role ?? "").trim();
+        targetName = String(body?.target_name ?? "").trim().slice(0, 120);
+
+        if (targetRole !== "it_admin" && targetRole !== "it_support") {
+          return fail("transfer_target_role_invalid", "กรุณาเลือกแผนกปลายทาง", 422);
+        }
+        if (targetUserId === auth.auth.userId) {
+          return fail("transfer_to_self", "ไม่สามารถโอนสายให้บัญชีที่กำลังรับสายอยู่", 409);
+        }
+
+        if (targetUserId) {
+          const target = await auth.supabase
+            .from("users_profiles")
+            .select("id,full_name,platform_role,is_active,archived_at")
+            .eq("id", targetUserId)
+            .in("platform_role", ["it_admin", "it_support"])
+            .eq("is_active", true)
+            .is("archived_at", null)
+            .maybeSingle();
+
+          if (target.error) throw new Error(target.error.message);
+          if (!target.data) return fail("transfer_target_unavailable", "ผู้รับโอนไม่พร้อมใช้งาน", 409);
+          targetRole = String(target.data.platform_role);
+          targetName = String(target.data.full_name || "IT Support").slice(0, 120);
+        } else {
+          targetName = targetRole === "it_admin" ? "Admin IT" : "Support IT";
+        }
+      }
+
+      const map = {
+        voice_transfer: "request_voice_transfer",
+        voice_transfer_accept: "accept_voice_transfer",
+        voice_transfer_decline: "decline_voice_transfer",
+        voice_transfer_cancel: "cancel_voice_transfer"
+      } as const;
+
+      const data = await callSupportChat<{
+        call: Record<string, unknown>;
+        conversation: Conversation;
+        head: SupportChatHead;
+      }>(bridge, map[action as keyof typeof map], {
+        conversation_id: conversationId,
+        call_id: callId,
+        target_user_id: targetUserId,
+        target_role: targetRole || null,
+        target_name: targetName || null
+      });
+      await mirrorSupportChatHead(data.head);
+
+      await appendAuditLog({
+        tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
+        actorUserId: auth.auth.userId,
+        actorRole: auth.auth.platformRole,
+        action: `support_voice_${action.replace("voice_", "")}`,
+        targetTable: "support_chat_heads",
+        targetId: conversationId,
+        module: "support_chat",
+        entityType: "support_voice_call",
+        entityId: typeof data.call.id === "string" ? data.call.id : conversationId,
+        metadata: {
+          target_user_id: targetUserId,
+          target_role: targetRole || null,
+          media_enabled: true,
+          recording_enabled: false
+        },
+        ipAddress: auth.requestMeta.ipAddress ?? undefined,
+        userAgent: auth.requestMeta.userAgent ?? undefined
+      });
+
       return ok(data);
     }
 
