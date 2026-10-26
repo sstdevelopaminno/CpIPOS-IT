@@ -14,6 +14,8 @@ describe("IT tenant POS sales-mode control", () => {
     expect(contractApi).toContain('metadata.sales_modes = Object.fromEntries');
     expect(contractApi).toContain('delete metadata.sales_modes');
     expect(contractApi).toContain("POS_SALES_MODE_KEYS.map");
+    expect(contractApi).toContain("sales_mode_limit_exceeded");
+    expect(contractApi).toContain("enabledCount > salesModeLimit");
   });
 
   it("clears stale sales-mode overrides when the package changes without an explicit replacement", () => {
