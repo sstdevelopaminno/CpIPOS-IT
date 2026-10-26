@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { TenantAdminNav } from "@/components/it-admin/tenant-admin-nav";
 import { OpticalFinanceApprovalCard } from "@/components/it-admin/optical-finance-approval-card";
+import { POS_SALES_MODE_DEFINITIONS, POS_SALES_MODE_KEYS, type PosSalesModeKey, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 
 type SectionKey = "branches" | "users" | "devices" | "login-policies" | "sessions" | "shifts" | "features";
 
@@ -96,6 +97,7 @@ type PlanRow = {
   name: string;
   monthly_price: number | null;
   status?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type ContractRow = {
@@ -107,6 +109,7 @@ type ContractRow = {
   max_branches: number | null;
   max_devices: number | null;
   max_users: number | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type QuotaLimits = {
@@ -128,6 +131,31 @@ function formatDateTime(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return new Intl.DateTimeFormat("th-TH", { dateStyle: "short", timeStyle: "short" }).format(date);
+}
+
+function packageSalesModeDefaults(plan: PlanRow | undefined): PosSalesModeMap {
+  const defaults = Array.isArray(plan?.metadata?.default_sales_modes)
+    ? plan!.metadata!.default_sales_modes.map((value) => String(value ?? "").trim())
+    : [];
+  return Object.fromEntries(
+    POS_SALES_MODE_KEYS.map((key) => [key, defaults.includes(key)])
+  ) as PosSalesModeMap;
+}
+
+function contractSalesModes(contract: ContractRow | null, plan: PlanRow | undefined): PosSalesModeMap {
+  const raw = contract?.metadata?.sales_modes;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    return Object.fromEntries(
+      POS_SALES_MODE_KEYS.map((key) => [key, record[key] === true])
+    ) as PosSalesModeMap;
+  }
+  return packageSalesModeDefaults(plan);
+}
+
+function packageSalesModeLimit(plan: PlanRow | undefined): number | null {
+  const value = Number(plan?.metadata?.sales_mode_limit ?? 0);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : null;
 }
 
 export function TenantSectionConsole({ tenantId, section }: { tenantId: string; section: SectionKey }) {
@@ -931,14 +959,27 @@ function FeaturesPane({
   const [maxBranches, setMaxBranches] = useState<number>(1);
   const [maxDevices, setMaxDevices] = useState<number>(1);
   const [maxUsers, setMaxUsers] = useState<number>(10);
+  const [salesModes, setSalesModes] = useState<PosSalesModeMap>(
+    () => Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, false])) as PosSalesModeMap
+  );
+
+  const selectedPlan = useMemo(
+    () => plans.find((plan) => plan.id === planId),
+    [plans, planId]
+  );
+  const salesModeLimit = packageSalesModeLimit(selectedPlan);
+  const enabledSalesModeCount = POS_SALES_MODE_KEYS.filter((key) => salesModes[key]).length;
 
   useEffect(() => {
-    setPlanId(activeContract?.package_id ?? "");
+    const nextPlanId = activeContract?.package_id ?? "";
+    const nextPlan = plans.find((plan) => plan.id === nextPlanId);
+    setPlanId(nextPlanId);
     setContractStatus((activeContract?.status as "trial" | "active" | "suspended" | "expired" | "cancelled") ?? "active");
     setMaxBranches(activeContract?.max_branches ?? quotaLimits?.maxBranches ?? 1);
     setMaxDevices(activeContract?.max_devices ?? quotaLimits?.maxDevices ?? 1);
     setMaxUsers(activeContract?.max_users ?? quotaLimits?.maxUsers ?? 10);
-  }, [activeContract, quotaLimits]);
+    setSalesModes(contractSalesModes(activeContract, nextPlan));
+  }, [activeContract, quotaLimits, plans]);
 
   async function toggleFeature(feature: FeatureRow) {
     setBusy(true);
@@ -973,7 +1014,8 @@ function FeaturesPane({
           status: contractStatus,
           max_branches: maxBranches,
           max_devices: maxDevices,
-          max_users: maxUsers
+          max_users: maxUsers,
+          sales_modes: salesModes
         })
       });
       const payload = (await response.json()) as ApiEnvelope<{ contract: ContractRow }>;
@@ -988,12 +1030,49 @@ function FeaturesPane({
     }
   }
 
+  function selectPlan(nextPlanId: string) {
+    setPlanId(nextPlanId);
+    const nextPlan = plans.find((plan) => plan.id === nextPlanId);
+    setSalesModes(packageSalesModeDefaults(nextPlan));
+  }
+
+  function toggleSalesMode(key: PosSalesModeKey) {
+    const enabling = !salesModes[key];
+    if (enabling && salesModeLimit !== null && enabledSalesModeCount >= salesModeLimit) {
+      setError(`แพ็กเกจนี้เปิดโหมดขายได้สูงสุด ${salesModeLimit} โหมด กรุณาปิดโหมดอื่นก่อน`);
+      return;
+    }
+    setError(null);
+    setSalesModes((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  async function saveSalesModes(resetToPackageDefaults = false) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/it-admin/admin/tenants/${tenantId}/contract`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sales_modes: resetToPackageDefaults ? null : salesModes })
+      });
+      const payload = (await response.json()) as ApiEnvelope<{ contract: ContractRow }>;
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error?.message ?? "Sales mode update failed.");
+      }
+      onChanged();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Sales mode update failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, display: "grid", gap: 8 }}>
         <strong>Active Contract</strong>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <select value={planId} onChange={(event) => setPlanId(event.target.value)}>
+          <select value={planId} onChange={(event) => selectPlan(event.target.value)}>
             <option value="">Select plan</option>
             {plans.map((plan) => (
               <option key={plan.id} value={plan.id}>
@@ -1019,6 +1098,56 @@ function FeaturesPane({
           <div>Contract status: {activeContract?.status ?? "-"}</div>
           <div>
             Quota usage: branches {quotaLimits?.usage.branches ?? 0}/{quotaLimits?.maxBranches ?? "-"} | devices {quotaLimits?.usage.devices ?? 0}/{quotaLimits?.maxDevices ?? "-"} | users {quotaLimits?.usage.users ?? 0}/{quotaLimits?.maxUsers ?? "-"}
+          </div>
+        </div>
+
+        <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 10, display: "grid", gap: 8 }}>
+          <div>
+            <strong>POS Sales Modes</strong>
+            <div style={{ color: "#64748b", fontSize: 12 }}>
+              เลือกโหมดขายที่แอป POS ใช้งานได้จริง
+              {salesModeLimit !== null ? ` • แพ็กเกจนี้เปิดได้สูงสุด ${salesModeLimit} โหมด` : " • ไม่จำกัดจำนวนโหมด"}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {POS_SALES_MODE_DEFINITIONS.map((mode) => (
+              <button
+                key={mode.key}
+                type="button"
+                className="pos-monitor-btn"
+                aria-pressed={salesModes[mode.key]}
+                disabled={busy || !planId}
+                onClick={() => toggleSalesMode(mode.key)}
+                style={{
+                  borderColor: salesModes[mode.key] ? "#16a34a" : "#cbd5e1",
+                  background: salesModes[mode.key] ? "#ecfdf5" : "#fff"
+                }}
+                title={mode.description}
+              >
+                {salesModes[mode.key] ? "✓ " : ""}{mode.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button
+              type="button"
+              className="pos-monitor-btn pos-monitor-btn--primary"
+              disabled={busy || !activeContract}
+              onClick={() => void saveSalesModes(false)}
+            >
+              บันทึกโหมดขาย
+            </button>
+            <button
+              type="button"
+              className="pos-monitor-btn"
+              disabled={busy || !activeContract}
+              onClick={() => void saveSalesModes(true)}
+            >
+              ใช้ค่าเริ่มต้นของแพ็กเกจ
+            </button>
+          </div>
+          <div style={{ color: "#64748b", fontSize: 12 }}>
+            เมนู “หน้าขาย” และ Sales Mode เป็นคนละสิทธิ์กัน การเปิดเมนูอย่างเดียวจะไม่เปิดโหมดกลับบ้าน/นั่งโต๊ะ
           </div>
         </div>
       </div>
