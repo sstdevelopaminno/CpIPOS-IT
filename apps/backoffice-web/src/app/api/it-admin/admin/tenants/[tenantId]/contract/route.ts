@@ -222,7 +222,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
     }
 
     const pricePackageId = String(patch.package_id ?? latestContract?.package_id ?? "");
-    if ((patch.package_id || patch.billing_interval) && pricePackageId) {
+    if ((patch.package_id || patch.billing_interval || hasSalesModesField) && pricePackageId) {
       const billingInterval = String(patch.billing_interval ?? latestContract?.billing_interval ?? "monthly");
       const { data: planPrice, error: planPriceError } = await supabase
         .from("subscription_packages")
@@ -233,6 +233,22 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
         throw new Error(planPriceError.message);
       }
       if (planPrice) {
+        if (hasSalesModesField && body.sales_modes !== null && body.sales_modes) {
+          const rawLimit = Number(planPrice.metadata?.sales_mode_limit ?? 0);
+          const salesModeLimit = Number.isFinite(rawLimit) && rawLimit > 0
+            ? Math.min(POS_SALES_MODE_KEYS.length, Math.trunc(rawLimit))
+            : null;
+          const enabledCount = POS_SALES_MODE_KEYS.filter(
+            (key) => body.sales_modes?.[key] === true
+          ).length;
+          if (salesModeLimit !== null && enabledCount > salesModeLimit) {
+            return fail(
+              "sales_mode_limit_exceeded",
+              `แพ็กเกจนี้เปิดโหมดขายได้สูงสุด ${salesModeLimit} โหมด`,
+              422
+            );
+          }
+        }
         if (patch.amount_per_cycle === undefined) {
           patch.amount_per_cycle = billingInterval === "yearly" ? planPrice.yearly_price ?? planPrice.monthly_price ?? 0 : planPrice.monthly_price ?? 0;
           patch.currency = patch.currency ?? "THB";
