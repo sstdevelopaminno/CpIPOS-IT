@@ -23,7 +23,7 @@ describe("subscription payments IT workspace", () => {
     expect(api).toContain('"payment_notice"');
     expect(api).toContain('"renewal_intent"');
     expect(ui).toContain("CpiPOS-001 · POS Web / Native ↔ IT");
-    expect(ui).toContain("POS → IT");
+    expect(ui).toContain("POS Web / Native → IT");
     expect(api).toContain("effectiveExpiry");
     expect(api).toContain("subscription_billing_due_states");
     expect(api).toContain('source: "derived_entitlement"');
