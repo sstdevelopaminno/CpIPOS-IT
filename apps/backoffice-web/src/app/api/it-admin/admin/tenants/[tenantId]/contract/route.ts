@@ -3,6 +3,7 @@ import { isCurrentSubscriptionContract, summarizeContractIntegrity, type Contrac
 import { getTenantLimits, invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
+import { POS_SALES_MODE_KEYS, type PosSalesModeKey } from "@/lib/pos-sales-modes";
 
 type ContractPayload = {
   plan_id?: string;
@@ -15,6 +16,7 @@ type ContractPayload = {
   max_branches?: number | null;
   max_devices?: number | null;
   max_users?: number | null;
+  sales_modes?: Partial<Record<PosSalesModeKey, boolean>> | null;
 };
 
 type ContractRow = {
@@ -32,6 +34,7 @@ type ContractRow = {
   billing_interval: string | null;
   amount_per_cycle: number | null;
   currency: string | null;
+  metadata: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -46,7 +49,7 @@ type PlanPriceRow = {
 };
 
 const CONTRACT_SELECT =
-  "id,tenant_id,package_id,status,started_at,ended_at,branch_limit,terminal_limit_per_branch,max_branches,max_devices,max_users,billing_interval,amount_per_cycle,currency,created_at";
+  "id,tenant_id,package_id,status,started_at,ended_at,branch_limit,terminal_limit_per_branch,max_branches,max_devices,max_users,billing_interval,amount_per_cycle,currency,metadata,created_at";
 
 const CONTRACT_INTEGRITY_SELECT = "id,status,started_at,ended_at";
 
@@ -175,6 +178,45 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       patch.max_users = Math.max(1, Math.trunc(body.max_users));
     }
 
+    const hasSalesModesField = Object.prototype.hasOwnProperty.call(body, "sales_modes");
+    if (hasSalesModesField) {
+      const metadata = { ...(latestContract?.metadata ?? {}) };
+      if (body.sales_modes === null) {
+        delete metadata.sales_modes;
+      } else {
+        if (!body.sales_modes || typeof body.sales_modes !== "object" || Array.isArray(body.sales_modes)) {
+          return fail("invalid_sales_modes", "sales_modes must be an object or null.", 422);
+        }
+        const raw = body.sales_modes as Record<string, unknown>;
+        const unknownKeys = Object.keys(raw).filter(
+          (key) => !(POS_SALES_MODE_KEYS as readonly string[]).includes(key)
+        );
+        if (unknownKeys.length > 0 ||
+            Object.values(raw).some((value) => typeof value !== "boolean")) {
+          return fail("invalid_sales_modes", "Sales mode keys and values are invalid.", 422);
+        }
+        metadata.sales_modes = Object.fromEntries(
+          POS_SALES_MODE_KEYS.map((key) => [key, raw[key] === true])
+        );
+      }
+      patch.metadata = metadata;
+    }
+
+    // A plan change must not carry explicit sales-mode overrides from the old
+    // package into the new package. If IT does not submit sales_modes together
+    // with the plan change, remove the old override so CpIPOS falls back to the
+    // new package's default_sales_modes and sales_mode_limit.
+    if (
+      latestContract &&
+      patch.package_id &&
+      latestContract.package_id !== patch.package_id &&
+      !hasSalesModesField
+    ) {
+      const metadata = { ...(latestContract.metadata ?? {}) };
+      delete metadata.sales_modes;
+      patch.metadata = metadata;
+    }
+
     if (Object.keys(patch).length === 0) {
       return fail("empty_patch", "No contract update fields provided.", 422);
     }
@@ -267,7 +309,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
           amount_per_cycle: patch.amount_per_cycle ?? 0,
           currency: patch.currency ?? "THB",
           started_at: patch.started_at ?? nowIso,
-          ended_at: patch.ended_at ?? null
+          ended_at: patch.ended_at ?? null,
+          metadata: patch.metadata ?? {}
         })
         .select(CONTRACT_SELECT)
         .single<ContractRow>();
