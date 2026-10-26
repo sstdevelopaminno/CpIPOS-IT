@@ -78,6 +78,28 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
     } else {
       effectiveSalesModes = normalizePosSalesModes(explicitSalesModes);
     }
+
+    const rawSalesModeLimit = Number(packageResult.data?.metadata?.sales_mode_limit ?? 0);
+    const salesModeLimit = Number.isFinite(rawSalesModeLimit) && rawSalesModeLimit > 0
+      ? Math.min(POS_SALES_MODE_KEYS.length, Math.trunc(rawSalesModeLimit))
+      : null;
+    if (salesModeLimit !== null) {
+      const enabledKeys = POS_SALES_MODE_KEYS.filter((key) => effectiveSalesModes[key]);
+      if (enabledKeys.length > salesModeLimit) {
+        const preferred = packageDefaults.length
+          ? packageDefaults.filter((key) => (POS_SALES_MODE_KEYS as readonly string[]).includes(key))
+          : [...POS_SALES_MODE_KEYS];
+        const allowed = new Set<string>();
+        for (const key of [...preferred, ...POS_SALES_MODE_KEYS]) {
+          if (effectiveSalesModes[key as keyof PosSalesModeMap] && allowed.size < salesModeLimit) {
+            allowed.add(key);
+          }
+        }
+        effectiveSalesModes = Object.fromEntries(
+          POS_SALES_MODE_KEYS.map((key) => [key, allowed.has(key)])
+        ) as PosSalesModeMap;
+      }
+    }
     const salesModes = explicitSalesModes;
     const opticalAuthorized = isCustom && contract.data &&
       (contract.data.status === "trial" || contract.data.status === "active") &&
