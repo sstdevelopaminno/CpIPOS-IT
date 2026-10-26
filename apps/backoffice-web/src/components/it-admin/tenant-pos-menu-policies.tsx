@@ -6,6 +6,8 @@ import styles from "./tenant-pos-menu-policies.module.css";
 
 type Data = { catalog: PosMenuDefinition[]; overrides: Record<string, boolean>; is_custom: boolean; is_optical_custom?: boolean;
   availability: Record<string, MenuAvailability>;
+  sales_modes?: Record<string, boolean>;
+  sales_modes_source?: "contract_override" | "package_default";
   disabled: number; unavailable: number; total: number };
 type ResponseBody<T> = { data?: T | null; error?: { message?: string } | null };
 
@@ -108,6 +110,10 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
             : !allowed
               ? `ปิดจริงใน POS • ไม่มีสิทธิ์ฟีเจอร์ ${featureLabel ?? ""}`
               : "เปิดใช้งานใน POS";
+    const enabledSalesModes = Object.entries(data?.sales_modes ?? {})
+      .filter(([, enabled]) => enabled)
+      .map(([key]) => key);
+    const salesModeWarning = item.key === "main.sales" && configured && enabledSalesModes.length === 0;
     return <div key={item.key} className={child ? styles.child : styles.parent}>
       <div className={styles.menuLabel}>
         <strong>{item.label}{item.key === "main.ai_assistant" ? <span className={styles.aiBadge}>AI POLICY</span> : null}</strong>
@@ -115,6 +121,10 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
         {blockedByAccess ? <small className={styles.accessHelp}>
           คำสั่ง IT: เปิด แต่เงื่อนไขแพ็กเกจ/สาขายังปิด •{" "}
           <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์</a>
+        </small> : null}
+        {item.key === "main.sales" ? <small className={salesModeWarning ? styles.accessHelp : styles.available}>
+          โหมดขายที่เปิดจริง: {enabledSalesModes.length ? enabledSalesModes.join(", ") : "ยังไม่มี"}
+          {" • "}<a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตั้งค่า Sales Modes</a>
         </small> : null}
       </div>
       <button type="button" role="switch" aria-checked={configured}
@@ -151,6 +161,6 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       </section>)}
     {data?.is_custom ? <p className={styles.note}><a href={`/tenants/${encodeURIComponent(tenantId)}/currency`}>ตั้งค่าสกุลเงิน (CUSTOM) → ตรวจสอบบิลค้างและอนุมัติ THB / LAK โดย IT</a></p> : null}
     {data?.is_custom ? <p className={styles.note}>CUSTOM ใช้การซ่อนเมนูแบบอนุญาตเฉพาะรายการที่ IT เปิด (Explicit Allow) โดยเมนูแม่ต้องเปิดก่อนเมนูลูก และยังต้องตรวจสิทธิ์ฟีเจอร์/สาขาด้วย</p> : null}
-    <p className={styles.note}>สวิตช์แสดงคำสั่ง IT (เปิด IT/ปิด) ส่วนข้อความด้านซ้ายแสดงสิทธิ์ที่ POS ใช้งานได้จริง หากแพ็กเกจยังไม่รองรับต้องเปิดสิทธิ์แยกต่างหาก • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์ของร้านนี้</a> • เมนูทั่วไปยังเป็น navigation lock ตามเดิม แต่ <strong>CpiPOS AI</strong> เป็น policy lock แบบบังคับ: เมื่อปิดจะบล็อกหน้า AI และ API ของ AI สำหรับร้านนั้นด้วย • POS อ่านสถานะใหม่เมื่อกลับเข้าแท็บ</p>
+    <p className={styles.note}>สวิตช์แสดงคำสั่ง IT (เปิด IT/ปิด) ส่วนข้อความด้านซ้ายแสดงสิทธิ์ที่ POS ใช้งานได้จริง หากแพ็กเกจยังไม่รองรับต้องเปิดสิทธิ์แยกต่างหาก • <a href={`/tenants/${encodeURIComponent(tenantId)}/features`}>ตรวจสิทธิ์ฟีเจอร์และ Sales Modes ของร้านนี้</a> • เมนูทั่วไปยังเป็น navigation lock ตามเดิม แต่ <strong>CpiPOS AI</strong> เป็น policy lock แบบบังคับ: เมื่อปิดจะบล็อกหน้า AI และ API ของ AI สำหรับร้านนั้นด้วย • POS อ่านสถานะใหม่เมื่อกลับเข้าแท็บ</p>
   </div>;
 }
