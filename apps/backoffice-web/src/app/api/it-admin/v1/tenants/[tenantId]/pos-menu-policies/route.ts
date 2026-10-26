@@ -6,6 +6,7 @@ import { POS_MENU_CATALOG, isPosMenuAlwaysEnabled, isValidPosMenuKey } from "@/l
 import { resolvePosMenuAvailability, type FeatureFlag, type PlanFlag, type ContractStatus } from "@/lib/pos-menu-effective-state";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { getItQaMode } from "@/lib/server/internal-it-test-store";
+import { DEFAULT_POS_SALES_MODES, POS_SALES_MODE_KEYS, normalizePosSalesModes, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,8 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
       : { data: [] as PlanFlag[], error: null };
     if (plan.error) throw plan.error;
     const packageResult = contract.data?.package_id
-      ? await admin.supabase.from("subscription_packages").select("code")
-        .eq("id", contract.data.package_id).maybeSingle<{ code: string }>()
+      ? await admin.supabase.from("subscription_packages").select("code,metadata")
+        .eq("id", contract.data.package_id).maybeSingle<{ code: string; metadata: Record<string, unknown> | null }>()
       : { data: null, error: null };
     if (packageResult.error) throw packageResult.error;
     const internalMode = await getItQaMode(admin, tenantId);
@@ -59,7 +60,25 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
       feature_overrides: featureOverrides.data ?? [],
       active_branch_ids: (branches.data ?? []).map(branch => branch.id)
     });
-    const salesModes = contract.data?.metadata?.sales_modes;
+    const explicitSalesModes = contract.data?.metadata?.sales_modes;
+    const packageDefaults = Array.isArray(packageResult.data?.metadata?.default_sales_modes)
+      ? packageResult.data!.metadata!.default_sales_modes.map((value) => String(value ?? "").trim())
+      : [];
+    let effectiveSalesModes: PosSalesModeMap;
+    if (explicitSalesModes && typeof explicitSalesModes === "object" && !Array.isArray(explicitSalesModes)) {
+      effectiveSalesModes = normalizePosSalesModes(explicitSalesModes);
+    } else if (packageDefaults.length > 0) {
+      effectiveSalesModes = { ...DEFAULT_POS_SALES_MODES };
+      for (const key of POS_SALES_MODE_KEYS) effectiveSalesModes[key] = false;
+      for (const key of packageDefaults) {
+        if ((POS_SALES_MODE_KEYS as readonly string[]).includes(key)) {
+          effectiveSalesModes[key as keyof PosSalesModeMap] = true;
+        }
+      }
+    } else {
+      effectiveSalesModes = normalizePosSalesModes(explicitSalesModes);
+    }
+    const salesModes = explicitSalesModes;
     const opticalAuthorized = isCustom && contract.data &&
       (contract.data.status === "trial" || contract.data.status === "active") &&
       (!contract.data.ended_at || Date.parse(contract.data.ended_at) > Date.now()) &&
@@ -67,6 +86,8 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
       (salesModes as Record<string, unknown>).optical_retail === true;
     const response = ok({
       tenant_id: tenantId, is_custom: isCustom, is_optical_custom: Boolean(opticalAuthorized), internal_test_full: isFull, catalog: POS_MENU_CATALOG, overrides, availability,
+      sales_modes: effectiveSalesModes,
+      sales_modes_source: explicitSalesModes && typeof explicitSalesModes === "object" ? "contract_override" : "package_default",
       total: POS_MENU_CATALOG.length,
       disabled: POS_MENU_CATALOG.filter(item => item.key !== "main.shift" && (isCustom ? overrides[item.key] !== true : overrides[item.key] === false)).length,
       unavailable: POS_MENU_CATALOG.filter(item => availability[item.key]?.reason !== "available").length
