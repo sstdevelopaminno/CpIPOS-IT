@@ -158,7 +158,7 @@ export function SubscriptionPaymentsConsole() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
             <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-            CpiPOS-001 · POS ↔ IT
+            CpiPOS-001 · POS Web / Native ↔ IT
           </span>
           <button type="button" onClick={() => setContactsOpen((value) => !value)}
             className="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700">
@@ -284,7 +284,7 @@ export function SubscriptionPaymentsConsole() {
                   </span>
                   {row.payment ? <span className="mt-1 block text-xs font-semibold text-blue-700">
                     {row.payment.source === "pos_subscription_center"
-                      ? "POS → IT"
+                      ? "POS Web / Native → IT"
                       : row.payment.source === "company_website_package_checkout"
                         ? "เว็บไซต์ → IT"
                         : "ระบบ"}
