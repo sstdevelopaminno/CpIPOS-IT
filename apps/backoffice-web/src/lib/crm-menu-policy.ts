@@ -3,7 +3,7 @@
  * Absence means enabled (backward compatible); only explicit IT false hides a menu.
  * Navigation is NOT an API or package entitlement, and role rules still apply.
  */
-export type CrmMenuDefinition={key:string;label:string;group:"main"|"more"|"settings"|"optical";parent?:string};
+export type CrmMenuDefinition={key:string;label:string;group:"main"|"more"|"settings"|"optical"|"optical_api"|"crm_access";parent?:string};
 export const CRM_MENU_CATALOG:readonly CrmMenuDefinition[] = [
   {key:"main.crm_overview",label:"ภาพรวม",group:"main"},
   {key:"main.crm_sales",label:"ยอดขาย",group:"main"},
@@ -41,6 +41,17 @@ export const CRM_MENU_CATALOG:readonly CrmMenuDefinition[] = [
   {key:"main.crm_optical_orders",label:"ใบสั่งงานแว่นตา",group:"optical",parent:"main.crm_optical"},
   {key:"main.crm_optical_stock",label:"สต๊อกแว่นตา",group:"optical",parent:"main.crm_optical"},
   {key:"main.crm_optical_reports",label:"รายงานร้านแว่นตา",group:"optical",parent:"main.crm_optical"},
+  // Upper-bound role eligibility in the IT package/control plane; not per-employee grants.
+  // Staff requires an explicit true IT setting; Owner delegates individual permissions within CRM.
+  {key:"settings.crm_access_manager",label:"อนุญาตบัญชี Manager เข้า CRM",group:"crm_access"},
+  {key:"settings.crm_access_staff",label:"อนุญาตบัญชี Staff เข้า CRM (ต้องกำหนดสิทธิ์รายคน)",group:"crm_access"},
+  // Distinct IT kill switches for POS Optical data APIs. These do not change
+  // subscription entitlements; the server ANDs them with CUSTOM Optical grants.
+  {key:"settings.crm_optical_api_work_orders",label:"API ใบสั่งงาน Optical (POS)",group:"optical_api"},
+  {key:"settings.crm_optical_api_deposits",label:"API รับมัดจำ / ยอดค้าง (POS)",group:"optical_api"},
+  {key:"settings.crm_optical_api_inventory",label:"API สต๊อก Optical (POS)",group:"optical_api"},
+  {key:"settings.crm_optical_api_customers",label:"API ลูกค้า / ตรวจสายตา (POS)",group:"optical_api"},
+  {key:"settings.crm_optical_api_payment_verification",label:"API ยืนยันเงินโอน Optical (POS)",group:"optical_api"},
 ];
 const catalog=new Map(CRM_MENU_CATALOG.map(menu=>[menu.key,menu]));
 export function isValidCrmMenuKey(key:string){return catalog.has(key);}
