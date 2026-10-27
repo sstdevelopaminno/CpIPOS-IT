@@ -4,6 +4,12 @@ name: Deploy CpIPOS IT Web to Production
 
 on:
   workflow_dispatch:
+  # One narrowly scoped push trigger: merging this workflow change to main
+  # provides a supported deployment path without revealing the Vercel token.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-store-registration-production.yml"
 
 permissions:
   contents: read
@@ -15,6 +21,7 @@ jobs:
     env:
       VERCEL_TEAM_ID: team_ZKmv6uQSU9QUyP08mxAr2YDI
       VERCEL_PROJECT_NAME: cp-ipos-it-web
+      VERCEL_EXPECTED_PROJECT_ID: prj_9jNjDHyctinDjnvCZ2Ya1zBJs38h
       VERCEL_CLI_VERSION: 59.19.1
 
     steps:
@@ -50,6 +57,10 @@ jobs:
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_NAME?teamId=$VERCEL_TEAM_ID")
           project_id=$(printf '%s' "$project_json" | jq -r '.id // empty')
+          if [ "$project_id" != "$VERCEL_EXPECTED_PROJECT_ID" ]; then
+            echo "::error::Resolved Vercel project ID does not match expected IT Production project."
+            exit 1
+          fi
           if [ -z "$project_id" ]; then
             echo "::error::Could not resolve Vercel project id for $VERCEL_PROJECT_NAME."
             exit 1
