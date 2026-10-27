@@ -62,7 +62,7 @@ export async function PATCH(request: Request, context: Params) {
       .single<{ enforce_developer_options_off: boolean; updated_at: string }>();
     if (next.error || !next.data) throw next.error ?? new Error("android_security_policy_write_failed");
     await appendAuditLog({
-      tenantId, actorUserId: admin.auth.userId, actorRole: admin.auth.platformRole ?? "it_admin",
+      tenantId, actorUserId: admin.auth.userId, actorRole: "it_admin",
       action: "it_tenant_android_security_policy_changed",
       targetTable: "tenant_android_security_policies",
       beforeData: { enforce_developer_options_off: existing.data?.enforce_developer_options_off === true },
