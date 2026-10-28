@@ -1,15 +1,13 @@
 name: Deploy CpIPOS IT Web to Production
 
-# Manual Production deployment via Vercel CLI.
+# Manual recovery deployment via Vercel CLI.
+#
+# Normal Production releases are handled by the Vercel Git integration on main.
+# Keep this workflow manual-only to avoid a second deployment path and false
+# failure statuses when the optional repository secret VERCEL_TOKEN is absent.
 
 on:
   workflow_dispatch:
-  # One narrowly scoped push trigger: merging this workflow change to main
-  # provides a supported deployment path without revealing the Vercel token.
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/deploy-store-registration-production.yml"
 
 permissions:
   contents: read
