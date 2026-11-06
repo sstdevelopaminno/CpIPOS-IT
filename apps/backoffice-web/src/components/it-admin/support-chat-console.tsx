@@ -425,6 +425,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       } else if (action === "voice_end") {
         await itVoice.end();
       }
+      void typingChannelRef.current?.send({
+        type: "broadcast",
+        event: "voice_update",
+        payload: { actor: "it", action }
+      });
       await loadConversation(selectedId);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ทำรายการคุยด้วยเสียงไม่สำเร็จ");
