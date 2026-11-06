@@ -39,6 +39,11 @@ function bearerToken(req: Request) {
   return value.toLowerCase().startsWith("bearer ") ? value.slice(7).trim() : "";
 }
 
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value);
+}
+
 async function exactCount(query: PromiseLike<{ count: number | null; error: { code?: string; message?: string } | null }>, code: string) {
   const result = await query;
   if (result.error) throw new Error(`${code}:${result.error.code ?? "query_failed"}`);
@@ -92,7 +97,47 @@ Deno.serve(async (req) => {
       .eq("id", userResult.user.id)
       .maybeSingle();
     if (profileError) throw new Error(`profile_lookup_failed:${profileError.code ?? "query_failed"}`);
-    if (!profile?.is_active || !["it_admin", "it_support"].includes(String(profile.platform_role ?? ""))) return json({ error: "forbidden" }, 403);
+    const platformRole = String(profile?.platform_role ?? "");
+    if (!profile?.is_active || !["it_admin", "it_support"].includes(platformRole)) {
+      return json({ error: "forbidden" }, 403);
+    }
+
+    if (req.method === "POST") {
+      const body = await req.json().catch(() => null) as {
+        action?: unknown;
+        tenant_id?: unknown;
+      } | null;
+      const action = typeof body?.action === "string" ? body.action.trim() : "";
+
+      if (action === "verify_tenant_deletion_receipt") {
+        if (platformRole !== "it_support") return json({ error: "it_support_required" }, 403);
+        if (!isUuid(body?.tenant_id)) return json({ error: "invalid_tenant_id" }, 422);
+        const tenantId = body.tenant_id;
+
+        const tenantResult = await admin.from("tenants")
+          .select("id").eq("id", tenantId).maybeSingle();
+        if (tenantResult.error) throw new Error(`tenant_lookup_failed:${tenantResult.error.code ?? "query_failed"}`);
+        if (tenantResult.data) {
+          return json({ verified: false, tenant_id: tenantId, reason: "tenant_still_exists" });
+        }
+
+        const receiptResult = await admin.from("audit_logs")
+          .select("id")
+          .eq("action", "tenant_permanently_deleted")
+          .eq("target_table", "tenants")
+          .eq("target_id", tenantId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (receiptResult.error) throw new Error(`deletion_receipt_lookup_failed:${receiptResult.error.code ?? "query_failed"}`);
+
+        return json({
+          verified: Boolean(receiptResult.data),
+          tenant_id: tenantId,
+          reason: receiptResult.data ? null : "deletion_receipt_missing"
+        });
+      }
+    }
 
     const perfSince = new Date(Date.now() - 60 * 60_000).toISOString();
     const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MINUTES * 60_000).toISOString();
