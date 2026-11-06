@@ -257,6 +257,9 @@ export function useSupportVoiceCall({
   }, []);
 
   const cleanup = useCallback(async (notifyPeer: boolean, releaseDevices = false) => {
+    // Stop transmitting microphone samples BEFORE awaiting signaling or
+    // channel removal, even if the device is offline during hang-up.
+    localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = false; });
     runningRef.current = false;
     remoteReadyRef.current = false;
     offerSentRef.current = false;
