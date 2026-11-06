@@ -1142,6 +1142,14 @@ export function LineSupportClient() {
                       <div className={"max-w-[82%] rounded-2xl px-4 py-3 " + (mine ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800")}>
                         {!mine ? <div className="mb-1 text-[10px] font-black opacity-70">{message.sender_name || "IT Support"}</div> : null}
                         <div className="whitespace-pre-wrap break-words text-sm leading-6">{message.message_body}</div>
+                        {message.attachments?.map((item) => item.url ? (
+                          <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer"
+                            className="mt-2 block" aria-label={"เปิดรูปภาพ " + item.original_name}>
+                            <Image src={item.url} alt={item.original_name || "รูปภาพจากการสนทนา"}
+                              width={320} height={240} unoptimized
+                              className="max-h-64 w-full rounded-xl bg-white/10 object-contain" />
+                          </a>
+                        ) : null)}
                         <div className={"mt-1 text-right text-[10px] " + (mine ? "text-blue-100" : "text-slate-400")}>
                           {thaiTime(message.created_at)}
                         </div>
@@ -1174,7 +1182,55 @@ export function LineSupportClient() {
                         <span className="animate-pulse tracking-widest">•••</span>
                       </div>
                     ) : null}
+                    {attachment ? (
+                      <div className="mb-2 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-2">
+                        <Image src={attachment.preview} alt="ตัวอย่างรูปภาพก่อนส่ง" width={68} height={68}
+                          unoptimized className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-bold text-blue-900">{attachment.file.name}</div>
+                          <div className="text-[11px] text-blue-700">
+                            {(attachment.file.size / 1024).toFixed(0)} KB · รูปจะถูกส่งเมื่อกดส่ง
+                          </div>
+                        </div>
+                        <button type="button" onClick={clearPickedImage}
+                          className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-red-700">ลบ</button>
+                      </div>
+                    ) : null}
+                    <input ref={galleryInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+                      aria-label="เลือกรูปภาพจากอัลบั้ม" className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        void chooseLineImage(file);
+                      }} />
+                    <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+                      capture="environment" aria-label="ถ่ายภาพจากกล้อง" className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        void chooseLineImage(file);
+                      }} />
+                    {photoMenuOpen ? (
+                      <div className="mb-2 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                        <button type="button" disabled={busy === "send" || busy === "photo"}
+                          onClick={() => galleryInputRef.current?.click()}
+                          className="rounded-xl bg-white px-3 py-3 text-xs font-bold text-slate-800 shadow-sm">
+                          <span aria-hidden="true">🖼️</span> เลือกรูปภาพ
+                        </button>
+                        <button type="button" disabled={busy === "send" || busy === "photo"}
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="rounded-xl bg-white px-3 py-3 text-xs font-bold text-slate-800 shadow-sm">
+                          <span aria-hidden="true">📷</span> ถ่ายรูป
+                        </button>
+                      </div>
+                    ) : null}
                     <form onSubmit={sendMessage} className="flex items-end gap-2">
+                      <button type="button" aria-label="แนบรูปภาพหรือถ่ายภาพ"
+                        aria-expanded={photoMenuOpen} disabled={busy === "send" || busy === "photo"}
+                        onClick={() => setPhotoMenuOpen((open) => !open)}
+                        className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-slate-300 bg-slate-50 text-xl text-blue-700 disabled:opacity-40">
+                        📎
+                      </button>
                       <textarea
                         value={draft}
                         onChange={(event) => {
@@ -1189,7 +1245,7 @@ export function LineSupportClient() {
                       />
                       <button
                         type="submit"
-                        disabled={busy === "send" || !draft.trim()}
+                        disabled={busy === "send" || busy === "photo" || (!draft.trim() && !attachment)}
                         className="h-12 shrink-0 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white disabled:opacity-50"
                       >
                         ส่ง
