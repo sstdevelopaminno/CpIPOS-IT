@@ -80,8 +80,8 @@ describe("Support voice burst queue", () => {
 
   it("jitters idle IT polling to avoid a synchronized thundering herd", () => {
     expect(provider).toContain("Math.random()");
-    expect(provider).toContain("9_000");
-    expect(provider).toContain("4_500");
+    expect(provider).toContain("6_000");
+    expect(provider).toContain("3_500");
     expect(provider).toContain("window.setTimeout");
     expect(provider).not.toContain("fastTransferRefresh ? 2_500 : 30_000");
   });
