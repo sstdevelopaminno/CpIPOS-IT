@@ -10,6 +10,7 @@ const overlay = src("src/components/support/support-voice-call-overlay.tsx");
 const line = src("src/components/support/line-support-client.tsx");
 const edge = src("../../supabase-communications/functions/support-chat-api/index.ts");
 const itRoute = src("src/app/api/it-admin/v1/support-chat/conversations/[conversationId]/route.ts");
+const service = src("src/lib/support-chat/support-chat-service.ts");
 const chat = src("src/components/it-admin/support-chat-console.tsx");
 
 describe("IT call audio/drag and full conversation hard-delete integrity", () => {
@@ -73,6 +74,8 @@ describe("IT call audio/drag and full conversation hard-delete integrity", () =>
     expect(deletion).toContain('["it_admin", "it_support"]');
     expect(deletion).toContain('current.data.status !== "closed"');
     expect(itRoute).toContain('["it_admin", "it_support"]');
+    expect(itRoute).toContain("verifySupportChatHeadDeleted(conversationId)");
+    expect(service).toContain("export async function verifySupportChatHeadDeleted");
     expect(chat).toContain("canPermanentlyDeleteChat");
     expect(chat).toContain("json.data.storage_deleted");
     expect(chat).toContain("json.data.related_records_verified");
