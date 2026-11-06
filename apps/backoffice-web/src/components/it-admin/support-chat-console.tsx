@@ -149,6 +149,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const selectedIdRef = useRef(selectedId);
   const detailRequestRef = useRef(0);
   const detailRefreshTimerRef = useRef<number | null>(null);
+  const incomingPreviewTimerRef = useRef<number | null>(null);
+  const detailLoadedIdRef = useRef("");
   const [mobilePane, setMobilePane] = useState<"inbox" | "conversation">("inbox");
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -178,6 +180,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     setNoteDraft("");
     setRemoteTyping("");
     headSignalRef.current = "";
+    detailLoadedIdRef.current = "";
   }, []);
 
   const loadInbox = useCallback(async () => {
@@ -208,8 +211,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const loadConversation = useCallback(async (id: string) => {
     if (!id) return;
     const requestId = ++detailRequestRef.current;
-    setBusy("conversation");
-    setError("");
+    const initialLoad = detailLoadedIdRef.current !== id;
+    // Background confirmations must never block the message composer or
+    // flash a loading state while the customer is still typing.
+    if (initialLoad) {
+      setBusy("conversation");
+      setError("");
+    }
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${id}`, { cache: "no-store" });
       const json = await response.json().catch(() => null) as Envelope<DetailResponse> | null;
@@ -222,17 +230,31 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปิดแชทไม่สำเร็จ");
       setConversation(json.data.conversation);
       setNoteDraft(json.data.conversation.internal_note ?? "");
-      setMessages((current) => [
-        ...json.data!.messages,
-        ...current.filter((item) => item.id.startsWith("optimistic:it:") &&
-          !json.data!.messages.some((serverMessage) => serverMessage.id === item.id))
-      ]);
+      setMessages((current) => {
+        const confirmed = json.data!.messages;
+        const pending = current.filter((item) => {
+          if (!["optimistic:it:", "broadcast:", "preview:"].some((prefix) => item.id.startsWith(prefix))) return false;
+          const previewBody = item.message_body.replace(/^\\[รูปภาพ\\]\\s*/, "") || "ส่งรูปภาพ";
+          return !confirmed.some((serverMessage) =>
+            serverMessage.id === item.id ||
+            (serverMessage.sender_type === item.sender_type &&
+              (serverMessage.message_body === item.message_body ||
+                serverMessage.message_body === previewBody ||
+                (serverMessage.attachments?.length && item.message_body.startsWith("[รูปภาพ]"))) &&
+              Math.abs(Date.parse(serverMessage.created_at) - Date.parse(item.created_at)) < 15_000)
+          );
+        });
+        return [...confirmed, ...pending].sort((left, right) =>
+          Date.parse(left.created_at) - Date.parse(right.created_at)
+        );
+      });
+      detailLoadedIdRef.current = id;
     } catch (cause) {
-      if (requestId === detailRequestRef.current && selectedIdRef.current === id) {
+      if (initialLoad && requestId === detailRequestRef.current && selectedIdRef.current === id) {
         setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
       }
     } finally {
-      if (requestId === detailRequestRef.current && selectedIdRef.current === id) setBusy("");
+      if (initialLoad && requestId === detailRequestRef.current && selectedIdRef.current === id) setBusy("");
     }
   }, [clearGoneConversation]);
 
@@ -591,6 +613,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           created_at: event.created_at!,
           attachments: []
         }]);
+        // Confirm attachments and delivery after the optimistic preview.
+        // A slow backend response must not erase the instant incoming bubble.
+        if (incomingPreviewTimerRef.current !== null) window.clearTimeout(incomingPreviewTimerRef.current);
+        incomingPreviewTimerRef.current = window.setTimeout(() => {
+          incomingPreviewTimerRef.current = null;
+          void loadConversation(selectedId);
+        }, 1_200);
       })
       .on("broadcast", { event: "message_retract" }, ({ payload }) => {
         const event = payload as { actor?: string; client_id?: string };
@@ -602,11 +631,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     typingChannelRef.current = channel;
     return () => {
       if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+      if (incomingPreviewTimerRef.current !== null) window.clearTimeout(incomingPreviewTimerRef.current);
+      incomingPreviewTimerRef.current = null;
       setRemoteTyping("");
       typingChannelRef.current = null;
       void supabase.removeChannel(channel);
     };
-  }, [selectedId, conversation?.status]);
+  }, [selectedId, conversation?.status, loadConversation]);
 
   const announceTyping = useCallback((typing: boolean) => {
     const now = Date.now();
