@@ -1768,8 +1768,8 @@ Deno.serve(async (request) => {
     }
 
     if (action === "delete_conversation") {
-      if (actor.actor !== "it" || actor.role !== "it_support") {
-        return json(403, { error: { code: "it_support_required" } });
+      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+        return json(403, { error: { code: "it_role_required" } });
       }
       if (current.data.status !== "closed") {
         return json(409, { error: { code: "close_before_delete", message: "กรุณาปิดการสนทนาก่อนลบถาวร" } });
