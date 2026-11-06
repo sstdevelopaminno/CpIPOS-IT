@@ -167,9 +167,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const headSignalRef = useRef("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [notificationState, setNotificationState] = useState<NotificationPermission | "unsupported">(
-    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported"
-  );
 
   const clearGoneConversation = useCallback((id: string) => {
     setRows((current) => current.filter((row) => row.conversation_id !== id));
@@ -612,15 +609,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     });
   }, []);
 
-  async function enableNotifications() {
-    if (!("Notification" in window)) {
-      setNotificationState("unsupported");
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    setNotificationState(permission);
-  }
-
   return (
     <main className="flex h-[calc(100dvh-7.25rem-env(safe-area-inset-bottom))] min-h-0 min-w-0 flex-col gap-2 overflow-hidden xl:h-[calc(100dvh-8rem)] xl:gap-4">
       <header className={"shrink-0 items-center gap-2 sm:gap-3 " + (mobilePane === "conversation" ? "hidden xl:flex" : "flex")}>
@@ -628,10 +616,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           <h2 className="truncate text-lg font-black text-slate-950 sm:text-2xl">{historyOnly ? "สมุดบันทึกแชท" : "Support Chat"}</h2>
           <p className="hidden text-xs font-bold text-slate-500 sm:mt-1 sm:block">{historyOnly ? "ประวัติที่จบแล้ว · โน้ตภายใน · รูปภาพถูกลบเมื่อจบแชท" : "IT Admin · IT Support · ร้านค้า"}</p>
         </div>
-        <button type="button" onClick={() => void enableNotifications()}
-          className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 sm:px-4 sm:py-2.5" aria-label="ตั้งค่าการแจ้งเตือน">
-          <span aria-hidden="true" className="sm:hidden">🔔</span><span className="hidden sm:inline">{notificationState === "granted" ? "แจ้งเตือนเปิดแล้ว" : notificationState === "denied" ? "แจ้งเตือนถูกบล็อก" : "เปิดแจ้งเตือน"}</span>
-        </button>
         <button type="button" onClick={() => void loadInbox()}
           className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 sm:px-4 sm:py-2.5" aria-label="รีเฟรชรายการแชท">
           <span aria-hidden="true" className="sm:hidden">↻</span><span className="hidden sm:inline">รีเฟรช</span>
