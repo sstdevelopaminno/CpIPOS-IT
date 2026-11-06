@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SupportVoiceCallOverlay, type SupportVoiceTransferTarget } from "@/components/support/support-voice-call-overlay";
+import { useSupportIncomingRingtone } from "@/components/support/use-support-incoming-ringtone";
 import {
   useSupportVoiceCall,
   type SupportVoiceCall,
@@ -79,6 +80,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   const [controlError, setControlError] = useState("");
   const [queue, setQueue] = useState<VoiceQueueSnapshot | null>(null);
   const [minimized, setMinimized] = useState(false);
+  const [incomingExpanded, setIncomingExpanded] = useState(false);
   const [transferPickerOpen, setTransferPickerOpen] = useState(false);
   const [transferLoading, setTransferLoading] = useState(false);
   const [transferDepartments, setTransferDepartments] = useState<TransferTargetsResponse["departments"]>([]);
@@ -106,6 +108,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       if (nextId !== lastCallIdRef.current) {
         lastCallIdRef.current = nextId;
         setMinimized(false);
+        setIncomingExpanded(false);
         setControlError("");
         setTransferPickerOpen(false);
       }
@@ -361,6 +364,8 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
         ? "incoming"
         : "outgoing"
       : "active";
+  const { ringReady, activateRing } = useSupportIncomingRingtone(Boolean(call && mode === "incoming"));
+  const compactIncoming = mode === "incoming" && !incomingExpanded;
 
   const value = useMemo<ItSupportVoiceContextValue>(() => ({
     call,
@@ -430,10 +435,12 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
         speakerMuted={voice.speakerMuted}
         needsAudioResume={voice.needsAudioResume}
         elapsedSeconds={voice.elapsedSeconds}
-        allowMinimize={mode === "active"}
-        minimized={minimized}
-        onMinimize={() => setMinimized(true)}
-        onRestore={() => setMinimized(false)}
+        allowMinimize={mode === "active" || mode === "incoming"}
+        minimized={minimized || compactIncoming}
+        onMinimize={() => { setMinimized(true); setIncomingExpanded(false); }}
+        onRestore={() => { setMinimized(false); setIncomingExpanded(true); }}
+        ringReady={ringReady}
+        onEnableRingtone={() => void activateRing()}
         onAccept={
           transferOffer
             ? () => void acceptTransfer()

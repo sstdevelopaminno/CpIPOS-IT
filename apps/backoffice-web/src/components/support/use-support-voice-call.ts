@@ -178,8 +178,7 @@ export function useSupportVoiceCall({
       for (let i = 0; i < frameCount; i += 1) {
         const noteIndex = Math.min(notes.length - 1, Math.floor(i / noteFrames));
         const phaseInNote = (i % noteFrames) / noteFrames;
-        const envelope = Math.sin(Math.PI * Math.min(1, phaseInNote * 4)) *
-          Math.sin(Math.PI * Math.min(1, (1 - phaseInNote) * 4));
+        const envelope = Math.min(1, phaseInNote * 8, (1 - phaseInNote) * 8); // Do not zero the sustained note
         data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) *
           envelope * 0.15;
       }

@@ -47,6 +47,8 @@ type SupportVoiceCallOverlayProps = {
   minimized?: boolean;
   onMinimize?: () => void;
   onRestore?: () => void;
+  ringReady?: boolean;
+  onEnableRingtone?: () => void;
   canTransfer?: boolean;
   transferPending?: boolean;
   transferTargetLabel?: string;
@@ -147,6 +149,8 @@ export function SupportVoiceCallOverlay({
   minimized = false,
   onMinimize,
   onRestore,
+  ringReady = false,
+  onEnableRingtone,
   canTransfer = false,
   transferPending = false,
   transferTargetLabel,
@@ -318,27 +322,53 @@ export function SupportVoiceCallOverlay({
           </button>
         </div>
 
-        <div className={"mt-4 grid gap-2 " + (canTransfer || transferPending ? "grid-cols-4" : "grid-cols-3")}>
-          <button type="button" onClick={onToggleMic} className="rounded-2xl bg-white/10 px-2 py-3 text-[11px] font-black">
-            {micMuted ? "🎙 เปิดไมค์" : "🔇 ปิดไมค์"}
-          </button>
-          <button type="button" onClick={onToggleSpeaker} className="rounded-2xl bg-white/10 px-2 py-3 text-[11px] font-black">
-            {speakerMuted ? "🔊 เปิดเสียง" : "🔈 ลำโพง"}
-          </button>
-          {canTransfer || transferPending ? (
-            <button
-              type="button"
-              onClick={transferPending ? onCancelTransfer : onOpenTransfer}
-              disabled={busy}
-              className="rounded-2xl bg-blue-500 px-2 py-3 text-[11px] font-black disabled:opacity-50"
-            >
-              {transferPending ? "↩ ยกเลิกโอน" : "⇄ โอนสาย"}
+        {mode === "incoming" ? (
+          <>
+            <div className={"mt-3 grid gap-2 " + (canTransfer || onDecline ? "grid-cols-2" : "grid-cols-1")}>
+              {canTransfer ? (
+                <button type="button" onClick={onOpenTransfer} disabled={busy}
+                  className="rounded-xl bg-blue-500 px-3 py-3 text-xs font-black text-white disabled:opacity-50">
+                  ⇄ ส่งต่อสาย
+                </button>
+              ) : null}
+              <button type="button" onClick={onAccept} disabled={busy}
+                className="rounded-xl bg-emerald-500 px-3 py-3 text-xs font-black text-white disabled:opacity-50">
+                ☎ รับสาย
+              </button>
+              {onDecline ? (
+                <button type="button" onClick={onDecline} disabled={busy}
+                  className="rounded-xl bg-red-500 px-3 py-3 text-xs font-black text-white disabled:opacity-50">
+                  ✕ ปฏิเสธ
+                </button>
+              ) : null}
+            </div>
+            {onEnableRingtone ? (
+              <button type="button" onClick={onEnableRingtone}
+                className="mt-2 w-full rounded-xl border border-white/20 px-3 py-2 text-xs font-bold text-white">
+                {ringReady ? "🔔 ทดสอบเสียงเรียกเข้า" : "🔊 แตะเพื่อเปิดเสียงเรียกเข้า"}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <div className={"mt-4 grid gap-2 " + (canTransfer || transferPending ? "grid-cols-4" : "grid-cols-3")}>
+            <button type="button" onClick={onToggleMic} className="rounded-2xl bg-white/10 px-2 py-3 text-[11px] font-black">
+              {micMuted ? "🎙 เปิดไมค์" : "🔇 ปิดไมค์"}
             </button>
-          ) : null}
-          <button type="button" onClick={onEnd} disabled={busy} className="rounded-2xl bg-red-500 px-2 py-3 text-[11px] font-black text-white disabled:opacity-50">
-            ☎ วางสาย
-          </button>
-        </div>
+            <button type="button" onClick={onToggleSpeaker} className="rounded-2xl bg-white/10 px-2 py-3 text-[11px] font-black">
+              {speakerMuted ? "🔊 เปิดเสียง" : "🔈 ลำโพง"}
+            </button>
+            {canTransfer || transferPending ? (
+              <button type="button" onClick={transferPending ? onCancelTransfer : onOpenTransfer}
+                disabled={busy} className="rounded-2xl bg-blue-500 px-2 py-3 text-[11px] font-black disabled:opacity-50">
+                {transferPending ? "↩ ยกเลิกโอน" : "⇄ โอนสาย"}
+              </button>
+            ) : null}
+            <button type="button" onClick={onEnd} disabled={busy}
+              className="rounded-2xl bg-red-500 px-2 py-3 text-[11px] font-black text-white disabled:opacity-50">
+              ☎ วางสาย
+            </button>
+          </div>
+        )}
 
         {canStart && ["idle", "failed"].includes(phase) ? (
           <button type="button" onClick={onStart} disabled={busy}
@@ -504,6 +534,12 @@ export function SupportVoiceCallOverlay({
           ) : null}
         </div>
 
+        {mode === "incoming" && onEnableRingtone ? (
+          <button type="button" onClick={onEnableRingtone}
+            className="mx-auto mb-4 rounded-xl border border-white/20 px-4 py-2 text-xs font-black text-white">
+            {ringReady ? "🔔 ทดสอบเสียงเรียกเข้า" : "🔊 เปิดเสียงเรียกเข้า"}
+          </button>
+        ) : null}
         {mode === "incoming" ? (
           <div className="mx-auto flex w-full max-w-sm items-end justify-around gap-4 pb-4">
             {onDecline ? <RoundButton label="ปฏิเสธ" symbol="✕" tone="red" disabled={busy} onClick={onDecline} /> : null}

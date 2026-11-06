@@ -85,7 +85,7 @@ describe("Support voice WebRTC Phase 2", () => {
     expect(itVoiceProvider).toContain('window.setTimeout');
     expect(itVoiceProvider).toContain('Math.random()');
     expect(itVoiceProvider).toContain('window.clearTimeout');
-    expect(itVoiceProvider).toContain('allowMinimize={mode === "active"}');
+    expect(itVoiceProvider).toContain('allowMinimize={mode === "active" || mode === "incoming"}');
     expect(voiceOverlay).toContain("ย่อหน้าสาย");
     expect(voiceOverlay).toContain("ใช้เมนู IT ระหว่างคุยได้");
     expect(itConsole).toContain("สามารถย่อหน้าสายแล้วเปิดเมนูอื่นเพื่อตรวจสอบระบบได้");

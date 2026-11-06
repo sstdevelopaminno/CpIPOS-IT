@@ -63,6 +63,7 @@ type Message = {
   sender_name?: string;
   message_body: string;
   created_at: string;
+  attachments?: Array<{ id: string; original_name: string; url: string; mime_type: string }>;
 };
 
 type ChatDetail = {
@@ -78,6 +79,65 @@ type Envelope<T> = {
 };
 
 const LIFF_SCRIPT = "https://static.line-scdn.net/liff/edge/2/sdk.js";
+const MAX_SUPPORT_IMAGE_BYTES = 2 * 1024 * 1024;
+const SUPPORT_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+async function prepareLineSupportImage(source: File): Promise<File> {
+  if (!SUPPORT_IMAGE_TYPES.includes(source.type)) {
+    throw new Error("รองรับเฉพาะภาพ JPG, PNG หรือ WEBP เท่านั้น");
+  }
+  if (source.size <= MAX_SUPPORT_IMAGE_BYTES) return source;
+
+  // Camera images are commonly 3-10 MB. Resize client-side before upload.
+  const objectUrl = URL.createObjectURL(source);
+  const photo = new window.Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      photo.onload = () => resolve();
+      photo.onerror = () => reject(new Error("ไม่สามารถเปิดภาพที่เลือกได้"));
+      photo.src = objectUrl;
+    });
+    const scale = Math.min(1, 1600 / Math.max(photo.naturalWidth, photo.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(photo.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(photo.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("เครื่องไม่รองรับการปรับขนาดรูปภาพ");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(photo, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.83, 0.70, 0.55]) {
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", quality)
+      );
+      if (blob && blob.size > 0 && blob.size <= MAX_SUPPORT_IMAGE_BYTES) {
+        return new File([blob], source.name.replace(/\.[^.]+$/, "") + ".jpg", {
+          type: "image/jpeg",
+          lastModified: Date.now()
+        });
+      }
+    }
+    throw new Error("รูปภาพใหญ่เกิน 2 MB แม้ปรับขนาดแล้ว");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function lineImagePayload(file: File) {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("อ่านรูปภาพไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+  return {
+    name: file.name.slice(0, 180),
+    mime_type: file.type,
+    size_bytes: file.size,
+    data_base64: dataUrl.slice(dataUrl.indexOf(",") + 1)
+  };
+}
+
 const DEFAULT_LIFF_ID = "2011852850-5tjQo09l";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -132,6 +192,9 @@ export function LineSupportClient() {
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentPreviewRef = useRef<string | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
   const detailEpochRef = useRef(0);
   const realtimeConnectedRef = useRef(false);
@@ -147,6 +210,8 @@ export function LineSupportClient() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeCall, setActiveCall] = useState<SupportVoiceCall | null>(null);
   const [draft, setDraft] = useState("");
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
+  const [attachment, setAttachment] = useState<{ file: File; preview: string } | null>(null);
   const [remoteTyping, setRemoteTyping] = useState("");
   const [incomingNotice, setIncomingNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -159,6 +224,34 @@ export function LineSupportClient() {
     stop: stopWaitingMedia,
     announce: announceVoiceQueue
   } = useSupportVoiceWaitingMedia();
+
+  useEffect(() => () => {
+    if (attachmentPreviewRef.current) URL.revokeObjectURL(attachmentPreviewRef.current);
+  }, []);
+
+  function clearPickedImage() {
+    if (attachmentPreviewRef.current) URL.revokeObjectURL(attachmentPreviewRef.current);
+    attachmentPreviewRef.current = null;
+    setAttachment(null);
+  }
+
+  async function chooseLineImage(file: File | undefined) {
+    setPhotoMenuOpen(false);
+    if (!file) return;
+    setError("");
+    setBusy("photo");
+    try {
+      const ready = await prepareLineSupportImage(file);
+      if (attachmentPreviewRef.current) URL.revokeObjectURL(attachmentPreviewRef.current);
+      const preview = URL.createObjectURL(ready);
+      attachmentPreviewRef.current = preview;
+      setAttachment({ file: ready, preview });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "เลือกรูปภาพไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
 
   const loadConversation = useCallback(async (conversationId: string) => {
     const epoch = ++detailEpochRef.current;
@@ -569,15 +662,23 @@ export function LineSupportClient() {
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
     const message = draft.trim();
-    if (!conversation?.id || !message || conversation.status === "closed") return;
+    const selectedImage = attachment;
+    if (!conversation?.id || (!message && !selectedImage) ||
+        conversation.status === "closed" || busy === "send" || busy === "photo") return;
 
     const clientId = "line-local:" + Date.now();
     const optimistic: Message = {
       id: clientId,
       sender_type: "store",
       sender_name: "คุณ",
-      message_body: message,
-      created_at: new Date().toISOString()
+      message_body: message || "ส่งรูปภาพ",
+      created_at: new Date().toISOString(),
+      attachments: selectedImage ? [{
+        id: clientId + ":image",
+        original_name: selectedImage.file.name,
+        mime_type: selectedImage.file.type,
+        url: selectedImage.preview
+      }] : []
     };
 
     announceTyping(false);
@@ -588,7 +689,8 @@ export function LineSupportClient() {
     void typingChannelRef.current?.send({
       type: "broadcast",
       event: "message_preview",
-      payload: { actor: "store", client_id: clientId, message,
+      payload: { actor: "store", client_id: clientId,
+        message: selectedImage ? (message ? "[รูปภาพ] " + message : "[รูปภาพ]") : message,
         created_at: optimistic.created_at, name: optimistic.sender_name }
     });
     try {
@@ -597,11 +699,13 @@ export function LineSupportClient() {
         body: JSON.stringify({
           action: "send",
           conversation_id: conversation.id,
-          message
+          message,
+          attachment: selectedImage ? await lineImagePayload(selectedImage.file) : null
         })
       });
       setConversation(sent.conversation);
       setMessages((current) => current.map((item) => item.id === clientId ? sent.message : item));
+      if (selectedImage) clearPickedImage();
     } catch (cause) {
       void typingChannelRef.current?.send({
         type: "broadcast", event: "message_retract",
@@ -635,6 +739,7 @@ export function LineSupportClient() {
     setMessages([]);
     setActiveCall(null);
     setIncomingNotice("");
+    clearPickedImage();
     setStage("store");
   }
 
@@ -1037,6 +1142,14 @@ export function LineSupportClient() {
                       <div className={"max-w-[82%] rounded-2xl px-4 py-3 " + (mine ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-800")}>
                         {!mine ? <div className="mb-1 text-[10px] font-black opacity-70">{message.sender_name || "IT Support"}</div> : null}
                         <div className="whitespace-pre-wrap break-words text-sm leading-6">{message.message_body}</div>
+                        {message.attachments?.map((item) => item.url ? (
+                          <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer"
+                            className="mt-2 block" aria-label={"เปิดรูปภาพ " + item.original_name}>
+                            <Image src={item.url} alt={item.original_name || "รูปภาพจากการสนทนา"}
+                              width={320} height={240} unoptimized
+                              className="max-h-64 w-full rounded-xl bg-white/10 object-contain" />
+                          </a>
+                        ) : null)}
                         <div className={"mt-1 text-right text-[10px] " + (mine ? "text-blue-100" : "text-slate-400")}>
                           {thaiTime(message.created_at)}
                         </div>
@@ -1069,7 +1182,55 @@ export function LineSupportClient() {
                         <span className="animate-pulse tracking-widest">•••</span>
                       </div>
                     ) : null}
+                    {attachment ? (
+                      <div className="mb-2 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-2">
+                        <Image src={attachment.preview} alt="ตัวอย่างรูปภาพก่อนส่ง" width={68} height={68}
+                          unoptimized className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-bold text-blue-900">{attachment.file.name}</div>
+                          <div className="text-[11px] text-blue-700">
+                            {(attachment.file.size / 1024).toFixed(0)} KB · รูปจะถูกส่งเมื่อกดส่ง
+                          </div>
+                        </div>
+                        <button type="button" onClick={clearPickedImage}
+                          className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-red-700">ลบ</button>
+                      </div>
+                    ) : null}
+                    <input ref={galleryInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+                      aria-label="เลือกรูปภาพจากอัลบั้ม" className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        void chooseLineImage(file);
+                      }} />
+                    <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+                      capture="environment" aria-label="ถ่ายภาพจากกล้อง" className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        void chooseLineImage(file);
+                      }} />
+                    {photoMenuOpen ? (
+                      <div className="mb-2 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                        <button type="button" disabled={busy === "send" || busy === "photo"}
+                          onClick={() => galleryInputRef.current?.click()}
+                          className="rounded-xl bg-white px-3 py-3 text-xs font-bold text-slate-800 shadow-sm">
+                          <span aria-hidden="true">🖼️</span> เลือกรูปภาพ
+                        </button>
+                        <button type="button" disabled={busy === "send" || busy === "photo"}
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="rounded-xl bg-white px-3 py-3 text-xs font-bold text-slate-800 shadow-sm">
+                          <span aria-hidden="true">📷</span> ถ่ายรูป
+                        </button>
+                      </div>
+                    ) : null}
                     <form onSubmit={sendMessage} className="flex items-end gap-2">
+                      <button type="button" aria-label="แนบรูปภาพหรือถ่ายภาพ"
+                        aria-expanded={photoMenuOpen} disabled={busy === "send" || busy === "photo"}
+                        onClick={() => setPhotoMenuOpen((open) => !open)}
+                        className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-slate-300 bg-slate-50 text-xl text-blue-700 disabled:opacity-40">
+                        📎
+                      </button>
                       <textarea
                         value={draft}
                         onChange={(event) => {
@@ -1084,7 +1245,7 @@ export function LineSupportClient() {
                       />
                       <button
                         type="submit"
-                        disabled={busy === "send" || !draft.trim()}
+                        disabled={busy === "send" || busy === "photo" || (!draft.trim() && !attachment)}
                         className="h-12 shrink-0 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white disabled:opacity-50"
                       >
                         ส่ง
