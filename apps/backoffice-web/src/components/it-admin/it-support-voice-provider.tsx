@@ -440,7 +440,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
         onMinimize={() => { setMinimized(true); setIncomingExpanded(false); }}
         onRestore={() => { setMinimized(false); setIncomingExpanded(true); }}
         ringReady={ringReady}
-        onEnableRingtone={() => void enableRing()}
+        onEnableRingtone={() => void activateRing()}
         onAccept={
           transferOffer
             ? () => void acceptTransfer()
