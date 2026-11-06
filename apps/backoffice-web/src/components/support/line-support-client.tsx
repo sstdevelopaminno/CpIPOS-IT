@@ -721,6 +721,10 @@ export function LineSupportClient() {
   }
 
   async function logout(closeWindow = true) {
+    // Ending the chat revokes the temporary session microphone immediately;
+    // leaving the room must never keep a live audio capture device.
+    await voice.endLocal().catch(() => null);
+    voice.releaseMicrophone();
     await fetch("/api/support/line/auth", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1303,6 +1307,7 @@ export function LineSupportClient() {
         onReplayWaitingAudio={() => startWaitingMedia(voiceQueue)}
         onReplayHoldAudio={voice.replayHoldAudio}
         speechIssue={voiceHeld ? voice.holdSpeechIssue : waitingSpeechIssue}
+        compactCustomer
         onOpenExternalBrowser={voice.error ? openVoiceInExternalBrowser : undefined}
       />
     </>
