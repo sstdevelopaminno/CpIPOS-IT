@@ -72,6 +72,7 @@ describe("LINE customer support full-screen mobile, immediate replies and waitin
 
   it("restores audio on LINE webviews that suppress auto-play, including during transfer hold", () => {
     expect(hook).toContain("heldAnnouncedRef.current");
+    expect(hook).toContain("envelope * 0.09");
     expect(hook).toContain("replayHoldAudio");
     expect(hook).toContain('side === "store"');
     expect(hook).toContain('context.state === "suspended"');
