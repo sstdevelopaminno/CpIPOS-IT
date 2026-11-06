@@ -84,9 +84,13 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   const [transferDepartments, setTransferDepartments] = useState<TransferTargetsResponse["departments"]>([]);
   const [transferUsers, setTransferUsers] = useState<SupportVoiceTransferTarget[]>([]);
   const lastCallIdRef = useRef("");
+  const refreshEpochRef = useRef(0);
+  const controlInFlightRef = useRef(false);
   const autoStartTransferRef = useRef(false);
 
   const refresh = useCallback(async () => {
+    if (controlInFlightRef.current) return;
+    const epoch = ++refreshEpochRef.current;
     try {
       const response = await fetch("/api/it-admin/v1/support-chat/active-call", { cache: "no-store" });
       const json = await response.json().catch(() => null) as Envelope<{
@@ -94,7 +98,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
         conversation: ItVoiceConversation | null;
         queue?: VoiceQueueSnapshot | null;
       }> | null;
-      if (!response.ok || !json?.data) return;
+      if (epoch !== refreshEpochRef.current || controlInFlightRef.current || !response.ok || !json?.data) return;
 
       const nextCall = json.data.call && active(json.data.call.status) ? json.data.call : null;
       const nextId = nextCall?.id ?? "";
@@ -118,6 +122,8 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     callId?: string,
     extra: Record<string, unknown> = {}
   ) => {
+    controlInFlightRef.current = true;
+    refreshEpochRef.current += 1;
     setBusy(true);
     setControlError("");
     try {
@@ -154,6 +160,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       }
       throw cause;
     } finally {
+      controlInFlightRef.current = false;
       setBusy(false);
     }
   }, [refresh]);
@@ -303,7 +310,14 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     const onVisibility = () => {
       if (document.visibilityState === "visible") void refresh();
     };
-    const onSupportUpdate = () => void refresh();
+    const onSupportUpdate = (event: Event) => {
+      const head = (event as CustomEvent<{ head?: { latest_sender_type?: string; latest_message_preview?: string | null } }>).detail?.head;
+      // Ordinary chat messages already have a dedicated realtime path. Do not
+      // fetch the active voice call for every text reply.
+      if (head?.latest_sender_type !== "system") return;
+      const preview = head.latest_message_preview ?? "";
+      if (preview.startsWith("📞") || preview.startsWith("☎")) void refresh();
+    };
 
     window.addEventListener("focus", onFocus);
     window.addEventListener("cpipos-support-chat-update", onSupportUpdate);
