@@ -496,7 +496,7 @@ Deno.serve(async (request) => {
           .select("*")
           .eq("transfer_status", "requested")
           .eq("transfer_target_user_id", actor.uid)
-          .in("status", ["accepted", "connecting", "connected"])
+          .in("status", ["requested", "accepted", "connecting", "connected"])
           .order("transfer_requested_at", { ascending: true })
           .limit(1)
           .maybeSingle();
@@ -510,7 +510,8 @@ Deno.serve(async (request) => {
           .eq("transfer_status", "requested")
           .is("transfer_target_user_id", null)
           .eq("transfer_target_role", actor.role)
-          .in("status", ["accepted", "connecting", "connected"])
+          .neq("transfer_requested_by_user_id", actor.uid)
+          .in("status", ["requested", "accepted", "connecting", "connected"])
           .order("transfer_requested_at", { ascending: true })
           .limit(1)
           .maybeSingle();
@@ -524,6 +525,7 @@ Deno.serve(async (request) => {
           .eq("direction", "store_to_it")
           .eq("status", "requested")
           .is("assigned_it_user_id", null)
+          .or("transfer_status.is.null,transfer_status.neq.requested")
           .order("requested_at", { ascending: true })
           .limit(1)
           .maybeSingle();
@@ -1007,6 +1009,10 @@ Deno.serve(async (request) => {
       if (selected.data.status !== "requested") {
         return json(409, { error: { code: "call_not_requesting", message: "คำขอคุยด้วยเสียงนี้ไม่อยู่ในสถานะรอรับแล้ว" } });
       }
+      if (selected.data.direction === "store_to_it" && selected.data.transfer_status === "requested") {
+        // A forwarded unanswered request may only be accepted by its target.
+        return json(409, { error: { code: "call_forwarded", message: "คำขอนี้ส่งต่อให้ผู้รับปลายทางแล้ว" } });
+      }
 
       const now = new Date().toISOString();
 
@@ -1198,6 +1204,48 @@ Deno.serve(async (request) => {
         .eq("id", callId).eq("conversation_id", conversationId).maybeSingle();
       if (selected.error) throw selected.error;
       if (!selected.data) return json(404, { error: { code: "call_not_found" } });
+      // Route a waiting customer request to another IT user/department
+      // without answering it or activating WebRTC media.
+      if (selected.data.direction === "store_to_it" &&
+          selected.data.status === "requested" &&
+          !selected.data.assigned_it_user_id) {
+        if (selected.data.transfer_status === "requested") {
+          return json(409, { error: { code: "transfer_already_active", message: "คำขอนี้ส่งต่อไปแล้ว" } });
+        }
+        const now = new Date().toISOString();
+        const forwarded = await db.from("support_call_sessions").update({
+          transfer_status: "requested",
+          transfer_target_user_id: targetUserId,
+          transfer_target_name: targetName || (targetRole === "it_admin" ? "Admin IT" : "Support IT"),
+          transfer_target_role: targetRole,
+          transfer_requested_by_user_id: actor.uid,
+          transfer_requested_by_name: text(actor.name, 120) || "IT Support",
+          transfer_requested_at: now,
+          transfer_accepted_at: null,
+          transfer_completed_at: null,
+          updated_at: now
+        }).eq("id", callId)
+          .eq("direction", "store_to_it")
+          .eq("status", "requested")
+          .is("assigned_it_user_id", null)
+          .or("transfer_status.is.null,transfer_status.neq.requested")
+          .select("*").maybeSingle();
+        if (forwarded.error) throw forwarded.error;
+        if (!forwarded.data) {
+          return json(409, { error: { code: "call_already_claimed", message: "มีผู้รับหรือส่งต่อคำขอนี้แล้ว" } });
+        }
+        const label = targetName || (targetRole === "it_admin" ? "Admin IT" : "Support IT");
+        const updated = await appendCallSystemEvent(
+          db, current.data, "📞 ส่งต่อคำขอคุยด้วยเสียงไปยัง " + label, "store"
+        );
+        return json(200, {
+          data: {
+            call: callForActor(forwarded.data, actor),
+            conversation: conversationForActor(updated, actor),
+            head: headFromConversation(updated)
+          }
+        });
+      }
       if (selected.data.assigned_it_user_id !== actor.uid) {
         return json(403, { error: { code: "transfer_owner_required" } });
       }
@@ -1306,6 +1354,9 @@ Deno.serve(async (request) => {
       if (selected.error) throw selected.error;
       if (!selected.data || selected.data.transfer_status !== "requested") {
         return json(409, { error: { code: "transfer_not_requesting", message: "สายโอนนี้มีผู้รับหรือถูกยกเลิกแล้ว" } });
+      }
+      if (selected.data.status === "requested" && selected.data.direction !== "store_to_it") {
+        return json(409, { error: { code: "transfer_not_requesting" } });
       }
       if (!transferOfferForActor(selected.data, actor)) {
         return json(403, { error: { code: "transfer_target_required" } });
