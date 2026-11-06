@@ -204,7 +204,10 @@ export function useSupportVoiceCall({
     if (!held || side !== "store") return;
     void startHoldMusic(true);
     if (typeof window === "undefined" || !("speechSynthesis" in window) ||
-        typeof SpeechSynthesisUtterance === "undefined") return;
+        typeof SpeechSynthesisUtterance === "undefined") {
+      setHoldSpeechIssue(true);
+      return;
+    }
     try {
       const synth = window.speechSynthesis;
       synth.cancel();
