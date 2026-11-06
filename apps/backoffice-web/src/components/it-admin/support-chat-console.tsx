@@ -99,13 +99,18 @@ function StoreAvatar({ src, name }: { src?: string | null; name: string }) {
   return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-xs font-black text-white">{initials(name)}</span>;
 }
 
-function SupportAvatar({ src, name: _name }: { src?: string | null; name: string }) {
-  if (src) {
-    return <span aria-hidden="true" className="h-9 w-9 shrink-0 rounded-full border border-slate-200 bg-white bg-cover bg-center"
-      style={{ backgroundImage: `url("${src.replace(/["\\]/g, "")}")` }} />;
-  }
-  return <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={38} height={38}
-    className="h-9 w-9 rounded-full border border-slate-200 bg-white object-contain" />;
+function SupportAvatar({ src, name }: { src?: string | null; name: string }) {
+  // Keep the brand emblem visible beneath a staff photo that may expire.
+  const photoUrl = src?.trim();
+  const safePhotoUrl = photoUrl && (/^https?:\/\/[^\s]+$/i.test(photoUrl) || /^\/(?!\/)/.test(photoUrl))
+    ? photoUrl : null;
+  return <span aria-label={name || "IT Support"} role="img"
+    className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-blue-300 bg-[#0f1d2e]">
+    <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={34} height={34}
+      className="h-8 w-8 object-contain" unoptimized />
+    {safePhotoUrl ? <span aria-hidden="true" className="absolute inset-0 bg-cover bg-center"
+      style={{ backgroundImage: `url(${JSON.stringify(safePhotoUrl)})` }} /> : null}
+  </span>;
 }
 
 function statusLabel(status: string) {
@@ -140,6 +145,9 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const [rows, setRows] = useState<Head[]>([]);
   const [actor, setActor] = useState<InboxResponse["actor"] | null>(null);
   const [selectedId, setSelectedId] = useState("");
+  const selectedIdRef = useRef(selectedId);
+  const detailRequestRef = useRef(0);
+  const detailRefreshTimerRef = useRef<number | null>(null);
   const [mobilePane, setMobilePane] = useState<"inbox" | "conversation">("inbox");
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -158,9 +166,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const headSignalRef = useRef("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [notificationState, setNotificationState] = useState<NotificationPermission | "unsupported">(
-    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported"
-  );
 
   const clearGoneConversation = useCallback((id: string) => {
     setRows((current) => current.filter((row) => row.conversation_id !== id));
@@ -185,10 +190,11 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       const first = historyOnly
         ? json.data.conversations.find((row) => row.status === "closed")
         : json.data.conversations.find((row) => row.status !== "closed") ?? json.data.conversations[0];
-      if (selectedId && !json.data.conversations.some((row) => row.conversation_id === selectedId)) {
-        clearGoneConversation(selectedId);
+      const currentId = selectedIdRef.current;
+      if (currentId && !json.data.conversations.some((row) => row.conversation_id === currentId)) {
+        clearGoneConversation(currentId);
         if (first && window.matchMedia("(min-width: 1280px)").matches) setSelectedId(first.conversation_id);
-      } else if (!selectedId && first && window.matchMedia("(min-width: 1280px)").matches) {
+      } else if (!currentId && first && window.matchMedia("(min-width: 1280px)").matches) {
         setSelectedId(first.conversation_id);
       }
     } catch (cause) {
@@ -196,15 +202,17 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     } finally {
       setBusy("");
     }
-  }, [selectedId, historyOnly, clearGoneConversation]);
+  }, [historyOnly, clearGoneConversation]);
 
   const loadConversation = useCallback(async (id: string) => {
     if (!id) return;
+    const requestId = ++detailRequestRef.current;
     setBusy("conversation");
     setError("");
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${id}`, { cache: "no-store" });
       const json = await response.json().catch(() => null) as Envelope<DetailResponse> | null;
+      if (requestId !== detailRequestRef.current || selectedIdRef.current !== id) return;
       if (response.status === 404) {
         clearGoneConversation(id);
         setError("");
@@ -213,13 +221,23 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปิดแชทไม่สำเร็จ");
       setConversation(json.data.conversation);
       setNoteDraft(json.data.conversation.internal_note ?? "");
-      setMessages(json.data.messages);
+      setMessages((current) => [
+        ...json.data!.messages,
+        ...current.filter((item) => item.id.startsWith("optimistic:it:") &&
+          !json.data!.messages.some((serverMessage) => serverMessage.id === item.id))
+      ]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
+      if (requestId === detailRequestRef.current && selectedIdRef.current === id) {
+        setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
+      }
     } finally {
-      setBusy("");
+      if (requestId === detailRequestRef.current && selectedIdRef.current === id) setBusy("");
     }
   }, [clearGoneConversation]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   useEffect(() => {
     void loadInbox();
@@ -275,11 +293,19 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         head.status !== conversation?.status ||
         head.assigned_user_id !== conversation?.assigned_user_id
       ) {
-        void loadConversation(selectedId);
+        if (detailRefreshTimerRef.current !== null) window.clearTimeout(detailRefreshTimerRef.current);
+        detailRefreshTimerRef.current = window.setTimeout(() => {
+          detailRefreshTimerRef.current = null;
+          void loadConversation(selectedId);
+        }, 180);
       }
     };
     window.addEventListener("cpipos-support-chat-update", onUpdate);
-    return () => window.removeEventListener("cpipos-support-chat-update", onUpdate);
+    return () => {
+      window.removeEventListener("cpipos-support-chat-update", onUpdate);
+      if (detailRefreshTimerRef.current !== null) window.clearTimeout(detailRefreshTimerRef.current);
+      detailRefreshTimerRef.current = null;
+    };
   }, [loadConversation, selectedId, conversation?.status, conversation?.assigned_user_id]);
 
   const filtered = useMemo(() => {
@@ -586,15 +612,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     });
   }, []);
 
-  async function enableNotifications() {
-    if (!("Notification" in window)) {
-      setNotificationState("unsupported");
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    setNotificationState(permission);
-  }
-
   return (
     <main className="flex h-[calc(100dvh-7.25rem-env(safe-area-inset-bottom))] min-h-0 min-w-0 flex-col gap-2 overflow-hidden xl:h-[calc(100dvh-8rem)] xl:gap-4">
       <header className={"shrink-0 items-center gap-2 sm:gap-3 " + (mobilePane === "conversation" ? "hidden xl:flex" : "flex")}>
@@ -602,10 +619,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           <h2 className="truncate text-lg font-black text-slate-950 sm:text-2xl">{historyOnly ? "สมุดบันทึกแชท" : "Support Chat"}</h2>
           <p className="hidden text-xs font-bold text-slate-500 sm:mt-1 sm:block">{historyOnly ? "ประวัติที่จบแล้ว · โน้ตภายใน · รูปภาพถูกลบเมื่อจบแชท" : "IT Admin · IT Support · ร้านค้า"}</p>
         </div>
-        <button type="button" onClick={() => void enableNotifications()}
-          className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 sm:px-4 sm:py-2.5" aria-label="ตั้งค่าการแจ้งเตือน">
-          <span aria-hidden="true" className="sm:hidden">🔔</span><span className="hidden sm:inline">{notificationState === "granted" ? "แจ้งเตือนเปิดแล้ว" : notificationState === "denied" ? "แจ้งเตือนถูกบล็อก" : "เปิดแจ้งเตือน"}</span>
-        </button>
         <button type="button" onClick={() => void loadInbox()}
           className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 sm:px-4 sm:py-2.5" aria-label="รีเฟรชรายการแชท">
           <span aria-hidden="true" className="sm:hidden">↻</span><span className="hidden sm:inline">รีเฟรช</span>
@@ -639,7 +652,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {filtered.length ? filtered.map((row) => (
-              <button key={row.conversation_id} type="button" onClick={() => { setSelectedId(row.conversation_id); setMobilePane("conversation"); setMobileNotesOpen(false); }}
+              <button key={row.conversation_id} type="button" onClick={() => { setSelectedId(row.conversation_id); setConversation(null); setMessages([]); setMobilePane("conversation"); setMobileNotesOpen(false); }}
                 className={"flex w-full gap-3 border-b border-slate-100 p-3 text-left transition " +
                   (selectedId === row.conversation_id ? "bg-blue-50" : "bg-white hover:bg-slate-50")}>
                 <StoreAvatar src={row.store_logo_url} name={row.store_name} />

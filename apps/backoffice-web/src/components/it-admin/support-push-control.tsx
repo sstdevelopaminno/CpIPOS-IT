@@ -9,10 +9,11 @@ function base64UrlToUint8Array(value: string) {
   return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
 }
 
-type State = "unsupported" | "default" | "denied" | "ready" | "busy";
+type State = "unsupported" | "default" | "denied" | "ready" | "busy" | "error";
 
 export function ItSupportPushControl() {
   const [state,setState]=useState<State>("default");
+  const [errorMessage,setErrorMessage]=useState("");
 
   async function subscribe(requestPermission:boolean) {
     if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window)){
@@ -23,6 +24,7 @@ export function ItSupportPushControl() {
     if(permission==="denied"){setState("denied");return;}
     if(permission!=="granted"){setState("default");return;}
     setState("busy");
+    setErrorMessage("");
     try{
       const registration=await navigator.serviceWorker.ready;
       const keyResponse=await fetch("/api/it-admin/v1/support-chat/push-subscription",{cache:"no-store"});
@@ -41,7 +43,12 @@ export function ItSupportPushControl() {
       });
       if(!save.ok) throw new Error("push_subscription_failed");
       setState("ready");
-    }catch{setState("default");}
+    }catch(error){
+      setErrorMessage(error instanceof Error && error.message === "push_key_unavailable"
+        ? "ยังไม่ได้ตั้งค่าระบบ Web Push ในเซิร์ฟเวอร์"
+        : "สมัครรับการแจ้งเตือนไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่");
+      setState("error");
+    }
   }
 
   useEffect(()=>{
@@ -55,8 +62,8 @@ export function ItSupportPushControl() {
   },[]);
 
   if(state==="unsupported") return null;
-  const label=state==="ready"?"แจ้งเตือนเปิดแล้ว":state==="denied"?"แจ้งเตือนถูกบล็อก":state==="busy"?"กำลังเปิด...":"เปิดแจ้งเตือน";
+  const label=state==="ready"?"แจ้งเตือนเปิดแล้ว":state==="denied"?"แจ้งเตือนถูกบล็อก":state==="busy"?"กำลังเปิด...":state==="error"?"แจ้งเตือนมีปัญหา · ลองอีกครั้ง":"เปิดแจ้งเตือน";
   return <button type="button" onClick={()=>void subscribe(true)} disabled={state==="busy"||state==="ready"}
     className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-60"
-    title={label}>🔔 <span className="hidden lg:inline">{label}</span></button>;
+    title={errorMessage || label} aria-label={errorMessage || label}>🔔 <span className="hidden lg:inline">{label}</span></button>;
 }

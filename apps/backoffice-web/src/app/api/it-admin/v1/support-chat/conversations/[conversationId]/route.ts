@@ -12,6 +12,7 @@ import {
 } from "@/lib/support-chat/support-chat-service";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
 import { dispatchSupportPush } from "@/lib/support-chat/support-push";
+import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -133,9 +134,11 @@ export async function POST(
           message,
           attachment: body?.attachment ?? null
         });
-        await Promise.allSettled([
-          mirrorSupportChatHead(data.head),
-          dispatchSupportPush({
+        // Mirror the authoritative head before acknowledging, but do not make
+        // the chat round trip wait on remote Web Push delivery.
+        await mirrorSupportChatHead(data.head);
+        after(async () => {
+          await dispatchSupportPush({
             audience: "store",
             tenant_id: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : null,
             kind: "chat",
@@ -143,8 +146,10 @@ export async function POST(
             body: preview || "มีข้อความใหม่จาก IT Support",
             url: "/preview/pos/payments/support",
             tag: `support-chat:${conversationId}`
-          })
-        ]);
+          }).catch((error: unknown) => {
+            console.warn("[support-chat] post-response push dispatch failed", error instanceof Error ? error.message : "unknown");
+          });
+        });
         await appendAuditLog({
           tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
           actorUserId: auth.auth.userId,
