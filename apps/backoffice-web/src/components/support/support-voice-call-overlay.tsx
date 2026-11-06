@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { formatVoiceDuration, type SupportVoicePhase } from "@/components/support/use-support-voice-call";
 
 type CallMode = "incoming" | "outgoing" | "active";
@@ -159,6 +160,58 @@ export function SupportVoiceCallOverlay({
   onTransferToUser,
   onCancelTransfer
 }: SupportVoiceCallOverlayProps) {
+  const [bubblePosition, setBubblePosition] = useState<{ x: number; y: number } | null>(null);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef<{ id: number; dx: number; dy: number } | null>(null);
+
+  const handleDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
+    const bounds = bubbleRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    draggingRef.current = {
+      id: event.pointerId,
+      dx: event.clientX - bounds.left,
+      dy: event.clientY - bounds.top
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+  const handleDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = draggingRef.current;
+    const bubble = bubbleRef.current;
+    if (!drag || !bubble || drag.id !== event.pointerId) return;
+    setBubblePosition({
+      x: Math.min(Math.max(8, window.innerWidth - bubble.offsetWidth - 8),
+        Math.max(8, event.clientX - drag.dx)),
+      y: Math.min(Math.max(8, window.innerHeight - bubble.offsetHeight - 8),
+        Math.max(8, event.clientY - drag.dy))
+    });
+  };
+  const handleDragEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (draggingRef.current?.id !== event.pointerId) return;
+    draggingRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+  useEffect(() => {
+    if (!open) {
+      // Keep the previous position during a call, reset between separate calls.
+      setBubblePosition(null);
+      return;
+    }
+    const constrain = () => {
+      const bubble = bubbleRef.current;
+      if (!bubble) return;
+      setBubblePosition((current) => current && ({
+        x: Math.min(Math.max(8, window.innerWidth - bubble.offsetWidth - 8), Math.max(8, current.x)),
+        y: Math.min(Math.max(8, window.innerHeight - bubble.offsetHeight - 8), Math.max(8, current.y))
+      }));
+    };
+    window.addEventListener("resize", constrain);
+    return () => window.removeEventListener("resize", constrain);
+  }, [open]);
+
   if (!open) return null;
 
   const connected = phase === "connected";
@@ -167,8 +220,15 @@ export function SupportVoiceCallOverlay({
 
   if (minimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-[120] w-[min(94vw,390px)] rounded-3xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
-        <div className="flex items-start gap-3">
+      <div ref={bubbleRef}
+        style={bubblePosition ? { left: bubblePosition.x, top: bubblePosition.y, right: "auto", bottom: "auto" } : undefined}
+        className="fixed bottom-4 right-4 z-[120] w-[min(94vw,390px)] rounded-3xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
+        <div className="flex touch-none cursor-grab select-none items-start gap-3 active:cursor-grabbing"
+          aria-label="ลากแถบนี้เพื่อย้ายตำแหน่งหน้าต่างโทร"
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}>
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white">
             <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={34} height={34} className="h-8 w-8 object-contain" />
           </div>
@@ -215,8 +275,14 @@ export function SupportVoiceCallOverlay({
           </button>
         </div>
 
-        <div className="mt-3 text-center text-[10px] text-white/35">
-          สายยังเชื่อมต่ออยู่ สามารถเปิดเมนูอื่นในระบบ IT ได้
+        {canStart && ["idle", "failed"].includes(phase) ? (
+          <button type="button" onClick={onStart} disabled={busy}
+            className="mt-3 w-full rounded-xl bg-emerald-500 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
+            🎙️ {phase === "failed" ? "เชื่อมต่อเสียงใหม่" : "เริ่มคุยด้วยเสียง"}
+          </button>
+        ) : null}
+        <div className="mt-3 text-center text-[10px] text-white/50">
+          จับแถบชื่อร้านแล้วลากเพื่อย้ายตำแหน่ง · ใช้เมนู IT ระหว่างคุยได้
         </div>
       </div>
     );
@@ -372,16 +438,11 @@ export function SupportVoiceCallOverlay({
         </div>
 
         {mode === "incoming" ? (
-          onDecline ? (
-            <div className="mx-auto flex w-full max-w-sm items-end justify-around gap-8 pb-4">
-              <RoundButton label="ปฏิเสธ" symbol="✕" tone="red" disabled={busy} onClick={onDecline} />
-              <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
-            </div>
-          ) : (
-            <div className="mx-auto flex w-full max-w-sm justify-center pb-4">
-              <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
-            </div>
-          )
+          <div className="mx-auto flex w-full max-w-sm items-end justify-around gap-4 pb-4">
+            {onDecline ? <RoundButton label="ปฏิเสธ" symbol="✕" tone="red" disabled={busy} onClick={onDecline} /> : null}
+            {canTransfer ? <RoundButton label="ส่งต่อสาย" symbol="⇄" tone="blue" disabled={busy} onClick={onOpenTransfer} /> : null}
+            <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
+          </div>
         ) : mode === "outgoing" ? (
           <div className="mx-auto flex w-full max-w-sm justify-center pb-4">
             <RoundButton label="ยกเลิก" symbol="☎" tone="red" disabled={busy} onClick={onCancel} />
