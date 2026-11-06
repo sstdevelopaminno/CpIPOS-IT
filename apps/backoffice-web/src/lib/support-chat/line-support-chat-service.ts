@@ -130,15 +130,33 @@ export async function loadLineSupportConversation(
   };
 }
 
+type LineSupportImageAttachment = {
+  name: string;
+  mime_type: string;
+  size_bytes: number;
+  data_base64: string;
+};
+
 export async function sendLineSupportMessage(
   session: LineSupportSession,
   conversationId: string,
-  rawMessage: string
+  rawMessage: string,
+  attachment: LineSupportImageAttachment | null = null
 ) {
   const message = String(rawMessage ?? "").trim().slice(0, 4000);
-  if (!message) throw new Error("message_required");
+  if (!message && !attachment) throw new Error("message_required");
+  if (attachment) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(attachment.mime_type) ||
+        !Number.isInteger(attachment.size_bytes) || attachment.size_bytes < 1 ||
+        attachment.size_bytes > 2 * 1024 * 1024 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(attachment.data_base64) ||
+        attachment.data_base64.length > Math.ceil(2 * 1024 * 1024 * 4 / 3) + 8) {
+      throw new Error("attachment_invalid");
+    }
+  }
 
-  const optimistic = await publishOptimisticSupportChatHead(conversationId, "store", message);
+  const preview = attachment ? (message ? `[รูปภาพ] ${message}` : "[รูปภาพ]") : message;
+  const optimistic = await publishOptimisticSupportChatHead(conversationId, "store", preview);
   try {
     const bridge = await issueLineSupportBridge(session);
     const data = await callSupportChat<{
@@ -147,7 +165,8 @@ export async function sendLineSupportMessage(
       head: SupportChatHead;
     }>(bridge, "send_message", {
       conversation_id: conversationId,
-      message
+      message,
+      attachment
     });
     await mirrorSupportChatHead(data.head);
     return data;
