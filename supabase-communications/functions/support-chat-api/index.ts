@@ -119,6 +119,69 @@ async function cleanupAttachments(db: ReturnType<typeof createClient>, conversat
   }
 }
 
+/**
+ * Hard-delete every object belonging to a closed conversation, including
+ * orphaned uploads and attachments previously soft-deleted on close.
+ * Storage objects must be removed via Storage API (not SQL); a failed removal
+ * blocks the database delete instead of reporting a misleading success.
+ */
+async function purgeConversationMedia(db: ReturnType<typeof createClient>, conversationId: string) {
+  const groups = new Map<string, Set<string>>();
+  // Older media paths may have been recorded outside the standard folder.
+  for (let offset = 0; offset < 20_000; offset += 500) {
+    const page = await db.from("support_attachments")
+      .select("storage_bucket,storage_path")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true })
+      .range(offset, offset + 499);
+    if (page.error) throw page.error;
+    const rows = page.data ?? [];
+    for (const row of rows) {
+      const bucket = String(row.storage_bucket || IMAGE_BUCKET);
+      const path = String(row.storage_path || "");
+      if (!path) continue;
+      if (!groups.has(bucket)) groups.set(bucket, new Set<string>());
+      groups.get(bucket)!.add(path);
+    }
+    if (rows.length < 500) break;
+    if (offset >= 19_500) throw new Error("support_media_page_limit");
+  }
+
+  // Include unreferenced files left by failed uploads and previous cleanup
+  // attempts. Every current upload uses this conversation-specific prefix.
+  const canonicalStorage = db.storage.from(IMAGE_BUCKET);
+  const firstList = await canonicalStorage.list(conversationId, { limit: 100, offset: 0 });
+  if (firstList.error) throw firstList.error;
+  for (const item of firstList.data ?? []) {
+    if (!item.id) continue;
+    if (!groups.has(IMAGE_BUCKET)) groups.set(IMAGE_BUCKET, new Set<string>());
+    groups.get(IMAGE_BUCKET)!.add(`${conversationId}/${item.name}`);
+  }
+
+  let deletedObjects = 0;
+  for (const [bucket, paths] of groups) {
+    const allPaths = [...paths];
+    for (let i = 0; i < allPaths.length; i += 100) {
+      const chunk = allPaths.slice(i, i + 100);
+      const removal = await db.storage.from(bucket).remove(chunk);
+      if (removal.error) throw removal.error;
+      deletedObjects += removal.data?.length ?? 0;
+    }
+  }
+  // Remove any additional orphaned files that were not on the first page.
+  for (let iteration = 0; iteration < 300; iteration += 1) {
+    const page = await canonicalStorage.list(conversationId, { limit: 100, offset: 0 });
+    if (page.error) throw page.error;
+    const remaining = (page.data ?? []).filter((item) => Boolean(item.id))
+      .map((item) => `${conversationId}/${item.name}`);
+    if (!remaining.length) return deletedObjects;
+    const removal = await canonicalStorage.remove(remaining);
+    if (removal.error) throw removal.error;
+    deletedObjects += removal.data?.length ?? 0;
+  }
+  throw new Error("support_media_still_present");
+}
+
 async function messagesWithAttachments(
   db: ReturnType<typeof createClient>,
   conversationId: string
@@ -1705,17 +1768,35 @@ Deno.serve(async (request) => {
     }
 
     if (action === "delete_conversation") {
-      if (actor.actor !== "it" || actor.role !== "it_support") {
-        return json(403, { error: { code: "it_support_required" } });
+      if (actor.actor !== "it" || !["it_admin", "it_support"].includes(actor.role ?? "")) {
+        return json(403, { error: { code: "it_role_required" } });
       }
       if (current.data.status !== "closed") {
         return json(409, { error: { code: "close_before_delete", message: "กรุณาปิดการสนทนาก่อนลบถาวร" } });
       }
-      await cleanupAttachments(db, conversationId);
+      const deletedMediaObjects = await purgeConversationMedia(db, conversationId);
       const tenantId = current.data.tenant_id;
-      const deleted = await db.from("support_conversations").delete().eq("id", conversationId);
+      const deleted = await db.from("support_conversations")
+        .delete().eq("id", conversationId).eq("status", "closed").select("id").maybeSingle();
       if (deleted.error) throw deleted.error;
-      return json(200, { data: { deleted: true, conversation_id: conversationId, tenant_id: tenantId } });
+      if (!deleted.data) return json(409, { error: { code: "conversation_already_deleted" } });
+      // Cascading FK constraints remove messages, attachments, participants and
+      // call sessions. Verify that the operational records are truly gone.
+      for (const table of [
+        "support_messages", "support_attachments", "support_participants", "support_call_sessions"
+      ]) {
+        const check = await db.from(table)
+          .select("conversation_id", { count: "exact", head: true })
+          .eq("conversation_id", conversationId);
+        if (check.error || (check.count ?? 0) !== 0) {
+          throw new Error("support_conversation_purge_verification_failed");
+        }
+      }
+      return json(200, {
+        data: { deleted: true, conversation_id: conversationId, tenant_id: tenantId,
+          storage_deleted: true, purged_media_objects: deletedMediaObjects,
+          related_records_verified: true }
+      });
     }
 
     return json(422, { error: { code: "unsupported_action" } });

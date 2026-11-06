@@ -159,6 +159,17 @@ export async function deleteSupportChatHead(conversationId: string) {
   if (result.error) throw new Error("Unable to remove support chat notification state.");
 }
 
+export async function verifySupportChatHeadDeleted(conversationId: string) {
+  const db = getSupabaseServiceClient();
+  const remaining = await db.from("support_chat_heads")
+    .select("conversation_id")
+    .eq("conversation_id", conversationId)
+    .maybeSingle();
+  if (remaining.error || remaining.data) {
+    throw new Error("Unable to verify support chat head deletion.");
+  }
+}
+
 export async function listItSupportChatHeads() {
   const db = getSupabaseServiceClient();
   const result = await db.from("support_chat_heads")

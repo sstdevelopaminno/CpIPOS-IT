@@ -222,7 +222,8 @@ export function LineSupportClient() {
     setQueue: setVoiceQueue,
     start: startWaitingMedia,
     stop: stopWaitingMedia,
-    announce: announceVoiceQueue
+    announce: announceVoiceQueue,
+    speechIssue: waitingSpeechIssue
   } = useSupportVoiceWaitingMedia();
 
   useEffect(() => () => {
@@ -1301,6 +1302,7 @@ export function LineSupportClient() {
         onResumeAudio={() => void voice.resumeAudio()}
         onReplayWaitingAudio={() => startWaitingMedia(voiceQueue)}
         onReplayHoldAudio={voice.replayHoldAudio}
+        speechIssue={voiceHeld ? voice.holdSpeechIssue : waitingSpeechIssue}
         onOpenExternalBrowser={voice.error ? openVoiceInExternalBrowser : undefined}
       />
     </>

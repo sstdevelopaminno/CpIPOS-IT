@@ -42,6 +42,7 @@ type SupportVoiceCallOverlayProps = {
   onResumeAudio?: () => void;
   onReplayWaitingAudio?: () => void;
   onReplayHoldAudio?: () => void;
+  speechIssue?: boolean;
   onOpenExternalBrowser?: () => void;
   allowMinimize?: boolean;
   minimized?: boolean;
@@ -144,6 +145,7 @@ export function SupportVoiceCallOverlay({
   onResumeAudio,
   onReplayWaitingAudio,
   onReplayHoldAudio,
+  speechIssue = false,
   onOpenExternalBrowser,
   allowMinimize = false,
   minimized = false,
@@ -169,7 +171,8 @@ export function SupportVoiceCallOverlay({
   const draggingRef = useRef<{ id: number; dx: number; dy: number } | null>(null);
 
   const handleDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
+    if ((event.pointerType === "mouse" && event.button !== 0) ||
+        (event.target as HTMLElement).closest("button, input, textarea, select, a")) return;
     const bounds = bubbleRef.current?.getBoundingClientRect();
     if (!bounds) return;
     draggingRef.current = {
@@ -177,7 +180,10 @@ export function SupportVoiceCallOverlay({
       dx: event.clientX - bounds.left,
       dy: event.clientY - bounds.top
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // Drag on the visible handle and on any non-control part of the call card.
+    // Window-level tracking in the effect below also works when Windows
+    // releases pointer capture or the cursor leaves the card.
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
     event.preventDefault();
   };
   const handleDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -194,10 +200,34 @@ export function SupportVoiceCallOverlay({
   const handleDragEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (draggingRef.current?.id !== event.pointerId) return;
     draggingRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {}
   };
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const drag = draggingRef.current;
+      const bubble = bubbleRef.current;
+      if (!drag || !bubble || drag.id !== event.pointerId) return;
+      setBubblePosition({
+        x: Math.max(8, Math.min(window.innerWidth - bubble.offsetWidth - 8, event.clientX - drag.dx)),
+        y: Math.max(8, Math.min(window.innerHeight - bubble.offsetHeight - 8, event.clientY - drag.dy))
+      });
+    };
+    const finish = () => { draggingRef.current = null; };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    window.addEventListener("blur", finish);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("blur", finish);
+    };
+  }, []);
   useEffect(() => {
     if (!open) return;
     const constrain = () => {
@@ -291,13 +321,16 @@ export function SupportVoiceCallOverlay({
       <>
       <div ref={bubbleRef}
         style={bubblePosition ? { left: bubblePosition.x, top: bubblePosition.y, right: "auto", bottom: "auto" } : undefined}
-        className="fixed bottom-4 right-4 z-[120] w-[min(94vw,390px)] rounded-3xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
-        <div className="flex touch-none cursor-grab select-none items-start gap-3 active:cursor-grabbing"
-          aria-label="ลากแถบนี้เพื่อย้ายตำแหน่งหน้าต่างโทร"
-          onPointerDown={handleDragStart}
-          onPointerMove={handleDragMove}
-          onPointerUp={handleDragEnd}
-          onPointerCancel={handleDragEnd}>
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
+        className="fixed bottom-4 right-4 z-[120] w-[min(94vw,390px)] touch-none select-none rounded-3xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
+        <div className="mb-3 flex h-8 cursor-grab touch-none items-center justify-center gap-2 rounded-xl border border-dashed border-white/30 bg-white/10 text-xs font-black text-white active:cursor-grabbing"
+          aria-label="จับแถบนี้ค้างแล้วลากย้ายหน้าต่างโทร">
+          <span aria-hidden="true">⠿</span> จับตรงนี้แล้วลากย้ายหน้าต่างโทร
+        </div>
+        <div className="flex cursor-grab items-start gap-3">
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white">
             <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={34} height={34} className="h-8 w-8 object-contain" />
           </div>
@@ -498,6 +531,13 @@ export function SupportVoiceCallOverlay({
           ) : null}
 
 
+          {speechIssue && (held || mode === "outgoing") ? (
+            <div role="status" className="mt-4 w-full max-w-md rounded-xl border border-amber-300/30 bg-amber-500/15 px-4 py-3 text-xs leading-5 text-amber-100">
+              ไม่สามารถเล่นเสียงประกาศภาษาไทยได้จากระบบเสียงของเครื่องนี้
+              กรุณาแตะปุ่มฟังข้อความด้านบน หรือติดตั้งเสียงภาษาไทยในบริการอ่านออกเสียงของเครื่อง
+              เพลงรอและข้อความบนหน้าจอยังใช้งานได้
+            </div>
+          ) : null}
           {error ? (
             <div className="mt-6 w-full max-w-md rounded-3xl border border-red-300/20 bg-red-500/10 px-5 py-4 text-left">
               <div className="text-sm font-black text-red-100">ยังเปิดเสียงไม่ได้</div>

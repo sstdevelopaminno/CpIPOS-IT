@@ -22,6 +22,8 @@ export function useSupportVoiceWaitingMedia() {
   const queueRef = useRef<VoiceQueueSnapshot | null>(null);
   const audioRef = useRef<WaitingAudio | null>(null);
   const announcementTimerRef = useRef<number | null>(null);
+  const activeSpeechRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [speechIssue, setSpeechIssue] = useState(false);
 
   const setQueue = useCallback((next: VoiceQueueSnapshot | null) => {
     queueRef.current = next;
@@ -39,6 +41,7 @@ export function useSupportVoiceWaitingMedia() {
       void audio.context.close().catch(() => null);
     }
 
+    activeSpeechRef.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -79,16 +82,25 @@ export function useSupportVoiceWaitingMedia() {
       source.start();
       if (context.state === "suspended") await context.resume().catch(() => null);
     } catch {
-      stop();
+      const playing = audioRef.current;
+      audioRef.current = null;
+      if (playing) {
+        try { playing.source.stop(); } catch {}
+        void playing.context.close().catch(() => null);
+      }
+      // A Web Audio failure must never cancel an in-progress Thai greeting.
     }
-  }, [stop]);
+  }, []);
 
   const announce = useCallback((snapshot: VoiceQueueSnapshot | null = queueRef.current) => {
     if (
       typeof window === "undefined" ||
       !("speechSynthesis" in window) ||
       typeof SpeechSynthesisUtterance === "undefined"
-    ) return;
+    ) {
+      setSpeechIssue(true);
+      return;
+    }
 
     const message = snapshot?.position
       ? snapshot.position > 1
@@ -97,45 +109,73 @@ export function useSupportVoiceWaitingMedia() {
       : "ยินดีต้อนรับสู่ CpiPOS Support ขณะนี้กำลังติดต่อเจ้าหน้าที่ กรุณารอสักครู่";
 
     try {
-      window.speechSynthesis.cancel();
+      const synth = window.speechSynthesis;
+      synth.cancel();
       const utterance = new SpeechSynthesisUtterance(message);
+      // Keep the utterance reachable: Android WebViews may cut off speech
+      // when the browser garbage-collects an unreferenced utterance.
+      activeSpeechRef.current = utterance;
       utterance.lang = "th-TH";
+      const thaiVoice = synth.getVoices().find((voice) => voice.lang.toLowerCase().startsWith("th"));
+      if (thaiVoice) utterance.voice = thaiVoice;
       utterance.rate = 0.92;
       utterance.pitch = 1;
       utterance.volume = 1;
       // Duck the local waiting melody while Thai TTS speaks so callers can
       // understand the announcement even with small Android speakers.
       utterance.onstart = () => {
+        setSpeechIssue(false);
         const playing = audioRef.current;
-        if (playing) playing.gain.gain.setTargetAtTime(0.14, playing.context.currentTime, 0.05);
+        if (playing) playing.gain.gain.setTargetAtTime(0.08, playing.context.currentTime, 0.05);
       };
       const restoreMusic = () => {
         const playing = audioRef.current;
         if (playing) playing.gain.gain.setTargetAtTime(0.85, playing.context.currentTime, 0.15);
       };
-      utterance.onend = restoreMusic;
-      utterance.onerror = restoreMusic;
-      window.speechSynthesis.speak(utterance);
+      utterance.onend = () => {
+        restoreMusic();
+        if (activeSpeechRef.current === utterance) activeSpeechRef.current = null;
+      };
+      utterance.onerror = () => {
+        setSpeechIssue(true);
+        restoreMusic();
+        if (activeSpeechRef.current === utterance) activeSpeechRef.current = null;
+      };
+      synth.speak(utterance);
+      if (synth.paused) synth.resume();
     } catch {
-      // Visible queue text and generated waiting music remain as fallback.
+      setSpeechIssue(true);
     }
   }, []);
 
   const start = useCallback((initialQueue?: VoiceQueueSnapshot | null) => {
     if (initialQueue !== undefined) {
       setQueue(initialQueue);
-      announce(initialQueue);
+    }
+    // Call this synchronously inside the customer's call button gesture.
+    if (!announcementTimerRef.current || initialQueue !== undefined) {
+      announce(initialQueue === undefined ? queueRef.current : initialQueue);
     }
     void startMusic();
 
     if (!announcementTimerRef.current) {
       announcementTimerRef.current = window.setInterval(() => {
         if (document.visibilityState === "visible") announce(queueRef.current);
-      }, 60_000);
+      }, 25_000);
     }
   }, [announce, setQueue, startMusic]);
 
+  useEffect(() => {
+    const onVoicesLoaded = () => {
+      if (announcementTimerRef.current && speechIssue) announce(queueRef.current);
+    };
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.addEventListener("voiceschanged", onVoicesLoaded);
+      return () => window.speechSynthesis.removeEventListener("voiceschanged", onVoicesLoaded);
+    }
+  }, [announce, speechIssue]);
+
   useEffect(() => () => stop(), [stop]);
 
-  return { queue, setQueue, start, stop, announce };
+  return { queue, setQueue, start, stop, announce, speechIssue };
 }
