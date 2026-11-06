@@ -82,16 +82,25 @@ export function useSupportVoiceWaitingMedia() {
       source.start();
       if (context.state === "suspended") await context.resume().catch(() => null);
     } catch {
-      stop();
+      const playing = audioRef.current;
+      audioRef.current = null;
+      if (playing) {
+        try { playing.source.stop(); } catch {}
+        void playing.context.close().catch(() => null);
+      }
+      // A Web Audio failure must never cancel an in-progress Thai greeting.
     }
-  }, [stop]);
+  }, []);
 
   const announce = useCallback((snapshot: VoiceQueueSnapshot | null = queueRef.current) => {
     if (
       typeof window === "undefined" ||
       !("speechSynthesis" in window) ||
       typeof SpeechSynthesisUtterance === "undefined"
-    ) return;
+    ) {
+      setSpeechIssue(true);
+      return;
+    }
 
     const message = snapshot?.position
       ? snapshot.position > 1
