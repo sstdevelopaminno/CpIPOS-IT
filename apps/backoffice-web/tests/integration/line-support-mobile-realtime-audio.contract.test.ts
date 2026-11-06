@@ -8,6 +8,7 @@ const it = src("src/components/it-admin/support-chat-console.tsx");
 const waiting = src("src/components/support/use-support-voice-waiting-media.ts");
 const hook = src("src/components/support/use-support-voice-call.ts");
 const overlay = src("src/components/support/support-voice-call-overlay.tsx");
+const lineRoute = src("src/app/api/support/line/chat/route.ts");
 
 describe("LINE customer support full-screen mobile, immediate replies and waiting audio", () => {
   it("fills the LINE WebView viewport without a floating mobile-width card", () => {
@@ -57,6 +58,16 @@ describe("LINE customer support full-screen mobile, immediate replies and waitin
     expect(waiting).toContain("utterance.onstart");
     expect(waiting).toContain("utterance.onend");
     expect(waiting).toContain("SpeechSynthesisUtterance");
+  });
+
+  it("notifies IT devices of saved LINE replies and customer voice requests without slowing the API response", () => {
+    expect(lineRoute).toContain('import { after } from "next/server"');
+    expect(lineRoute).toContain("await sendLineSupportMessage(session, conversationId, message)");
+    expect(lineRoute).toContain('audience: "it"');
+    expect(lineRoute).toContain('kind: "chat"');
+    expect(lineRoute).toContain('title: "📞 ลูกค้าขอคุยด้วยเสียง"');
+    expect(lineRoute).toContain("after(async () =>");
+    expect(lineRoute).toContain('return ok(sent)');
   });
 
   it("restores audio on LINE webviews that suppress auto-play, including during transfer hold", () => {
