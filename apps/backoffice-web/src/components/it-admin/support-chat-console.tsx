@@ -140,6 +140,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const [rows, setRows] = useState<Head[]>([]);
   const [actor, setActor] = useState<InboxResponse["actor"] | null>(null);
   const [selectedId, setSelectedId] = useState("");
+  const [mobilePane, setMobilePane] = useState<"inbox" | "conversation">("inbox");
+  const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const itVoice = useItSupportVoice();
@@ -163,6 +165,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const clearGoneConversation = useCallback((id: string) => {
     setRows((current) => current.filter((row) => row.conversation_id !== id));
     setSelectedId((current) => current === id ? "" : current);
+    setMobilePane("inbox");
+    setMobileNotesOpen(false);
     setConversation((current) => current?.id === id ? null : current);
     setMessages([]);
     setNoteDraft("");
@@ -183,8 +187,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         : json.data.conversations.find((row) => row.status !== "closed") ?? json.data.conversations[0];
       if (selectedId && !json.data.conversations.some((row) => row.conversation_id === selectedId)) {
         clearGoneConversation(selectedId);
-        if (first) setSelectedId(first.conversation_id);
-      } else if (!selectedId && first) {
+        if (first && window.matchMedia("(min-width: 1280px)").matches) setSelectedId(first.conversation_id);
+      } else if (!selectedId && first && window.matchMedia("(min-width: 1280px)").matches) {
         setSelectedId(first.conversation_id);
       }
     } catch (cause) {
@@ -508,6 +512,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       const json = await response.json().catch(() => null) as Envelope<{ deleted: true }> | null;
       if (!response.ok || !json?.data?.deleted) throw new Error(json?.error?.message || "ลบแชทไม่สำเร็จ");
       setSelectedId("");
+      setMobilePane("inbox");
+      setMobileNotesOpen(false);
       setConversation(null);
       setMessages([]);
       setNoteDraft("");
@@ -590,31 +596,31 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   }
 
   return (
-    <main className="grid h-[calc(100dvh-8rem)] min-h-[560px] grid-rows-[auto_auto_minmax(0,1fr)] gap-4 overflow-hidden">
-      <header className="flex flex-wrap items-center gap-3">
-        <div className="mr-auto">
-          <h2 className="text-2xl font-black text-slate-950">{historyOnly ? "สมุดบันทึกแชท" : "Support Chat"}</h2>
-          <p className="mt-1 text-xs font-bold text-slate-500">{historyOnly ? "ประวัติที่จบแล้ว · โน้ตภายใน · รูปภาพถูกลบเมื่อจบแชท" : "IT Admin · IT Support · ร้านค้า"}</p>
+    <main className="flex h-[calc(100dvh-7.25rem-env(safe-area-inset-bottom))] min-h-0 min-w-0 flex-col gap-2 overflow-hidden xl:h-[calc(100dvh-8rem)] xl:gap-4">
+      <header className={"shrink-0 items-center gap-2 sm:gap-3 " + (mobilePane === "conversation" ? "hidden xl:flex" : "flex")}>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-lg font-black text-slate-950 sm:text-2xl">{historyOnly ? "สมุดบันทึกแชท" : "Support Chat"}</h2>
+          <p className="hidden text-xs font-bold text-slate-500 sm:mt-1 sm:block">{historyOnly ? "ประวัติที่จบแล้ว · โน้ตภายใน · รูปภาพถูกลบเมื่อจบแชท" : "IT Admin · IT Support · ร้านค้า"}</p>
         </div>
         <button type="button" onClick={() => void enableNotifications()}
-          className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700">
-          {notificationState === "granted" ? "แจ้งเตือนเปิดแล้ว" : notificationState === "denied" ? "แจ้งเตือนถูกบล็อก" : "เปิดแจ้งเตือน"}
+          className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 sm:px-4 sm:py-2.5" aria-label="ตั้งค่าการแจ้งเตือน">
+          <span aria-hidden="true" className="sm:hidden">🔔</span><span className="hidden sm:inline">{notificationState === "granted" ? "แจ้งเตือนเปิดแล้ว" : notificationState === "denied" ? "แจ้งเตือนถูกบล็อก" : "เปิดแจ้งเตือน"}</span>
         </button>
         <button type="button" onClick={() => void loadInbox()}
-          className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700">
-          รีเฟรช
+          className="shrink-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 sm:px-4 sm:py-2.5" aria-label="รีเฟรชรายการแชท">
+          <span aria-hidden="true" className="sm:hidden">↻</span><span className="hidden sm:inline">รีเฟรช</span>
         </button>
       </header>
 
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
+      {error ? <div role="alert" className="shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 sm:px-4 sm:py-3 sm:text-sm">{error}</div> : null}
 
-      <section className="grid min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col border-r border-slate-200 bg-slate-50/60">
+      <section className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+        <aside className={"min-h-0 min-w-0 flex-col bg-slate-50/60 xl:border-r xl:border-slate-200 " + (mobilePane === "inbox" ? "flex" : "hidden xl:flex")}>
           <div className="border-b border-slate-200 p-3">
             <input value={search} onChange={(event) => setSearch(event.target.value)}
               placeholder="ค้นหาร้าน / เรื่อง / ผู้ติดต่อ"
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
-            {!historyOnly ? <div className="mt-2 flex flex-wrap gap-1.5">
+            {!historyOnly ? <div className="mt-2 flex gap-1.5 overflow-x-auto overscroll-x-contain pb-1">
               {([
                 ["all", "ทั้งหมด"],
                 ["new", "ใหม่"],
@@ -623,7 +629,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 ["closed", "ปิดแล้ว"]
               ] as const).map(([key, label]) => (
                 <button key={key} type="button" onClick={() => setFilter(key)}
-                  className={"rounded-lg px-2.5 py-1.5 text-[11px] font-black " +
+                  className={"shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-black " +
                     (filter === key ? "bg-blue-600 text-white" : "border border-slate-200 bg-white text-slate-600")}>
                   {label}
                 </button>
@@ -633,7 +639,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {filtered.length ? filtered.map((row) => (
-              <button key={row.conversation_id} type="button" onClick={() => setSelectedId(row.conversation_id)}
+              <button key={row.conversation_id} type="button" onClick={() => { setSelectedId(row.conversation_id); setMobilePane("conversation"); setMobileNotesOpen(false); }}
                 className={"flex w-full gap-3 border-b border-slate-100 p-3 text-left transition " +
                   (selectedId === row.conversation_id ? "bg-blue-50" : "bg-white hover:bg-slate-50")}>
                 <StoreAvatar src={row.store_logo_url} name={row.store_name} />
@@ -657,16 +663,18 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           </div>
         </aside>
 
-        <section className="relative flex min-h-0 flex-col overflow-hidden">
+        <section className={"relative min-h-0 min-w-0 flex-col overflow-hidden " + (mobilePane === "conversation" ? "flex" : "hidden xl:flex")}>
           {conversation ? (
             <>
-              <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3">
+              <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
+                <button type="button" onClick={() => setMobilePane("inbox")} aria-label="กลับรายการแชท" title="กลับรายการแชท"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-lg text-slate-700 xl:hidden"><span aria-hidden="true">←</span></button>
                 <StoreAvatar src={conversation.store_logo_url} name={conversation.store_name} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-black text-slate-950">{conversation.store_name} · {conversation.store_code}</div>
                   <div className="truncate text-xs text-slate-500">{conversation.subject} · ติดต่อ: {conversation.contact_name}</div>
                 </div>
-                <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                <div className="hidden items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 sm:flex">
                   <SupportAvatar src={conversation.assigned_user_avatar_url} name={conversation.assigned_user_name || "IT Support"} />
                   <div className="hidden sm:block">
                     <div className="text-[11px] font-black text-slate-800">{conversation.assigned_user_name || "กำลังรับเรื่อง"}</div>
@@ -687,7 +695,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
               </header>
 
               {conversation.status !== "closed" ? (
-                <div className="border-b border-slate-200 bg-white px-4 py-3">
+                <div className="border-b border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-3">
                   {!activeCall ? (
                     <button
                       type="button"
@@ -753,7 +761,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 </div>
               ) : null}
 
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f7faff] p-4 pb-6 [scrollbar-gutter:stable]">
+              <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f7faff] p-3 pb-5 sm:p-4 sm:pb-6 [scrollbar-gutter:stable]">
                 {busy === "conversation" && !messages.length ? <div className="text-center text-xs text-slate-500">กำลังโหลด...</div> : null}
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
@@ -764,7 +772,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                   const mine = message.sender_type === "it";
                   return <div key={message.id} className={"flex gap-2 " + (mine ? "justify-end" : "justify-start")}>
                     {!mine ? <StoreAvatar src={conversation.store_logo_url} name={conversation.store_name} /> : null}
-                    <div className={"max-w-[76%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm " +
+                    <div className={"min-w-0 max-w-[calc(100%-3.5rem)] rounded-2xl px-3 py-2 text-sm shadow-sm sm:max-w-[76%] sm:px-3.5 sm:py-2.5 " +
                       (mine ? "rounded-br-md bg-blue-600 text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-800")}>
                       {message.attachments?.map((item) => <a key={item.id} href={item.url} target="_blank" rel="noreferrer"
                         className="mb-2 block overflow-hidden rounded-xl border border-white/30 bg-white/10">
@@ -779,8 +787,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 })}
               </div>
 
-              <div className="sticky bottom-0 z-20 shrink-0 border-t border-slate-200 bg-white shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
-                <div className="px-3 py-2">
+              <div className="sticky bottom-0 z-20 shrink-0 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_rgba(15,23,42,0.06)] xl:pb-0">
+                <button type="button" aria-expanded={mobileNotesOpen} aria-controls="support-chat-internal-note"
+                  onClick={() => setMobileNotesOpen((current) => !current)}
+                  className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-bold text-slate-500 xl:hidden">
+                  <span>โน้ตภายใน IT (ลูกค้าไม่เห็น)</span><span aria-hidden="true">{mobileNotesOpen ? "▴" : "▾"}</span>
+                </button>
+                <div id="support-chat-internal-note" className={(mobileNotesOpen ? "block " : "hidden ") + "px-3 py-2 xl:block"}>
                   <div className="flex items-center gap-2">
                     <input value={noteDraft} onChange={(event) => setNoteDraft(event.target.value.slice(0,3000))}
                       placeholder="โน้ตภายใน IT (ลูกค้าไม่เห็น)"
@@ -794,14 +807,14 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                     จบการสนทนาแล้ว · เก็บข้อความไว้ในสมุดบันทึก · รูปภาพถูกลบออกจากระบบ
                   </div>
                 ) : (
-                  <div className="border-t border-slate-200 bg-white p-3">
+                  <div className="border-t border-slate-200 bg-white p-2.5 sm:p-3">
                     {remoteTyping ? <div className="mb-2 text-[11px] font-bold text-slate-500">{remoteTyping} กำลังพิมพ์…</div> : null}
                     {attachment ? <div className="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
                       <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
                       <button type="button" onClick={() => setAttachment(null)} className="font-black">ลบ</button>
                     </div> : null}
                     <div className="flex gap-2">
-                      <label className="grid h-[50px] w-[50px] shrink-0 cursor-pointer place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-600" title="แนบรูปภาพ">
+                      <label className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-600 sm:h-[50px] sm:w-[50px]" title="แนบรูปภาพ">
                         📎
                         <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
                           onChange={(event) => setAttachment(event.target.files?.[0] ?? null)} />
@@ -816,23 +829,27 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                           }
                         }}
                         rows={2} placeholder="พิมพ์ข้อความถึงร้านค้า..."
-                        className="max-h-28 min-h-[50px] min-w-0 flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" />
+                        className="max-h-28 min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 sm:min-h-[50px] sm:py-2.5" />
                       <button type="button" onClick={() => void sendMessage()} disabled={busy === "send" || (!draft.trim() && !attachment)}
-                        className="shrink-0 rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-40">
+                        className="shrink-0 rounded-xl bg-blue-600 px-4 text-sm font-black text-white disabled:opacity-40 sm:px-6">
                         {busy === "send" ? "..." : "ส่ง"}
                       </button>
                     </div>
-                    <div className="mt-1 text-[10px] text-slate-400">รูปภาพ JPG/PNG/WEBP ไม่เกิน 2 MB · รูปจะถูกลบเมื่อจบการสนทนา</div>
+                    <div className="sr-only mt-1 text-[10px] text-slate-400 sm:not-sr-only">รูปภาพ JPG/PNG/WEBP ไม่เกิน 2 MB · รูปจะถูกลบเมื่อจบการสนทนา</div>
                   </div>
                 )}
               </div>
             </>
           ) : (
-            <div className="grid flex-1 place-items-center p-8 text-center">
+            <div className="relative grid min-h-0 flex-1 place-items-center p-4 text-center sm:p-8">
+              <button type="button" onClick={() => setMobilePane("inbox")}
+                className="absolute left-3 top-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 xl:hidden">
+                ← กลับรายการแชท
+              </button>
               <div>
                 <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={72} height={72} className="mx-auto h-16 w-16 object-contain opacity-80" />
-                <h3 className="mt-3 text-lg font-black text-slate-900">เลือกแชทจากรายการด้านซ้าย</h3>
-                <p className="mt-1 text-sm text-slate-500">เมื่อเปิดแชทใหม่ ระบบจะรับเรื่องให้พนักงานที่เปิดโดยอัตโนมัติ</p>
+                <h3 className="mt-3 text-lg font-black text-slate-900">{selectedId ? "กำลังเปิดห้องสนทนา" : "เลือกแชทจากรายการด้านซ้าย"}</h3>
+                <p className="mt-1 text-sm text-slate-500">{selectedId ? "หากยังไม่แสดงข้อความ สามารถย้อนกลับไปเลือกรายการใหม่ได้" : "เมื่อเปิดแชทใหม่ ระบบจะรับเรื่องให้พนักงานที่เปิดโดยอัตโนมัติ"}</p>
               </div>
             </div>
           )}
