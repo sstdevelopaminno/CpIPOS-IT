@@ -1,9 +1,12 @@
+import { appendAuditLog } from "@/lib/audit-log";
 import { appendItAuditLog } from "@/lib/it-control-plane";
+import { readEnv } from "@/lib/env";
 import { fail, ok } from "@/lib/http";
 import { assertItSupportAction, guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { sanitizeMdmReasonText } from "@/lib/mdm/commandPolicy";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { readBoundedJson } from "@/lib/server/limited-json";
+import { getVerifiedSupabaseAccessToken } from "@/lib/supabase-server";
 import { applyTenantControlAction } from "@/lib/services/it-admin/tenant-control-service";
 
 export const dynamic = "force-dynamic";
@@ -200,50 +203,70 @@ async function queueDeviceOwnerRelease(
 
 async function cleanupCommunications(
   admin: Awaited<ReturnType<typeof requireItAdmin>>,
-  tenantId: string
+  tenantId: string,
+  request: Request
 ) {
-  const { data, error } = await admin.itSupabase.rpc("it_delete_tenant_communications", {
-    p_tenant_id: tenantId
-  });
-  if (error) {
-    return { completed: false, error: error.message, removed_files: 0 };
-  }
-
-  const payload = data && typeof data === "object" && !Array.isArray(data)
-    ? data as JsonRecord
-    : {};
-  const files = Array.isArray(payload.storage_objects)
-    ? payload.storage_objects as Array<{ bucket?: unknown; path?: unknown }>
-    : [];
-
-  let removed = 0;
-  const byBucket = new Map<string, string[]>();
-  for (const item of files) {
-    const bucket = text(item.bucket, 120);
-    const path = text(item.path, 600);
-    if (!bucket || !path) continue;
-    if (!path.startsWith(tenantId + "/")) {
-      return { completed: false, error: "communications_cleanup_path_invalid", removed_files: removed };
+  try {
+    const authorization = request.headers.get("authorization") ?? "";
+    const bearerToken = authorization.toLowerCase().startsWith("bearer ")
+      ? authorization.slice(7).trim()
+      : "";
+    const accessToken = bearerToken || await getVerifiedSupabaseAccessToken(admin.auth.userId);
+    if (!accessToken) {
+      return { completed: false, error: "communications_auth_unavailable", removed_files: 0 };
     }
-    byBucket.set(bucket, [...(byBucket.get(bucket) ?? []), path]);
-  }
-  for (const [bucket, paths] of byBucket) {
-    for (let offset = 0; offset < paths.length; offset += 100) {
-      const chunk = paths.slice(offset, offset + 100);
-      const result = await admin.itSupabase.storage.from(bucket).remove(chunk);
-      if (result.error) {
-        return { completed: false, error: result.error.message, removed_files: removed };
-      }
-      removed += chunk.length;
+
+    const endpoint = readEnv("CPIPOS_COMMUNICATIONS_EDGE_URL");
+    if (!endpoint) {
+      return { completed: false, error: "communications_gateway_unavailable", removed_files: 0 };
     }
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "delete_tenant_communications",
+        tenant_id: tenantId
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000)
+    });
+    const payload = await response.json().catch(() => null) as {
+      completed?: boolean;
+      storage_removed?: number;
+      error?: string;
+    } | null;
+
+    if (!response.ok || payload?.completed !== true) {
+      return {
+        completed: false,
+        error: payload?.error ?? `communications_gateway_failed_${response.status}`,
+        removed_files: Number(payload?.storage_removed ?? 0)
+      };
+    }
+
+    return {
+      completed: true,
+      error: null,
+      removed_files: Number(payload.storage_removed ?? 0)
+    };
+  } catch (error) {
+    console.error("[tenant-deletion] communications cleanup deferred", {
+      tenantId,
+      error: error instanceof Error ? error.message : "unknown_error"
+    });
+    return { completed: false, error: "communications_cleanup_deferred", removed_files: 0 };
   }
-  return { completed: true, error: null, removed_files: removed };
 }
 
 async function finalizeApprovedDeletion(
   admin: Awaited<ReturnType<typeof requireItAdmin>>,
   tenantId: string,
-  note: string
+  note: string,
+  request: Request
 ) {
   const { data: review, error: reviewError } = await admin.supabase
     .from("tenant_lifecycle_deletion_reviews")
@@ -295,17 +318,18 @@ async function finalizeApprovedDeletion(
     admin_reason: note || "IT-confirmed lifecycle retention expiry and permanent tenant deletion."
   });
 
-  const communications = await cleanupCommunications(admin, tenantId);
-  await appendItAuditLog({
-    tenantId: undefined,
+  const communications = await cleanupCommunications(admin, tenantId, request);
+  await appendAuditLog({
     actorUserId: admin.auth.userId,
+    actorRole: admin.auth.platformRole,
     action: communications.completed
       ? "tenant_cross_plane_deletion_completed"
       : "tenant_cross_plane_deletion_partial",
-    targetType: "tenant_offboarding",
+    targetTable: "tenant_offboarding",
     targetId: tenantId,
-    ipAddress: admin.requestMeta.ipAddress,
-    userAgent: admin.requestMeta.userAgent,
+    module: "it_admin",
+    ipAddress: admin.requestMeta.ipAddress ?? undefined,
+    userAgent: admin.requestMeta.userAgent ?? undefined,
     metadata: {
       deleted_tenant_id: tenantId,
       communications_cleanup_completed: communications.completed,
@@ -410,14 +434,14 @@ export async function POST(request: Request) {
         return ok({ decision, mdm, deleted: false });
       }
       if (reviewStatus === "ready_to_delete") {
-        const finalized = await finalizeApprovedDeletion(admin, tenantId, note);
+        const finalized = await finalizeApprovedDeletion(admin, tenantId, note, request);
         return ok({ decision, finalized });
       }
       return ok({ decision, deleted: false });
     }
 
     if (action === "finalize") {
-      const finalized = await finalizeApprovedDeletion(admin, tenantId, note);
+      const finalized = await finalizeApprovedDeletion(admin, tenantId, note, request);
       return ok({ finalized });
     }
 
