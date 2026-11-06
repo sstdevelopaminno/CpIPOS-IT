@@ -123,16 +123,31 @@ export function SupportChatNotifier() {
     const refreshSnapshot = async (allowToast: boolean) => {
       if (snapshotInFlight) return;
       snapshotInFlight = true;
+      const requestStartedAt = Date.now();
       try {
         const snapshot = await loadInboxSnapshot();
         if (!alive) return;
-        snapshotHeads.current = new Map(
+        const fresh = new Map(
           snapshot.conversations
             .filter((head): head is Head & { conversation_id: string } => Boolean(head.conversation_id))
-            .map((head) => [head.conversation_id, head])
+            .map((head) => [head.conversation_id, head] as const)
         );
-        notifyUnread(snapshot.unread_total);
-        for (const head of snapshot.conversations) handleHead(head, allowToast);
+        // A Realtime event may arrive while the HTTP snapshot is pending.
+        // Preserve newer event heads rather than restoring an older unread
+        // count or losing the incoming-call notification.
+        for (const [id, live] of snapshotHeads.current) {
+          const fetched = fresh.get(id);
+          const liveAt = Date.parse(live.updated_at ?? "") || 0;
+          const fetchedAt = fetched ? Date.parse(fetched.updated_at ?? "") || 0 : 0;
+          if ((fetched && liveAt > fetchedAt) ||
+              (!fetched && liveAt >= requestStartedAt)) fresh.set(id, live);
+        }
+        snapshotHeads.current = fresh;
+        notifyUnread(
+          Array.from(fresh.values()).reduce((sum, head) =>
+            sum + Number(head.unread_it_count ?? 0), 0)
+        );
+        for (const head of fresh.values()) handleHead(head, allowToast);
         initialized.current = true;
       } finally {
         snapshotInFlight = false;
