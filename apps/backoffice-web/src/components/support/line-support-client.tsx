@@ -129,6 +129,10 @@ export function LineSupportClient() {
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
+  const activeConversationIdRef = useRef<string | null>(null);
+  const detailEpochRef = useRef(0);
+  const realtimeConnectedRef = useRef(false);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
   const [stage, setStage] = useState<"boot" | "store" | "otp" | "connecting" | "chat">("boot");
   const [idToken, setIdToken] = useState("");
   const [storeCode, setStoreCode] = useState("");
@@ -153,17 +157,35 @@ export function LineSupportClient() {
   } = useSupportVoiceWaitingMedia();
 
   const loadConversation = useCallback(async (conversationId: string) => {
+    const epoch = ++detailEpochRef.current;
     const detail = await api<ChatDetail>(
       "/api/support/line/chat?conversation_id=" + encodeURIComponent(conversationId)
     );
+    if (epoch !== detailEpochRef.current || activeConversationIdRef.current !== conversationId) return detail;
     setConversation(detail.conversation);
-    setMessages(detail.messages);
+    setMessages((current) => {
+      const serverIds = new Set(detail.messages.map((item) => item.id));
+      const pending = current.filter((item) => {
+        if (serverIds.has(item.id)) return false;
+        if (!item.id.startsWith("line-local:") && !item.id.startsWith("broadcast:it:")) return false;
+        return !detail.messages.some((server) =>
+          server.sender_type === item.sender_type &&
+          server.message_body === item.message_body &&
+          Math.abs(Date.parse(server.created_at) - Date.parse(item.created_at)) < 90_000
+        );
+      });
+      return [...detail.messages, ...pending].sort((left, right) =>
+        Date.parse(left.created_at) - Date.parse(right.created_at)
+      );
+    });
     setActiveCall(detail.active_call ?? null);
     setVoiceQueue(detail.voice_queue ?? null);
     return detail;
   }, [setVoiceQueue]);
 
   const applyChat = useCallback((detail: ChatDetail) => {
+    activeConversationIdRef.current = detail.conversation.id;
+    detailEpochRef.current += 1;
     setConversation(detail.conversation);
     setMessages(detail.messages);
     setActiveCall(detail.active_call ?? null);
@@ -282,10 +304,12 @@ export function LineSupportClient() {
   useEffect(() => {
     if (stage !== "chat" || !conversation?.id || conversation.status === "closed") return;
     const voiceWaiting = isStoreVoiceWaiting(activeCall);
+    // Realtime previews provide immediate text. Keep a slower authoritative
+    // refresh for missed events, assignment changes and incoming voice invites.
     const id = voiceWaiting ? null : window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
       void loadConversation(conversation.id).catch(() => null);
-    }, 3_000);
+    }, 6_000);
 
     const refresh = () => {
       if (document.visibilityState === "visible" && !voiceWaiting) {
@@ -387,6 +411,13 @@ export function LineSupportClient() {
 
     const supabase = getSupabaseBrowserClient();
     const conversationId = conversation.id;
+    const scheduleRealtimeRefresh = (delay = 450) => {
+      if (realtimeRefreshTimerRef.current !== null) window.clearTimeout(realtimeRefreshTimerRef.current);
+      realtimeRefreshTimerRef.current = window.setTimeout(() => {
+        realtimeRefreshTimerRef.current = null;
+        void loadConversation(conversationId).catch(() => null);
+      }, delay);
+    };
     const channel = supabase.channel(`support-chat-typing:${conversationId}`)
       .on("broadcast", { event: "typing" }, ({ payload }) => {
         const event = payload as { actor?: string; typing?: boolean; name?: string };
@@ -397,16 +428,42 @@ export function LineSupportClient() {
           typingTimerRef.current = window.setTimeout(() => setRemoteTyping(""), 2600);
         }
       })
-      .subscribe();
+      .on("broadcast", { event: "message_preview" }, ({ payload }) => {
+        const event = payload as { actor?: string; client_id?: string; message?: string;
+          created_at?: string; name?: string };
+        if (event.actor !== "it" || !event.client_id || !event.message || !event.created_at) return;
+        setRemoteTyping("");
+        setMessages((current) => {
+          const id = `broadcast:it:${event.client_id}`;
+          return current.some((item) => item.id === id)
+            ? current
+            : [...current, { id, sender_type: "it", sender_name: event.name || "IT Support",
+              message_body: event.message!, created_at: event.created_at! }];
+        });
+        scheduleRealtimeRefresh(650);
+      })
+      .on("broadcast", { event: "message_retract" }, ({ payload }) => {
+        const event = payload as { actor?: string; client_id?: string };
+        if (event.actor !== "it" || !event.client_id) return;
+        setMessages((current) => current.filter((item) => item.id !== `broadcast:it:${event.client_id}`));
+      })
+      .on("broadcast", { event: "voice_update" }, ({ payload }) => {
+        const event = payload as { actor?: string };
+        if (event.actor === "it") scheduleRealtimeRefresh(200);
+      })
+      .subscribe((status) => { realtimeConnectedRef.current = status === "SUBSCRIBED"; });
 
     typingChannelRef.current = channel;
     return () => {
       if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+      if (realtimeRefreshTimerRef.current !== null) window.clearTimeout(realtimeRefreshTimerRef.current);
+      realtimeRefreshTimerRef.current = null;
+      realtimeConnectedRef.current = false;
       setRemoteTyping("");
       typingChannelRef.current = null;
       void supabase.removeChannel(channel);
     };
-  }, [stage, conversation?.id, conversation?.status]);
+  }, [stage, conversation?.id, conversation?.status, loadConversation]);
 
   const announceTyping = useCallback((typing: boolean) => {
     const now = Date.now();
@@ -511,6 +568,12 @@ export function LineSupportClient() {
     setError("");
     setDraft("");
     setMessages((current) => [...current, optimistic]);
+    void typingChannelRef.current?.send({
+      type: "broadcast",
+      event: "message_preview",
+      payload: { actor: "store", client_id: clientId, message,
+        created_at: optimistic.created_at, name: optimistic.sender_name }
+    });
     try {
       const sent = await api<{ message: Message; conversation: Conversation }>("/api/support/line/chat", {
         method: "POST",
@@ -523,6 +586,10 @@ export function LineSupportClient() {
       setConversation(sent.conversation);
       setMessages((current) => current.map((item) => item.id === clientId ? sent.message : item));
     } catch (cause) {
+      void typingChannelRef.current?.send({
+        type: "broadcast", event: "message_retract",
+        payload: { actor: "store", client_id: clientId }
+      });
       setMessages((current) => current.filter((item) => item.id !== clientId));
       setDraft(message);
       setError(cause instanceof Error ? cause.message : "ส่งข้อความไม่สำเร็จ");
@@ -545,6 +612,8 @@ export function LineSupportClient() {
     }
     stopWaitingMedia();
     setVoiceQueue(null);
+    activeConversationIdRef.current = null;
+    detailEpochRef.current += 1;
     setConversation(null);
     setMessages([]);
     setActiveCall(null);
@@ -632,9 +701,9 @@ export function LineSupportClient() {
   return (
     <>
       <Script src={LIFF_SCRIPT} strategy="afterInteractive" onLoad={() => void boot()} />
-      <main className="h-dvh overflow-hidden bg-slate-100 px-4 py-5 text-slate-950">
-        <section className="mx-auto flex h-[calc(100dvh-2.5rem)] min-h-0 w-full max-w-md flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl">
-          <header className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-5 py-4">
+      <main className="h-[100dvh] min-h-0 w-full overflow-hidden bg-white p-0 text-slate-950 md:bg-slate-100 md:p-5">
+        <section className="mx-auto flex h-full min-h-0 w-full max-w-none flex-col overflow-hidden border-0 bg-white shadow-none md:max-w-xl md:rounded-[28px] md:border md:border-slate-200 md:shadow-xl">
+          <header className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-3 py-3 sm:px-5 sm:py-4">
             <Image
               src="/brand/cpipos-symbol-sidebar.png"
               alt="CpIPOS"
@@ -763,7 +832,7 @@ export function LineSupportClient() {
 
           {stage === "chat" && conversation ? (
             <>
-              <div className="shrink-0 border-b border-slate-100 bg-slate-50 px-5 py-3">
+              <div className="shrink-0 border-b border-slate-100 bg-slate-50 px-3 py-2.5 sm:px-5 sm:py-3">
                 <div className="text-xs font-black text-blue-700">{statusText(conversation.status)}</div>
                 {conversation.assigned_user_name ? (
                   <div className="mt-1 text-[11px] text-slate-500">
@@ -772,7 +841,7 @@ export function LineSupportClient() {
                 ) : null}
               </div>
 
-              <div className="shrink-0 border-b border-slate-100 px-4 py-3">
+              <div className="shrink-0 border-b border-slate-100 px-3 py-2.5 sm:px-4 sm:py-3">
                 {!activeCall ? (
                   <button
                     type="button"
@@ -913,7 +982,7 @@ export function LineSupportClient() {
                 ) : null}
               </div>
 
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-5 pb-6 [scrollbar-gutter:stable]">
+              <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-4 pb-6 sm:px-4 sm:py-5">
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
                     const welcome = message.message_body.startsWith("CpIPOS Support ให้บริการ");
@@ -993,7 +1062,7 @@ export function LineSupportClient() {
                       type="button"
                       onClick={() => void closeConversation()}
                       disabled={busy === "close"}
-                      className="mt-2 w-full py-2 text-xs font-bold text-slate-400"
+                      className="mt-2 w-full py-1 text-xs font-bold text-slate-400"
                     >
                       จบการสนทนา
                     </button>
