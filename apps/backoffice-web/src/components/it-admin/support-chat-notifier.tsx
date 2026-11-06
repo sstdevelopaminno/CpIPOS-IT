@@ -127,7 +127,7 @@ export function SupportChatNotifier() {
       try {
         const snapshot = await loadInboxSnapshot();
         if (!alive) return;
-        const fresh = new Map(
+        const fresh = new Map<string, Head>(
           snapshot.conversations
             .filter((head): head is Head & { conversation_id: string } => Boolean(head.conversation_id))
             .map((head) => [head.conversation_id, head] as const)
