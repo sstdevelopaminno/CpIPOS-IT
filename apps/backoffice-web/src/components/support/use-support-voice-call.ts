@@ -785,19 +785,16 @@ export function useSupportVoiceCall({
   }, [held, side, startHoldMusic]);
 
   useEffect(() => {
-    const closeSession = () => {
-      releaseMicrophone();
-      localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = false; });
-    };
-    window.addEventListener("pagehide", closeSession);
+    // A LINE WebView may page-hide a healthy call while another UI is open.
+    // Do not tear down WebRTC on pagehide; explicitly logging out or unmounting
+    // this chat releases the disabled microphone stream and the active call.
     return () => {
-      window.removeEventListener("pagehide", closeSession);
       stopHoldMusic();
       holdSpeechRef.current = null;
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
       void cleanup(false, true);
     };
-  }, [cleanup, stopHoldMusic, releaseMicrophone]);
+  }, [cleanup, stopHoldMusic]);
 
   useEffect(() => {
     if (!call || !["accepted", "connecting", "connected"].includes(call.status)) {
