@@ -195,11 +195,7 @@ export function SupportVoiceCallOverlay({
     }
   };
   useEffect(() => {
-    if (!open) {
-      // Keep the previous position during a call, reset between separate calls.
-      setBubblePosition(null);
-      return;
-    }
+    if (!open) return;
     const constrain = () => {
       const bubble = bubbleRef.current;
       if (!bubble) return;
@@ -218,8 +214,77 @@ export function SupportVoiceCallOverlay({
   const micBlocked = Boolean(error?.includes("ไมโครโฟน") || error?.includes("อนุญาต"));
   const transferText = transferTargetLabel ? `กำลังโอนไปยัง ${transferTargetLabel}` : "กำลังรอผู้รับโอนสาย";
 
+  const transferDialog = transferPickerOpen ? (
+        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/70 p-4 sm:items-center">
+          <div className="max-h-[82dvh] w-full max-w-lg overflow-hidden rounded-[30px] bg-white text-slate-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <div className="text-lg font-black">โอนสาย</div>
+                <div className="mt-1 text-xs text-slate-500">เลือกแผนกหรือพนักงานที่จะรับช่วงต่อ</div>
+              </div>
+              <button type="button" onClick={onCloseTransfer} className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
+                ✕
+              </button>
+            </div>
+
+            <div className="max-h-[calc(82dvh-92px)] overflow-y-auto p-5">
+              {transferTargetsLoading ? (
+                <div className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
+                  กำลังโหลดผู้รับโอน…
+                </div>
+              ) : (
+                <>
+                  <div className="text-xs font-black uppercase tracking-wide text-slate-400">โอนไปทั้งแผนก</div>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {transferDepartments.map((department) => (
+                      <button
+                        key={department.role}
+                        type="button"
+                        onClick={() => onTransferToDepartment?.(department.role, department.label)}
+                        disabled={busy}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left disabled:opacity-50"
+                      >
+                        <div className="text-sm font-black">{department.label}</div>
+                        <div className="mt-1 text-xs text-slate-500">เจ้าหน้าที่ว่างคนแรกในแผนกรับต่อ</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 text-xs font-black uppercase tracking-wide text-slate-400">โอนไปพนักงานรายบุคคล</div>
+                  <div className="mt-3 space-y-2">
+                    {transferTargets.length ? transferTargets.map((target) => (
+                      <button
+                        key={target.id}
+                        type="button"
+                        onClick={() => onTransferToUser?.(target)}
+                        disabled={busy}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-left disabled:opacity-50"
+                      >
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-black">
+                          {target.full_name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-black">{target.full_name}</div>
+                          <div className="text-xs text-slate-500">{roleLabel(target.platform_role)}</div>
+                        </div>
+                        <div className="text-lg text-slate-400">›</div>
+                      </button>
+                    )) : (
+                      <div className="rounded-2xl bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+                        ยังไม่มีพนักงานอื่นที่เปิดใช้งาน
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null;
+
   if (minimized) {
     return (
+      <>
       <div ref={bubbleRef}
         style={bubblePosition ? { left: bubblePosition.x, top: bubblePosition.y, right: "auto", bottom: "auto" } : undefined}
         className="fixed bottom-4 right-4 z-[120] w-[min(94vw,390px)] rounded-3xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
@@ -285,6 +350,8 @@ export function SupportVoiceCallOverlay({
           จับแถบชื่อร้านแล้วลากเพื่อย้ายตำแหน่ง · ใช้เมนู IT ระหว่างคุยได้
         </div>
       </div>
+      {transferDialog}
+      </>
     );
   }
 
@@ -490,73 +557,7 @@ export function SupportVoiceCallOverlay({
         </div>
       </div>
 
-      {transferPickerOpen ? (
-        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/70 p-4 sm:items-center">
-          <div className="max-h-[82dvh] w-full max-w-lg overflow-hidden rounded-[30px] bg-white text-slate-950 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div>
-                <div className="text-lg font-black">โอนสาย</div>
-                <div className="mt-1 text-xs text-slate-500">เลือกแผนกหรือพนักงานที่จะรับช่วงต่อ</div>
-              </div>
-              <button type="button" onClick={onCloseTransfer} className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
-                ✕
-              </button>
-            </div>
-
-            <div className="max-h-[calc(82dvh-92px)] overflow-y-auto p-5">
-              {transferTargetsLoading ? (
-                <div className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
-                  กำลังโหลดผู้รับโอน…
-                </div>
-              ) : (
-                <>
-                  <div className="text-xs font-black uppercase tracking-wide text-slate-400">โอนไปทั้งแผนก</div>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    {transferDepartments.map((department) => (
-                      <button
-                        key={department.role}
-                        type="button"
-                        onClick={() => onTransferToDepartment?.(department.role, department.label)}
-                        disabled={busy}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left disabled:opacity-50"
-                      >
-                        <div className="text-sm font-black">{department.label}</div>
-                        <div className="mt-1 text-xs text-slate-500">เจ้าหน้าที่ว่างคนแรกในแผนกรับต่อ</div>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-6 text-xs font-black uppercase tracking-wide text-slate-400">โอนไปพนักงานรายบุคคล</div>
-                  <div className="mt-3 space-y-2">
-                    {transferTargets.length ? transferTargets.map((target) => (
-                      <button
-                        key={target.id}
-                        type="button"
-                        onClick={() => onTransferToUser?.(target)}
-                        disabled={busy}
-                        className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-left disabled:opacity-50"
-                      >
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-black">
-                          {target.full_name.slice(0, 1).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-black">{target.full_name}</div>
-                          <div className="text-xs text-slate-500">{roleLabel(target.platform_role)}</div>
-                        </div>
-                        <div className="text-lg text-slate-400">›</div>
-                      </button>
-                    )) : (
-                      <div className="rounded-2xl bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
-                        ยังไม่มีพนักงานอื่นที่เปิดใช้งาน
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {transferDialog}
     </div>
   );
 }
