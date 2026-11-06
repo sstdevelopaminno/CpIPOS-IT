@@ -56,6 +56,7 @@ export async function POST(request: Request) {
       action?: string;
       conversation_id?: string;
       message?: string;
+      attachment?: { name?: string; mime_type?: string; size_bytes?: number; data_base64?: string } | null;
       call_id?: string;
       state?: string;
     } | null;
@@ -79,7 +80,22 @@ export async function POST(request: Request) {
 
     if (action === "send") {
       const message = String(body?.message ?? "").trim().slice(0, 4000);
-      if (!message) return fail("message_required", "กรุณาพิมพ์ข้อความ", 422);
+      const rawImage = body?.attachment;
+      const attachment = rawImage && typeof rawImage === "object" ? {
+        name: String(rawImage.name ?? "").slice(0, 180),
+        mime_type: String(rawImage.mime_type ?? ""),
+        size_bytes: Number(rawImage.size_bytes ?? 0),
+        data_base64: String(rawImage.data_base64 ?? "")
+      } : null;
+      if (!message && !attachment) return fail("message_required", "กรุณาพิมพ์ข้อความหรือแนบรูปภาพ", 422);
+      // Reject unsupported image formats and oversized payloads before the
+      // storage bridge; the Edge Function validates decoded bytes as well.
+      if (attachment && (
+        !["image/jpeg", "image/png", "image/webp"].includes(attachment.mime_type) ||
+        !Number.isInteger(attachment.size_bytes) ||
+        attachment.size_bytes < 1 || attachment.size_bytes > 2 * 1024 * 1024 ||
+        attachment.data_base64.length > Math.ceil(2 * 1024 * 1024 * 4 / 3) + 8
+      )) return fail("attachment_invalid", "รองรับเฉพาะ JPG/PNG/WEBP ขนาดไม่เกิน 2 MB", 422);
 
       const rate = await enforceRateLimit({
         namespace: "line-support-chat-message",
@@ -89,7 +105,7 @@ export async function POST(request: Request) {
         failClosedOnBackendError: true
       });
       if (!rate.ok) return fail("support_chat_rate_limited", "ส่งข้อความถี่เกินไป กรุณารอสักครู่", 429);
-      const sent = await sendLineSupportMessage(session, conversationId, message);
+      const sent = await sendLineSupportMessage(session, conversationId, message, attachment);
       // Notify background IT PWAs only after the canonical LINE message is saved.
       // Web Push must not delay the customer's chat acknowledgment.
       after(async () => {
@@ -97,7 +113,7 @@ export async function POST(request: Request) {
           audience: "it",
           kind: "chat",
           title: "ข้อความใหม่จากลูกค้า LINE Support",
-          body: message.slice(0, 180),
+          body: attachment ? (message ? `[รูปภาพ] ${message}` : "[รูปภาพ]") : message.slice(0, 180),
           url: "/it-admin/support-chat",
           tag: `support-chat:${conversationId}`
         }).catch((error: unknown) => {
