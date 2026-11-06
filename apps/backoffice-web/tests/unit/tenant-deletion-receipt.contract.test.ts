@@ -7,6 +7,12 @@ const control = source("src/app/api/it-admin/v1/tenants/[tenantId]/control/route
 const directoryApi = source("src/app/api/it-admin/v1/modules/[module]/route.ts");
 const tenantControl = source("src/components/it-admin/tenant-control-center.tsx");
 const tenantDirectory = source("src/components/it-admin/tenant-directory-console.tsx");
+const tenantService = source("src/lib/services/it-admin/tenant-control-service.ts");
+const cleanupRoute = source("src/app/api/it-admin/v1/tenant-deletion-cleanup/route.ts");
+const migration = source("../../supabase/migrations/20261106102912_tenant_deletion_complete_cross_plane_cleanup.sql");
+const primaryGateway = source("../../supabase/control-plane-functions/cpipos-it-dashboard-primary/index.ts");
+const communicationsGateway = source("../../supabase/control-plane-functions/cpipos-it-dashboard-operational/index.ts");
+const verifierRemoval = source("../../supabase/migrations/20261106103529_remove_authenticated_tenant_deletion_verifier_rpc.sql");
 
 describe("permanent tenant deletion: trustworthy post-commit reconciliation", () => {
   it("does not infer success from a missing tenant or allow unverified recovery", () => {
@@ -22,6 +28,36 @@ describe("permanent tenant deletion: trustworthy post-commit reconciliation", ()
     expect(control).toContain('const receipt = await verifyCompletedDeletion');
     expect(control).toContain('"deletion_status"');
     expect(control).toContain('storage_cleanup_pending');
+  });
+
+  it("purges current non-cascade Native/Optical/financial rows and fails closed on future residuals", () => {
+    expect(migration).toContain("native_pos_push_devices");
+    expect(migration).toContain("optical_work_order_lines");
+    expect(migration).toContain("tenant_subscription_receipts");
+    expect(migration).toContain("tenant_delete_unmanaged_fk_table");
+    expect(migration).toContain("tenant_delete_residual_table");
+    expect(migration).toContain("auth_user_ids");
+  });
+
+  it("orders Storage before exclusive Auth cleanup and keeps retry state durable", () => {
+    expect(tenantService).toContain("context.supabase.storage.from(bucket).remove");
+    expect(tenantService).toContain("context.supabase.auth.admin.deleteUser");
+    expect(tenantService.indexOf("context.supabase.storage.from(bucket).remove"))
+      .toBeLessThan(tenantService.indexOf("context.supabase.auth.admin.deleteUser"));
+    expect(cleanupRoute).toContain("auth_user_ids");
+    expect(cleanupRoute).toContain("auth_users_completed_at");
+    expect(cleanupRoute).toContain("admin.supabase.auth.admin.deleteUser");
+  });
+
+  it("requires a verified primary deletion receipt before Communications cleanup without adding an authenticated SECURITY DEFINER RPC", () => {
+    expect(primaryGateway).toContain('action === "verify_tenant_deletion_receipt"');
+    expect(primaryGateway).toContain('platformRole !== "it_support"');
+    expect(primaryGateway).toContain('"tenant_permanently_deleted"');
+    expect(communicationsGateway).toContain("PRIMARY_DELETE_VERIFY_URL");
+    expect(communicationsGateway).toContain("primary_deletion_not_verified");
+    expect(communicationsGateway).toContain('actor.role !== "it_support"');
+    expect(communicationsGateway).toContain("it_delete_tenant_communications");
+    expect(verifierRemoval).toContain("drop function if exists public.it_verify_tenant_deleted_for_cross_plane_cleanup");
   });
 
   it("avoids the stale 30-second process cache for the tenants directory", () => {

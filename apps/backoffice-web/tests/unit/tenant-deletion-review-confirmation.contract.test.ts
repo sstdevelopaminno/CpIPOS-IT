@@ -40,6 +40,15 @@ describe("tenant deletion review: confirmation safety and table UX", () => {
     expect(consoleUi).toContain('disabled={!isConfirmed || Boolean(busy)}');
     expect(consoleUi).toContain('confirmation_code: confirmationCode');
   });
+  it("routes cross-plane cleanup through the authenticated Communications gateway without a Vercel service-role dependency", () => {
+    expect(route).toContain("CPIPOS_COMMUNICATIONS_EDGE_URL");
+    expect(route).toContain("getVerifiedSupabaseAccessToken");
+    expect(route).toContain('action: "delete_tenant_communications"');
+    expect(route).toContain("communications_cleanup_deferred");
+    expect(route).not.toContain('admin.itSupabase.rpc("it_delete_tenant_communications"');
+    expect(route).not.toContain("admin.itSupabase.storage");
+  });
+
   it("keeps committed deletion responses independent of a queue reload and bounds the UI wait", () => {
     expect(route).toContain('return ok({ decision, finalized });');
     expect(route).toContain('return ok({ finalized });');
