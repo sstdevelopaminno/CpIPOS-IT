@@ -108,6 +108,7 @@ export function useSupportVoiceCall({
   const recoverConnectionRef = useRef<() => void>(() => undefined);
   const signalingKeyRef = useRef(call?.signaling_key ?? "");
   const holdAudioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode } | null>(null);
+  const heldAnnouncedRef = useRef(false);
 
   const [phase, setPhase] = useState<SupportVoicePhase>("idle");
   const [error, setError] = useState("");
@@ -145,7 +146,13 @@ export function useSupportVoiceCall({
   }, []);
 
   const startHoldMusic = useCallback(async () => {
-    if (holdAudioRef.current || typeof window === "undefined") return;
+    if (holdAudioRef.current) {
+      if (holdAudioRef.current.context.state === "suspended") {
+        await holdAudioRef.current.context.resume().catch(() => null);
+      }
+      return;
+    }
+    if (typeof window === "undefined") return;
     const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextCtor) return;
 
@@ -174,6 +181,25 @@ export function useSupportVoiceCall({
       stopHoldMusic();
     }
   }, [stopHoldMusic]);
+
+  const replayHoldAudio = useCallback(() => {
+    if (!held || side !== "store") return;
+    void startHoldMusic();
+    if (typeof window === "undefined" || !("speechSynthesis" in window) ||
+        typeof SpeechSynthesisUtterance === "undefined") return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(
+        "ขณะนี้กำลังพักสายเพื่อส่งต่อเจ้าหน้าที่ กรุณารอสักครู่"
+      );
+      utterance.lang = "th-TH";
+      utterance.volume = 1;
+      utterance.rate = 0.94;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      // A LINE WebView can block speech until a direct tap; the button retries.
+    }
+  }, [held, side, startHoldMusic]);
 
   const cleanup = useCallback(async (notifyPeer: boolean) => {
     runningRef.current = false;
@@ -601,9 +627,14 @@ export function useSupportVoiceCall({
     if (audioElementRef.current) {
       audioElementRef.current.muted = held || speakerMuted;
     }
-    if (held) void startHoldMusic();
-    else stopHoldMusic();
-  }, [held, micMuted, speakerMuted, startHoldMusic, stopHoldMusic]);
+    if (held) {
+      void startHoldMusic();
+      if (side === "store" && !heldAnnouncedRef.current) replayHoldAudio();
+    } else {
+      stopHoldMusic();
+    }
+    heldAnnouncedRef.current = held;
+  }, [held, micMuted, speakerMuted, side, replayHoldAudio, startHoldMusic, stopHoldMusic]);
 
   useEffect(() => {
     const nextKey = call?.signaling_key ?? "";
@@ -666,6 +697,7 @@ export function useSupportVoiceCall({
     toggleMic,
     toggleSpeaker,
     resumeAudio,
+    replayHoldAudio,
     canStart: Boolean(call?.signaling_key) && ["accepted", "connecting", "connected"].includes(call?.status ?? "")
   };
 }
