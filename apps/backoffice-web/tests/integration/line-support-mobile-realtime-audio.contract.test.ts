@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const src = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const line = src("src/components/support/line-support-client.tsx");
-const it = src("src/components/it-admin/support-chat-console.tsx");
+const itConsole = src("src/components/it-admin/support-chat-console.tsx");
 const waiting = src("src/components/support/use-support-voice-waiting-media.ts");
 const hook = src("src/components/support/use-support-voice-call.ts");
 const overlay = src("src/components/support/support-voice-call-overlay.tsx");
@@ -29,7 +29,7 @@ describe("LINE customer support full-screen mobile, immediate replies and waitin
     expect(line).toContain("scheduleRealtimeRefresh(650)");
     expect(line).toContain("scheduleRealtimeRefresh(200)");
     expect(line).toContain("6_000");
-    expect(it).toContain('event: "voice_update"');
+    expect(itConsole).toContain('event: "voice_update"');
   });
 
   it("keeps customer outgoing messages visible, and does not apply stale server refreshes", () => {
