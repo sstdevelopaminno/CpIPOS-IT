@@ -197,6 +197,21 @@ async function expireStaleWaitingCalls(db: ReturnType<typeof createClient>) {
   return expired.data?.length ?? 0;
 }
 
+// Return unanswered handoffs to the shared queue when the target fails to
+// answer; the waiting customer keeps their original call/session ID.
+async function expireUnansweredForwardedCalls(db: ReturnType<typeof createClient>) {
+  const timeoutIso = new Date(Date.now() - 90_000).toISOString();
+  const cleared = await db.from("support_call_sessions")
+    .update({ transfer_status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("direction", "store_to_it")
+    .eq("status", "requested")
+    .eq("transfer_status", "requested")
+    .lt("transfer_requested_at", timeoutIso)
+    .select("id");
+  if (cleared.error) throw cleared.error;
+  return cleared.data?.length ?? 0;
+}
+
 async function voiceQueueSnapshot(
   db: ReturnType<typeof createClient>,
   row: Record<string, unknown>
@@ -479,6 +494,7 @@ Deno.serve(async (request) => {
       // app/page and stops refreshing, remove the ghost request before agents
       // are offered it. Connected calls are never expired by this lease.
       await expireStaleWaitingCalls(db);
+      await expireUnansweredForwardedCalls(db);
 
       const assigned = await db.from("support_call_sessions")
         .select("*")
@@ -1384,6 +1400,7 @@ Deno.serve(async (request) => {
         transfer_accepted_at: now,
         updated_at: now
       }).eq("id", callId).eq("transfer_status", "requested")
+        .in("status", ["requested", "accepted", "connecting", "connected"])
         .select("*").maybeSingle();
       if (accepted.error) {
         if (accepted.error.code === "23505") {
