@@ -92,6 +92,9 @@ export function useSupportVoiceCall({
   const channelRef = useRef<RealtimeChannel | null>(null);
   const realtimeClientRef = useRef<ReturnType<typeof getSupabaseBrowserClient> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  // Within one open LINE chat, keep a previously granted stream disabled
+  // between calls, instead of prompting the browser to request a new one.
+  const reusableStoreStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const readyIntervalRef = useRef<number | null>(null);
@@ -116,6 +119,7 @@ export function useSupportVoiceCall({
   const [phase, setPhase] = useState<SupportVoicePhase>("idle");
   const [error, setError] = useState("");
   const [micMuted, setMicMuted] = useState(false);
+  const [microphoneReady, setMicrophoneReady] = useState(false);
   const [speakerMuted, setSpeakerMuted] = useState(false);
   const [needsAudioResume, setNeedsAudioResume] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -245,7 +249,14 @@ export function useSupportVoiceCall({
     }
   }, [held, side, startHoldMusic]);
 
-  const cleanup = useCallback(async (notifyPeer: boolean) => {
+  const releaseMicrophone = useCallback(() => {
+    const cached = reusableStoreStreamRef.current;
+    reusableStoreStreamRef.current = null;
+    cached?.getTracks().forEach((track) => track.stop());
+    setMicrophoneReady(false);
+  }, []);
+
+  const cleanup = useCallback(async (notifyPeer: boolean, releaseDevices = false) => {
     runningRef.current = false;
     remoteReadyRef.current = false;
     offerSentRef.current = false;
@@ -278,8 +289,21 @@ export function useSupportVoiceCall({
     peerRef.current?.close();
     peerRef.current = null;
 
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    const previousLocal = localStreamRef.current;
     localStreamRef.current = null;
+    if (previousLocal && side === "store" && !releaseDevices &&
+        previousLocal.getAudioTracks().some((track) => track.readyState === "live")) {
+      previousLocal.getAudioTracks().forEach((track) => { track.enabled = false; });
+      const oldCached = reusableStoreStreamRef.current;
+      if (oldCached && oldCached !== previousLocal) {
+        oldCached.getTracks().forEach((track) => track.stop());
+      }
+      reusableStoreStreamRef.current = previousLocal;
+      setMicrophoneReady(true);
+    } else {
+      previousLocal?.getTracks().forEach((track) => track.stop());
+    }
+    if (releaseDevices) releaseMicrophone();
     remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
     remoteStreamRef.current = null;
 
@@ -293,7 +317,7 @@ export function useSupportVoiceCall({
     setSpeakerMuted(false);
     setNeedsAudioResume(false);
     setElapsedSeconds(0);
-  }, [side, stopElapsed]);
+  }, [side, stopElapsed, releaseMicrophone]);
 
   const attachRemoteStream = useCallback((stream: MediaStream) => {
     remoteStreamRef.current = stream;
@@ -435,16 +459,21 @@ export function useSupportVoiceCall({
 
     let localStream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        },
-        video: false
-      });
+      const cached = side === "store" ? reusableStoreStreamRef.current : null;
+      const stream = cached?.getAudioTracks().some((track) => track.readyState === "live")
+        ? cached
+        : await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            },
+            video: false
+          });
+      if (stream === cached) reusableStoreStreamRef.current = null;
       localStream = stream;
       localStreamRef.current = stream;
+      if (side === "store") setMicrophoneReady(true);
       stream.getAudioTracks().forEach((track) => {
         track.enabled = !held;
       });
@@ -617,6 +646,8 @@ export function useSupportVoiceCall({
       channelRef.current = channel;
     } catch (cause) {
       localStream?.getTracks().forEach((track) => track.stop());
+      if (localStreamRef.current === localStream) localStreamRef.current = null;
+      if (side === "store") setMicrophoneReady(false);
       runningRef.current = false;
       setPhase("failed");
       setError(micErrorMessage(cause));
@@ -751,13 +782,19 @@ export function useSupportVoiceCall({
   }, [held, side, startHoldMusic]);
 
   useEffect(() => {
+    const closeSession = () => {
+      releaseMicrophone();
+      localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = false; });
+    };
+    window.addEventListener("pagehide", closeSession);
     return () => {
+      window.removeEventListener("pagehide", closeSession);
       stopHoldMusic();
       holdSpeechRef.current = null;
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-      void cleanup(false);
+      void cleanup(false, true);
     };
-  }, [cleanup, stopHoldMusic]);
+  }, [cleanup, stopHoldMusic, releaseMicrophone]);
 
   useEffect(() => {
     if (!call || !["accepted", "connecting", "connected"].includes(call.status)) {
@@ -771,6 +808,8 @@ export function useSupportVoiceCall({
     phase,
     error,
     micMuted,
+    microphoneReady,
+    releaseMicrophone,
     speakerMuted,
     needsAudioResume,
     elapsedSeconds,
