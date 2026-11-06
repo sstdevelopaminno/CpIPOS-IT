@@ -61,7 +61,7 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(consoleUi).toContain('id = `broadcast:${event.client_id}`');
   });
 
-  it("adds status controls, IT notes and IT Support-only permanent deletion", () => {
+  it("adds status controls, IT notes and authorized IT permanent deletion", () => {
     expect(consoleUi).toContain("กำลังดูแล");
     expect(consoleUi).toContain("รอลูกค้า");
     expect(consoleUi).toContain("รอ IT");
@@ -69,8 +69,8 @@ describe("Support Chat Phase 1 - IT Control Plane", () => {
     expect(detail).toContain('action === "set_status"');
     expect(detail).toContain('action === "update_note"');
     expect(detail).toContain('action === "delete"');
-    expect(detail).toContain('platformRole !== "it_support"');
-    expect(edge).toContain('actor.role !== "it_support"');
+    expect(detail).toContain('["it_admin", "it_support"].includes(auth.auth.platformRole)');
+    expect(edge).toContain('["it_admin", "it_support"].includes(actor.role ?? "")');
   });
 
   it("avoids realtime notification loops and refreshes on focus/network recovery", () => {
