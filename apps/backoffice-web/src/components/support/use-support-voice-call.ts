@@ -329,12 +329,17 @@ export function useSupportVoiceCall({
     // ontrack can fire more than once for a single session or ICE restart.
     // Re-creating the Audio element interrupts playback and loses the jitter
     // buffer even when the underlying remote track has not changed.
-    const audio = audioElementRef.current ?? new Audio();
-    audio.autoplay = true;
-    audio.preload = "auto";
-    if (audio.srcObject !== stream) audio.srcObject = stream;
-    audio.muted = held || speakerMuted;
-    audioElementRef.current = audio;
+    if (!audioElementRef.current) {
+      const created = new Audio();
+      created.autoplay = true;
+      created.preload = "auto";
+      audioElementRef.current = created;
+    }
+    // Change media state via the ref so React treats it as an imperative
+    // external audio sink, not a React value mutated inside a callback.
+    if (audioElementRef.current.srcObject !== stream) audioElementRef.current.srcObject = stream;
+    audioElementRef.current.muted = held || speakerMuted;
+    const audio = audioElementRef.current;
     if (audio.paused) {
       void audio.play().then(() => {
         setNeedsAudioResume(false);
