@@ -151,6 +151,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const detailRefreshTimerRef = useRef<number | null>(null);
   const incomingPreviewTimerRef = useRef<number | null>(null);
   const detailLoadedIdRef = useRef("");
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToLatestRef = useRef(true);
   const [mobilePane, setMobilePane] = useState<"inbox" | "conversation">("inbox");
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -260,7 +262,15 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
+    stickToLatestRef.current = true;
   }, [selectedId]);
+
+  useEffect(() => {
+    // When a reply arrives, reveal it immediately if the agent is at the
+    // bottom. Never yank the transcript while reading older messages.
+    const scroller = chatScrollRef.current;
+    if (scroller && stickToLatestRef.current) scroller.scrollTop = scroller.scrollHeight;
+  }, [messages, selectedId]);
 
   useEffect(() => {
     void loadInbox();
@@ -365,6 +375,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
     // Optimistic local echo: the sender should never wait on cross-project
     // persistence just to see their own message.
+    stickToLatestRef.current = true;
     setMessages((current) => [...current, optimisticMessage]);
     setDraft("");
     setAttachment(null);
@@ -828,7 +839,14 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 </div>
               ) : null}
 
-              <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f7faff] p-3 pb-5 sm:p-4 sm:pb-6 [scrollbar-gutter:stable]">
+              <div ref={chatScrollRef}
+                onScroll={() => {
+                  const element = chatScrollRef.current;
+                  if (!element) return;
+                  stickToLatestRef.current =
+                    element.scrollHeight - element.scrollTop - element.clientHeight < 130;
+                }}
+                className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f7faff] p-3 pb-5 sm:p-4 sm:pb-6 [scrollbar-gutter:stable]">
                 {busy === "conversation" && !messages.length ? <div className="text-center text-xs text-slate-500">กำลังโหลด...</div> : null}
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
