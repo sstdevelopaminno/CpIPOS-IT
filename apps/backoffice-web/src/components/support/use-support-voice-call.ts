@@ -415,7 +415,8 @@ export function useSupportVoiceCall({
       const iceServers = await loadIceServers();
       // The network may have recovered while TURN credentials were loading.
       // Never renegotiate a recovered or replaced peer unnecessarily.
-      if (!runningRef.current || peerRef.current !== pc || pc.connectionState === "connected") return;
+      if (!runningRef.current || peerRef.current !== pc ||
+          pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") return;
       pc.setConfiguration({ iceServers });
       if (isInitiator) {
         remoteReadyRef.current = true;
