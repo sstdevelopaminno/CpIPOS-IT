@@ -126,6 +126,9 @@ export function LineSupportClient() {
     : `https://liff.line.me/${liffId}/payment`;
   const bootedRef = useRef(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const incomingNoticeTimerRef = useRef<number | null>(null);
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
@@ -145,6 +148,7 @@ export function LineSupportClient() {
   const [activeCall, setActiveCall] = useState<SupportVoiceCall | null>(null);
   const [draft, setDraft] = useState("");
   const [remoteTyping, setRemoteTyping] = useState("");
+  const [incomingNotice, setIncomingNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -190,6 +194,8 @@ export function LineSupportClient() {
     setMessages(detail.messages);
     setActiveCall(detail.active_call ?? null);
     setVoiceQueue(detail.voice_queue ?? null);
+    shouldAutoScrollRef.current = true;
+    setIncomingNotice("");
     setStage("chat");
   }, [setVoiceQueue]);
 
@@ -367,6 +373,7 @@ export function LineSupportClient() {
             })
           });
 
+          if (stopped || activeConversationIdRef.current !== conversationId) return;
           failures = 0;
           setActiveCall(result.call);
           setVoiceQueue(result.queue ?? null);
@@ -379,6 +386,7 @@ export function LineSupportClient() {
 
           schedule(12_000 + Math.floor(Math.random() * 8_000));
         } catch {
+          if (stopped) return;
           failures += 1;
           const backoff = Math.min(60_000, 12_000 * (2 ** Math.min(failures, 2)));
           schedule(backoff + Math.floor(Math.random() * 5_000));
@@ -433,6 +441,9 @@ export function LineSupportClient() {
           created_at?: string; name?: string };
         if (event.actor !== "it" || !event.client_id || !event.message || !event.created_at) return;
         setRemoteTyping("");
+        setIncomingNotice("ทีม IT ตอบกลับแล้ว");
+        if (incomingNoticeTimerRef.current !== null) window.clearTimeout(incomingNoticeTimerRef.current);
+        incomingNoticeTimerRef.current = window.setTimeout(() => setIncomingNotice(""), 4500);
         setMessages((current) => {
           const id = `broadcast:it:${event.client_id}`;
           return current.some((item) => item.id === id)
@@ -458,6 +469,8 @@ export function LineSupportClient() {
       if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
       if (realtimeRefreshTimerRef.current !== null) window.clearTimeout(realtimeRefreshTimerRef.current);
       realtimeRefreshTimerRef.current = null;
+      if (incomingNoticeTimerRef.current !== null) window.clearTimeout(incomingNoticeTimerRef.current);
+      incomingNoticeTimerRef.current = null;
       realtimeConnectedRef.current = false;
       setRemoteTyping("");
       typingChannelRef.current = null;
@@ -477,7 +490,11 @@ export function LineSupportClient() {
   }, []);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // Avoid repeatedly animating the whole transcript on every poll. Do not
+    // pull the customer to the bottom while reading older support messages.
+    if (shouldAutoScrollRef.current) {
+      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    }
   }, [messages.length]);
 
   // Do not logout on pagehide. Closing/swiping the LINE webview must preserve
@@ -617,6 +634,7 @@ export function LineSupportClient() {
     setConversation(null);
     setMessages([]);
     setActiveCall(null);
+    setIncomingNotice("");
     setStage("store");
   }
 
@@ -646,7 +664,8 @@ export function LineSupportClient() {
 
       if (result.call.status === "requested" && result.call.direction === "store_to_it") {
         setVoiceQueue(result.queue ?? null);
-        if (result.queue) announceVoiceQueue(result.queue);
+        // The first-call greeting already plays from the tap gesture. Do not
+        // cancel it immediately with a second queue announcement.
       } else {
         setVoiceQueue(null);
         stopWaitingMedia();
@@ -982,7 +1001,20 @@ export function LineSupportClient() {
                 ) : null}
               </div>
 
-              <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-4 pb-6 sm:px-4 sm:py-5">
+              <div ref={transcriptRef}
+                onScroll={() => {
+                  const element = transcriptRef.current;
+                  if (!element) return;
+                  shouldAutoScrollRef.current =
+                    element.scrollHeight - element.scrollTop - element.clientHeight < 130;
+                }}
+                className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-4 pb-6 sm:px-4 sm:py-5">
+                {incomingNotice ? (
+                  <div role="status" aria-live="polite"
+                    className="sticky top-1 z-10 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-800 shadow-sm">
+                    🔔 {incomingNotice}
+                  </div>
+                ) : null}
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
                     const welcome = message.message_body.startsWith("CpIPOS Support ให้บริการ");
