@@ -412,8 +412,8 @@ export async function POST(
     }
 
     if (action === "delete") {
-      if (auth.auth.platformRole !== "it_support") {
-        return fail("it_support_required", "เฉพาะ IT Support เท่านั้นที่ลบประวัติแชทได้", 403);
+      if (!["it_admin", "it_support"].includes(auth.auth.platformRole)) {
+        return fail("it_role_required", "เฉพาะเจ้าหน้าที่ IT เท่านั้นที่ลบประวัติแชทได้", 403);
       }
       const data = await callSupportChat<{ deleted: true; conversation_id: string; tenant_id?: string }>(
         bridge, "delete_conversation", { conversation_id: conversationId }
