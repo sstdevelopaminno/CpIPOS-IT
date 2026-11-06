@@ -141,7 +141,8 @@ async function attachmentPayload(file: File) {
 }
 
 export function SupportChatConsole({ historyOnly = false }: { historyOnly?: boolean }) {
-  const { canDelete } = useItAccess();
+  const { role, canDelete } = useItAccess();
+  const canPermanentlyDeleteChat = canDelete || role === "it_admin";
   const [rows, setRows] = useState<Head[]>([]);
   const [actor, setActor] = useState<InboxResponse["actor"] | null>(null);
   const [selectedId, setSelectedId] = useState("");
