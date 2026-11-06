@@ -168,7 +168,7 @@ export function useSupportVoiceCall({
         const noteIndex = Math.min(notes.length - 1, Math.floor(i / noteFrames));
         const phaseInNote = (i % noteFrames) / noteFrames;
         const envelope = Math.sin(Math.PI * Math.min(1, phaseInNote * 4)) * Math.sin(Math.PI * Math.min(1, (1 - phaseInNote) * 4));
-        data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) * envelope * 0.045;
+        data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) * envelope * 0.09;
       }
       const source = context.createBufferSource();
       source.buffer = buffer;
