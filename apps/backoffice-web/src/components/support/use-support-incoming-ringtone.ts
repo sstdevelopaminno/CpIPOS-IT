@@ -84,5 +84,10 @@ export function useSupportIncomingRingtone(incoming: boolean) {
     return () => window.clearInterval(timer);
   }, [incoming, ready, pulse]);
 
-  return { ringReady: ready, enableRing: enable };
+  const activateRing = useCallback(async () => {
+    await enable();
+    pulse();
+  }, [enable, pulse]);
+
+  return { ringReady: ready, activateRing };
 }
