@@ -109,6 +109,9 @@ export function useSupportVoiceCall({
   const signalingKeyRef = useRef(call?.signaling_key ?? "");
   const holdAudioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode; gain: GainNode } | null>(null);
   const heldAnnouncedRef = useRef(false);
+  const holdSpeechRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const holdSpeechTimerRef = useRef<number | null>(null);
+  const [holdSpeechIssue, setHoldSpeechIssue] = useState(false);
 
   const [phase, setPhase] = useState<SupportVoicePhase>("idle");
   const [error, setError] = useState("");
@@ -203,26 +206,39 @@ export function useSupportVoiceCall({
     if (typeof window === "undefined" || !("speechSynthesis" in window) ||
         typeof SpeechSynthesisUtterance === "undefined") return;
     try {
-      window.speechSynthesis.cancel();
+      const synth = window.speechSynthesis;
+      synth.cancel();
       const utterance = new SpeechSynthesisUtterance(
         "ขณะนี้กำลังพักสายเพื่อส่งต่อเจ้าหน้าที่ กรุณารอสักครู่"
       );
+      holdSpeechRef.current = utterance;
       utterance.lang = "th-TH";
+      const thaiVoice = synth.getVoices().find((voice) => voice.lang.toLowerCase().startsWith("th"));
+      if (thaiVoice) utterance.voice = thaiVoice;
       utterance.volume = 1;
       utterance.rate = 0.94;
       utterance.onstart = () => {
+        setHoldSpeechIssue(false);
         const playing = holdAudioRef.current;
-        if (playing) playing.gain.gain.setTargetAtTime(0.16, playing.context.currentTime, 0.05);
+        if (playing) playing.gain.gain.setTargetAtTime(0.08, playing.context.currentTime, 0.05);
       };
       const restore = () => {
         const playing = holdAudioRef.current;
         if (playing && held) playing.gain.gain.setTargetAtTime(0.85, playing.context.currentTime, 0.12);
       };
-      utterance.onend = restore;
-      utterance.onerror = restore;
-      window.speechSynthesis.speak(utterance);
+      utterance.onend = () => {
+        restore();
+        if (holdSpeechRef.current === utterance) holdSpeechRef.current = null;
+      };
+      utterance.onerror = () => {
+        setHoldSpeechIssue(true);
+        restore();
+        if (holdSpeechRef.current === utterance) holdSpeechRef.current = null;
+      };
+      synth.speak(utterance);
+      if (synth.paused) synth.resume();
     } catch {
-      // The local music continues even when device TTS is unavailable.
+      setHoldSpeechIssue(true);
     }
   }, [held, side, startHoldMusic]);
 
@@ -704,6 +720,22 @@ export function useSupportVoiceCall({
 
   useEffect(() => {
     if (!held || side !== "store") return;
+    holdSpeechTimerRef.current = window.setInterval(() => {
+      if (document.visibilityState === "visible") replayHoldAudio();
+    }, 25_000);
+    const onVoicesLoaded = () => {
+      if (holdSpeechIssue) replayHoldAudio();
+    };
+    if ("speechSynthesis" in window) window.speechSynthesis.addEventListener("voiceschanged", onVoicesLoaded);
+    return () => {
+      if (holdSpeechTimerRef.current !== null) window.clearInterval(holdSpeechTimerRef.current);
+      holdSpeechTimerRef.current = null;
+      if ("speechSynthesis" in window) window.speechSynthesis.removeEventListener("voiceschanged", onVoicesLoaded);
+    };
+  }, [held, side, replayHoldAudio, holdSpeechIssue]);
+
+  useEffect(() => {
+    if (!held || side !== "store") return;
     const restoreHoldAudio = () => {
       if (document.visibilityState === "visible") void startHoldMusic(true);
     };
@@ -718,6 +750,8 @@ export function useSupportVoiceCall({
   useEffect(() => {
     return () => {
       stopHoldMusic();
+      holdSpeechRef.current = null;
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
       void cleanup(false);
     };
   }, [cleanup, stopHoldMusic]);
@@ -743,6 +777,7 @@ export function useSupportVoiceCall({
     toggleSpeaker,
     resumeAudio,
     replayHoldAudio,
+    holdSpeechIssue,
     canStart: Boolean(call?.signaling_key) && ["accepted", "connecting", "connected"].includes(call?.status ?? "")
   };
 }
