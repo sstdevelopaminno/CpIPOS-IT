@@ -1106,6 +1106,8 @@ export function LineSupportClient() {
         onToggleMic={voice.toggleMic}
         onToggleSpeaker={voice.toggleSpeaker}
         onResumeAudio={() => void voice.resumeAudio()}
+        onReplayWaitingAudio={() => startWaitingMedia(voiceQueue)}
+        onReplayHoldAudio={voice.replayHoldAudio}
         onOpenExternalBrowser={voice.error ? openVoiceInExternalBrowser : undefined}
       />
     </>
