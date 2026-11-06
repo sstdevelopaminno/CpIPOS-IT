@@ -349,6 +349,12 @@ export function LineSupportClient() {
     held: voiceHeld
   });
 
+  useEffect(() => {
+    // A remote IT close can end the room without the customer tapping "ออก".
+    // Never keep even a disabled microphone stream for a closed conversation.
+    if (conversation?.status === "closed") voice.releaseMicrophone();
+  }, [conversation?.status, voice.releaseMicrophone]);
+
   const openChat = useCallback(async () => {
     setBusy("open");
     setError("");
