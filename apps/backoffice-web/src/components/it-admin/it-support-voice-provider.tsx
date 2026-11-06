@@ -364,7 +364,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
         ? "incoming"
         : "outgoing"
       : "active";
-  const { ringReady, enableRing } = useSupportIncomingRingtone(Boolean(call && mode === "incoming"));
+  const { ringReady, activateRing } = useSupportIncomingRingtone(Boolean(call && mode === "incoming"));
   const compactIncoming = mode === "incoming" && !incomingExpanded;
 
   const value = useMemo<ItSupportVoiceContextValue>(() => ({
