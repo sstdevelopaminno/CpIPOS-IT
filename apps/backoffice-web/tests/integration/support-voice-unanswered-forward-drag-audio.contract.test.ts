@@ -15,6 +15,8 @@ describe("IT unanswered voice forwarding and movable call panel", () => {
     expect(provider).toContain('call?.transfer_status !== "requested"');
     expect(provider).toContain('control("voice_transfer", conversation.id, call.id');
     expect(provider).toContain("if (wasUnanswered)");
+    expect(provider).toContain('autoMinimizedCallIdRef.current !== call.id');
+    expect(provider).toContain("setMinimized(true)");
     expect(provider).toContain("setCall(null)");
     expect(overlay).toContain('label="ส่งต่อสาย"');
     expect(overlay).toContain("onClick={onOpenTransfer}");
