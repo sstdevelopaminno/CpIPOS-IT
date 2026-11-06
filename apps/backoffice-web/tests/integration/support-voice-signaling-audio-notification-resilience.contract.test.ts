@@ -62,7 +62,7 @@ describe("Support voice/audio and two-way alert resilience", () => {
     expect(notifier).toContain("notificationAudioRef");
     expect(notifier).toContain('window.addEventListener("pointerdown", unlockNotificationSound, true)');
     expect(notifier).toContain('window.addEventListener("keydown", unlockNotificationSound, true)');
-    expect(notifier).toContain("if (ctx.state !== \"running\") return");
+    expect(notifier).toContain("if (!ctx || ctx.state !== \"running\") return");
     expect(notifier).toContain("playMessageAlert()");
     expect(notifier).toContain('new Notification(title,');
     expect(notifier).toContain('window.removeEventListener("pointerdown", unlockNotificationSound, true)');
