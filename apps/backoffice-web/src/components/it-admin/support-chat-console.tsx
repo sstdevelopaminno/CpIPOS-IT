@@ -146,7 +146,6 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const [actor, setActor] = useState<InboxResponse["actor"] | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const selectedIdRef = useRef(selectedId);
-  selectedIdRef.current = selectedId;
   const detailRequestRef = useRef(0);
   const detailRefreshTimerRef = useRef<number | null>(null);
   const [mobilePane, setMobilePane] = useState<"inbox" | "conversation">("inbox");
@@ -235,6 +234,10 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       if (requestId === detailRequestRef.current && selectedIdRef.current === id) setBusy("");
     }
   }, [clearGoneConversation]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   useEffect(() => {
     void loadInbox();
