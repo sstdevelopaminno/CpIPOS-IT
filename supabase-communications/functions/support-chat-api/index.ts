@@ -260,6 +260,8 @@ async function voiceQueueSnapshot(
 
 function transferOfferForActor(row: Record<string, unknown>, actor: Actor) {
   if (actor.actor !== "it" || row.transfer_status !== "requested") return false;
+  // The forwarding agent must not accept their own department-level handoff.
+  if (row.transfer_requested_by_user_id === actor.uid) return false;
   const targetUserId = row.transfer_target_user_id ? String(row.transfer_target_user_id) : "";
   const targetRole = row.transfer_target_role ? String(row.transfer_target_role) : "";
   if (targetUserId) return targetUserId === actor.uid;
