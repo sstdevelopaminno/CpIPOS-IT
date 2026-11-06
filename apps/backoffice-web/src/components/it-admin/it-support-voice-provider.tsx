@@ -87,6 +87,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   const refreshEpochRef = useRef(0);
   const controlInFlightRef = useRef(false);
   const autoStartTransferRef = useRef(false);
+  const autoMinimizedCallIdRef = useRef("");
 
   const refresh = useCallback(async () => {
     if (controlInFlightRef.current) return;
@@ -184,6 +185,13 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
 
   const updateVoiceState = useCallback(async (state: "connecting" | "connected") => {
     if (!conversation?.id || !call?.id) return;
+    if (state === "connected" && autoMinimizedCallIdRef.current !== call.id) {
+      // Once audio is actually connected, switch to a movable window instead
+      // of leaving a full-screen overlay on top of the IT workspace. Restore
+      // remains available and is never overridden on this same call.
+      autoMinimizedCallIdRef.current = call.id;
+      setMinimized(true);
+    }
     const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${conversation.id}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -224,7 +232,11 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   }, [call?.id, conversation?.id, voice, control]);
 
   const openTransferPicker = useCallback(async () => {
-    if (!call?.id || call.status !== "connected" || call.transfer_offer_for_me) return;
+    const incomingUnanswered = call?.status === "requested" &&
+      call.direction === "store_to_it" && !call.transfer_offer_for_me &&
+      call.transfer_status !== "requested";
+    if (!call?.id || (!incomingUnanswered && call.status !== "connected") ||
+        call.transfer_offer_for_me || call.transfer_status === "requested") return;
     setTransferPickerOpen(true);
     setTransferLoading(true);
     setControlError("");
@@ -247,13 +259,22 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     platform_role: "it_admin" | "it_support";
   }) => {
     if (!call?.id || !conversation?.id) return;
+    const wasUnanswered = call.status === "requested" && call.direction === "store_to_it";
     await control("voice_transfer", conversation.id, call.id, {
       target_user_id: target.id ?? null,
       target_name: target.full_name,
       target_role: target.platform_role
     });
     setTransferPickerOpen(false);
-  }, [call?.id, conversation?.id, control]);
+    if (wasUnanswered) {
+      // The original recipient must not keep the forwarded incoming dialog.
+      setCall(null);
+      setConversation(null);
+      setQueue(null);
+      lastCallIdRef.current = "";
+      window.setTimeout(() => void refresh(), 250);
+    }
+  }, [call?.id, call?.status, call?.direction, conversation?.id, control, refresh]);
 
   const cancelTransfer = useCallback(async () => {
     if (!call?.id || !conversation?.id) return;
@@ -427,7 +448,11 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
         onToggleMic={voice.toggleMic}
         onToggleSpeaker={voice.toggleSpeaker}
         onResumeAudio={() => void voice.resumeAudio()}
-        canTransfer={mode === "active" && call?.status === "connected" && call?.transfer_status !== "requested"}
+        canTransfer={Boolean(
+          (mode === "active" && call?.status === "connected" && call?.transfer_status !== "requested") ||
+          (mode === "incoming" && !transferOffer && call?.direction === "store_to_it" &&
+            call?.status === "requested" && call?.transfer_status !== "requested")
+        )}
         transferPending={call?.transfer_status === "requested" && !transferOffer}
         transferTargetLabel={call?.transfer_target_name || undefined}
         transferPickerOpen={transferPickerOpen}

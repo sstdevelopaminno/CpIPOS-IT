@@ -107,7 +107,7 @@ export function useSupportVoiceCall({
   const recoveryAttemptsRef = useRef(0);
   const recoverConnectionRef = useRef<() => void>(() => undefined);
   const signalingKeyRef = useRef(call?.signaling_key ?? "");
-  const holdAudioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode } | null>(null);
+  const holdAudioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode; gain: GainNode } | null>(null);
   const heldAnnouncedRef = useRef(false);
 
   const [phase, setPhase] = useState<SupportVoicePhase>("idle");
@@ -145,18 +145,29 @@ export function useSupportVoiceCall({
     void current.context.close().catch(() => null);
   }, []);
 
-  const startHoldMusic = useCallback(async () => {
-    if (holdAudioRef.current) {
-      if (holdAudioRef.current.context.state === "suspended") {
-        await holdAudioRef.current.context.resume().catch(() => null);
+  const muteHoldMusic = useCallback(() => {
+    const playing = holdAudioRef.current;
+    if (playing) playing.gain.gain.setTargetAtTime(0, playing.context.currentTime, 0.06);
+  }, []);
+
+  const startHoldMusic = useCallback(async (audible = true) => {
+    if (typeof window === "undefined") return;
+    const existing = holdAudioRef.current;
+    if (existing) {
+      existing.gain.gain.setTargetAtTime(audible ? 0.85 : 0, existing.context.currentTime, 0.06);
+      if (existing.context.state === "suspended") {
+        await existing.context.resume().catch(() => null);
       }
       return;
     }
-    if (typeof window === "undefined") return;
-    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AudioContextCtor = window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextCtor) return;
 
     try {
+      // Start a silent, reusable audio graph in the customer's actual
+      // "start voice" click. Creating a fresh AudioContext during transfer
+      // (without user activation) is blocked by many Android LINE WebViews.
       const context = new AudioContextCtor();
       const seconds = 8;
       const frameCount = Math.floor(context.sampleRate * seconds);
@@ -167,14 +178,19 @@ export function useSupportVoiceCall({
       for (let i = 0; i < frameCount; i += 1) {
         const noteIndex = Math.min(notes.length - 1, Math.floor(i / noteFrames));
         const phaseInNote = (i % noteFrames) / noteFrames;
-        const envelope = Math.sin(Math.PI * Math.min(1, phaseInNote * 4)) * Math.sin(Math.PI * Math.min(1, (1 - phaseInNote) * 4));
-        data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) * envelope * 0.09;
+        const envelope = Math.sin(Math.PI * Math.min(1, phaseInNote * 4)) *
+          Math.sin(Math.PI * Math.min(1, (1 - phaseInNote) * 4));
+        data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) *
+          envelope * 0.15;
       }
       const source = context.createBufferSource();
+      const gain = context.createGain();
+      gain.gain.value = audible ? 0.85 : 0;
       source.buffer = buffer;
       source.loop = true;
-      source.connect(context.destination);
-      holdAudioRef.current = { context, source };
+      source.connect(gain);
+      gain.connect(context.destination);
+      holdAudioRef.current = { context, source, gain };
       source.start();
       if (context.state === "suspended") await context.resume().catch(() => null);
     } catch {
@@ -184,7 +200,7 @@ export function useSupportVoiceCall({
 
   const replayHoldAudio = useCallback(() => {
     if (!held || side !== "store") return;
-    void startHoldMusic();
+    void startHoldMusic(true);
     if (typeof window === "undefined" || !("speechSynthesis" in window) ||
         typeof SpeechSynthesisUtterance === "undefined") return;
     try {
@@ -195,9 +211,19 @@ export function useSupportVoiceCall({
       utterance.lang = "th-TH";
       utterance.volume = 1;
       utterance.rate = 0.94;
+      utterance.onstart = () => {
+        const playing = holdAudioRef.current;
+        if (playing) playing.gain.gain.setTargetAtTime(0.16, playing.context.currentTime, 0.05);
+      };
+      const restore = () => {
+        const playing = holdAudioRef.current;
+        if (playing && held) playing.gain.gain.setTargetAtTime(0.85, playing.context.currentTime, 0.12);
+      };
+      utterance.onend = restore;
+      utterance.onerror = restore;
       window.speechSynthesis.speak(utterance);
     } catch {
-      // A LINE WebView can block speech until a direct tap; the button retries.
+      // The local music continues even when device TTS is unavailable.
     }
   }, [held, side, startHoldMusic]);
 
@@ -379,6 +405,9 @@ export function useSupportVoiceCall({
       return;
     }
 
+    // Prime the customer hold channel before the first await, while
+    // a direct tap still grants Android WebView audio playback permission.
+    if (side === "store" && !held) void startHoldMusic(false);
     await cleanup(false);
     signalingKeyRef.current = call.signaling_key;
     setError("");
@@ -588,13 +617,15 @@ export function useSupportVoiceCall({
     recoverConnection,
     sendReady,
     side,
-    startElapsed
+    startElapsed,
+    startHoldMusic
   ]);
 
   const endLocal = useCallback(async () => {
     await cleanup(true);
+    stopHoldMusic();
     setPhase("idle");
-  }, [cleanup]);
+  }, [cleanup, stopHoldMusic]);
 
   const toggleMic = useCallback(() => {
     const nextMuted = !micMuted;
@@ -627,14 +658,15 @@ export function useSupportVoiceCall({
     if (audioElementRef.current) {
       audioElementRef.current.muted = held || speakerMuted;
     }
-    if (held) {
-      void startHoldMusic();
-      if (side === "store" && !heldAnnouncedRef.current) replayHoldAudio();
+    if (held && side === "store") {
+      void startHoldMusic(true);
+      if (!heldAnnouncedRef.current) replayHoldAudio();
     } else {
-      stopHoldMusic();
+      // Keep the primed channel alive but silent for subsequent transfers.
+      muteHoldMusic();
     }
     heldAnnouncedRef.current = held;
-  }, [held, micMuted, speakerMuted, side, replayHoldAudio, startHoldMusic, stopHoldMusic]);
+  }, [held, micMuted, speakerMuted, side, replayHoldAudio, startHoldMusic, muteHoldMusic]);
 
   useEffect(() => {
     const nextKey = call?.signaling_key ?? "";
@@ -672,6 +704,19 @@ export function useSupportVoiceCall({
   }, [recoverConnection]);
 
   useEffect(() => {
+    if (!held || side !== "store") return;
+    const restoreHoldAudio = () => {
+      if (document.visibilityState === "visible") void startHoldMusic(true);
+    };
+    window.addEventListener("focus", restoreHoldAudio);
+    document.addEventListener("visibilitychange", restoreHoldAudio);
+    return () => {
+      window.removeEventListener("focus", restoreHoldAudio);
+      document.removeEventListener("visibilitychange", restoreHoldAudio);
+    };
+  }, [held, side, startHoldMusic]);
+
+  useEffect(() => {
     return () => {
       stopHoldMusic();
       void cleanup(false);
@@ -681,9 +726,10 @@ export function useSupportVoiceCall({
   useEffect(() => {
     if (!call || !["accepted", "connecting", "connected"].includes(call.status)) {
       if (runningRef.current) void cleanup(false);
+      stopHoldMusic();
       setPhase("idle");
     }
-  }, [call, cleanup]);
+  }, [call, cleanup, stopHoldMusic]);
 
   return {
     phase,

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { formatVoiceDuration, type SupportVoicePhase } from "@/components/support/use-support-voice-call";
 
 type CallMode = "incoming" | "outgoing" | "active";
@@ -159,16 +160,140 @@ export function SupportVoiceCallOverlay({
   onTransferToUser,
   onCancelTransfer
 }: SupportVoiceCallOverlayProps) {
+  const [bubblePosition, setBubblePosition] = useState<{ x: number; y: number } | null>(null);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const draggingRef = useRef<{ id: number; dx: number; dy: number } | null>(null);
+
+  const handleDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
+    const bounds = bubbleRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    draggingRef.current = {
+      id: event.pointerId,
+      dx: event.clientX - bounds.left,
+      dy: event.clientY - bounds.top
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+  const handleDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = draggingRef.current;
+    const bubble = bubbleRef.current;
+    if (!drag || !bubble || drag.id !== event.pointerId) return;
+    setBubblePosition({
+      x: Math.min(Math.max(8, window.innerWidth - bubble.offsetWidth - 8),
+        Math.max(8, event.clientX - drag.dx)),
+      y: Math.min(Math.max(8, window.innerHeight - bubble.offsetHeight - 8),
+        Math.max(8, event.clientY - drag.dy))
+    });
+  };
+  const handleDragEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (draggingRef.current?.id !== event.pointerId) return;
+    draggingRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+  useEffect(() => {
+    if (!open) return;
+    const constrain = () => {
+      const bubble = bubbleRef.current;
+      if (!bubble) return;
+      setBubblePosition((current) => current && ({
+        x: Math.min(Math.max(8, window.innerWidth - bubble.offsetWidth - 8), Math.max(8, current.x)),
+        y: Math.min(Math.max(8, window.innerHeight - bubble.offsetHeight - 8), Math.max(8, current.y))
+      }));
+    };
+    window.addEventListener("resize", constrain);
+    return () => window.removeEventListener("resize", constrain);
+  }, [open]);
+
   if (!open) return null;
 
   const connected = phase === "connected";
   const micBlocked = Boolean(error?.includes("ไมโครโฟน") || error?.includes("อนุญาต"));
   const transferText = transferTargetLabel ? `กำลังโอนไปยัง ${transferTargetLabel}` : "กำลังรอผู้รับโอนสาย";
 
+  const transferDialog = transferPickerOpen ? (
+        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/70 p-4 sm:items-center">
+          <div className="max-h-[82dvh] w-full max-w-lg overflow-hidden rounded-[30px] bg-white text-slate-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <div className="text-lg font-black">โอนสาย</div>
+                <div className="mt-1 text-xs text-slate-500">เลือกแผนกหรือพนักงานที่จะรับช่วงต่อ</div>
+              </div>
+              <button type="button" onClick={onCloseTransfer} className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
+                ✕
+              </button>
+            </div>
+
+            <div className="max-h-[calc(82dvh-92px)] overflow-y-auto p-5">
+              {transferTargetsLoading ? (
+                <div className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
+                  กำลังโหลดผู้รับโอน…
+                </div>
+              ) : (
+                <>
+                  <div className="text-xs font-black uppercase tracking-wide text-slate-400">โอนไปทั้งแผนก</div>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {transferDepartments.map((department) => (
+                      <button
+                        key={department.role}
+                        type="button"
+                        onClick={() => onTransferToDepartment?.(department.role, department.label)}
+                        disabled={busy}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left disabled:opacity-50"
+                      >
+                        <div className="text-sm font-black">{department.label}</div>
+                        <div className="mt-1 text-xs text-slate-500">เจ้าหน้าที่ว่างคนแรกในแผนกรับต่อ</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 text-xs font-black uppercase tracking-wide text-slate-400">โอนไปพนักงานรายบุคคล</div>
+                  <div className="mt-3 space-y-2">
+                    {transferTargets.length ? transferTargets.map((target) => (
+                      <button
+                        key={target.id}
+                        type="button"
+                        onClick={() => onTransferToUser?.(target)}
+                        disabled={busy}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-left disabled:opacity-50"
+                      >
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-black">
+                          {target.full_name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-black">{target.full_name}</div>
+                          <div className="text-xs text-slate-500">{roleLabel(target.platform_role)}</div>
+                        </div>
+                        <div className="text-lg text-slate-400">›</div>
+                      </button>
+                    )) : (
+                      <div className="rounded-2xl bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+                        ยังไม่มีพนักงานอื่นที่เปิดใช้งาน
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null;
+
   if (minimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-[120] w-[min(94vw,390px)] rounded-3xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
-        <div className="flex items-start gap-3">
+      <>
+      <div ref={bubbleRef}
+        style={bubblePosition ? { left: bubblePosition.x, top: bubblePosition.y, right: "auto", bottom: "auto" } : undefined}
+        className="fixed bottom-4 right-4 z-[120] w-[min(94vw,390px)] rounded-3xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl">
+        <div className="flex touch-none cursor-grab select-none items-start gap-3 active:cursor-grabbing"
+          aria-label="ลากแถบนี้เพื่อย้ายตำแหน่งหน้าต่างโทร"
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}>
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white">
             <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={34} height={34} className="h-8 w-8 object-contain" />
           </div>
@@ -215,10 +340,18 @@ export function SupportVoiceCallOverlay({
           </button>
         </div>
 
-        <div className="mt-3 text-center text-[10px] text-white/35">
-          สายยังเชื่อมต่ออยู่ สามารถเปิดเมนูอื่นในระบบ IT ได้
+        {canStart && ["idle", "failed"].includes(phase) ? (
+          <button type="button" onClick={onStart} disabled={busy}
+            className="mt-3 w-full rounded-xl bg-emerald-500 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
+            🎙️ {phase === "failed" ? "เชื่อมต่อเสียงใหม่" : "เริ่มคุยด้วยเสียง"}
+          </button>
+        ) : null}
+        <div className="mt-3 text-center text-[10px] text-white/50">
+          จับแถบชื่อร้านแล้วลากเพื่อย้ายตำแหน่ง · ใช้เมนู IT ระหว่างคุยได้
         </div>
       </div>
+      {transferDialog}
+      </>
     );
   }
 
@@ -372,16 +505,11 @@ export function SupportVoiceCallOverlay({
         </div>
 
         {mode === "incoming" ? (
-          onDecline ? (
-            <div className="mx-auto flex w-full max-w-sm items-end justify-around gap-8 pb-4">
-              <RoundButton label="ปฏิเสธ" symbol="✕" tone="red" disabled={busy} onClick={onDecline} />
-              <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
-            </div>
-          ) : (
-            <div className="mx-auto flex w-full max-w-sm justify-center pb-4">
-              <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
-            </div>
-          )
+          <div className="mx-auto flex w-full max-w-sm items-end justify-around gap-4 pb-4">
+            {onDecline ? <RoundButton label="ปฏิเสธ" symbol="✕" tone="red" disabled={busy} onClick={onDecline} /> : null}
+            {canTransfer ? <RoundButton label="ส่งต่อสาย" symbol="⇄" tone="blue" disabled={busy} onClick={onOpenTransfer} /> : null}
+            <RoundButton label="รับสาย" symbol="☎" tone="green" disabled={busy} onClick={onAccept} />
+          </div>
         ) : mode === "outgoing" ? (
           <div className="mx-auto flex w-full max-w-sm justify-center pb-4">
             <RoundButton label="ยกเลิก" symbol="☎" tone="red" disabled={busy} onClick={onCancel} />
@@ -429,73 +557,7 @@ export function SupportVoiceCallOverlay({
         </div>
       </div>
 
-      {transferPickerOpen ? (
-        <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/70 p-4 sm:items-center">
-          <div className="max-h-[82dvh] w-full max-w-lg overflow-hidden rounded-[30px] bg-white text-slate-950 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div>
-                <div className="text-lg font-black">โอนสาย</div>
-                <div className="mt-1 text-xs text-slate-500">เลือกแผนกหรือพนักงานที่จะรับช่วงต่อ</div>
-              </div>
-              <button type="button" onClick={onCloseTransfer} className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black">
-                ✕
-              </button>
-            </div>
-
-            <div className="max-h-[calc(82dvh-92px)] overflow-y-auto p-5">
-              {transferTargetsLoading ? (
-                <div className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
-                  กำลังโหลดผู้รับโอน…
-                </div>
-              ) : (
-                <>
-                  <div className="text-xs font-black uppercase tracking-wide text-slate-400">โอนไปทั้งแผนก</div>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    {transferDepartments.map((department) => (
-                      <button
-                        key={department.role}
-                        type="button"
-                        onClick={() => onTransferToDepartment?.(department.role, department.label)}
-                        disabled={busy}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left disabled:opacity-50"
-                      >
-                        <div className="text-sm font-black">{department.label}</div>
-                        <div className="mt-1 text-xs text-slate-500">เจ้าหน้าที่ว่างคนแรกในแผนกรับต่อ</div>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-6 text-xs font-black uppercase tracking-wide text-slate-400">โอนไปพนักงานรายบุคคล</div>
-                  <div className="mt-3 space-y-2">
-                    {transferTargets.length ? transferTargets.map((target) => (
-                      <button
-                        key={target.id}
-                        type="button"
-                        onClick={() => onTransferToUser?.(target)}
-                        disabled={busy}
-                        className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-left disabled:opacity-50"
-                      >
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-black">
-                          {target.full_name.slice(0, 1).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-black">{target.full_name}</div>
-                          <div className="text-xs text-slate-500">{roleLabel(target.platform_role)}</div>
-                        </div>
-                        <div className="text-lg text-slate-400">›</div>
-                      </button>
-                    )) : (
-                      <div className="rounded-2xl bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
-                        ยังไม่มีพนักงานอื่นที่เปิดใช้งาน
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {transferDialog}
     </div>
   );
 }
