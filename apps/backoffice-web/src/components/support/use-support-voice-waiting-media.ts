@@ -64,7 +64,7 @@ export function useSupportVoiceWaitingMedia() {
         const phaseInNote = (i % noteFrames) / noteFrames;
         const fadeIn = Math.min(1, phaseInNote * 5);
         const fadeOut = Math.min(1, (1 - phaseInNote) * 5);
-        const envelope = Math.sin(Math.PI * Math.min(fadeIn, fadeOut));
+        const envelope = Math.min(1, fadeIn, fadeOut); // Sustain audible amplitude throughout each note
         data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) * envelope * 0.11;
       }
 
