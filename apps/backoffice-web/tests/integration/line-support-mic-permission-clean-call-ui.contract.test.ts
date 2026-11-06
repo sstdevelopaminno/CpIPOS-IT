@@ -22,7 +22,8 @@ describe("LINE voice permission and uncluttered customer screen", () => {
   it("mutes before network operations and revokes the session mic when leaving", () => {
     const cleanup = voice.slice(voice.indexOf("  const cleanup = useCallback("), voice.indexOf("  const attachRemoteStream = useCallback("));
     expect(cleanup.indexOf("track.enabled = false")).toBeLessThan(cleanup.indexOf("await channel.send"));
-    expect(voice).toContain('window.addEventListener("pagehide", closeSession)');
+    expect(voice).not.toContain('addEventListener("pagehide"');
+    expect(voice).toContain("void cleanup(false, true)");
     expect(voice).toContain("void cleanup(false, true)");
     expect(voice).toContain("releaseMicrophone");
     expect(client).toContain("voice.releaseMicrophone()");
