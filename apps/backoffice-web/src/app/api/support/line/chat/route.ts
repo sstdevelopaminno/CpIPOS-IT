@@ -1,4 +1,6 @@
 import { fail, ok } from "@/lib/http";
+import { after } from "next/server";
+import { dispatchSupportPush } from "@/lib/support-chat/support-push";
 import {
   LineSupportError,
   clearLineSupportSession,
@@ -87,7 +89,22 @@ export async function POST(request: Request) {
         failClosedOnBackendError: true
       });
       if (!rate.ok) return fail("support_chat_rate_limited", "ส่งข้อความถี่เกินไป กรุณารอสักครู่", 429);
-      return ok(await sendLineSupportMessage(session, conversationId, message));
+      const sent = await sendLineSupportMessage(session, conversationId, message);
+      // Notify background IT PWAs only after the canonical LINE message is saved.
+      // Web Push must not delay the customer's chat acknowledgment.
+      after(async () => {
+        await dispatchSupportPush({
+          audience: "it",
+          kind: "chat",
+          title: "ข้อความใหม่จากลูกค้า LINE Support",
+          body: message.slice(0, 180),
+          url: "/it-admin/support-chat",
+          tag: `support-chat:${conversationId}`
+        }).catch((error: unknown) => {
+          console.warn("[line-support] IT push failed", error instanceof Error ? error.message : "unknown");
+        });
+      });
+      return ok(sent);
     }
 
 
@@ -148,12 +165,27 @@ export async function POST(request: Request) {
       if (action !== "voice_request" && !callId) {
         return fail("call_id_required", "ไม่พบคำขอคุยด้วยเสียง", 422);
       }
-      return ok(await performLineSupportVoiceAction(
+      const result = await performLineSupportVoiceAction(
         session,
         conversationId,
         target,
         callId || undefined
-      ));
+      );
+      if (action === "voice_request") {
+        after(async () => {
+          await dispatchSupportPush({
+            audience: "it",
+            kind: "chat",
+            title: "📞 ลูกค้าขอคุยด้วยเสียง",
+            body: "มีคำขอคุยด้วยเสียงจาก LINE Support",
+            url: "/it-admin/support-chat",
+            tag: `support-voice:${conversationId}`
+          }).catch((error: unknown) => {
+            console.warn("[line-support] IT voice push failed", error instanceof Error ? error.message : "unknown");
+          });
+        });
+      }
+      return ok(result);
     }
 
     if (action === "close") {
