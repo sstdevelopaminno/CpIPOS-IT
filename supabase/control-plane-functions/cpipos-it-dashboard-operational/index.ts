@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const PRIMARY_URL = "https://deejlitaivfnsbwqdugy.supabase.co";
 const PRIMARY_PUBLISHABLE_KEY = "sb_publishable_nGX5abZtEmd7Ynzyofop1A_caORaUII";
+const PRIMARY_DELETE_VERIFY_URL = `${PRIMARY_URL}/functions/v1/cpipos-it-dashboard-primary`;
 const JSON_HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
 
 function json(body: unknown, status = 200) {
@@ -48,7 +49,7 @@ async function authorizePrimaryItUser(token: string) {
   if (profileError || !profile?.is_active) return null;
   const role = String(profile.platform_role ?? "");
   if (!["it_admin", "it_support"].includes(role)) return null;
-  return { userId: userResult.user.id, role, primary };
+  return { userId: userResult.user.id, role };
 }
 
 async function metrics(admin: ReturnType<typeof createClient>) {
@@ -79,14 +80,29 @@ async function metrics(admin: ReturnType<typeof createClient>) {
 
 async function deleteTenantCommunications(
   admin: ReturnType<typeof createClient>,
-  primary: ReturnType<typeof createClient>,
+  token: string,
   tenantId: string
 ) {
-  const verification = await primary.rpc("it_verify_tenant_deleted_for_cross_plane_cleanup", {
-    p_tenant_id: tenantId
+  const verificationResponse = await fetch(PRIMARY_DELETE_VERIFY_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      action: "verify_tenant_deletion_receipt",
+      tenant_id: tenantId
+    })
   });
-  if (verification.error || verification.data !== true) {
-    return json({ error: "primary_deletion_not_verified" }, 409);
+  const verification = await verificationResponse.json().catch(() => null) as {
+    verified?: boolean;
+    reason?: string;
+  } | null;
+  if (!verificationResponse.ok || verification?.verified !== true) {
+    return json({
+      error: "primary_deletion_not_verified",
+      reason: verification?.reason ?? "verification_unavailable"
+    }, 409);
   }
 
   const deleted = await admin.rpc("it_delete_tenant_communications", {
@@ -174,7 +190,7 @@ Deno.serve(async (req) => {
       if (action === "delete_tenant_communications") {
         if (actor.role !== "it_support") return json({ error: "it_support_required" }, 403);
         if (!isUuid(body?.tenant_id)) return json({ error: "invalid_tenant_id" }, 422);
-        return await deleteTenantCommunications(admin, actor.primary, body.tenant_id);
+        return await deleteTenantCommunications(admin, token, body.tenant_id);
       }
     }
 
