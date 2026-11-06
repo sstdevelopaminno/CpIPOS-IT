@@ -558,6 +558,13 @@ export function LineSupportClient() {
         if (event.actor !== "it" || !event.client_id) return;
         setMessages((current) => current.filter((item) => item.id !== `broadcast:it:${event.client_id}`));
       })
+      .on("broadcast", { event: "message_confirmed" }, ({ payload }) => {
+        const event = payload as { actor?: string; client_id?: string };
+        if (event.actor !== "it" || !event.client_id) return;
+        // The message is now durable, so replace the preview with canonical
+        // text and signed attachments without waiting for the fallback poll.
+        scheduleRealtimeRefresh(80);
+      })
       .on("broadcast", { event: "voice_update" }, ({ payload }) => {
         const event = payload as { actor?: string };
         if (event.actor === "it") scheduleRealtimeRefresh(200);
@@ -712,6 +719,11 @@ export function LineSupportClient() {
       });
       setConversation(sent.conversation);
       setMessages((current) => current.map((item) => item.id === clientId ? sent.message : item));
+      void typingChannelRef.current?.send({
+        type: "broadcast",
+        event: "message_confirmed",
+        payload: { actor: "store", client_id: clientId, server_id: sent.message.id }
+      });
       if (selectedImage) clearPickedImage();
     } catch (cause) {
       void typingChannelRef.current?.send({

@@ -23,12 +23,13 @@ describe("Support Chat mobile avatar, notification reliability and reply latency
     expect(consoleUi).toContain("requestId !== detailRequestRef.current");
     expect(consoleUi).toContain("detailRefreshTimerRef.current");
     expect(consoleUi).toContain("180");
-    expect(consoleUi).toContain('item.id.startsWith("optimistic:it:")');
+    expect(consoleUi).toContain('["optimistic:it:", "broadcast:", "preview:"]');
   });
 
   it("acknowledges a durable message without waiting for remote push dispatch", () => {
     expect(detailRoute).toContain('import { after } from "next/server"');
-    expect(detailRoute).toContain("await mirrorSupportChatHead(data.head)");
+    expect(detailRoute).toContain("await Promise.all([");
+    expect(detailRoute).toContain("mirrorSupportChatHead(data.head)");
     expect(detailRoute).toContain("after(async () =>");
     expect(detailRoute).toContain("post-response push dispatch failed");
     expect(detailRoute).toContain('action: "support_chat_message_sent"');

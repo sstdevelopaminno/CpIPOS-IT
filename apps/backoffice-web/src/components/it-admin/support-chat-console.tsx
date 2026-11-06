@@ -149,6 +149,10 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const selectedIdRef = useRef(selectedId);
   const detailRequestRef = useRef(0);
   const detailRefreshTimerRef = useRef<number | null>(null);
+  const incomingPreviewTimerRef = useRef<number | null>(null);
+  const detailLoadedIdRef = useRef("");
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToLatestRef = useRef(true);
   const [mobilePane, setMobilePane] = useState<"inbox" | "conversation">("inbox");
   const [mobileNotesOpen, setMobileNotesOpen] = useState(false);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -178,6 +182,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     setNoteDraft("");
     setRemoteTyping("");
     headSignalRef.current = "";
+    detailLoadedIdRef.current = "";
   }, []);
 
   const loadInbox = useCallback(async () => {
@@ -208,8 +213,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const loadConversation = useCallback(async (id: string) => {
     if (!id) return;
     const requestId = ++detailRequestRef.current;
-    setBusy("conversation");
-    setError("");
+    const initialLoad = detailLoadedIdRef.current !== id;
+    // Background confirmations must never block the message composer or
+    // flash a loading state while the customer is still typing.
+    if (initialLoad) {
+      setBusy("conversation");
+      setError("");
+    }
     try {
       const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${id}`, { cache: "no-store" });
       const json = await response.json().catch(() => null) as Envelope<DetailResponse> | null;
@@ -222,23 +232,45 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปิดแชทไม่สำเร็จ");
       setConversation(json.data.conversation);
       setNoteDraft(json.data.conversation.internal_note ?? "");
-      setMessages((current) => [
-        ...json.data!.messages,
-        ...current.filter((item) => item.id.startsWith("optimistic:it:") &&
-          !json.data!.messages.some((serverMessage) => serverMessage.id === item.id))
-      ]);
+      setMessages((current) => {
+        const confirmed = json.data!.messages;
+        const pending = current.filter((item) => {
+          if (!["optimistic:it:", "broadcast:", "preview:"].some((prefix) => item.id.startsWith(prefix))) return false;
+          const previewBody = item.message_body.replace(/^\[รูปภาพ\]\s*/, "") || "ส่งรูปภาพ";
+          return !confirmed.some((serverMessage) =>
+            serverMessage.id === item.id ||
+            (serverMessage.sender_type === item.sender_type &&
+              (serverMessage.message_body === item.message_body ||
+                serverMessage.message_body === previewBody ||
+                (serverMessage.attachments?.length && item.message_body.startsWith("[รูปภาพ]"))) &&
+              Math.abs(Date.parse(serverMessage.created_at) - Date.parse(item.created_at)) < 15_000)
+          );
+        });
+        return [...confirmed, ...pending].sort((left, right) =>
+          Date.parse(left.created_at) - Date.parse(right.created_at)
+        );
+      });
+      detailLoadedIdRef.current = id;
     } catch (cause) {
-      if (requestId === detailRequestRef.current && selectedIdRef.current === id) {
+      if (initialLoad && requestId === detailRequestRef.current && selectedIdRef.current === id) {
         setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
       }
     } finally {
-      if (requestId === detailRequestRef.current && selectedIdRef.current === id) setBusy("");
+      if (initialLoad && requestId === detailRequestRef.current && selectedIdRef.current === id) setBusy("");
     }
   }, [clearGoneConversation]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
+    stickToLatestRef.current = true;
   }, [selectedId]);
+
+  useEffect(() => {
+    // When a reply arrives, reveal it immediately if the agent is at the
+    // bottom. Never yank the transcript while reading older messages.
+    const scroller = chatScrollRef.current;
+    if (scroller && stickToLatestRef.current) scroller.scrollTop = scroller.scrollHeight;
+  }, [messages, selectedId]);
 
   useEffect(() => {
     void loadInbox();
@@ -343,6 +375,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
     // Optimistic local echo: the sender should never wait on cross-project
     // persistence just to see their own message.
+    stickToLatestRef.current = true;
     setMessages((current) => [...current, optimisticMessage]);
     setDraft("");
     setAttachment(null);
@@ -394,6 +427,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         return [...withoutOptimistic, json.data!.message];
       });
       setRows((current) => [json.data!.head, ...current.filter((row) => row.conversation_id !== json.data!.head.conversation_id)]);
+      // Receiver already displayed the optimistic preview. Signal the exact
+      // moment a canonical message is durable so it can reconcile promptly.
+      void typingChannelRef.current?.send({
+        type: "broadcast",
+        event: "message_confirmed",
+        payload: { actor: "it", client_id: optimisticId, server_id: json.data.message.id }
+      });
     } catch (cause) {
       void typingChannelRef.current?.send({
         type: "broadcast",
@@ -591,6 +631,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           created_at: event.created_at!,
           attachments: []
         }]);
+        // Confirm attachments and delivery after the optimistic preview.
+        // A slow backend response must not erase the instant incoming bubble.
+        if (incomingPreviewTimerRef.current !== null) window.clearTimeout(incomingPreviewTimerRef.current);
+        incomingPreviewTimerRef.current = window.setTimeout(() => {
+          incomingPreviewTimerRef.current = null;
+          void loadConversation(selectedId);
+        }, 1_200);
       })
       .on("broadcast", { event: "message_retract" }, ({ payload }) => {
         const event = payload as { actor?: string; client_id?: string };
@@ -598,15 +645,26 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         const id = `broadcast:${event.client_id}`;
         setMessages((current) => current.filter((item) => item.id !== id));
       })
+      .on("broadcast", { event: "message_confirmed" }, ({ payload }) => {
+        const event = payload as { actor?: string; client_id?: string };
+        if (event.actor !== "store" || !event.client_id) return;
+        if (incomingPreviewTimerRef.current !== null) window.clearTimeout(incomingPreviewTimerRef.current);
+        incomingPreviewTimerRef.current = window.setTimeout(() => {
+          incomingPreviewTimerRef.current = null;
+          void loadConversation(selectedId);
+        }, 80);
+      })
       .subscribe();
     typingChannelRef.current = channel;
     return () => {
       if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current);
+      if (incomingPreviewTimerRef.current !== null) window.clearTimeout(incomingPreviewTimerRef.current);
+      incomingPreviewTimerRef.current = null;
       setRemoteTyping("");
       typingChannelRef.current = null;
       void supabase.removeChannel(channel);
     };
-  }, [selectedId, conversation?.status]);
+  }, [selectedId, conversation?.status, loadConversation]);
 
   const announceTyping = useCallback((typing: boolean) => {
     const now = Date.now();
@@ -781,7 +839,14 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                 </div>
               ) : null}
 
-              <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f7faff] p-3 pb-5 sm:p-4 sm:pb-6 [scrollbar-gutter:stable]">
+              <div ref={chatScrollRef}
+                onScroll={() => {
+                  const element = chatScrollRef.current;
+                  if (!element) return;
+                  stickToLatestRef.current =
+                    element.scrollHeight - element.scrollTop - element.clientHeight < 130;
+                }}
+                className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f7faff] p-3 pb-5 sm:p-4 sm:pb-6 [scrollbar-gutter:stable]">
                 {busy === "conversation" && !messages.length ? <div className="text-center text-xs text-slate-500">กำลังโหลด...</div> : null}
                 {messages.map((message) => {
                   if (message.sender_type === "system") {

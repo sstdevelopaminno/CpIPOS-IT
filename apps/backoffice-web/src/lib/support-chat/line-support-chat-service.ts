@@ -156,18 +156,28 @@ export async function sendLineSupportMessage(
   }
 
   const preview = attachment ? (message ? `[รูปภาพ] ${message}` : "[รูปภาพ]") : message;
-  const optimistic = await publishOptimisticSupportChatHead(conversationId, "store", preview);
+  // The preview in the main database and the short-lived Communications
+  // bridge do not depend on each other. Issuing them sequentially caused
+  // an extra network round trip before every LINE message.
+  const [previewResult, bridgeResult] = await Promise.allSettled([
+    publishOptimisticSupportChatHead(conversationId, "store", preview),
+    issueLineSupportBridge(session)
+  ]);
+  const optimistic = previewResult.status === "fulfilled" ? previewResult.value : null;
   try {
-    const bridge = await issueLineSupportBridge(session);
+    if (previewResult.status === "rejected") throw previewResult.reason;
+    if (bridgeResult.status === "rejected") throw bridgeResult.reason;
     const data = await callSupportChat<{
       message: Message;
       conversation: Conversation;
       head: SupportChatHead;
-    }>(bridge, "send_message", {
+    }>(bridgeResult.value, "send_message", {
       conversation_id: conversationId,
       message,
       attachment
     });
+    // The authoritative head is still mirrored before the sender receives
+    // success; other IT and POS clients depend on this reliable update.
     await mirrorSupportChatHead(data.head);
     return data;
   } catch (error) {

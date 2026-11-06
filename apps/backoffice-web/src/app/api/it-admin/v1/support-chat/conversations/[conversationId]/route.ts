@@ -135,9 +135,27 @@ export async function POST(
           message,
           attachment: body?.attachment ?? null
         });
-        // Mirror the authoritative head before acknowledging, but do not make
-        // the chat round trip wait on remote Web Push delivery.
-        await mirrorSupportChatHead(data.head);
+        // Keep both critical writes durable before acknowledging, but run
+        // their independent database requests concurrently. The prior
+        // sequence added the full audit round trip to every IT reply.
+        await Promise.all([
+          mirrorSupportChatHead(data.head),
+          appendAuditLog({
+            tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
+            actorUserId: auth.auth.userId,
+            actorRole: auth.auth.platformRole,
+            action: "support_chat_message_sent",
+            targetTable: "support_chat_heads",
+            targetId: conversationId,
+            module: "support_chat",
+            entityType: "support_conversation",
+            entityId: conversationId,
+            metadata: { message_length: message.length },
+            ipAddress: auth.requestMeta.ipAddress ?? undefined,
+            userAgent: auth.requestMeta.userAgent ?? undefined
+          })
+        ]);
+        // Web Push is background delivery and must not delay the in-app reply.
         after(async () => {
           await dispatchSupportPush({
             audience: "store",
@@ -150,20 +168,6 @@ export async function POST(
           }).catch((error: unknown) => {
             console.warn("[support-chat] post-response push dispatch failed", error instanceof Error ? error.message : "unknown");
           });
-        });
-        await appendAuditLog({
-          tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
-          actorUserId: auth.auth.userId,
-          actorRole: auth.auth.platformRole,
-          action: "support_chat_message_sent",
-          targetTable: "support_chat_heads",
-          targetId: conversationId,
-          module: "support_chat",
-          entityType: "support_conversation",
-          entityId: conversationId,
-          metadata: { message_length: message.length },
-          ipAddress: auth.requestMeta.ipAddress ?? undefined,
-          userAgent: auth.requestMeta.userAgent ?? undefined
         });
         return ok(data);
       } catch (error) {
