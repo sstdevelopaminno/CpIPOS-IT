@@ -1711,9 +1711,10 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       throw new ItAdminGuardError("tenant_must_be_inactive", "Deactivate the store before permanent deletion.", 409);
     }
 
-    // A single database transaction removes primary store rows and exclusive Auth
-    // identities. An active trial is deleted with the store; no separate contract
-    // cancellation is required. Shared users and IT accounts are never removed.
+    // The database transaction removes all current tenant-scoped primary rows and
+    // journals Storage/Auth cleanup. Storage is removed through the Storage API
+    // before exclusive Auth identities are deleted, as required by Supabase.
+    // Shared users and IT accounts are never removed.
     const { data: deleted, error: deletionError } = await context.supabase.rpc("it_delete_tenant_cascade", {
       p_tenant_id: tenantId,
       p_confirmation_code: confirmationCode,
@@ -1727,6 +1728,8 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
         tenant_delete_cross_plane_requires_reconciliation: "Store data may be on another database. Reconcile data routing before permanent deletion.",
         tenant_delete_desktop_license_requires_reconciliation: "This store has a separate Desktop license. Resolve the license and its receipts before deleting the store.",
         tenant_delete_unmanaged_table: "A store data table needs a safe deletion rule. Nothing has been deleted.",
+        tenant_delete_unmanaged_fk_table: "A store table uses a non-cascade tenant relationship that needs an explicit deletion rule. Nothing has been deleted.",
+        tenant_delete_residual_table: "Store data remained after the transactional purge check. The deletion was rolled back.",
         tenant_delete_confirmation_failed: "Store code confirmation does not match.",
         tenant_delete_reason_required: "A detailed deletion reason is required.",
         tenant_devices_still_online: "A device from this store was online within the last 5 minutes.",
@@ -1745,7 +1748,16 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     const files = (Array.isArray(deleted.storage_objects) ? deleted.storage_objects : []) as Array<{
       bucket: string; path: string
     }>;
+    const authUserIds = (Array.isArray(deleted.auth_users_to_delete) ? deleted.auth_users_to_delete : [])
+      .map((value: unknown) => String(value ?? "").trim())
+      .filter((value: string) => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value));
+
     let storageCleanupPending = files.length > 0;
+    let authCleanupPending = authUserIds.length > 0;
+    let authUsersDeleted = 0;
+
+    // Supabase Storage objects must be removed through the Storage API. Do this
+    // before Auth deletion so a user-owned object cannot block user cleanup.
     if (storageCleanupPending) {
       try {
         const byBucket = new Map<string, string[]>();
@@ -1761,17 +1773,53 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
             if (error) throw error;
           }
         }
-        const { error: cleanupError } = await context.supabase
+        const { error: storageJournalError } = await context.supabase
           .from("it_tenant_deletion_cleanup")
-          .update({ status: "complete", completed_at: new Date().toISOString() })
+          .update({ storage_completed_at: new Date().toISOString() })
           .eq("tenant_id", tenantId);
-        if (cleanupError) throw cleanupError;
+        if (storageJournalError) throw storageJournalError;
         storageCleanupPending = false;
       } catch (cleanupError) {
-        // The durable journal still contains every tenant-owned storage path,
-        // so support can retry without ever resurrecting or duplicating a tenant.
         console.error("[tenant-permanent-delete] storage cleanup pending", {
           tenantId, message: cleanupError instanceof Error ? cleanupError.message : "unknown"
+        });
+      }
+    }
+
+    // Only exclusive tenant users are journaled by the database function.
+    // Treat an already-missing Auth user as idempotent success for retries.
+    if (!storageCleanupPending && authCleanupPending) {
+      try {
+        for (const userId of authUserIds) {
+          const result = await context.supabase.auth.admin.deleteUser(userId);
+          if (result.error && !/not found/i.test(String(result.error.message ?? ""))) {
+            throw result.error;
+          }
+          if (!result.error) authUsersDeleted += 1;
+        }
+        const { error: authJournalError } = await context.supabase
+          .from("it_tenant_deletion_cleanup")
+          .update({ auth_users_completed_at: new Date().toISOString() })
+          .eq("tenant_id", tenantId);
+        if (authJournalError) throw authJournalError;
+        authCleanupPending = false;
+      } catch (cleanupError) {
+        console.error("[tenant-permanent-delete] auth cleanup pending", {
+          tenantId, message: cleanupError instanceof Error ? cleanupError.message : "unknown"
+        });
+      }
+    }
+
+    if (!storageCleanupPending && !authCleanupPending) {
+      const completedAt = new Date().toISOString();
+      const { error: cleanupError } = await context.supabase
+        .from("it_tenant_deletion_cleanup")
+        .update({ status: "complete", completed_at: completedAt })
+        .eq("tenant_id", tenantId)
+        .eq("status", "pending");
+      if (cleanupError) {
+        console.error("[tenant-permanent-delete] cleanup journal completion failed", {
+          tenantId, message: cleanupError.message
         });
       }
     }
@@ -1780,17 +1828,19 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     const snapshot = { store_code: expectedCode, internal_code: tenant.code, name: tenant.name, deleted_at: now };
     await audit(context, undefined, "tenant_permanently_deleted", "tenants", tenantId, asRecord(tenant), {}, {
       ...snapshot, admin_reason: reason, deleted_tenant_id: tenantId,
-      auth_users_deleted: deleted.auth_users_deleted,
+      auth_users_deleted: authUsersDeleted,
       shared_users_preserved: deleted.shared_users_preserved,
-      storage_cleanup_pending: storageCleanupPending
+      storage_cleanup_pending: storageCleanupPending,
+      auth_cleanup_pending: authCleanupPending
     });
     return {
       deleted: true,
       tenant_id: tenantId,
       tenant_code: expectedCode,
-      auth_users_deleted: deleted.auth_users_deleted,
+      auth_users_deleted: authUsersDeleted,
       shared_users_preserved: deleted.shared_users_preserved,
-      storage_cleanup_pending: storageCleanupPending
+      storage_cleanup_pending: storageCleanupPending,
+      auth_cleanup_pending: authCleanupPending
     };
   }
 
