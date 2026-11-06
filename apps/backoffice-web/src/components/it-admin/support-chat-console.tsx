@@ -234,7 +234,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         const confirmed = json.data!.messages;
         const pending = current.filter((item) => {
           if (!["optimistic:it:", "broadcast:", "preview:"].some((prefix) => item.id.startsWith(prefix))) return false;
-          const previewBody = item.message_body.replace(/^\\[รูปภาพ\\]\\s*/, "") || "ส่งรูปภาพ";
+          const previewBody = item.message_body.replace(/^\[รูปภาพ\]\s*/, "") || "ส่งรูปภาพ";
           return !confirmed.some((serverMessage) =>
             serverMessage.id === item.id ||
             (serverMessage.sender_type === item.sender_type &&
