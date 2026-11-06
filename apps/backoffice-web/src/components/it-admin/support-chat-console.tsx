@@ -531,8 +531,8 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   }
 
   async function deleteConversation() {
-    if (!selectedId || !canDelete || conversation?.status !== "closed") return;
-    if (!window.confirm("ลบประวัติแชทนี้ถาวร? การลบย้อนกลับไม่ได้")) return;
+    if (!selectedId || !canPermanentlyDeleteChat || conversation?.status !== "closed") return;
+    if (!window.confirm("ยืนยันลบแชทถาวร? ระบบจะลบข้อความ รูปภาพ ไฟล์แนบ และประวัติการโทรที่ผูกกับห้องนี้ออกจากระบบใช้งาน ไม่สามารถกู้คืนได้")) return;
     setBusy("delete");
     setError("");
     try {
@@ -541,8 +541,9 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "delete" })
       });
-      const json = await response.json().catch(() => null) as Envelope<{ deleted: true }> | null;
-      if (!response.ok || !json?.data?.deleted) throw new Error(json?.error?.message || "ลบแชทไม่สำเร็จ");
+      const json = await response.json().catch(() => null) as Envelope<{ deleted: true; storage_deleted: boolean; related_records_verified: boolean }> | null;
+      if (!response.ok || !json?.data?.deleted || !json.data.storage_deleted || !json.data.related_records_verified)
+        throw new Error(json?.error?.message || "ยังยืนยันการลบข้อมูลและไฟล์แนบได้ไม่ครบ");
       setSelectedId("");
       setMobilePane("inbox");
       setMobileNotesOpen(false);
@@ -708,7 +709,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                   <option value="waiting_it">รอ IT</option>
                   <option value="closed">จบการสนทนา</option>
                 </select> : <span className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-500">จบแล้ว</span>}
-                {canDelete && conversation.status === "closed" ? <button type="button" onClick={() => void deleteConversation()}
+                {canPermanentlyDeleteChat && conversation.status === "closed" ? <button type="button" onClick={() => void deleteConversation()}
                   disabled={busy === "delete"}
                   className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-700">ลบถาวร</button> : null}
               </header>
