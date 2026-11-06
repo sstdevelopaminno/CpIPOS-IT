@@ -43,6 +43,7 @@ type SupportVoiceCallOverlayProps = {
   onReplayWaitingAudio?: () => void;
   onReplayHoldAudio?: () => void;
   speechIssue?: boolean;
+  compactCustomer?: boolean;
   onOpenExternalBrowser?: () => void;
   allowMinimize?: boolean;
   minimized?: boolean;
@@ -146,6 +147,7 @@ export function SupportVoiceCallOverlay({
   onReplayWaitingAudio,
   onReplayHoldAudio,
   speechIssue = false,
+  compactCustomer = false,
   onOpenExternalBrowser,
   allowMinimize = false,
   minimized = false,
@@ -472,6 +474,15 @@ export function SupportVoiceCallOverlay({
           {mode === "active" && !connected && !held ? (
             <div className="mt-2 text-sm text-white/55">{phaseText(phase)}</div>
           ) : null}
+          {compactCustomer && (held || mode === "outgoing") ? (
+            <p className="mt-3 max-w-sm text-center text-xs leading-5 text-white/60" aria-live="polite">
+              {held
+                ? "ระบบกำลังส่งต่อสายให้เจ้าหน้าที่ กรุณารอสักครู่"
+                : queuePosition
+                  ? `รอสายลำดับที่ ${queuePosition} · เจ้าหน้าที่จะรับสายโดยเร็วที่สุด`
+                  : "กำลังติดต่อทีม Support กรุณารอสักครู่"}
+            </p>
+          ) : null}
 
           {transferPending ? (
             <div className="mt-5 w-full max-w-md rounded-3xl border border-blue-300/20 bg-blue-500/10 px-5 py-4 text-left">
@@ -492,7 +503,7 @@ export function SupportVoiceCallOverlay({
             </div>
           ) : null}
 
-          {held ? (
+          {held && !compactCustomer ? (
             <div className="mt-5 w-full max-w-md rounded-3xl border border-amber-300/20 bg-amber-500/10 px-5 py-4 text-left">
               <div className="text-sm font-black text-amber-100">🎵 กำลังพักสาย</div>
               <div className="mt-1 text-sm leading-6 text-amber-100/85">
@@ -506,7 +517,7 @@ export function SupportVoiceCallOverlay({
               ) : null}
             </div>
           ) : null}
-          {mode === "outgoing" ? (
+          {mode === "outgoing" && !compactCustomer ? (
             <div className="mt-5 w-full max-w-md rounded-3xl border border-sky-300/20 bg-sky-500/10 px-5 py-4 text-left">
               <div className="text-sm font-black text-sky-100">🎵 ระบบกำลังดูแลคิวของคุณ</div>
               <div className="mt-1 text-sm leading-6 text-sky-100/85">
@@ -531,7 +542,7 @@ export function SupportVoiceCallOverlay({
           ) : null}
 
 
-          {speechIssue && (held || mode === "outgoing") ? (
+          {speechIssue && !compactCustomer && (held || mode === "outgoing") ? (
             <div role="status" className="mt-4 w-full max-w-md rounded-xl border border-amber-300/30 bg-amber-500/15 px-4 py-3 text-xs leading-5 text-amber-100">
               ไม่สามารถเล่นเสียงประกาศภาษาไทยได้จากระบบเสียงของเครื่องนี้
               กรุณาแตะปุ่มฟังข้อความด้านบน หรือติดตั้งเสียงภาษาไทยในบริการอ่านออกเสียงของเครื่อง
