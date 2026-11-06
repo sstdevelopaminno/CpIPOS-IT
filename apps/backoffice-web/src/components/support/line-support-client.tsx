@@ -63,6 +63,7 @@ type Message = {
   sender_name?: string;
   message_body: string;
   created_at: string;
+  attachments?: Array<{ id: string; original_name: string; url: string; mime_type: string }>;
 };
 
 type ChatDetail = {
@@ -78,6 +79,65 @@ type Envelope<T> = {
 };
 
 const LIFF_SCRIPT = "https://static.line-scdn.net/liff/edge/2/sdk.js";
+const MAX_SUPPORT_IMAGE_BYTES = 2 * 1024 * 1024;
+const SUPPORT_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+async function prepareLineSupportImage(source: File): Promise<File> {
+  if (!SUPPORT_IMAGE_TYPES.includes(source.type)) {
+    throw new Error("รองรับเฉพาะภาพ JPG, PNG หรือ WEBP เท่านั้น");
+  }
+  if (source.size <= MAX_SUPPORT_IMAGE_BYTES) return source;
+
+  // Camera images are commonly 3-10 MB. Resize client-side before upload.
+  const objectUrl = URL.createObjectURL(source);
+  const photo = new window.Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      photo.onload = () => resolve();
+      photo.onerror = () => reject(new Error("ไม่สามารถเปิดภาพที่เลือกได้"));
+      photo.src = objectUrl;
+    });
+    const scale = Math.min(1, 1600 / Math.max(photo.naturalWidth, photo.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(photo.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(photo.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("เครื่องไม่รองรับการปรับขนาดรูปภาพ");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(photo, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.83, 0.70, 0.55]) {
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", quality)
+      );
+      if (blob && blob.size > 0 && blob.size <= MAX_SUPPORT_IMAGE_BYTES) {
+        return new File([blob], source.name.replace(/\.[^.]+$/, "") + ".jpg", {
+          type: "image/jpeg",
+          lastModified: Date.now()
+        });
+      }
+    }
+    throw new Error("รูปภาพใหญ่เกิน 2 MB แม้ปรับขนาดแล้ว");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function lineImagePayload(file: File) {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("อ่านรูปภาพไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+  return {
+    name: file.name.slice(0, 180),
+    mime_type: file.type,
+    size_bytes: file.size,
+    data_base64: dataUrl.slice(dataUrl.indexOf(",") + 1)
+  };
+}
+
 const DEFAULT_LIFF_ID = "2011852850-5tjQo09l";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -132,6 +192,9 @@ export function LineSupportClient() {
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentPreviewRef = useRef<string | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
   const detailEpochRef = useRef(0);
   const realtimeConnectedRef = useRef(false);
@@ -147,6 +210,8 @@ export function LineSupportClient() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeCall, setActiveCall] = useState<SupportVoiceCall | null>(null);
   const [draft, setDraft] = useState("");
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
+  const [attachment, setAttachment] = useState<{ file: File; preview: string } | null>(null);
   const [remoteTyping, setRemoteTyping] = useState("");
   const [incomingNotice, setIncomingNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -159,6 +224,34 @@ export function LineSupportClient() {
     stop: stopWaitingMedia,
     announce: announceVoiceQueue
   } = useSupportVoiceWaitingMedia();
+
+  useEffect(() => () => {
+    if (attachmentPreviewRef.current) URL.revokeObjectURL(attachmentPreviewRef.current);
+  }, []);
+
+  function clearPickedImage() {
+    if (attachmentPreviewRef.current) URL.revokeObjectURL(attachmentPreviewRef.current);
+    attachmentPreviewRef.current = null;
+    setAttachment(null);
+  }
+
+  async function chooseLineImage(file: File | undefined) {
+    setPhotoMenuOpen(false);
+    if (!file) return;
+    setError("");
+    setBusy("photo");
+    try {
+      const ready = await prepareLineSupportImage(file);
+      if (attachmentPreviewRef.current) URL.revokeObjectURL(attachmentPreviewRef.current);
+      const preview = URL.createObjectURL(ready);
+      attachmentPreviewRef.current = preview;
+      setAttachment({ file: ready, preview });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "เลือกรูปภาพไม่สำเร็จ");
+    } finally {
+      setBusy("");
+    }
+  }
 
   const loadConversation = useCallback(async (conversationId: string) => {
     const epoch = ++detailEpochRef.current;
@@ -569,15 +662,23 @@ export function LineSupportClient() {
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
     const message = draft.trim();
-    if (!conversation?.id || !message || conversation.status === "closed") return;
+    const selectedImage = attachment;
+    if (!conversation?.id || (!message && !selectedImage) ||
+        conversation.status === "closed" || busy === "send" || busy === "photo") return;
 
     const clientId = "line-local:" + Date.now();
     const optimistic: Message = {
       id: clientId,
       sender_type: "store",
       sender_name: "คุณ",
-      message_body: message,
-      created_at: new Date().toISOString()
+      message_body: message || "ส่งรูปภาพ",
+      created_at: new Date().toISOString(),
+      attachments: selectedImage ? [{
+        id: clientId + ":image",
+        original_name: selectedImage.file.name,
+        mime_type: selectedImage.file.type,
+        url: selectedImage.preview
+      }] : []
     };
 
     announceTyping(false);
@@ -588,7 +689,8 @@ export function LineSupportClient() {
     void typingChannelRef.current?.send({
       type: "broadcast",
       event: "message_preview",
-      payload: { actor: "store", client_id: clientId, message,
+      payload: { actor: "store", client_id: clientId,
+        message: selectedImage ? (message ? "[รูปภาพ] " + message : "[รูปภาพ]") : message,
         created_at: optimistic.created_at, name: optimistic.sender_name }
     });
     try {
@@ -597,11 +699,13 @@ export function LineSupportClient() {
         body: JSON.stringify({
           action: "send",
           conversation_id: conversation.id,
-          message
+          message,
+          attachment: selectedImage ? await lineImagePayload(selectedImage.file) : null
         })
       });
       setConversation(sent.conversation);
       setMessages((current) => current.map((item) => item.id === clientId ? sent.message : item));
+      if (selectedImage) clearPickedImage();
     } catch (cause) {
       void typingChannelRef.current?.send({
         type: "broadcast", event: "message_retract",
@@ -635,6 +739,7 @@ export function LineSupportClient() {
     setMessages([]);
     setActiveCall(null);
     setIncomingNotice("");
+    clearPickedImage();
     setStage("store");
   }
 
