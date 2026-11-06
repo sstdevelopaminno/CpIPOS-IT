@@ -23,7 +23,7 @@ describe("Support Chat mobile avatar, notification reliability and reply latency
     expect(consoleUi).toContain("requestId !== detailRequestRef.current");
     expect(consoleUi).toContain("detailRefreshTimerRef.current");
     expect(consoleUi).toContain("180");
-    expect(consoleUi).toContain('item.id.startsWith("optimistic:it:")');
+    expect(consoleUi).toContain('["optimistic:it:", "broadcast:", "preview:"]');
   });
 
   it("acknowledges a durable message without waiting for remote push dispatch", () => {
