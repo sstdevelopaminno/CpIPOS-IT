@@ -49,6 +49,7 @@ export function SupportChatNotifier() {
   const headSignals = useRef(new Map<string, string>());
   const snapshotHeads = useRef(new Map<string, Head>());
   const notifiedSignals = useRef(new Set<string>());
+  const notificationAudioRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -56,6 +57,48 @@ export function SupportChatNotifier() {
     let snapshotInFlight = false;
     let toastTimer: number | null = null;
     const supabase = getSupabaseBrowserClient();
+
+    const unlockNotificationSound = () => {
+      try {
+        const Context = window.AudioContext ||
+          (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!Context) return;
+        let ctx = notificationAudioRef.current;
+        if (!ctx || ctx.state === "closed") {
+          ctx = new Context();
+          notificationAudioRef.current = ctx;
+        }
+        if (ctx.state === "suspended") void ctx.resume().catch(() => null);
+      } catch {
+        // Visual toasts and OS notifications remain available without audio.
+      }
+    };
+    const playMessageAlert = () => {
+      const ctx = notificationAudioRef.current;
+      if (!ctx || ctx.state !== "running") return;
+      try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const now = ctx.currentTime;
+        osc.type = "sine";
+        osc.frequency.value = 720;
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.linearRampToValueAtTime(0.075, now + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+        osc.start(now);
+        osc.stop(now + 0.29);
+      } catch {
+        // A failed chime must not prevent the visual notification.
+      }
+    };
+    // Browsers require a user gesture before sound playback. Prepare one
+    // reusable context on interaction, rather than opening a suspended Audio
+    // context only after a new chat arrives.
+    window.addEventListener("pointerdown", unlockNotificationSound, true);
+    window.addEventListener("keydown", unlockNotificationSound, true);
 
     const signalFor = (head: Head) => [
       head.updated_at ?? "",
@@ -96,23 +139,7 @@ export function SupportChatNotifier() {
         if (toastTimer !== null) window.clearTimeout(toastTimer);
         toastTimer = window.setTimeout(() => setToast(null), 5000);
 
-        try {
-          const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-          if (AudioCtx) {
-            const ctx = new AudioCtx();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            gain.gain.value = 0.04;
-            osc.frequency.value = 760;
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.onended = () => { void ctx.close().catch(() => null); };
-            osc.start();
-            osc.stop(ctx.currentTime + 0.12);
-          }
-        } catch {
-          // Browser may block audio until the user interacts with the page.
-        }
+        playMessageAlert();
 
         if ("Notification" in window && Notification.permission === "granted") {
           new Notification(title, { body: message, icon: "/brand/cpipos-symbol-sidebar.png", tag: next.conversation_id });
@@ -123,16 +150,31 @@ export function SupportChatNotifier() {
     const refreshSnapshot = async (allowToast: boolean) => {
       if (snapshotInFlight) return;
       snapshotInFlight = true;
+      const requestStartedAt = Date.now();
       try {
         const snapshot = await loadInboxSnapshot();
         if (!alive) return;
-        snapshotHeads.current = new Map(
+        const fresh = new Map<string, Head>(
           snapshot.conversations
             .filter((head): head is Head & { conversation_id: string } => Boolean(head.conversation_id))
-            .map((head) => [head.conversation_id, head])
+            .map((head) => [head.conversation_id, head] as const)
         );
-        notifyUnread(snapshot.unread_total);
-        for (const head of snapshot.conversations) handleHead(head, allowToast);
+        // A Realtime event may arrive while the HTTP snapshot is pending.
+        // Preserve newer event heads rather than restoring an older unread
+        // count or losing the incoming-call notification.
+        for (const [id, live] of snapshotHeads.current) {
+          const fetched = fresh.get(id);
+          const liveAt = Date.parse(live.updated_at ?? "") || 0;
+          const fetchedAt = fetched ? Date.parse(fetched.updated_at ?? "") || 0 : 0;
+          if ((fetched && liveAt > fetchedAt) ||
+              (!fetched && liveAt >= requestStartedAt)) fresh.set(id, live);
+        }
+        snapshotHeads.current = fresh;
+        notifyUnread(
+          Array.from(fresh.values()).reduce((sum, head) =>
+            sum + Number(head.unread_it_count ?? 0), 0)
+        );
+        for (const head of fresh.values()) handleHead(head, allowToast);
         initialized.current = true;
       } finally {
         snapshotInFlight = false;
@@ -208,6 +250,11 @@ export function SupportChatNotifier() {
 
     return () => {
       alive = false;
+      window.removeEventListener("pointerdown", unlockNotificationSound, true);
+      window.removeEventListener("keydown", unlockNotificationSound, true);
+      const ctx = notificationAudioRef.current;
+      notificationAudioRef.current = null;
+      if (ctx) void ctx.close().catch(() => null);
       if (toastTimer !== null) window.clearTimeout(toastTimer);
       window.clearInterval(fallbackPoll);
       window.removeEventListener("focus", refreshOnFocus);

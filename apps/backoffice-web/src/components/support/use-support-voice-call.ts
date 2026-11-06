@@ -108,6 +108,7 @@ export function useSupportVoiceCall({
   const instanceIdRef = useRef("");
   const remoteInstanceRef = useRef("");
   const recoveryAttemptsRef = useRef(0);
+  const recoveryInFlightRef = useRef(false);
   const recoverConnectionRef = useRef<() => void>(() => undefined);
   const signalingKeyRef = useRef(call?.signaling_key ?? "");
   const holdAudioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode; gain: GainNode } | null>(null);
@@ -266,6 +267,7 @@ export function useSupportVoiceCall({
     queuedIceRef.current = [];
     remoteInstanceRef.current = "";
     recoveryAttemptsRef.current = 0;
+    recoveryInFlightRef.current = false;
 
     if (readyIntervalRef.current) window.clearInterval(readyIntervalRef.current);
     if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
@@ -324,18 +326,29 @@ export function useSupportVoiceCall({
 
   const attachRemoteStream = useCallback((stream: MediaStream) => {
     remoteStreamRef.current = stream;
-    audioElementRef.current?.pause();
-    const audio = new Audio();
-    audio.autoplay = true;
-    audio.preload = "auto";
-    audio.srcObject = stream;
-    audio.muted = held || speakerMuted;
-    audioElementRef.current = audio;
-    void audio.play().then(() => {
+    // ontrack can fire more than once for a single session or ICE restart.
+    // Re-creating the Audio element interrupts playback and loses the jitter
+    // buffer even when the underlying remote track has not changed.
+    if (!audioElementRef.current) {
+      const created = new Audio();
+      created.autoplay = true;
+      created.preload = "auto";
+      audioElementRef.current = created;
+    }
+    // Change media state via the ref so React treats it as an imperative
+    // external audio sink, not a React value mutated inside a callback.
+    if (audioElementRef.current.srcObject !== stream) audioElementRef.current.srcObject = stream;
+    audioElementRef.current.muted = held || speakerMuted;
+    const audio = audioElementRef.current;
+    if (audio.paused) {
+      void audio.play().then(() => {
+        setNeedsAudioResume(false);
+      }).catch(() => {
+        setNeedsAudioResume(true);
+      });
+    } else {
       setNeedsAudioResume(false);
-    }).catch(() => {
-      setNeedsAudioResume(true);
-    });
+    }
   }, [held, speakerMuted]);
 
   const flushQueuedIce = useCallback(async () => {
@@ -389,7 +402,8 @@ export function useSupportVoiceCall({
   const recoverConnection = useCallback(async () => {
     const pc = peerRef.current;
     const channel = channelRef.current;
-    if (!pc || !channel || !runningRef.current || pc.connectionState === "connected") return;
+    if (!pc || !channel || !runningRef.current || pc.connectionState === "connected" ||
+        recoveryInFlightRef.current) return;
 
     if (recoveryAttemptsRef.current >= 3) {
       setPhase("failed");
@@ -397,12 +411,17 @@ export function useSupportVoiceCall({
       return;
     }
 
+    recoveryInFlightRef.current = true;
     recoveryAttemptsRef.current += 1;
     setPhase("reconnecting");
     setError("");
 
     try {
       const iceServers = await loadIceServers();
+      // The network may have recovered while TURN credentials were loading.
+      // Never renegotiate a recovered or replaced peer unnecessarily.
+      if (!runningRef.current || peerRef.current !== pc ||
+          pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") return;
       pc.setConfiguration({ iceServers });
       if (isInitiator) {
         remoteReadyRef.current = true;
@@ -417,6 +436,8 @@ export function useSupportVoiceCall({
       }
     } catch {
       // Retry timer below handles transient API/network failures.
+    } finally {
+      recoveryInFlightRef.current = false;
     }
 
     if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
@@ -529,7 +550,17 @@ export function useSupportVoiceCall({
           void Promise.resolve(onState("connected")).catch(() => null);
         } else if (state === "connecting") {
           setPhase("connecting");
-        } else if (state === "disconnected" || state === "failed") {
+        } else if (state === "disconnected") {
+          // Mobile network handoffs are often brief. Avoid an immediate ICE
+          // restart (which itself interrupts a healthy RTP flow).
+          setPhase("reconnecting");
+          if (!disconnectTimerRef.current) {
+            disconnectTimerRef.current = window.setTimeout(() => {
+              disconnectTimerRef.current = null;
+              if (pc.connectionState !== "connected") void recoverConnectionRef.current();
+            }, 2_500);
+          }
+        } else if (state === "failed") {
           void recoverConnection();
         }
       };
@@ -543,12 +574,14 @@ export function useSupportVoiceCall({
           const event = payload as SignalPayload;
           if (event.side === side || !event.instance_id) return;
 
-          if (remoteInstanceRef.current && remoteInstanceRef.current !== event.instance_id) {
-            offerSentRef.current = false;
-          }
+          const isNewRemote = remoteInstanceRef.current !== event.instance_id;
+          if (remoteInstanceRef.current && isNewRemote) offerSentRef.current = false;
           remoteInstanceRef.current = event.instance_id;
           remoteReadyRef.current = true;
-          sendReady();
+          // Only acknowledge a NEW remote instance. Replying to every
+          // voice_ready broadcast causes an infinite ping-pong between peers,
+          // saturating the shared Realtime transport used by support chats.
+          if (isNewRemote) sendReady();
           if (isInitiator) void createOffer();
         })
         .on("broadcast", { event: "webrtc_offer" }, ({ payload }) => {
@@ -624,7 +657,9 @@ export function useSupportVoiceCall({
           if (!runningRef.current) return;
           if (status === "SUBSCRIBED") {
             if (peerRef.current?.connectionState !== "connected") setPhase("waiting_peer");
-            void Promise.resolve(onState("connecting")).catch(() => null);
+            if (peerRef.current?.connectionState !== "connected") {
+              void Promise.resolve(onState("connecting")).catch(() => null);
+            }
             sendReady();
             if (readyIntervalRef.current) window.clearInterval(readyIntervalRef.current);
             readyIntervalRef.current = window.setInterval(() => {

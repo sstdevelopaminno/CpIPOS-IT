@@ -320,8 +320,8 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       if (stopped) return;
       const transferFast = call?.transfer_status === "requested";
       const waitingOffer = call?.status === "requested";
-      const baseMs = transferFast ? 2_500 : waitingOffer ? 4_500 : call ? 30_000 : 9_000;
-      const jitterMs = transferFast ? 500 : waitingOffer ? 1_500 : call ? 3_000 : 3_000;
+      const baseMs = transferFast ? 2_500 : waitingOffer ? 3_500 : call ? 30_000 : 6_000;
+      const jitterMs = transferFast ? 500 : waitingOffer ? 1_000 : call ? 3_000 : 2_000;
       const delay = baseMs + Math.floor(Math.random() * jitterMs);
       timer = window.setTimeout(async () => {
         if (document.visibilityState !== "hidden") await refresh();
@@ -331,6 +331,13 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
 
     void refresh().finally(schedule);
     const onFocus = () => void refresh();
+    const onPush = (event: Event) => {
+      const payload = (event as CustomEvent<{ kind?: string; title?: string; tag?: string }>).detail;
+      // A push delivered while the IT interface is open can wake the call
+      // picker immediately, even if Realtime was temporarily disconnected.
+      if (payload?.tag?.startsWith("support-voice:") ||
+          payload?.title?.includes("📞")) void refresh();
+    };
     const onVisibility = () => {
       if (document.visibilityState === "visible") void refresh();
     };
@@ -344,6 +351,8 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onFocus);
+    window.addEventListener("cpipos-it-push-notification", onPush);
     window.addEventListener("cpipos-support-chat-update", onSupportUpdate);
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -351,6 +360,8 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       stopped = true;
       if (timer) window.clearTimeout(timer);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onFocus);
+      window.removeEventListener("cpipos-it-push-notification", onPush);
       window.removeEventListener("cpipos-support-chat-update", onSupportUpdate);
       document.removeEventListener("visibilitychange", onVisibility);
     };

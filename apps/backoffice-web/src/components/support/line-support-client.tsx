@@ -189,6 +189,9 @@ export function LineSupportClient() {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const incomingNoticeTimerRef = useRef<number | null>(null);
+  const seenItReplyRef = useRef<{ conversationId: string; lastTimestamp: number }>({
+    conversationId: "", lastTimestamp: 0
+  });
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const typingSentAtRef = useRef(0);
@@ -260,6 +263,24 @@ export function LineSupportClient() {
       "/api/support/line/chat?conversation_id=" + encodeURIComponent(conversationId)
     );
     if (epoch !== detailEpochRef.current || activeConversationIdRef.current !== conversationId) return detail;
+    const newestReply = detail.messages
+      .filter((item) => item.sender_type === "it")
+      .reduce((last, item) => Math.max(last, Date.parse(item.created_at) || 0), 0);
+    const previousSeen = seenItReplyRef.current;
+    if (previousSeen.conversationId === conversationId &&
+        newestReply > previousSeen.lastTimestamp &&
+        document.visibilityState === "visible") {
+      // HTTP polling is the fallback when LINE WebView loses WebSocket events.
+      // The customer still sees an unobtrusive reply notice in this case.
+      setIncomingNotice("ทีม IT ตอบกลับแล้ว");
+      if (incomingNoticeTimerRef.current !== null) window.clearTimeout(incomingNoticeTimerRef.current);
+      incomingNoticeTimerRef.current = window.setTimeout(() => setIncomingNotice(""), 4_500);
+    }
+    seenItReplyRef.current = {
+      conversationId,
+      lastTimestamp: Math.max(previousSeen.conversationId === conversationId ?
+        previousSeen.lastTimestamp : 0, newestReply)
+    };
     setConversation(detail.conversation);
     setMessages((current) => {
       const serverIds = new Set(detail.messages.map((item) => item.id));
@@ -283,6 +304,12 @@ export function LineSupportClient() {
 
   const applyChat = useCallback((detail: ChatDetail) => {
     activeConversationIdRef.current = detail.conversation.id;
+    seenItReplyRef.current = {
+      conversationId: detail.conversation.id,
+      lastTimestamp: detail.messages
+        .filter((item) => item.sender_type === "it")
+        .reduce((last, item) => Math.max(last, Date.parse(item.created_at) || 0), 0)
+    };
     detailEpochRef.current += 1;
     setConversation(detail.conversation);
     setMessages(detail.messages);
@@ -762,6 +789,7 @@ export function LineSupportClient() {
     setMessages([]);
     setActiveCall(null);
     setIncomingNotice("");
+    seenItReplyRef.current = { conversationId: "", lastTimestamp: 0 };
     clearPickedImage();
     setStage("store");
   }
