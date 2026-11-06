@@ -19,14 +19,13 @@ describe("Support Chat bidirectional low-latency path", () => {
   });
 
   it("does not serially await IT audit and head mirror, and keeps Web Push after response", () => {
-    const send = itRoute.slice(itRoute.indexOf('if (action === "send")'), itRoute.indexOf("const bridge = await bridgePromise;", itRoute.indexOf('if (action === "send")') + 100));
     expect(itRoute).toContain("await Promise.all([");
     expect(itRoute).toContain("mirrorSupportChatHead(data.head)");
     expect(itRoute).toContain("appendAuditLog({");
     expect(itRoute).toContain('action: "support_chat_message_sent"');
     expect(itRoute).toContain("after(async () =>");
     expect(itRoute).toContain("dispatchSupportPush");
-    expect(send).toContain("issueItSupportChatBridge");
+    expect(itRoute).toContain("const bridgePromise = issueItSupportChatBridge(auth)");
   });
 
   it("shows IT and LINE optimistic messages without waiting for the server", () => {
