@@ -8,6 +8,7 @@ import {
   publishOptimisticSupportChatHead,
   rollbackOptimisticSupportChatHead,
   deleteSupportChatHead,
+  verifySupportChatHeadDeleted,
   type SupportChatHead
 } from "@/lib/support-chat/support-chat-service";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
@@ -419,6 +420,7 @@ export async function POST(
         bridge, "delete_conversation", { conversation_id: conversationId }
       );
       await deleteSupportChatHead(conversationId);
+      await verifySupportChatHeadDeleted(conversationId);
       await appendAuditLog({
         tenantId: typeof data.tenant_id === "string" ? data.tenant_id : undefined,
         actorUserId: auth.auth.userId,
