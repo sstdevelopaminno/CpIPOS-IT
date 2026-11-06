@@ -22,8 +22,9 @@ describe("Support voice/audio and two-way alert resilience", () => {
 
   it("keeps remote audio element and jitter buffer instead of tearing them down on ontrack", () => {
     const attach = voice.slice(voice.indexOf("const attachRemoteStream = useCallback"), voice.indexOf("const flushQueuedIce"));
-    expect(attach).toContain("audioElementRef.current ?? new Audio()");
-    expect(attach).toContain("if (audio.srcObject !== stream) audio.srcObject = stream");
+    expect(attach).toContain("if (!audioElementRef.current)");
+    expect(attach).toContain("const created = new Audio()");
+    expect(attach).toContain("if (audioElementRef.current.srcObject !== stream) audioElementRef.current.srcObject = stream");
     expect(attach).toContain("if (audio.paused)");
     expect(attach).not.toContain("audioElementRef.current?.pause()");
   });
