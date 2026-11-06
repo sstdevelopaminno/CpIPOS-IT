@@ -30,7 +30,7 @@ describe("Support voice/audio and two-way alert resilience", () => {
 
   it("debounces transient mobile packet loss and avoids competing ICE restarts", () => {
     expect(voice).toContain("recoveryInFlightRef");
-    expect(voice).toContain("if (recoveryInFlightRef.current)");
+    expect(voice).toContain("recoveryInFlightRef.current) return;");
     expect(voice).toContain("recoveryInFlightRef.current = false");
     expect(voice).toContain('} else if (state === "disconnected")');
     expect(voice).toContain("}, 2_500)");
