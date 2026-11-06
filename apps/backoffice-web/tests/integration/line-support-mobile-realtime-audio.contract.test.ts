@@ -37,7 +37,8 @@ describe("LINE customer support full-screen mobile, immediate replies and waitin
     expect(line).toContain("activeConversationIdRef.current");
     expect(line).toContain('item.id.startsWith("line-local:")');
     expect(line).toContain('item.id.startsWith("broadcast:it:")');
-    expect(line).toContain('payload: { actor: "store", client_id: clientId, message,');
+    expect(line).toContain('payload: { actor: "store", client_id: clientId,');
+    expect(line).toContain('message: selectedImage ?');
     expect(line).toContain('event: "message_retract"');
     expect(line).toContain("if (stopped || activeConversationIdRef.current !== conversationId) return");
     expect(line).toContain('role="status" aria-live="polite"');
@@ -62,7 +63,7 @@ describe("LINE customer support full-screen mobile, immediate replies and waitin
 
   it("notifies IT devices of saved LINE replies and customer voice requests without slowing the API response", () => {
     expect(lineRoute).toContain('import { after } from "next/server"');
-    expect(lineRoute).toContain("await sendLineSupportMessage(session, conversationId, message)");
+    expect(lineRoute).toContain("await sendLineSupportMessage(session, conversationId, message, attachment)");
     expect(lineRoute).toContain('audience: "it"');
     expect(lineRoute).toContain('kind: "chat"');
     expect(lineRoute).toContain('title: "📞 ลูกค้าขอคุยด้วยเสียง"');
