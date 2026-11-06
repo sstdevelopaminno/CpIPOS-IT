@@ -39,6 +39,8 @@ type SupportVoiceCallOverlayProps = {
   onToggleMic?: () => void;
   onToggleSpeaker?: () => void;
   onResumeAudio?: () => void;
+  onReplayWaitingAudio?: () => void;
+  onReplayHoldAudio?: () => void;
   onOpenExternalBrowser?: () => void;
   allowMinimize?: boolean;
   minimized?: boolean;
@@ -137,6 +139,8 @@ export function SupportVoiceCallOverlay({
   onToggleMic,
   onToggleSpeaker,
   onResumeAudio,
+  onReplayWaitingAudio,
+  onReplayHoldAudio,
   onOpenExternalBrowser,
   allowMinimize = false,
   minimized = false,
@@ -296,8 +300,14 @@ export function SupportVoiceCallOverlay({
             <div className="mt-5 w-full max-w-md rounded-3xl border border-amber-300/20 bg-amber-500/10 px-5 py-4 text-left">
               <div className="text-sm font-black text-amber-100">🎵 กำลังพักสาย</div>
               <div className="mt-1 text-sm leading-6 text-amber-100/85">
-                กรุณารอสักครู่ ระบบกำลังส่งต่อให้เจ้าหน้าที่ที่รับผิดชอบ และเปิดเสียงดนตรีพักสายบนอุปกรณ์ของคุณ
+                ขณะนี้กำลังพักสายเพื่อส่งต่อเจ้าหน้าที่ กรุณารอสักครู่ ระบบจะเปิดเสียงพักสายบนอุปกรณ์ของคุณ
               </div>
+              {onReplayHoldAudio ? (
+                <button type="button" onClick={onReplayHoldAudio}
+                  className="mt-3 rounded-xl border border-amber-200/30 bg-white/15 px-4 py-2 text-xs font-bold text-white">
+                  🔊 เปิดเสียงและฟังข้อความพักสาย
+                </button>
+              ) : null}
             </div>
           ) : null}
           {mode === "outgoing" ? (
@@ -315,6 +325,12 @@ export function SupportVoiceCallOverlay({
                 {typeof queueWaitingCount === "number" ? ` · รอทั้งหมด ${queueWaitingCount} สาย` : ""}
                 {typeof queueActiveCalls === "number" && queueActiveCalls > 0 ? ` · กำลังให้บริการ ${queueActiveCalls} สาย` : ""}
               </div>
+              {onReplayWaitingAudio ? (
+                <button type="button" onClick={onReplayWaitingAudio}
+                  className="mt-3 rounded-xl border border-sky-200/30 bg-white/15 px-4 py-2 text-xs font-bold text-white">
+                  🔊 เปิดเสียงและฟังข้อความรอสาย
+                </button>
+              ) : null}
             </div>
           ) : null}
 

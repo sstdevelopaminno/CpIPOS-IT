@@ -74,7 +74,7 @@ describe("LINE Support Gateway", () => {
 
   it("preserves an open chat when the LINE webview is closed accidentally", () => {
     expect(client).not.toContain('addEventListener("pagehide"');
-    expect(client).toContain("3_000");
+    expect(client).toContain("6_000");
     expect(client).toContain("ต้องการจบการสนทนานี้จริงหรือไม่");
   });
 
