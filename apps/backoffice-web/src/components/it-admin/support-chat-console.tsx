@@ -841,11 +841,15 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
               </div>
             </>
           ) : (
-            <div className="grid flex-1 place-items-center p-8 text-center">
+            <div className="relative grid min-h-0 flex-1 place-items-center p-4 text-center sm:p-8">
+              <button type="button" onClick={() => setMobilePane("inbox")}
+                className="absolute left-3 top-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 xl:hidden">
+                ← กลับรายการแชท
+              </button>
               <div>
                 <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={72} height={72} className="mx-auto h-16 w-16 object-contain opacity-80" />
-                <h3 className="mt-3 text-lg font-black text-slate-900">เลือกแชทจากรายการด้านซ้าย</h3>
-                <p className="mt-1 text-sm text-slate-500">เมื่อเปิดแชทใหม่ ระบบจะรับเรื่องให้พนักงานที่เปิดโดยอัตโนมัติ</p>
+                <h3 className="mt-3 text-lg font-black text-slate-900">{selectedId ? "กำลังเปิดห้องสนทนา" : "เลือกแชทจากรายการด้านซ้าย"}</h3>
+                <p className="mt-1 text-sm text-slate-500">{selectedId ? "หากยังไม่แสดงข้อความ สามารถย้อนกลับไปเลือกรายการใหม่ได้" : "เมื่อเปิดแชทใหม่ ระบบจะรับเรื่องให้พนักงานที่เปิดโดยอัตโนมัติ"}</p>
               </div>
             </div>
           )}
