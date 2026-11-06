@@ -10,7 +10,9 @@ const tenantDirectory = source("src/components/it-admin/tenant-directory-console
 const tenantService = source("src/lib/services/it-admin/tenant-control-service.ts");
 const cleanupRoute = source("src/app/api/it-admin/v1/tenant-deletion-cleanup/route.ts");
 const migration = source("../../supabase/migrations/20261106102912_tenant_deletion_complete_cross_plane_cleanup.sql");
+const primaryGateway = source("../../supabase/control-plane-functions/cpipos-it-dashboard-primary/index.ts");
 const communicationsGateway = source("../../supabase/control-plane-functions/cpipos-it-dashboard-operational/index.ts");
+const verifierRemoval = source("../../supabase/migrations/20261106103529_remove_authenticated_tenant_deletion_verifier_rpc.sql");
 
 describe("permanent tenant deletion: trustworthy post-commit reconciliation", () => {
   it("does not infer success from a missing tenant or allow unverified recovery", () => {
@@ -47,12 +49,15 @@ describe("permanent tenant deletion: trustworthy post-commit reconciliation", ()
     expect(cleanupRoute).toContain("admin.supabase.auth.admin.deleteUser");
   });
 
-  it("requires a verified primary deletion receipt before Communications cleanup", () => {
-    expect(migration).toContain("it_verify_tenant_deleted_for_cross_plane_cleanup");
-    expect(migration).toContain("platform_role = 'it_support'");
+  it("requires a verified primary deletion receipt before Communications cleanup without adding an authenticated SECURITY DEFINER RPC", () => {
+    expect(primaryGateway).toContain('action === "verify_tenant_deletion_receipt"');
+    expect(primaryGateway).toContain('platformRole !== "it_support"');
+    expect(primaryGateway).toContain('"tenant_permanently_deleted"');
+    expect(communicationsGateway).toContain("PRIMARY_DELETE_VERIFY_URL");
     expect(communicationsGateway).toContain("primary_deletion_not_verified");
     expect(communicationsGateway).toContain('actor.role !== "it_support"');
     expect(communicationsGateway).toContain("it_delete_tenant_communications");
+    expect(verifierRemoval).toContain("drop function if exists public.it_verify_tenant_deleted_for_cross_plane_cleanup");
   });
 
   it("avoids the stale 30-second process cache for the tenants directory", () => {
