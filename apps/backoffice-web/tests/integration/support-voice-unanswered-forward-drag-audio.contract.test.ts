@@ -74,7 +74,7 @@ describe("IT unanswered voice forwarding and movable call panel", () => {
 
   it("unlocks customer hold music while the user is tapping to start a call", () => {
     const start = voice.slice(voice.indexOf("  const start = useCallback("), voice.indexOf("  const endLocal = useCallback("));
-    expect(start).toContain('if (side === "store") void startHoldMusic(false)');
+    expect(start).toContain('if (side === "store" && !held) void startHoldMusic(false)');
     expect(start.indexOf('void startHoldMusic(false)')).toBeLessThan(start.indexOf("await cleanup(false)"));
     expect(voice).toContain("holdAudioRef.current = { context, source, gain }");
     expect(voice).toContain("gain.gain.value = audible ? 0.85 : 0");
@@ -82,6 +82,7 @@ describe("IT unanswered voice forwarding and movable call panel", () => {
     expect(voice).toContain("source.loop = true");
     expect(voice).toContain("utterance.lang = \"th-TH\"");
     expect(voice).toContain("utterance.onstart =");
+    expect(voice).toContain("restoreHoldAudio");
     expect(voice).toContain("stopHoldMusic()");
   });
 });
