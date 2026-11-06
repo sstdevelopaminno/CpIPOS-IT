@@ -416,6 +416,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         return [...withoutOptimistic, json.data!.message];
       });
       setRows((current) => [json.data!.head, ...current.filter((row) => row.conversation_id !== json.data!.head.conversation_id)]);
+      // Receiver already displayed the optimistic preview. Signal the exact
+      // moment a canonical message is durable so it can reconcile promptly.
+      void typingChannelRef.current?.send({
+        type: "broadcast",
+        event: "message_confirmed",
+        payload: { actor: "it", client_id: optimisticId, server_id: json.data.message.id }
+      });
     } catch (cause) {
       void typingChannelRef.current?.send({
         type: "broadcast",
@@ -626,6 +633,15 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
         if (event.actor !== "store" || !event.client_id) return;
         const id = `broadcast:${event.client_id}`;
         setMessages((current) => current.filter((item) => item.id !== id));
+      })
+      .on("broadcast", { event: "message_confirmed" }, ({ payload }) => {
+        const event = payload as { actor?: string; client_id?: string };
+        if (event.actor !== "store" || !event.client_id) return;
+        if (incomingPreviewTimerRef.current !== null) window.clearTimeout(incomingPreviewTimerRef.current);
+        incomingPreviewTimerRef.current = window.setTimeout(() => {
+          incomingPreviewTimerRef.current = null;
+          void loadConversation(selectedId);
+        }, 80);
       })
       .subscribe();
     typingChannelRef.current = channel;
