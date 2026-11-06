@@ -407,7 +407,7 @@ export function useSupportVoiceCall({
 
     // Prime the customer hold channel before the first await, while
     // a direct tap still grants Android WebView audio playback permission.
-    if (side === "store") void startHoldMusic(false);
+    if (side === "store" && !held) void startHoldMusic(false);
     await cleanup(false);
     signalingKeyRef.current = call.signaling_key;
     setError("");
@@ -702,6 +702,19 @@ export function useSupportVoiceCall({
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [recoverConnection]);
+
+  useEffect(() => {
+    if (!held || side !== "store") return;
+    const restoreHoldAudio = () => {
+      if (document.visibilityState === "visible") void startHoldMusic(true);
+    };
+    window.addEventListener("focus", restoreHoldAudio);
+    document.addEventListener("visibilitychange", restoreHoldAudio);
+    return () => {
+      window.removeEventListener("focus", restoreHoldAudio);
+      document.removeEventListener("visibilitychange", restoreHoldAudio);
+    };
+  }, [held, side, startHoldMusic]);
 
   useEffect(() => {
     return () => {
