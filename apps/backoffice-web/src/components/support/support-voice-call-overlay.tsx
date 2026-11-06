@@ -42,6 +42,7 @@ type SupportVoiceCallOverlayProps = {
   onResumeAudio?: () => void;
   onReplayWaitingAudio?: () => void;
   onReplayHoldAudio?: () => void;
+  speechIssue?: boolean;
   onOpenExternalBrowser?: () => void;
   allowMinimize?: boolean;
   minimized?: boolean;
@@ -144,6 +145,7 @@ export function SupportVoiceCallOverlay({
   onResumeAudio,
   onReplayWaitingAudio,
   onReplayHoldAudio,
+  speechIssue = false,
   onOpenExternalBrowser,
   allowMinimize = false,
   minimized = false,
@@ -529,6 +531,13 @@ export function SupportVoiceCallOverlay({
           ) : null}
 
 
+          {speechIssue && (held || mode === "outgoing") ? (
+            <div role="status" className="mt-4 w-full max-w-md rounded-xl border border-amber-300/30 bg-amber-500/15 px-4 py-3 text-xs leading-5 text-amber-100">
+              ไม่สามารถเล่นเสียงประกาศภาษาไทยได้จากระบบเสียงของเครื่องนี้
+              กรุณาแตะปุ่มฟังข้อความด้านบน หรือติดตั้งเสียงภาษาไทยในบริการอ่านออกเสียงของเครื่อง
+              เพลงรอและข้อความบนหน้าจอยังใช้งานได้
+            </div>
+          ) : null}
           {error ? (
             <div className="mt-6 w-full max-w-md rounded-3xl border border-red-300/20 bg-red-500/10 px-5 py-4 text-left">
               <div className="text-sm font-black text-red-100">ยังเปิดเสียงไม่ได้</div>
