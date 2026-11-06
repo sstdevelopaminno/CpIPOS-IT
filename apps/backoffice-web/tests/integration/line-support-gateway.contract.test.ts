@@ -49,7 +49,7 @@ describe("LINE Support Gateway", () => {
     expect(chat).toContain("issue_support_chat_bridge_token");
     expect(chat).toContain('p_actor_type: "store"');
     expect(chat).toContain("mirrorSupportChatHead");
-    expect(chat).toContain('publishOptimisticSupportChatHead(conversationId, "store", message)');
+    expect(chat).toContain('publishOptimisticSupportChatHead(conversationId, "store", preview)');
   });
 
   it("rate limits first-time verification and customer message sends", () => {
