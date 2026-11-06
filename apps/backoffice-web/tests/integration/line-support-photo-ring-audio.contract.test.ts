@@ -64,9 +64,9 @@ describe("LINE Support image attachments and audible IT calls", () => {
   it("adds an IT ringtone with a gesture-unlock fallback", () => {
     expect(ringtone).toContain('window.addEventListener("pointerdown", unlock');
     expect(ringtone).toContain('window.addEventListener("keydown", unlock');
-    expect(ringtone).toContain("oscillator.frequency.setValueAtTime(440");
-    expect(ringtone).toContain("oscillator.frequency.setValueAtTime(554.37");
-    expect(ringtone).toContain("window.setInterval(pulse, 1_700)");
+    expect(ringtone).toContain("frequency: 523.25");
+    expect(ringtone).toContain("frequency: 783.99");
+    expect(ringtone).toContain("window.setInterval(pulse, 4_200)");
     expect(ringtone).toContain("const activateRing = useCallback");
     expect(provider).toContain("useSupportIncomingRingtone");
     expect(provider).toContain('mode === "incoming" && !incomingExpanded');
