@@ -14,6 +14,7 @@ export type VoiceQueueSnapshot = {
 type WaitingAudio = {
   context: AudioContext;
   source: AudioBufferSourceNode;
+  gain: GainNode;
 };
 
 export function useSupportVoiceWaitingMedia() {
@@ -64,14 +65,17 @@ export function useSupportVoiceWaitingMedia() {
         const fadeIn = Math.min(1, phaseInNote * 5);
         const fadeOut = Math.min(1, (1 - phaseInNote) * 5);
         const envelope = Math.sin(Math.PI * Math.min(fadeIn, fadeOut));
-        data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) * envelope * 0.025;
+        data[i] = Math.sin(2 * Math.PI * notes[noteIndex] * (i / context.sampleRate)) * envelope * 0.11;
       }
 
       const source = context.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
-      source.connect(context.destination);
-      audioRef.current = { context, source };
+      const gain = context.createGain();
+      gain.gain.value = 0.85;
+      source.connect(gain);
+      gain.connect(context.destination);
+      audioRef.current = { context, source, gain };
       source.start();
       if (context.state === "suspended") await context.resume().catch(() => null);
     } catch {
@@ -90,7 +94,7 @@ export function useSupportVoiceWaitingMedia() {
       ? snapshot.position > 1
         ? `ขณะนี้เจ้าหน้าที่กำลังให้บริการลูกค้าท่านอื่น กรุณารอสักครู่ คุณอยู่ในคิวลำดับที่ ${snapshot.position}`
         : "ขณะนี้คุณอยู่คิวแรก กรุณารอสักครู่ เจ้าหน้าที่จะรับสายของคุณโดยเร็วที่สุด"
-      : "กำลังติดต่อทีมซัพพอร์ต กรุณารอสักครู่ ระบบกำลังจัดคิวให้คุณ";
+      : "ยินดีต้อนรับสู่ CpiPOS Support ขณะนี้กำลังติดต่อเจ้าหน้าที่ กรุณารอสักครู่";
 
     try {
       window.speechSynthesis.cancel();
@@ -99,6 +103,18 @@ export function useSupportVoiceWaitingMedia() {
       utterance.rate = 0.92;
       utterance.pitch = 1;
       utterance.volume = 1;
+      // Duck the local waiting melody while Thai TTS speaks so callers can
+      // understand the announcement even with small Android speakers.
+      utterance.onstart = () => {
+        const playing = audioRef.current;
+        if (playing) playing.gain.gain.setTargetAtTime(0.14, playing.context.currentTime, 0.05);
+      };
+      const restoreMusic = () => {
+        const playing = audioRef.current;
+        if (playing) playing.gain.gain.setTargetAtTime(0.85, playing.context.currentTime, 0.15);
+      };
+      utterance.onend = restoreMusic;
+      utterance.onerror = restoreMusic;
       window.speechSynthesis.speak(utterance);
     } catch {
       // Visible queue text and generated waiting music remain as fallback.
