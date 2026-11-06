@@ -87,6 +87,7 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   const refreshEpochRef = useRef(0);
   const controlInFlightRef = useRef(false);
   const autoStartTransferRef = useRef(false);
+  const autoMinimizedCallIdRef = useRef("");
 
   const refresh = useCallback(async () => {
     if (controlInFlightRef.current) return;
@@ -184,6 +185,13 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
 
   const updateVoiceState = useCallback(async (state: "connecting" | "connected") => {
     if (!conversation?.id || !call?.id) return;
+    if (state === "connected" && autoMinimizedCallIdRef.current !== call.id) {
+      // Once audio is actually connected, switch to a movable window instead
+      // of leaving a full-screen overlay on top of the IT workspace. Restore
+      // remains available and is never overridden on this same call.
+      autoMinimizedCallIdRef.current = call.id;
+      setMinimized(true);
+    }
     const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${conversation.id}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
