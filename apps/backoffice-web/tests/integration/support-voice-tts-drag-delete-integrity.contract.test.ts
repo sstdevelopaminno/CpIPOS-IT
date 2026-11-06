@@ -39,7 +39,7 @@ describe("IT call audio/drag and full conversation hard-delete integrity", () =>
     expect(hold).toContain("holdSpeechTimerRef.current = window.setInterval");
     expect(hold).toContain("setHoldSpeechIssue(true)");
     expect(hold).toContain("replayHoldAudio()");
-    expect(overlay).toContain("speechIssue && (held || mode ===");
+    expect(overlay).toContain("speechIssue && !compactCustomer && (held || mode ===");
     expect(line).toContain("waitingSpeechIssue");
     expect(line).toContain("speechIssue={voiceHeld ? voice.holdSpeechIssue : waitingSpeechIssue}");
   });
