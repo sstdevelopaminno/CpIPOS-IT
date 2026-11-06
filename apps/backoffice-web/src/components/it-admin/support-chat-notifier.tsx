@@ -26,7 +26,8 @@ async function loadInboxSnapshot(): Promise<InboxSnapshot> {
     data?: { conversations?: Head[]; unread_total?: number }
   } | null;
   if (!response.ok || !json?.data) {
-    return { conversations: [], unread_total: 0 };
+    // A transient API error must not erase the unread badge or known inbox.
+    throw new Error("support_inbox_snapshot_unavailable");
   }
   return {
     conversations: json.data.conversations ?? [],
@@ -52,6 +53,8 @@ export function SupportChatNotifier() {
   useEffect(() => {
     let alive = true;
     let realtimeHealthy = false;
+    let snapshotInFlight = false;
+    let toastTimer: number | null = null;
     const supabase = getSupabaseBrowserClient();
 
     const signalFor = (head: Head) => [
@@ -90,7 +93,8 @@ export function SupportChatNotifier() {
           : (next.store_name ? `แชทใหม่ · ${next.store_name}` : "มีแชทใหม่");
         const message = next.latest_message_preview || next.subject || "ลูกค้าส่งข้อความเข้ามา";
         setToast({ title, message });
-        window.setTimeout(() => setToast(null), 5000);
+        if (toastTimer !== null) window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => setToast(null), 5000);
 
         try {
           const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -102,6 +106,7 @@ export function SupportChatNotifier() {
             osc.frequency.value = 760;
             osc.connect(gain);
             gain.connect(ctx.destination);
+            osc.onended = () => { void ctx.close().catch(() => null); };
             osc.start();
             osc.stop(ctx.currentTime + 0.12);
           }
@@ -116,16 +121,22 @@ export function SupportChatNotifier() {
     };
 
     const refreshSnapshot = async (allowToast: boolean) => {
-      const snapshot = await loadInboxSnapshot();
-      if (!alive) return;
-      snapshotHeads.current = new Map(
-        snapshot.conversations
-          .filter((head): head is Head & { conversation_id: string } => Boolean(head.conversation_id))
-          .map((head) => [head.conversation_id, head])
-      );
-      notifyUnread(snapshot.unread_total);
-      for (const head of snapshot.conversations) handleHead(head, allowToast);
-      initialized.current = true;
+      if (snapshotInFlight) return;
+      snapshotInFlight = true;
+      try {
+        const snapshot = await loadInboxSnapshot();
+        if (!alive) return;
+        snapshotHeads.current = new Map(
+          snapshot.conversations
+            .filter((head): head is Head & { conversation_id: string } => Boolean(head.conversation_id))
+            .map((head) => [head.conversation_id, head])
+        );
+        notifyUnread(snapshot.unread_total);
+        for (const head of snapshot.conversations) handleHead(head, allowToast);
+        initialized.current = true;
+      } finally {
+        snapshotInFlight = false;
+      }
     };
 
     void refreshSnapshot(false).catch(() => null);
@@ -189,13 +200,15 @@ export function SupportChatNotifier() {
       const payload = (event as CustomEvent<{ title?: string; body?: string; kind?: string }>).detail;
       if (payload?.kind !== "chat") return;
       setToast({ title: payload.title || "มีแชทใหม่", message: payload.body || "" });
-      window.setTimeout(() => setToast(null), 5000);
+      if (toastTimer !== null) window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => setToast(null), 5000);
       void refreshSnapshot(true).catch(() => null);
     };
     window.addEventListener("cpipos-it-push-notification", onPush);
 
     return () => {
       alive = false;
+      if (toastTimer !== null) window.clearTimeout(toastTimer);
       window.clearInterval(fallbackPoll);
       window.removeEventListener("focus", refreshOnFocus);
       window.removeEventListener("online", refreshOnFocus);
