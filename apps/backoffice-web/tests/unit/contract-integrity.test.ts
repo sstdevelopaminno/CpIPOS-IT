@@ -33,6 +33,31 @@ describe("safe IT contract overlap preflight", () => {
     ], now).has_invalid_dates).toBe(true);
   });
 
+  it("blocks future or malformed grants consistently when evaluating currency changes", () => {
+    const future = { id: "future", status: "trial", started_at: "2026-10-22T00:00:00Z", ended_at: null };
+    const live = { id: "live", status: "active", started_at: "2026-10-01T00:00:00Z", ended_at: null };
+    const invalid = { id: "bad-date", status: "active", started_at: "not-a-timestamp", ended_at: null };
+    expect(isCurrentSubscriptionContract(future, now)).toBe(false);
+    expect(summarizeContractIntegrity([future, live], now)).toEqual({
+      effective_contract_count: 1, has_conflict: false, has_invalid_dates: false
+    });
+    expect(summarizeContractIntegrity([invalid], now)).toEqual({
+      effective_contract_count: 1, has_conflict: false, has_invalid_dates: true
+    });
+  });
+
+  it("reuses the canonical fail-closed contract guard for IT currency approval", () => {
+    const src = readFileSync(
+      new URL("../../src/app/api/it-admin/v1/tenants/[tenantId]/pos-currency/route.ts", import.meta.url), "utf8");
+    expect(src).toContain('select("id,status,started_at,ended_at")');
+    expect(src).toContain("summarizeContractIntegrity(contracts.data??[])");
+    expect(src).toContain("isCurrentSubscriptionContract(contract.data)");
+    expect(src).toContain("if(integrity.has_conflict)");
+    expect(src).toContain("if(integrity.has_invalid_dates)");
+    expect(src).toContain("has_invalid_contract_dates:integrity.has_invalid_dates");
+    expect(src).toContain("if(!x.can_change||!x.contract)");
+  });
+
   it("scopes both GET and PATCH checks to tenant ID and rejects ambiguous writes", () => {
     const src = readFileSync(
       new URL("../../src/app/api/it-admin/admin/tenants/[tenantId]/contract/route.ts", import.meta.url), "utf8");
