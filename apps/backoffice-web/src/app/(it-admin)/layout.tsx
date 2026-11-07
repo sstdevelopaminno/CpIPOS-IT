@@ -148,6 +148,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
       { href: "/it-admin/pos-users", label: text.items.users, group: text.groups.customer, icon: "users" },
       { href: "/it-admin/cpipos-ai", label: text.items.cpiposAi, group: text.groups.customer, icon: "ai" },
       { href: "/it-admin/cpipos-ai/documents", label: text.items.cpiposAiDocuments, group: text.groups.customer, icon: "package" },
+      { href: "/it-admin/news", label: text.items.news, group: text.groups.operations, icon: "broadcast" },
       { href: "/it-admin/packages", label: text.items.packages, group: text.groups.commercial, icon: "package" },
       { href: "/it-admin/subscription-payments", label: text.items.subscriptionPayments, group: text.groups.commercial, icon: "package" },
       { href: "/it-admin/payment-settings", label: text.items.paymentSettings, group: text.groups.commercial, icon: "settings" },
