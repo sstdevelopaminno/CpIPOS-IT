@@ -46,6 +46,7 @@ const copy = {
       audit: "บันทึกตรวจสอบ",
       maintenance: "Data Retention / Maintenance",
       emergencyBroadcast: "ส่งข้อความฉุกเฉิน",
+      news: "แจ้งข่าวสาร",
       supportChat: "แชท",
       supportMail: "อีเมล Support",
       otherContacts: "การติดต่ออื่นๆ",
@@ -97,6 +98,7 @@ const copy = {
       audit: "Audit Logs",
       maintenance: "Data Retention / Maintenance",
       emergencyBroadcast: "Emergency Broadcast",
+      news: "Announcements",
       supportChat: "Chat",
       supportMail: "Support Email",
       otherContacts: "Other Contacts",
@@ -181,6 +183,7 @@ function buildNavigation(lang: Language, role: "it_admin" | "it_support"): AppSh
     { href: "/it-admin/monitoring", label: text.items.monitoring, group: text.groups.operations, icon: "monitoring" },
     { href: "/it-admin/incidents", label: text.items.incidents, group: text.groups.operations, icon: "incident" },
     { href: "/it-admin/audit", label: text.items.audit, group: text.groups.operations, icon: "audit" },
+    { href: "/it-admin/news", label: text.items.news, group: text.groups.operations, icon: "broadcast" },
     { href: "/it-admin/emergency-broadcast", label: text.items.emergencyBroadcast, group: text.groups.operations, icon: "broadcast" },
     { href: "/it-admin/support-chat", label: text.items.supportChat, group: text.groups.operations, icon: "chat",
         children: [
