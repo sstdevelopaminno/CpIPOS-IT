@@ -50,8 +50,9 @@ describe("IT-controlled CUSTOM sales currency cutover", () => {
   expect(ui).toContain('กรุณาติ๊กยืนยันและพิมพ์ CHANGE ${next}');
   expect(ui).toContain('aria-live="assertive"');
   expect(route).toContain('if(!x.can_change||!x.contract)');
-  expect(route).toContain('effectiveContractCount>1');
-  expect(route).toContain('effective_contract_count:effectiveContractCount');
+  expect(route).toContain('if(integrity.has_conflict)');
+  expect(route).toContain('if(integrity.has_invalid_dates)');
+  expect(route).toContain('effective_contract_count:integrity.effective_contract_count');
  });
  it("shows the approved currency instead of preselecting the opposite tender currency", () => {
   expect(ui).toContain('setNext(body.data.currency_code);');
