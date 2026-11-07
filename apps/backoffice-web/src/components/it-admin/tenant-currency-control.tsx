@@ -8,7 +8,8 @@ type Check = {
  settings_menu_enabled:boolean; currency_menu_enabled:boolean;
  approver_role:"it_admin"|"it_support";
  total_orders:number; unresolved_orders:number; open_shifts:number;
- active_sessions:number; pending_payment_intents:number; blockers:string[]; can_change:boolean;
+ active_sessions:number; pending_payment_intents:number; effective_contract_count:number;
+ has_contract_conflict:boolean; has_invalid_contract_dates:boolean; blockers:string[]; can_change:boolean;
 };
 type Api<T> = {data:T|null;error:{code?:string;message?:string}|null};
 
@@ -124,7 +125,13 @@ export function TenantCurrencyControl({tenantId}:{tenantId:string}) {
        <small>{item.label}</small><div style={{fontWeight:800,fontSize:24}}>{item.value}</div>
       </div>)}
    </div>
-   {menuMissing?<div style={{padding:16,border:"1px solid #93c5fd",borderRadius:12,display:"grid",gap:12}}>
+   {(state.has_contract_conflict||state.has_invalid_contract_dates)?<div role="alert" style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:12,padding:16,display:"grid",gap:6}}>
+     <strong>ตรวจพบข้อมูลสัญญาที่ต้องตรวจสอบก่อนอนุมัติ</strong>
+     {state.has_contract_conflict?<p style={{margin:0}}>พบสัญญาที่มีผลใช้งานซ้อนกัน {state.effective_contract_count} รายการ</p>:null}
+     {state.has_invalid_contract_dates?<p style={{margin:0}}>พบวันที่เริ่มต้นหรือสิ้นสุดสัญญาผิดรูปแบบ</p>:null}
+     <p style={{margin:0}}>ระงับการเปลี่ยนสกุลเงินจนกว่า IT ตรวจสอบเอกสารสัญญาและประวัติการเงิน ห้ามยกเลิกสัญญาหรือบิลอัตโนมัติ</p>
+   </div>:null}
+   {menuMissing?<div style={{padding:16,border:"1px solid #93c5fd",borderRadius:12,display:"grid",gap:12}}> 
      <strong>ขั้นที่ 1 — เปิดสิทธิ์เมนู CUSTOM ของร้าน</strong>
      <p style={{margin:0}}>ระบบยังไม่ได้เปิดเมนูหลักตั้งค่า หรือเมนูย่อยตั้งค่าสกุลเงิน สามารถเปิดตรงนี้โดยไม่ต้องย้อนหาในรายการเมนู</p>
      <button type="button" disabled={enabling||saving||loading} onClick={()=>void enableMenus()}
