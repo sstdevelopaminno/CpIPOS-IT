@@ -19,8 +19,9 @@ export function SupportRequestNotifier(){
     const refresh=()=>void loadCount().then(total=>{if(alive)announce(total);}).catch(()=>null);
     refresh();
     const onPush=(event:Event)=>{
-      const payload=(event as CustomEvent<{title?:string;body?:string;kind?:string}>).detail;
-      if(payload?.kind!=="request") return;
+      const payload=(event as CustomEvent<{title?:string;body?:string;kind?:string;url?:string}>).detail;
+      // Store registration push has its own notifier and must not navigate to billing.
+      if(payload?.kind!=="request" || payload.url?.startsWith("/it-admin/store-registrations")) return;
       setToast({title:payload.title||"มีคำขอใหม่",message:payload.body||""});
       window.setTimeout(()=>setToast(null),5000);
       refresh();

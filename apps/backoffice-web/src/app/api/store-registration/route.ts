@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
 import { customerEmailProblem } from "@/lib/services/it-admin/customer-email-service";
+import { deliverStoreRegistrationSupportEmail, pushStoreRegistrationAlert } from "@/lib/services/it-admin/store-registration-support-alerts";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const json = (data: unknown, status = 200) =>
   NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
@@ -270,6 +272,22 @@ export async function POST(req: Request) {
       request_id: data.id,
       status: data.status,
       package_mode: isCustom ? "custom" : "standard"
+    });
+
+    // The public form must not time out or report failure after the request
+    // is already persisted. Next.js after() keeps delivery work attached to
+    // this request while the response is returned immediately.
+    after(async () => {
+      const results = await Promise.allSettled([
+        deliverStoreRegistrationSupportEmail(data.id),
+        pushStoreRegistrationAlert(data.id, storeName)
+      ]);
+      for (const result of results) {
+        if (result.status === "rejected") {
+          console.error("[public-store-registration] notification dispatch failed",
+            result.reason instanceof Error ? result.reason.message : "unknown");
+        }
+      }
     });
 
     return json(

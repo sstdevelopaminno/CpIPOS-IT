@@ -5,6 +5,7 @@ import { getAuthContext } from "@/lib/auth-context";
 import { getCurrentLanguage, t, type Language } from "@/lib/i18n";
 import { SupportChatNotifier } from "@/components/it-admin/support-chat-notifier";
 import { SupportRequestNotifier } from "@/components/it-admin/support-request-notifier";
+import { StoreRegistrationNotifier } from "@/components/it-admin/store-registration-notifier";
 import { ItSupportVoiceProvider } from "@/components/it-admin/it-support-voice-provider";
 import "./it-admin-scroll.css";
 
@@ -222,6 +223,7 @@ export default async function ItAdminLayout({ children }: { children: ReactNode 
       <ItSupportVoiceProvider>
         <SupportChatNotifier />
         <SupportRequestNotifier />
+        <StoreRegistrationNotifier />
         {children}
       </ItSupportVoiceProvider>
     </AppShell>

@@ -286,6 +286,7 @@ export function AppShell({
   const [loggingOut, setLoggingOut] = useState(false);
   const [supportUnread, setSupportUnread] = useState(0);
   const [requestUnread, setRequestUnread] = useState(0);
+  const [registrationUnread, setRegistrationUnread] = useState(0);
 
   // Browser back/forward and deep-link navigation must close the mobile drawer.
   useEffect(() => {
@@ -309,11 +310,17 @@ export function AppShell({
       const custom = event as CustomEvent<{ total?: number }>;
       setRequestUnread(Math.max(0, Number(custom.detail?.total ?? 0)));
     };
+    const onRegistrationUnread = (event: Event) => {
+      const custom = event as CustomEvent<{ total?: number }>;
+      setRegistrationUnread(Math.max(0, Number(custom.detail?.total ?? 0)));
+    };
     window.addEventListener("cpipos-support-chat-unread", onUnread);
     window.addEventListener("cpipos-support-request-unread", onRequestUnread);
+    window.addEventListener("cpipos-store-registration-unread", onRegistrationUnread);
     return () => {
       window.removeEventListener("cpipos-support-chat-unread", onUnread);
       window.removeEventListener("cpipos-support-request-unread", onRequestUnread);
+      window.removeEventListener("cpipos-store-registration-unread", onRegistrationUnread);
     };
   }, []);
 
@@ -491,6 +498,11 @@ export function AppShell({
                           {targetHref === "/it-admin/subscription-payments" && requestUnread > 0 ? (
                             <span className={styles.supportBadge}>{requestUnread > 99 ? "99+" : requestUnread}</span>
                           ) : null}
+                          {targetHref === "/it-admin/store-registrations" && registrationUnread > 0 ? (
+                            <span className={styles.supportBadge} aria-label={registrationUnread + " คำขอเปิดร้านรอดำเนินการ"}>
+                              {registrationUnread > 99 ? "99+" : registrationUnread}
+                            </span>
+                          ) : null}
                           <span className={`${styles.navCaret} ${treeOpen ? styles.navCaretOpen : ""}`} aria-hidden="true">⌄</span>
                         </button>
                       ) : (
@@ -509,6 +521,11 @@ export function AppShell({
                           ) : null}
                           {targetHref === "/it-admin/subscription-payments" && requestUnread > 0 ? (
                             <span className={styles.supportBadge}>{requestUnread > 99 ? "99+" : requestUnread}</span>
+                          ) : null}
+                          {targetHref === "/it-admin/store-registrations" && registrationUnread > 0 ? (
+                            <span className={styles.supportBadge} aria-label={registrationUnread + " คำขอเปิดร้านรอดำเนินการ"}>
+                              {registrationUnread > 99 ? "99+" : registrationUnread}
+                            </span>
                           ) : null}
                         </Link>
                       )}
