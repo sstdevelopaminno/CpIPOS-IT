@@ -12,7 +12,7 @@ describe("website store application → IT notification contract", () => {
   const layout = source("src/app/(it-admin)/layout.tsx");
   const shell = source("src/components/layout/app-shell.tsx");
   const paymentNotifier = source("src/components/it-admin/support-request-notifier.tsx");
-  const migration = source("../../supabase/migrations/20261108074500_store_registration_support_alerts.sql");
+  const migration = source("../../supabase/migrations/20261108005638_store_registration_support_alerts_20261108.sql");
 
   it("keeps the public submission saved even if the email or push delivery fails", () => {
     expect(publicRoute).toContain("after(async () =>");
