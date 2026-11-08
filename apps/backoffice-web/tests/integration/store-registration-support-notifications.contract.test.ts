@@ -70,6 +70,6 @@ describe("website store application → IT notification contract", () => {
     expect(service).toContain('.eq("attempt_count", row.attempt_count)');
     expect(service).toContain('STALE_CLAIM_MS');
     expect(service).toContain('RETRY_COOLDOWN_MS');
-    expect(service).toContain('status: "failed"');
+    expect(service).toContain('finalize("failed"');
   });
 });
