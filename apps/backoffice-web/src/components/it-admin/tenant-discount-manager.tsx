@@ -117,7 +117,7 @@ export function TenantDiscountManager({tenantId}:{tenantId:string}) {
     {notice?<p role="status" style={{background:"#ecfdf5",color:"#065f46",padding:12,borderRadius:10}}>{notice}</p>:null}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12}}>
       <label style={labelStyle}>ชื่อโปรโมชั่น<input style={inputStyle} value={title} maxLength={160} disabled={busy||!canSave} onChange={e=>setTitle(e.target.value)} placeholder="เช่น ของขวัญปีใหม่ 2570"/></label>
-      <label style={labelStyle}>ส่วนลด (%)<input style={inputStyle} type="number" min=".01" max="100" step=".01" value={percent} disabled={busy||!canSave} onChange={e=>setPercent(e.target.value)}/></label>
+      <label style={labelStyle}>ส่วนลด (%)<input style={inputStyle} type="number" min=".01" max="99.99" step=".01" value={percent} disabled={busy||!canSave} onChange={e=>setPercent(e.target.value)}/></label>
       <label style={labelStyle}>วันที่เริ่มรับสิทธิ<input style={inputStyle} type="date" value={validFrom} disabled={busy||!canSave} onChange={e=>{setValidFrom(e.target.value);setDuration(e.target.value,unit,quantity);}}/></label>
       <label style={labelStyle}>หน่วยระยะเวลา<select style={inputStyle} value={unit} disabled={busy||!canSave} onChange={e=>{const u=e.target.value as typeof unit;setUnit(u);setDuration(validFrom,u,quantity);}}><option value="day">รายวัน</option><option value="month">รายเดือน</option><option value="year">รายปี</option></select></label>
       <label style={labelStyle}>จำนวน {unitText[unit]}<input style={inputStyle} type="number" min="1" max="3650" value={quantity} disabled={busy||!canSave} onChange={e=>{const n=Number(e.target.value);setQuantity(n);setDuration(validFrom,unit,n);}}/></label>
