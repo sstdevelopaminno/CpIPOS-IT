@@ -112,24 +112,6 @@ execute function app.tenant_discount_before_billing_cycle();
 
 revoke all on function app.tenant_discount_before_billing_cycle() from public,anon,authenticated;
 
--- Carry forward the previously approved Christmas/New Year privilege for this
--- one store from explicit contract metadata. No current or settled bill is altered.
-insert into public.tenant_package_discounts
-  (tenant_id,package_id,title,percent,valid_from,valid_until,duration_unit,duration_value,reason)
-select c.tenant_id,c.package_id,'CpiPOS NEW YEAR PRIVILEGE 2027',10,
-       date '2026-12-13',date '2027-04-12','month',4,
-       'ส่วนลดปีใหม่ 10% ที่ได้รับการอนุมัติและแจ้งลูกค้าแล้ว'
-from public.tenant_subscription_contracts c
-where c.id='f688670e-2822-403f-8137-73dcc16d9c55'
-  and c.tenant_id='1f7380a1-197e-4483-975b-0690a7fd82fc'
-  and c.metadata->'new_year_2027_discount'->>'approved'='true'
-  and not exists (
-    select 1 from public.tenant_package_discounts d
-    where d.tenant_id=c.tenant_id and d.status='active'
-      and daterange(d.valid_from,d.valid_until+1,'[)') && daterange('2026-12-13'::date,'2027-04-13'::date,'[)')
-  );
-
-
 -- Settlement writes the amount actually collected into amount_per_cycle.
 -- A temporary discount must NOT become the permanent subscription base price.
 create or replace function app.preserve_contract_base_price_for_promotion()
