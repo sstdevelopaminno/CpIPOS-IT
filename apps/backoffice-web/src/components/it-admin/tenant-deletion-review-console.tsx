@@ -62,7 +62,7 @@ const copy = {
     mdmQueued: "ส่งคำสั่งปลด MDM แล้ว ระบบจะรออุปกรณ์ออนไลน์และยืนยันผลก่อนเปิดขั้นตอนลบถาวร",
     mdmRequired: "ต้องปลด Android Device Owner ก่อน เพื่อให้ลูกค้าถอนติดตั้งแอปเองได้",
     mdmDone: "ปลด MDM แล้ว",
-    autoRule: "Trial: ใช้งาน 7 วัน → รักษาข้อมูลถึงวันที่ 15 → IT ยืนยันลบ · Paid: หลังหมดแพ็กเกจใช้งานต่อ 3 วัน → รักษาข้อมูล 30 วัน → IT ยืนยันลบ"
+    autoRule: "Trial: ใช้งาน 7 วัน → รักษาข้อมูลถึงวันที่ 15 → IT ยืนยันลบ · Paid: หลังหมดแพ็กเกจใช้งานต่อ 1 เดือน → ระงับบริการและรักษาข้อมูลอีก 30 วัน → IT ตรวจข้อกำหนดก่อนยืนยันลบ"
   },
   en: {
     title: "Tenant deletion review",
@@ -90,7 +90,7 @@ const copy = {
     mdmQueued: "MDM release command queued. The workflow will wait for the device to come online and acknowledge release before permanent deletion.",
     mdmRequired: "Android Device Owner must be released first so the customer can uninstall the app normally.",
     mdmDone: "MDM released",
-    autoRule: "Trial: 7 days access → retain until day 15 → IT confirms deletion · Paid: 3 days access grace → 30 days data retention → IT confirms deletion"
+    autoRule: "Trial: 7 days access → retain until day 15 → IT confirms deletion · Paid: 1 calendar month access grace → 30 additional days of data retention → IT legal review before deletion"
   }
 } as const;
 

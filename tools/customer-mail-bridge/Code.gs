@@ -13,7 +13,7 @@
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-10-01.4";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-14.1";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -190,11 +190,29 @@ function getThread_(body, mailbox) {
   });
 }
 
+/**
+ * Preserve a buffer for manual/support correspondence on free Gmail accounts.
+ * Configurable in Script Properties, but never permits a negative reserve.
+ */
+function checkMailQuota_(recipientCount) {
+  var props = PropertiesService.getScriptProperties();
+  var reserve = boundedInt_(props.getProperty("CPIPOS_MAIL_MIN_REMAINING_QUOTA"), 40, 10, 90);
+  var left = MailApp.getRemainingDailyQuota();
+  var requested = Math.max(1, boundedInt_(recipientCount, 1, 1, 50));
+  if (left < requested + reserve) {
+    return { ok: false, error: "mail_daily_quota_reserved", remaining: left, reserved: reserve };
+  }
+  return { ok: true, remaining: left };
+}
+
 function sendNew_(body, mailbox) {
   var to = safeText_(body.to, 1000).toLowerCase();
   var subject = safeText_(body.subject, 500);
   var textBody = String(body.body || "").trim().slice(0, 30000);
   if (!to || !subject || !textBody) throw new Error("invalid_send_payload");
+
+  var budget = checkMailQuota_(to.split(",").length);
+  if (!budget.ok) return json_(budget);
 
   GmailApp.sendEmail(to, subject, textBody, {
     name: "CpIPOS Support",
@@ -208,6 +226,9 @@ function reply_(body, mailbox) {
   var thread = threadById_(body.thread_id);
   var textBody = String(body.body || "").trim().slice(0, 30000);
   if (!textBody) throw new Error("reply_body_required");
+
+  var budget = checkMailQuota_(1);
+  if (!budget.ok) return json_(budget);
 
   thread.reply(textBody);
   thread.markRead();
@@ -271,6 +292,9 @@ function sendTransactional_(body, mailbox) {
   if (cache.get(cacheKey)) {
     return json_({ ok: true, deduplicated: true, messageId: "cached:" + key, mailbox: mailbox });
   }
+
+  var budget = checkMailQuota_(1);
+  if (!budget.ok) return json_(budget);
 
   MailApp.sendEmail({
     to: to,

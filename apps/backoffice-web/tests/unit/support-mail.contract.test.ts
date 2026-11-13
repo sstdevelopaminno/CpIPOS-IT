@@ -28,7 +28,7 @@ describe("IT Support Mail integration", () => {
       expect(api).toContain(folder);
     }
     expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
-    expect(bridge).toContain("2026-10-01.4");
+    expect(bridge).toContain("2026-11-14.1");
     expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
     expect(api).toContain("listSupportMailThreads");

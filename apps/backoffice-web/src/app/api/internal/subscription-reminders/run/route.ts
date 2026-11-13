@@ -39,7 +39,8 @@ export async function POST(request:Request){
               lifecycleKind:row.lifecycle_kind==="trial"||row.milestone.startsWith("trial_retention")?"trial":"subscription",
               deletionReviewAt:row.due_at,
               daysRemaining:days,
-              finalNotice:row.final_notice===true||row.milestone.endsWith("_final")
+              finalNotice:row.final_notice===true||row.milestone.endsWith("_final"),
+              suspensionNotice:row.milestone==="paid_suspended_notice"
             })
           : buildSubscriptionDueReminderEmail({storeName:row.store_name,ownerName:row.owner_name,packageName:row.package_name,dueAt:row.due_at,daysRemaining:days,amountDue:amount,currency:row.currency,billingInterval:row.billing_interval});
       const dueKey=row.due_at.slice(0,10).replaceAll("-","");
