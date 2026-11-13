@@ -80,7 +80,7 @@ export async function POST(req:Request,ctx:{params:Promise<{tenantId:string}>}) 
     if(title.length<2||title.length>160||reason.length<4||reason.length>600)
       return fail("invalid_details","กรุณาระบุชื่อโปรโมชั่นและเหตุผลที่ชัดเจน",422);
     if(!Number.isFinite(percent)||percent<=0||percent>=100||Math.abs(Math.round(percent*100)-percent*100)>1e-6)
-      return fail("invalid_percent","ส่วนลดต้องอยู่ระหว่าง 0.01–100.00%",422);
+      return fail("invalid_percent","ส่วนลดต้องอยู่ระหว่าง 0.01–99.99%",422);
     if(unit!=="day"&&unit!=="month"&&unit!=="year")
       return fail("invalid_unit","เลือกระยะเวลาเป็นวัน เดือน หรือปี",422);
     if(!Number.isInteger(durationValue)||durationValue<1||durationValue>3650)
