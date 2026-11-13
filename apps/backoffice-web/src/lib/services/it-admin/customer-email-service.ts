@@ -56,6 +56,10 @@ export type CustomerEmailMessage = {
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RETRY_COOLDOWN_MS = 5 * 60 * 1000;
 const STALE_SENDING_MS = 10 * 60 * 1000;
+// Conservative reserve for consumer Gmail/MailApp (100 recipients per rolling day).
+// This ledger is shared by IT notification types; the Apps Script bridge enforces its own live reserve.
+const AUTO_EMAIL_24H_CAP = 50;
+const BILLING_REMINDER_COOLDOWN_HOURS = 72;
 const TYPO_DOMAINS = new Map([
   ["amil.com", "gmail.com"],
   ["gmai.com", "gmail.com"],
@@ -169,7 +173,7 @@ function brandMessage(
   const subtitle = eventType === "payment_confirmation"
     ? "บริษัทได้รับและตรวจสอบการชำระเงินเรียบร้อยแล้ว ระบบได้เปิด/ต่ออายุแพ็กเกจ CpIPOS ให้แล้ว"
     : eventType === "subscription_due_reminder"
-      ? "แจ้งเตือนก่อนสิ้นสุดรอบบริการ เพื่อให้ร้านมีเวลาต่อแพ็กเกจก่อนระบบครบกำหนด"
+      ? "แจ้งข้อมูลรอบชำระแพ็กเกจและระยะผ่อนผัน เพื่อให้ร้านวางแผนต่ออายุได้"
       : eventType === "trial_expiry_reminder"
         ? "แจ้งเตือนก่อนสิ้นสุดสิทธิ์ทดลองใช้ เพื่อให้เจ้าของร้านเลือกแพ็กเกจและชำระก่อนสิทธิ์หมด"
         : eventType === "tenant_deletion_warning"
@@ -379,13 +383,16 @@ export function buildSubscriptionDueReminderEmail(input: {
   const interval=input.billingInterval==="yearly"?"รายปี":"รายเดือน";
   const subject=`แจ้งเตือนต่อแพ็กเกจ CpIPOS | ${text(input.storeName,100)} | ครบกำหนด ${due}`;
   const owner=text(input.ownerName,120)||text(input.storeName,120);
+  const overdue=input.daysRemaining<0;
+  const timing=overdue?`เลยกำหนด ${Math.abs(input.daysRemaining)} วัน · อยู่ระหว่างช่วงผ่อนผันชำระ`:`เหลือ ${Math.max(0,input.daysRemaining)} วัน`;
+  const note=overdue?"กรุณาตรวจสอบยอดและแจ้งชำระผ่าน CpIPOS หรือ Customer Portal หากส่งหลักฐานแล้วทีมงานจะตรวจสอบก่อนส่งเตือนเพิ่มเติม":"กรุณาตรวจสอบรอบบิลและแจ้งชำระผ่าน CpIPOS หรือ Customer Portal ภายในกำหนด";
   const lines=[
     `เรียน ${owner}`,"",
-    `แพ็กเกจ ${text(input.packageName,120)} ของร้านใกล้สิ้นสุดรอบบริการ`,
+    overdue?`แจ้งยอดค่าบริการแพ็กเกจ ${text(input.packageName,120)} ของร้าน`:`แพ็กเกจ ${text(input.packageName,120)} ของร้านใกล้สิ้นสุดรอบบริการ`,
     `ครบกำหนด: ${due}`,
-    `คงเหลือ: ${Math.max(0,input.daysRemaining)} วัน`,
+    `สถานะกำหนดชำระ: ${timing}`,
     `ค่าบริการรอบถัดไป: ${money(input.amountDue,input.currency||"THB")} (${interval})`,"",
-    "กรุณาเปิดเมนูแพ็กเกจ/ชำระเงินใน CpIPOS หรือ Customer Portal เพื่อแจ้งชำระก่อนครบกำหนด",
+    note,
     "อีเมลฉบับนี้เป็นการแจ้งเตือน ไม่ใช่ใบเสร็จหรือหลักฐานรับชำระเงิน"
   ];
   const html=[
@@ -393,10 +400,10 @@ export function buildSubscriptionDueReminderEmail(input: {
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;border:1px solid #cfe0f5;border-radius:12px;background:#f8fbff;overflow:hidden">',
     `<tr><td style="padding:13px 16px;font-size:12px;color:#64748b">ร้านค้า</td><td style="padding:13px 16px;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.storeName)}</td></tr>`,
     `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">แพ็กเกจ</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.packageName)} · ${escapeHtml(interval)}</td></tr>`,
-    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ครบกำหนด</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#b45309">${escapeHtml(due)} · เหลือ ${Math.max(0,input.daysRemaining)} วัน</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ครบกำหนด</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#b45309">${escapeHtml(due)} · ${escapeHtml(timing)}</td></tr>`,
     `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">รอบถัดไป</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</td></tr>`,
     '</table>',
-    '<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#fff8e8;color:#7a5512;font-size:12px;line-height:1.65">กรุณาแจ้งชำระผ่าน CpIPOS หรือ Customer Portal ก่อนครบกำหนด · อีเมลนี้ไม่ใช่หลักฐานรับชำระเงิน</div>'
+    '<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#fff8e8;color:#7a5512;font-size:12px;line-height:1.65">${escapeHtml(note)} · อีเมลนี้ไม่ใช่หลักฐานรับชำระเงิน</div>'
   ].join("");
   return {subject,textBody:lines.join("\n"),htmlBody:html};
 }
@@ -433,20 +440,25 @@ export function buildTenantDeletionWarningEmail(input: {
   deletionReviewAt: string;
   daysRemaining: number;
   finalNotice: boolean;
+  suspensionNotice?: boolean;
 }): CustomerEmailMessage {
   const owner = text(input.ownerName, 120) || text(input.storeName, 120);
   const reviewDate = thaiDate(input.deletionReviewAt);
   const lifecycleLabel = input.lifecycleKind === "trial" ? "ช่วงทดลองใช้" : "แพ็กเกจที่ชำระเงินจริง";
-  const subject = input.finalNotice
+  const subject = input.suspensionNotice
+    ? `แจ้งสถานะการระงับบริการ CpIPOS | ${text(input.storeName, 100)}`
+    : input.finalNotice
     ? `แจ้งเตือนครั้งสุดท้ายก่อนตรวจลบร้าน | ${text(input.storeName, 100)} | CpIPOS`
     : `แจ้งเตือนการรักษาข้อมูลร้าน | ${text(input.storeName, 100)} | CpIPOS`;
-  const timing = input.finalNotice
+  const timing = input.suspensionNotice
+    ? `ระบบระงับการขายหลังครบช่วงผ่อนผัน 1 เดือน ข้อมูลร้านยังเก็บต่อถึง ${reviewDate} เพื่อให้ติดต่อ IT และแจ้งชำระได้`
+    : input.finalNotice
     ? "ครบกำหนดรักษาข้อมูลแล้ว วันนี้ระบบจะส่งรายการให้ IT ตรวจสอบก่อนลบถาวร"
     : `เหลือ ${Math.max(0, input.daysRemaining)} วันก่อนครบกำหนดรักษาข้อมูล`;
   const lines = [
     `เรียน ${owner}`,
     "",
-    `ร้าน ${text(input.storeName, 180)} สิ้นสุด${lifecycleLabel}แล้ว และระบบกำลังรักษาข้อมูลตามนโยบาย CpIPOS`,
+    input.suspensionNotice?`ร้าน ${text(input.storeName, 180)} ครบช่วงผ่อนผันและถูกระงับการใช้งานขายชั่วคราว`:`ร้าน ${text(input.storeName, 180)} สิ้นสุด${lifecycleLabel}แล้ว และระบบกำลังรักษาข้อมูลตามนโยบาย CpIPOS`,
     timing,
     `วันที่ส่งให้ IT ตรวจสอบการลบ: ${reviewDate}`,
     "",
@@ -455,7 +467,7 @@ export function buildTenantDeletionWarningEmail(input: {
   ];
   const html = [
     `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#52657f">เรียน <strong style="color:#142946">${escapeHtml(owner)}</strong></p>`,
-    `<div style="padding:18px;border:1px solid #fecaca;border-radius:12px;background:#fff7f7;text-align:center"><div style="font-size:12px;color:#991b1b">${input.finalNotice ? "แจ้งเตือนครั้งสุดท้าย" : "ช่วงรักษาข้อมูล"}</div><div style="margin-top:6px;font-size:21px;font-weight:900;color:#7f1d1d">${escapeHtml(reviewDate)}</div><div style="margin-top:6px;font-size:12px;color:#991b1b">${escapeHtml(timing)}</div></div>`,
+    `<div style="padding:18px;border:1px solid #fecaca;border-radius:12px;background:#fff7f7;text-align:center"><div style="font-size:12px;color:#991b1b">${input.suspensionNotice ? "ระงับการใช้งาน" : input.finalNotice ? "แจ้งเตือนครั้งสุดท้าย" : "ช่วงรักษาข้อมูล"}</div><div style="margin-top:6px;font-size:21px;font-weight:900;color:#7f1d1d">${escapeHtml(reviewDate)}</div><div style="margin-top:6px;font-size:12px;color:#991b1b">${escapeHtml(timing)}</div></div>`,
     `<div style="margin-top:14px;padding:14px 16px;border:1px solid #dbe5f3;border-radius:12px;background:#f8fbff;font-size:13px;line-height:1.8;color:#52657f">สถานะ: <strong style="color:#102a50">${escapeHtml(lifecycleLabel)}</strong><br>หากต้องการใช้งานต่อ กรุณาต่อแพ็กเกจหรือติดต่อ Support ก่อน IT ยืนยันการลบ</div>`,
     '<p style="margin:18px 0 0;font-size:12px;line-height:1.65;color:#66758b">ระบบจะไม่ลบร้านอัตโนมัติ การลบถาวรต้องผ่านการยืนยันของ IT และหากเป็นอุปกรณ์ที่อยู่ภายใต้ MDM ระบบจะปลด Device Owner ก่อนเพื่อให้ลูกค้าถอนติดตั้งแอปได้ตามปกติ</p>'
   ].join("");
@@ -639,6 +651,34 @@ export async function prepareCustomerEmailPreview(input: {
   };
 }
 
+/** Suppress non-urgent automatic mail if the shared Gmail account is becoming busy.
+ * This is a conservative ledger-based guard; Apps Script must check live quota too.
+ */
+async function automaticEmailBudgetProblem(db: SupabaseClient, to: string, eventType: CustomerEmailEventType): Promise<string|null> {
+  const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const [sent, inflight] = await Promise.all([
+    db.from("customer_email_deliveries").select("id", { count: "exact", head: true })
+      .eq("status", "sent").gte("sent_at", windowStart),
+    db.from("customer_email_deliveries").select("id", { count: "exact", head: true })
+      .eq("status", "sending").gte("last_attempt_at", windowStart)
+  ]);
+  // If delivery accounting cannot be read, fail closed rather than risk bulk mail.
+  if (sent.error || inflight.error) return "email_budget_unavailable";
+  if ((sent.count ?? 0) + (inflight.count ?? 0) >= AUTO_EMAIL_24H_CAP) return "email_daily_budget_reserved";
+  if (eventType === "subscription_due_reminder" || eventType === "tenant_deletion_warning") {
+    const reminderStart = new Date(Date.now() - BILLING_REMINDER_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
+    const reminders = await db.from("customer_email_deliveries")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_email", to)
+      .in("event_type", ["subscription_due_reminder", "tenant_deletion_warning"])
+      .eq("status", "sent")
+      .gte("sent_at", reminderStart);
+    if (reminders.error) return "email_recipient_cooldown_unavailable";
+    if ((reminders.count ?? 0) > 0) return "email_recipient_cooldown_72h";
+  }
+  return null;
+}
+
 export async function deliverCustomerEmail(input: {
   db: SupabaseClient;
   eventType: CustomerEmailEventType;
@@ -698,6 +738,11 @@ export async function deliverCustomerEmail(input: {
   }
   if (delivery.status === "failed" && lastAttempt && now - lastAttempt < RETRY_COOLDOWN_MS) {
     return { status: "suppressed", delivery_id: delivery.id, message: "ป้องกันการส่งซ้ำ กรุณารออย่างน้อย 5 นาทีก่อนลองใหม่" };
+  }
+
+  if (input.triggerMode === "automatic") {
+    const budgetProblem = await automaticEmailBudgetProblem(input.db, to, input.eventType);
+    if (budgetProblem) return { status: "suppressed", delivery_id: delivery.id, message: budgetProblem };
   }
 
   if (problem) {
