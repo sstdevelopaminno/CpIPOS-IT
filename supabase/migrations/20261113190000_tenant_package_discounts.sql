@@ -128,3 +128,56 @@ where c.id='f688670e-2822-403f-8137-73dcc16d9c55'
     where d.tenant_id=c.tenant_id and d.status='active'
       and daterange(d.valid_from,d.valid_until+1,'[)') && daterange('2026-12-13'::date,'2027-04-13'::date,'[)')
   );
+
+
+-- Settlement writes the amount actually collected into amount_per_cycle.
+-- A temporary discount must NOT become the permanent subscription base price.
+create or replace function app.preserve_contract_base_price_for_promotion()
+returns trigger language plpgsql security definer set search_path='pg_catalog','public','app' as $$
+declare
+  v_settlement public.tenant_subscription_settlements%rowtype;
+  v_base numeric(12,2);
+  v_quote jsonb;
+  v_settlement_id uuid;
+begin
+  if tg_op='UPDATE' then
+    if old.package_id<>new.package_id or old.billing_interval<>new.billing_interval
+       or coalesce(old.amount_per_cycle,0)<=0
+       or new.amount_per_cycle=old.amount_per_cycle then return new; end if;
+    v_base:=old.amount_per_cycle;
+    if coalesce(new.metadata->>'last_settlement_id','') !~ '^[0-9a-f-]{36}$' then return new; end if;
+    v_settlement_id:=(new.metadata->>'last_settlement_id')::uuid;
+  else
+    if coalesce(new.metadata->>'settlement_id','') !~ '^[0-9a-f-]{36}$' then return new; end if;
+    v_settlement_id:=(new.metadata->>'settlement_id')::uuid;
+    select c.amount_per_cycle into v_base
+    from public.tenant_subscription_contracts c
+    where c.tenant_id=new.tenant_id and c.package_id=new.package_id
+      and c.billing_interval=new.billing_interval and c.amount_per_cycle>0
+    order by c.created_at desc,c.id desc limit 1;
+    if coalesce(v_base,0)<=0 then return new; end if;
+  end if;
+
+  select * into v_settlement from public.tenant_subscription_settlements
+    where id=v_settlement_id and tenant_id=new.tenant_id and package_id=new.package_id;
+  if not found then return new; end if;
+  v_quote:=app.tenant_discount_quote(new.tenant_id,new.package_id,v_settlement.period_start,v_base);
+  if (v_quote->>'discount_id') is not null
+     and new.amount_per_cycle=(v_quote->>'amount_due')::numeric
+     and v_settlement.amount_received=new.amount_per_cycle then
+    new.amount_per_cycle:=v_base;
+    new.metadata:=coalesce(new.metadata,'{}'::jsonb)||jsonb_build_object(
+      'last_tenant_discount_settlement',jsonb_build_object(
+        'discount_id',v_quote->>'discount_id','settlement_id',v_settlement.id,
+        'base_amount',v_base,'discounted_payment',v_settlement.amount_received
+      )
+    );
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists preserve_promo_contract_base_price on public.tenant_subscription_contracts;
+create trigger preserve_promo_contract_base_price
+before insert or update of amount_per_cycle on public.tenant_subscription_contracts
+for each row execute function app.preserve_contract_base_price_for_promotion();
+revoke all on function app.preserve_contract_base_price_for_promotion() from public,anon,authenticated;
