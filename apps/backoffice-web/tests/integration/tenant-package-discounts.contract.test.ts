@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const src=(file:string)=>readFileSync(resolve(process.cwd(),file),"utf8");
-const migration=src("../../supabase/migrations/20261113190000_tenant_package_discounts.sql");
+const migration=src("../../supabase/migrations/20261113144751_tenant_package_discounts_20261113.sql");
 const ui=src("src/components/it-admin/tenant-discount-manager.tsx");
 const tenantControl=src("src/components/it-admin/tenant-control-center.tsx");
 const api=src("src/app/api/it-admin/v1/tenants/[tenantId]/discounts/route.ts");
