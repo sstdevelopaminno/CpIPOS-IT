@@ -12,6 +12,7 @@ import { TenantCashierDevices } from "./tenant-cashier-devices";
 import { TenantPosMenuPolicies } from "./tenant-pos-menu-policies";
 import { TenantCrmMenuPolicies } from "./tenant-crm-menu-policies";
 import { TenantAndroidSecurityPolicy } from "./tenant-android-security-policy";
+import { TenantDiscountManager } from "./tenant-discount-manager";
 import { TenantNotificationLanguageModal } from "./tenant-notification-language-modal";
 import dashboardStyles from "./tenant-control-center-dashboard.module.css";
 import styles from "./tenant-directory-console.module.css";
@@ -1096,6 +1097,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                     </div>
                     <div className={styles.packageMetrics}><span>สาขา {data.contract?.max_branches ?? data.current_package?.max_branches ?? "—"}</span><span>อุปกรณ์ {data.contract?.max_devices ?? data.current_package?.max_devices ?? "—"}</span><span>ผู้ใช้ {data.contract?.max_users ?? data.current_package?.max_users ?? "—"}</span></div>
                   </section>
+
+                  <TenantDiscountManager tenantId={tenantId} />
 
                   {isPrepaidPendingTrial ? (
                     <div className={styles.securityNote} role="status" style={{ display: "grid", gap: 5 }}>

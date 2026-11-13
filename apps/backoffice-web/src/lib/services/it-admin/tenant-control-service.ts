@@ -1459,6 +1459,27 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     }
 
     const previous = await loadCurrentContract(context, tenantId);
+    // The tenant-specific discount quote is authoritative for IT-prepared
+    // renewals of the existing package. Never modify settled bills or an
+    // existing pending request and never carry the discount to a new package.
+    if (!customTermsForPayment && previous?.package_id === packageId &&
+        previous.billing_interval === billingCycle) {
+      const dueResult=await context.supabase.rpc("subscription_billing_due_state",{p_tenant_id:tenantId});
+      if(dueResult.error)throw new Error("discount_due_lookup_failed:"+dueResult.error.message);
+      const nextStart=String((dueResult.data as {next_period_start?:string}|null)?.next_period_start??"");
+      if(nextStart) {
+        const quote=await context.supabase.rpc("tenant_discount_quote",{
+          p_tenant_id:tenantId,p_package_id:packageId,p_start_date:nextStart,
+          p_base_amount:previous.amount_per_cycle??expectedAmount
+        });
+        if(quote.error)throw new Error("tenant_discount_quote_failed:"+quote.error.message);
+        const priced=Number((quote.data as {amount_due?:number;percent?:number}|null)?.amount_due);
+        const appliedPercent=Number((quote.data as {amount_due?:number;percent?:number}|null)?.percent);
+        if(Number.isFinite(priced)&&priced>0&&Number.isFinite(appliedPercent)&&appliedPercent>0){
+          expectedAmount=priced;
+        }
+      }
+    }
     const requestType = !previous
       ? "new_subscription"
       : previous.status === "trial"
