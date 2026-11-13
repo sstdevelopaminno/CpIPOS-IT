@@ -7,7 +7,7 @@ create table if not exists public.tenant_package_discounts (
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   package_id uuid not null references public.subscription_packages(id),
   title text not null check (length(btrim(title)) between 2 and 160),
-  percent numeric(5,2) not null check (percent > 0 and percent <= 100),
+  percent numeric(5,2) not null check (percent > 0 and percent < 100),
   valid_from date not null,
   valid_until date not null,
   duration_unit text not null check (duration_unit in ('day','month','year')),
