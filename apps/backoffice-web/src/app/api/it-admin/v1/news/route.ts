@@ -2,6 +2,8 @@ import { appendAuditLog } from "@/lib/audit-log";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { ok } from "@/lib/http";
 import { NEWS_SELECT, validateNewsEditor } from "@/lib/platform-news-admin";
+import { dispatchNativeNewsFcm } from "@/lib/native-news-fcm-push";
+import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -37,6 +39,9 @@ export async function POST(request: Request) {
       afterData: { id: result.data.id, title: editor.title, status: editor.status, target_tenant_id: editor.target_tenant_id },
       ipAddress: requestMeta.ipAddress ?? undefined, userAgent: requestMeta.userAgent ?? undefined
     });
+    if (editor.status === "published") {
+      after(() => dispatchNativeNewsFcm(result.data));
+    }
     const response = ok({ item: result.data }, 201);
     response.headers.set("cache-control", "private, no-store");
     return response;
