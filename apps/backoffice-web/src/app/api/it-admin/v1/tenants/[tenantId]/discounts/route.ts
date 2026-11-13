@@ -95,7 +95,7 @@ export async function POST(req:Request,ctx:{params:Promise<{tenantId:string}>}) 
     if(!state.tenant.is_active || !state.contract || state.contract.status!=="active" || Number(state.contract.amount_per_cycle)<=0)
       return fail("contract_not_eligible","ร้านต้องมีสัญญาใช้งานแบบชำระเงินจริงก่อนตั้งส่วนลด",409);
     const overlap=state.discounts.some(d=>d.status==="active" &&
-      d.valid_from<=input.valid_until! && d.valid_until>=input.valid_from!);
+      d.valid_from<=String(input.valid_until) && d.valid_until>=String(input.valid_from));
     if(overlap)return fail("discount_overlap","มีโปรโมชั่นรายร้านที่ซ้อนทับช่วงวันที่นี้แล้ว",409);
 
     const insert=await admin.supabase.from("tenant_package_discounts").insert({
