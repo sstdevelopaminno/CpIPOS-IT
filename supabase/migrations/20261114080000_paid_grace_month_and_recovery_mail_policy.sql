@@ -148,7 +148,7 @@ begin
     'contract_id',v_contract.id
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION app.refresh_subscription_billing_lifecycle(p_as_of timestamp with time zone DEFAULT now())
  RETURNS jsonb
@@ -319,7 +319,7 @@ begin
     'ran_at',p_as_of
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION app.refresh_tenant_deletion_reviews(p_as_of timestamp with time zone DEFAULT now())
  RETURNS jsonb
@@ -484,7 +484,7 @@ begin
     'ran_at',p_as_of
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION app.subscription_billing_due_state(p_tenant_id uuid, p_as_of timestamp with time zone DEFAULT now())
  RETURNS jsonb
@@ -697,7 +697,7 @@ begin
     'source',case when v_cycle.id is not null then 'automatic_billing_cycle' else 'derived_entitlement' end
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.subscription_reminder_candidates(p_as_of timestamp with time zone DEFAULT now())
  RETURNS TABLE(tenant_id uuid, store_name text, store_code text, owner_name text, owner_email text, reminder_type text, milestone text, due_at timestamp with time zone, days_remaining integer, package_name text, billing_interval text, amount_due numeric, currency text)
@@ -806,7 +806,7 @@ select * from standard_rows
 union all
 select * from retention_rows
 order by due_at,store_name;
-$function$
+$function$;
 
 -- Remove stale descriptive metadata from earlier three-day policy, without changing invoices.
 update public.tenant_data_lifecycle
