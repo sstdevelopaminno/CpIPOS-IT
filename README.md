@@ -24,6 +24,16 @@ This repository was split from `sstdevelopaminno/CpIPOS` so IT/backoffice work c
 
 ## POS control-plane integration
 
+### Native POS news notifications
+
+Publishing a news item sends a data-only FCM alert to active Native POS sessions
+registered in the shared `native_pos_push_devices` control-plane table. Configure
+`NATIVE_FCM_PROJECT_ID`, `NATIVE_FCM_CLIENT_EMAIL`, and `NATIVE_FCM_PRIVATE_KEY`
+on the IT Admin server with the same Firebase project used by Native POS.
+Keep the private key server-side. Native POS also refreshes the authoritative
+news list and polls for new items while its background listener is running, so
+an unavailable FCM service does not remove news from the app.
+
 `CpIPOS-IT` and the customer POS runtime do not use a privileged browser-to-browser or server-to-server API as the primary trust bridge. The authoritative integration is the shared Supabase control plane.
 
 - Customer POS writes device telemetry through `/api/pos/device-heartbeat` into `pos_device_health_latest`, `pos_device_health_snapshots`, and `pos_device_incidents`.
