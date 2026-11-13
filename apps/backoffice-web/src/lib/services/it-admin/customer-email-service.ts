@@ -391,7 +391,7 @@ export function buildSubscriptionDueReminderEmail(input: {
     overdue?`แจ้งยอดค่าบริการแพ็กเกจ ${text(input.packageName,120)} ของร้าน`:`แพ็กเกจ ${text(input.packageName,120)} ของร้านใกล้สิ้นสุดรอบบริการ`,
     `ครบกำหนด: ${due}`,
     `สถานะกำหนดชำระ: ${timing}`,
-    `ค่าบริการรอบถัดไป: ${money(input.amountDue,input.currency||"THB")} (${interval})`,"",
+    `ค่าบริการ${overdue?"รอบที่ครบกำหนด":"รอบถัดไป"}: ${money(input.amountDue,input.currency||"THB")} (${interval})`,"",
     note,
     "อีเมลฉบับนี้เป็นการแจ้งเตือน ไม่ใช่ใบเสร็จหรือหลักฐานรับชำระเงิน"
   ];
@@ -401,9 +401,9 @@ export function buildSubscriptionDueReminderEmail(input: {
     `<tr><td style="padding:13px 16px;font-size:12px;color:#64748b">ร้านค้า</td><td style="padding:13px 16px;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.storeName)}</td></tr>`,
     `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">แพ็กเกจ</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.packageName)} · ${escapeHtml(interval)}</td></tr>`,
     `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ครบกำหนด</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#b45309">${escapeHtml(due)} · ${escapeHtml(timing)}</td></tr>`,
-    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">รอบถัดไป</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ค่าบริการแพ็กเกจ</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</td></tr>`,
     '</table>',
-    '<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#fff8e8;color:#7a5512;font-size:12px;line-height:1.65">${escapeHtml(note)} · อีเมลนี้ไม่ใช่หลักฐานรับชำระเงิน</div>'
+    `<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#fff8e8;color:#7a5512;font-size:12px;line-height:1.65">${escapeHtml(note)} · อีเมลนี้ไม่ใช่หลักฐานรับชำระเงิน</div>`
   ].join("");
   return {subject,textBody:lines.join("\n"),htmlBody:html};
 }
