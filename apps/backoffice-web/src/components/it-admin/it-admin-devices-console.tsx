@@ -195,7 +195,7 @@ export function ItAdminDevicesConsole({language}:{language:Language}){
           {rows.map(row=>{
             const remoteReady=row.full_mdm&&row.capabilities.includes("remote_support");
             return <tr key={row.id} className="align-top">
-              <td className="px-4 py-3"><b><ItOverflowText title={t.store} text={row.tenant} language={language} maxLength={44} /></b><div className="text-xs text-slate-500"><ItOverflowText title={t.branch} text={row.branch} language={language} maxLength={50} /></div></td>
+              <td className="px-4 py-3"><b><ItOverflowText title={t.store} text={row.tenant} language={language} maxLength={44} /></b><div className="text-xs text-slate-500"><ItOverflowText title={th ? "สาขา" : "Branch"} text={row.branch} language={language} maxLength={50} /></div></td>
               <td className="px-4 py-3"><b><ItOverflowText title={t.device} text={row.device} language={language} maxLength={48} /></b><div className="text-xs text-slate-500"><ItOverflowText title={t.device} text={`${row.device_code} · ${row.device_type}`} language={language} maxLength={72} /></div><div className={`mt-1 text-xs font-bold ${row.online?"text-emerald-600":"text-slate-400"}`}>{row.online?t.online:t.offline}{row.locked?" · "+t.locked:""}</div></td>
               <td className="px-4 py-3"><b>{row.app_version||"—"}</b><div className="text-xs text-slate-500">{row.runtime_version||"—"}</div></td>
               <td className="px-4 py-3"><b>{row.mdm_status}</b><div className="text-xs text-slate-500">{row.full_mdm?"Full MDM · Device Owner":row.mdm_trust}</div></td>
