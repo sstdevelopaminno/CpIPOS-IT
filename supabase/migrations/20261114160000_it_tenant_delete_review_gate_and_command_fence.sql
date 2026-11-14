@@ -231,3 +231,63 @@ drop trigger if exists trg_block_device_state_change_during_approved_deletion
 create trigger trg_block_device_state_change_during_approved_deletion
 before update of status, is_active, is_locked on public.branch_devices
 for each row execute function app.block_device_state_change_during_approved_deletion();
+
+-- A device that fetched a pending command just before approval must not be
+-- allowed to mark that command executable afterward. Revocation/expiry and
+-- terminal failures remain legal so workers can settle without restarting.
+create or replace function app.block_command_reactivation_after_deletion_approval()
+returns trigger
+language plpgsql security definer set search_path = ''
+as $guard$
+declare
+  v_review_status text;
+begin
+  if new.status is not distinct from old.status then return new; end if;
+  select review_status into v_review_status
+  from public.tenant_lifecycle_deletion_reviews
+  where tenant_id = new.tenant_id
+    and confirmed_at is not null
+    and review_status in ('mdm_release_pending','ready_to_delete');
+
+  if v_review_status is null then return new; end if;
+
+  if tg_table_name = 'mdm_commands' then
+    if new.command_type = 'release_device_owner'
+       and v_review_status = 'mdm_release_pending' then
+      return new;
+    end if;
+    if new.status in ('queued','picked_up','running') then
+      raise exception 'tenant_offboarding_commands_blocked';
+    end if;
+  elsif tg_table_name = 'device_commands' then
+    if new.status = 'delivered' then
+      raise exception 'tenant_offboarding_commands_blocked';
+    end if;
+  elsif tg_table_name = 'mdm_remote_support_sessions' then
+    if new.status in ('requested','active') then
+      raise exception 'tenant_offboarding_remote_support_blocked';
+    end if;
+  end if;
+  return new;
+end;
+$guard$;
+revoke all on function app.block_command_reactivation_after_deletion_approval()
+  from public, anon, authenticated;
+
+drop trigger if exists trg_block_tenant_mdm_command_reactivation
+  on public.mdm_commands;
+create trigger trg_block_tenant_mdm_command_reactivation
+before update of status on public.mdm_commands
+for each row execute function app.block_command_reactivation_after_deletion_approval();
+
+drop trigger if exists trg_block_tenant_device_command_delivery
+  on public.device_commands;
+create trigger trg_block_tenant_device_command_delivery
+before update of status on public.device_commands
+for each row execute function app.block_command_reactivation_after_deletion_approval();
+
+drop trigger if exists trg_block_tenant_remote_support_reactivation
+  on public.mdm_remote_support_sessions;
+create trigger trg_block_tenant_remote_support_reactivation
+before update of status on public.mdm_remote_support_sessions
+for each row execute function app.block_command_reactivation_after_deletion_approval();
