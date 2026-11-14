@@ -1,8 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { summarizeStorePresence } from "./store-presence.ts";
 
 const JSON_HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
 const ONLINE_WINDOW_MINUTES = 5;
+const STORE_DETAIL_LIMIT = 1_000;
+const DEVICE_DETAIL_LIMIT = 5_000;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -150,6 +153,8 @@ Deno.serve(async (req) => {
       totalDevices,
       onlineDevices,
       onlineDeviceRows,
+      tenantDirectoryResult,
+      devicePresenceResult,
       latestDeviceResult,
       degradedHealth,
       criticalHealth,
@@ -173,6 +178,9 @@ Deno.serve(async (req) => {
         "device_online_failed"
       ),
       admin.from("branch_devices").select("tenant_id,last_seen_at").eq("is_active", true).gte("last_seen_at", onlineSince).limit(5000),
+      admin.from("tenants").select("id,code,name,display_name,is_active").order("name").limit(STORE_DETAIL_LIMIT + 1),
+      admin.from("branch_devices").select("tenant_id,last_seen_at").eq("is_active", true)
+        .order("last_seen_at", { ascending: false }).limit(DEVICE_DETAIL_LIMIT + 1),
       admin.from("branch_devices").select("last_seen_at").eq("is_active", true).not("last_seen_at", "is", null).order("last_seen_at", { ascending: false }).limit(1).maybeSingle(),
       exactCount(admin.from("pos_device_health_latest").select("id", { count: "exact", head: true }).eq("status", "degraded"), "device_degraded_failed"),
       exactCount(admin.from("pos_device_health_latest").select("id", { count: "exact", head: true }).eq("status", "critical"), "device_critical_failed"),
@@ -186,6 +194,13 @@ Deno.serve(async (req) => {
     if (latestDeviceResult.error) throw new Error(`latest_device_failed:${latestDeviceResult.error.code ?? "query_failed"}`);
 
     const storesOnline = new Set((onlineDeviceRows.data ?? []).map((row) => String(row.tenant_id ?? "")).filter(Boolean)).size;
+    // Only publish a complete tenant list. A partial result must never
+    // misleadingly imply that omitted shops have no devices or are offline.
+    const presenceComplete =
+      !tenantDirectoryResult.error && !devicePresenceResult.error &&
+      total <= STORE_DETAIL_LIMIT && totalDevices <= DEVICE_DETAIL_LIMIT &&
+      tenantDirectoryResult.data?.length === total &&
+      devicePresenceResult.data?.length === totalDevices;
 
     return json({
       // Keep the legacy plane discriminator so the current Production dashboard
@@ -199,7 +214,10 @@ Deno.serve(async (req) => {
         online: onlineDevices,
         stores_online: storesOnline,
         online_window_minutes: ONLINE_WINDOW_MINUTES,
-        latest_seen_at: latestDeviceResult.data?.last_seen_at ?? null
+        latest_seen_at: latestDeviceResult.data?.last_seen_at ?? null,
+        store_presence: presenceComplete
+          ? summarizeStorePresence(tenantDirectoryResult.data ?? [], devicePresenceResult.data ?? [], onlineSince)
+          : null
       },
       operations: {
         open_incidents: degradedHealth + criticalHealth,

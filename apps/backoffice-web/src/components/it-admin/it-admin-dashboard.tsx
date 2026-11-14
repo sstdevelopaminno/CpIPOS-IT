@@ -30,6 +30,16 @@ type DatabaseMetrics = {
   checked_at: string | null;
 };
 
+type StorePresence = {
+  tenant_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  total_devices: number;
+  online_devices: number;
+  latest_seen_at: string | null;
+};
+
 type SourceState<T> = {
   enabled: boolean;
   ready: boolean;
@@ -59,6 +69,7 @@ type DashboardPayload = {
     open: number | null;
     closed: number | null;
     online: number | null;
+    presence: StorePresence[] | null;
   };
   devices: {
     total: number | null;
@@ -96,7 +107,8 @@ type DashboardPayload = {
   degraded_sources: string[];
 };
 
-type ModalKind = "stores" | "data" | "databases" | "api" | null;
+type ModalKind = "stores" | "devices" | "data" | "databases" | "api" | null;
+type PresenceFilter = "all" | "online" | "offline";
 
 const copy = {
   th: {
@@ -139,6 +151,18 @@ const copy = {
     incidents: "Device health alerts",
     commands: "Remote command รอดำเนินการ",
     detailsStores: "รายละเอียดร้านค้า",
+    detailsDevices: "รายละเอียดอุปกรณ์ออนไลน์",
+    presenceTitle: "สถานะการเชื่อมต่อรายร้าน",
+    presenceSearch: "ค้นหาชื่อร้านหรือรหัสร้าน",
+    presenceAll: "ทั้งหมด",
+    presenceOnline: "ออนไลน์",
+    presenceOffline: "ออฟไลน์",
+    presenceStatus: "สถานะ",
+    presenceDeviceCount: "อุปกรณ์ออนไลน์ / ทั้งหมด",
+    presenceViewStore: "เปิดรายละเอียดร้าน",
+    presenceUnavailable: "ยังไม่สามารถโหลดรายชื่อร้านได้ กรุณารีเฟรชเพื่อตรวจสอบอีกครั้ง",
+    presenceNoMatches: "ไม่พบร้านค้าตามตัวกรองที่เลือก",
+    presenceNoDevices: "ยังไม่มีอุปกรณ์ลงทะเบียน",
     detailsData: "รายละเอียดข้อมูล",
     detailsDatabases: "รายละเอียดฐานข้อมูล",
     detailsApi: "รายละเอียด API / Operations",
@@ -205,6 +229,18 @@ const copy = {
     incidents: "Device health alerts",
     commands: "Pending remote commands",
     detailsStores: "Store details",
+    detailsDevices: "Online device details",
+    presenceTitle: "Connectivity by store",
+    presenceSearch: "Search by store name or code",
+    presenceAll: "All",
+    presenceOnline: "Online",
+    presenceOffline: "Offline",
+    presenceStatus: "Status",
+    presenceDeviceCount: "Online / all devices",
+    presenceViewStore: "View store",
+    presenceUnavailable: "Store directory is unavailable; refresh to try again",
+    presenceNoMatches: "No stores match the selected filter",
+    presenceNoDevices: "No registered devices",
     detailsData: "Data details",
     detailsDatabases: "Database details",
     detailsApi: "API / Operations details",
@@ -321,6 +357,8 @@ export function ItAdminDashboard({ language }: { language: Language }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
+  const [presenceFilter, setPresenceFilter] = useState<PresenceFilter>("all");
+  const [presenceSearch, setPresenceSearch] = useState("");
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -375,6 +413,13 @@ export function ItAdminDashboard({ language }: { language: Language }) {
 
   if (!data) return null;
 
+  const filteredPresence = (data.stores.presence ?? []).filter((store) => {
+    const online = store.online_devices > 0;
+    if (presenceFilter === "online" && !online) return false;
+    if (presenceFilter === "offline" && online) return false;
+    const search = presenceSearch.trim().toLocaleLowerCase();
+    return !search || store.name.toLocaleLowerCase().includes(search) || store.code.toLocaleLowerCase().includes(search);
+  });
   const businessDb = data.databases.business.data;
   const operationalDb = data.databases.operational.data;
   const operationalEnabled = data.topology.operational_plane_enabled;
@@ -409,7 +454,7 @@ export function ItAdminDashboard({ language }: { language: Language }) {
           <strong>{formatNumber(data.stores.total, language)}</strong>
           <small>{text.open} {formatNumber(data.stores.open, language)} · {text.closed} {formatNumber(data.stores.closed, language)} · {text.online} {formatNumber(data.stores.online, language)}</small>
         </button>
-        <button type="button" className={styles.metricCard} onClick={() => setModal("stores")}>
+        <button type="button" className={styles.metricCard} onClick={() => setModal("devices")}>
           <span>{text.devices}</span>
           <strong>{formatNumber(data.devices.online, language)} <em>/ {formatNumber(data.devices.total, language)}</em></strong>
           <small>{data.devices.latest_seen_at ? formatDate(data.devices.latest_seen_at, language) : text.noTelemetry}</small>
@@ -497,22 +542,112 @@ export function ItAdminDashboard({ language }: { language: Language }) {
           <section className={styles.modal} role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
             <header>
               <div>
-                <h3>{modal === "stores" ? text.detailsStores : modal === "data" ? text.detailsData : modal === "databases" ? text.detailsDatabases : text.detailsApi}</h3>
+                <h3>{modal === "stores" ? text.detailsStores : modal === "devices" ? text.detailsDevices : modal === "data" ? text.detailsData : modal === "databases" ? text.detailsDatabases : text.detailsApi}</h3>
                 <span>{formatDate(data.checked_at, language)}</span>
               </div>
               <button type="button" aria-label={text.close} onClick={() => setModal(null)}>×</button>
             </header>
 
-            {modal === "stores" ? (
+            {modal === "stores" || modal === "devices" ? (
               <div className={styles.modalBody}>
-                <div className={styles.detailCards}>
-                  <div><span>{text.stores}</span><strong>{formatNumber(data.stores.total, language)}</strong></div>
-                  <div><span>{text.open}</span><strong>{formatNumber(data.stores.open, language)}</strong></div>
-                  <div><span>{text.closed}</span><strong>{formatNumber(data.stores.closed, language)}</strong></div>
-                  <div><span>{text.online}</span><strong>{formatNumber(data.stores.online, language)}</strong></div>
+                {modal === "stores" ? (
+                  <div className={styles.detailCards}>
+                    <div><span>{text.stores}</span><strong>{formatNumber(data.stores.total, language)}</strong></div>
+                    <div><span>{text.open}</span><strong>{formatNumber(data.stores.open, language)}</strong></div>
+                    <div><span>{text.closed}</span><strong>{formatNumber(data.stores.closed, language)}</strong></div>
+                    <div><span>{text.online}</span><strong>{formatNumber(data.stores.online, language)}</strong></div>
+                  </div>
+                ) : (
+                  <div className={styles.detailCards}>
+                    <div><span>{text.devices}</span><strong>{formatNumber(data.devices.online, language)}</strong><small>{text.presenceOnline}</small></div>
+                    <div><span>{text.devices}</span><strong>{formatNumber(data.devices.total, language)}</strong><small>{text.presenceAll}</small></div>
+                    <div><span>{text.stores}</span><strong>{formatNumber(data.stores.online, language)}</strong><small>{text.presenceOnline}</small></div>
+                    <div><span>{text.stores}</span><strong>{formatNumber(data.stores.total, language)}</strong><small>{text.presenceAll}</small></div>
+                  </div>
+                )}
+                <div className={styles.infoBox}>
+                  <strong>{text.onlineWindow}</strong>
+                  <span>{data.online_window_minutes} min · {text.storeStatusDesc}</span>
                 </div>
-                <div className={styles.infoBox}><strong>{text.onlineWindow}</strong><span>{data.online_window_minutes} min · {text.storeStatusDesc}</span></div>
-                <div className={styles.infoBox}><strong>{text.latestSeen}</strong><span>{data.devices.latest_seen_at ? formatDate(data.devices.latest_seen_at, language) : text.noTelemetry}</span></div>
+                <div className={styles.infoBox}>
+                  <strong>{text.latestSeen}</strong>
+                  <span>{data.devices.latest_seen_at ? formatDate(data.devices.latest_seen_at, language) : text.noTelemetry}</span>
+                </div>
+                <section className={styles.presenceSection} aria-label={text.presenceTitle}>
+                  <div className={styles.presenceHeading}>
+                    <strong>{text.presenceTitle}</strong>
+                    <small>{formatNumber(data.stores.presence?.length ?? null, language)} {text.stores}</small>
+                  </div>
+                  <div className={styles.presenceToolbar}>
+                    <input
+                      type="search"
+                      className={styles.presenceSearch}
+                      aria-label={text.presenceSearch}
+                      placeholder={text.presenceSearch}
+                      value={presenceSearch}
+                      onChange={(event) => setPresenceSearch(event.target.value)}
+                    />
+                    <div className={styles.presenceFilters} role="group" aria-label={text.presenceStatus}>
+                      {(["all", "online", "offline"] as const).map((filter) => (
+                        <button
+                          type="button"
+                          key={filter}
+                          aria-pressed={presenceFilter === filter}
+                          onClick={() => setPresenceFilter(filter)}
+                          className={presenceFilter === filter ? styles.presenceFilterActive : undefined}
+                        >
+                          {filter === "all" ? text.presenceAll : filter === "online" ? text.presenceOnline : text.presenceOffline}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {data.stores.presence === null ? (
+                    <div className={styles.modalEmpty} role="status">{text.presenceUnavailable}</div>
+                  ) : filteredPresence.length === 0 ? (
+                    <div className={styles.modalEmpty} role="status">{text.presenceNoMatches}</div>
+                  ) : (
+                    <div className={styles.tableWrap}>
+                      <table className={styles.presenceTable}>
+                        <thead>
+                          <tr>
+                            <th scope="col">{text.stores}</th>
+                            <th scope="col">{text.presenceStatus}</th>
+                            <th scope="col">{text.presenceDeviceCount}</th>
+                            <th scope="col">{text.latestSeen}</th>
+                            <th scope="col">{text.view}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredPresence.map((store) => (
+                            <tr key={store.tenant_id}>
+                              <td>
+                                <div className={styles.presenceStoreName}>
+                                  <strong>{store.name}</strong>
+                                  <small>{store.code || "—"} · {store.is_active ? text.open : text.closed}</small>
+                                </div>
+                              </td>
+                              <td>
+                                <span className={store.online_devices > 0 ? styles.presenceOnlineBadge : styles.presenceOfflineBadge}>
+                                  {store.online_devices > 0 ? text.presenceOnline : text.presenceOffline}
+                                </span>
+                              </td>
+                              <td>
+                                <strong>{formatNumber(store.online_devices, language)} / {formatNumber(store.total_devices, language)}</strong>
+                                {store.total_devices === 0 ? <small className={styles.presenceSubtext}>{text.presenceNoDevices}</small> : null}
+                              </td>
+                              <td><span>{formatDate(store.latest_seen_at, language)}</span></td>
+                              <td>
+                                <Link className={styles.presenceStoreLink} href={"/it-admin/tenants/" + store.tenant_id}>
+                                  {text.presenceViewStore}
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
               </div>
             ) : null}
 
