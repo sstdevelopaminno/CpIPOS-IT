@@ -37,6 +37,11 @@ export function ItOverflowText({
       if (event.key === "Escape") {
         event.stopPropagation();
         setOpen(false);
+      } else if (event.key === "Tab") {
+        // The read-only dialog has one focusable control: Close.
+        // Keep keyboard users inside this modal until it is dismissed.
+        event.preventDefault();
+        closeRef.current?.focus();
       }
     };
     window.addEventListener("keydown", onKeyDown);
