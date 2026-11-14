@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ItOverflowText } from "./it-overflow-text";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./it-admin-module-console.module.css";
 
@@ -209,7 +210,7 @@ export function ItAdminModuleConsole({ module }: { module: ModuleName }) {
         <div className={styles.headerCopy}>
           <span className={styles.eyebrow}>{config.eyebrow}</span>
           <h2>{config.title}</h2>
-          <p>{config.description}</p>
+          <ItOverflowText title={config.title} text={config.description} maxLength={88} />
         </div>
         <div className={styles.actions}>
           {config.action ? <Link href={config.action.href}>{config.action.label}</Link> : null}
@@ -243,7 +244,7 @@ export function ItAdminModuleConsole({ module }: { module: ModuleName }) {
 
       <section className={styles.tableCard}>
         <div className={styles.tableHead}>
-          <div><h3>ข้อมูลปัจจุบัน</h3><p>{data?.note ?? "ข้อมูลอ่านจาก Control Plane จริงและรีเฟรชได้โดยไม่ reload ทั้งหน้า"}</p></div>
+          <div><h3>ข้อมูลปัจจุบัน</h3><ItOverflowText title="รายละเอียดข้อมูลปัจจุบัน" text={data?.note ?? "ข้อมูลอ่านจาก Control Plane จริงและรีเฟรชได้โดยไม่ reload ทั้งหน้า"} maxLength={96} /></div>
           <strong>{data?.rows.length ?? 0} รายการ</strong>
         </div>
         <div className={styles.tableWrap}>
@@ -263,7 +264,7 @@ export function ItAdminModuleConsole({ module }: { module: ModuleName }) {
                         row.full_mdm === true && row.device_owner === true ? "พร้อม (Device Owner)" : "ยังไม่พร้อม"
                       ) : module === "devices" && column.key === "dual_screen_enabled" ? (
                         row.dual_screen_enabled === true ? "เปิด (เมื่อรองรับ)" : "ปิด"
-                      ) : column.kind === "status" ? <span className={styles.statusBadge}>{display}</span> : display}
+                      ) : column.kind === "status" ? <span className={styles.statusBadge}>{display}</span> : <ItOverflowText title={`${config.title} · ${column.label}`} text={display} maxLength={72} /> }
                     </td>;
                   })}
                 </tr>
