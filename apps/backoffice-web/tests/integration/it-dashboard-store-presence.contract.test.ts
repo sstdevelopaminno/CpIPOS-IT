@@ -75,6 +75,6 @@ describe("IT dashboard store-presence contract", () => {
     expect(dashboard).toContain('onClick={() => setModal("devices")}');
     expect(dashboard).toContain("data.stores.presence === null");
     expect(dashboard).toContain("store.online_devices > 0");
-    expect(dashboard).toContain("/it-admin/tenants/\${store.tenant_id}");
+    expect(dashboard).toContain('href={"/it-admin/tenants/" + store.tenant_id}');
   });
 });
