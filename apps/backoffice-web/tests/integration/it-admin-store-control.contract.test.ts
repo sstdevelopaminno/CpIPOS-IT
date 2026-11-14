@@ -170,9 +170,11 @@ describe("IT Admin Store Control Center contract", () => {
     expect(service).toContain("tenant_devices_still_online");
     expect(service).toContain("shared_users_preserved");
     expect(service).toContain("storage_cleanup_pending");
-    expect(controlCenter).toContain("ลบร้านค้าและข้อมูลทั้งหมด");
-    expect(controlCenter).toContain("Store Code เพื่อยืนยัน");
-    expect(controlCenter).toContain("ย้อนกลับไม่ได้");
+    expect(controlCenter).toContain("ตรวจสอบและอนุมัติการลบถาวร");
+    expect(controlCenter).toContain('href="/it-admin/deletion-reviews"');
+    expect(controlCenter).toContain("ห้ามลบข้อมูลทันทีเพียงเพราะร้านถูกระงับ");
+    expect(service).toContain("tenant_delete_review_required");
+    expect(service).toContain("tenant_delete_mdm_release_required");
   });
   it("preserves prepaid seven-day trials and converts them before the subscription lock", () => {
     expect(prepaidMigration).toContain("CREATE OR REPLACE FUNCTION app.refresh_subscription_locks()");
