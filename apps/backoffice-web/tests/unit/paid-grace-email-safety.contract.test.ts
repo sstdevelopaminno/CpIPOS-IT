@@ -35,7 +35,7 @@ describe("paid subscription grace and email safety",()=>{
     expect(bridge).toContain("CPIPOS_MAIL_MIN_REMAINING_QUOTA");
   });
   it("reflects the new policy on the IT screen",()=>{
-    expect(review).toContain("ใช้งานต่อ 1 เดือน");
+    expect(review).toContain("ใช้งานต่อ 2 เดือน");
     expect(review).toContain("30 additional days");
   });
 });
