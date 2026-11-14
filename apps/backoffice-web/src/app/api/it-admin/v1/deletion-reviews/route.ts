@@ -1,13 +1,12 @@
 import { appendAuditLog } from "@/lib/audit-log";
 import { appendItAuditLog } from "@/lib/it-control-plane";
-import { readEnv } from "@/lib/env";
 import { fail, ok } from "@/lib/http";
 import { assertItSupportAction, guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { sanitizeMdmReasonText } from "@/lib/mdm/commandPolicy";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { readBoundedJson } from "@/lib/server/limited-json";
-import { getVerifiedSupabaseAccessToken } from "@/lib/supabase-server";
 import { applyTenantControlAction } from "@/lib/services/it-admin/tenant-control-service";
+import { cleanupTenantCommunications, recordTenantCommunicationsCleanup } from "@/lib/services/it-admin/tenant-communications-cleanup";
 
 export const dynamic = "force-dynamic";
 
@@ -201,67 +200,6 @@ async function queueDeviceOwnerRelease(
   return { queued, blocked, device_count: devices?.length ?? 0 };
 }
 
-async function cleanupCommunications(
-  admin: Awaited<ReturnType<typeof requireItAdmin>>,
-  tenantId: string,
-  request: Request
-) {
-  try {
-    const authorization = request.headers.get("authorization") ?? "";
-    const bearerToken = authorization.toLowerCase().startsWith("bearer ")
-      ? authorization.slice(7).trim()
-      : "";
-    const accessToken = bearerToken || await getVerifiedSupabaseAccessToken(admin.auth.userId);
-    if (!accessToken) {
-      return { completed: false, error: "communications_auth_unavailable", removed_files: 0 };
-    }
-
-    const endpoint = readEnv("CPIPOS_COMMUNICATIONS_EDGE_URL");
-    if (!endpoint) {
-      return { completed: false, error: "communications_gateway_unavailable", removed_files: 0 };
-    }
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        action: "delete_tenant_communications",
-        tenant_id: tenantId
-      }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(20_000)
-    });
-    const payload = await response.json().catch(() => null) as {
-      completed?: boolean;
-      storage_removed?: number;
-      error?: string;
-    } | null;
-
-    if (!response.ok || payload?.completed !== true) {
-      return {
-        completed: false,
-        error: payload?.error ?? `communications_gateway_failed_${response.status}`,
-        removed_files: Number(payload?.storage_removed ?? 0)
-      };
-    }
-
-    return {
-      completed: true,
-      error: null,
-      removed_files: Number(payload.storage_removed ?? 0)
-    };
-  } catch (error) {
-    console.error("[tenant-deletion] communications cleanup deferred", {
-      tenantId,
-      error: error instanceof Error ? error.message : "unknown_error"
-    });
-    return { completed: false, error: "communications_cleanup_deferred", removed_files: 0 };
-  }
-}
-
 async function finalizeApprovedDeletion(
   admin: Awaited<ReturnType<typeof requireItAdmin>>,
   tenantId: string,
@@ -318,7 +256,8 @@ async function finalizeApprovedDeletion(
     admin_reason: note || "IT-confirmed lifecycle retention expiry and permanent tenant deletion."
   });
 
-  const communications = await cleanupCommunications(admin, tenantId, request);
+  const communications = await cleanupTenantCommunications(admin, tenantId, request);
+  await recordTenantCommunicationsCleanup(admin, tenantId, communications);
   await appendAuditLog({
     actorUserId: admin.auth.userId,
     actorRole: admin.auth.platformRole,
@@ -334,7 +273,8 @@ async function finalizeApprovedDeletion(
       deleted_tenant_id: tenantId,
       communications_cleanup_completed: communications.completed,
       communications_cleanup_error: communications.error,
-      communications_storage_removed: communications.removed_files
+      communications_storage_removed: communications.removed_files,
+      communications_cleanup_journaled: true
     }
   });
 
