@@ -7,6 +7,27 @@ do $approval_gate$
 declare
   v_definition text;
   v_anchor text := $anchor$  if v_tenant.is_active then raise exception 'tenant_must_be_inactive'; end if;$anchor$;
+  v_receipt_anchor text := $anchor$  delete from public.tenants where id = p_tenant_id;
+  if not found then raise exception 'tenant_delete_failed'; end if;$anchor$;
+  v_receipt_replacement text := $replacement$  delete from public.tenants where id = p_tenant_id;
+  if not found then raise exception 'tenant_delete_failed'; end if;
+
+  -- Atomic, auditable proof: the deletion and this IT Support receipt MUST
+  -- commit together, otherwise the entire tenant purge is rolled back.
+  -- Never use a nullable tenant FK here: this receipt must survive the purge.
+  insert into public.audit_logs(
+    actor_user_id,actor_role,action,target_table,target_id,metadata
+  ) values (
+    p_actor_user_id,'it_support','tenant_permanently_deleted','tenants',p_tenant_id,
+    jsonb_build_object(
+      'deleted_tenant_id',p_tenant_id,
+      'store_code',v_expected_code,
+      'internal_code',v_tenant.code,
+      'admin_reason',p_admin_reason,
+      'atomic_deletion_receipt',true,
+      'deleted_at',now()
+    )
+  );$replacement$;
   v_residual_anchor text := $anchor$      and cols.table_name <> 'it_tenant_deletion_cleanup'$anchor$;
   v_residual_replacement text := $anchor$      and cols.table_name <> all(array['it_tenant_deletion_cleanup','it_tenant_communications_cleanup'])$anchor$;
   v_replacement text := $replacement$  if v_tenant.is_active then raise exception 'tenant_must_be_inactive'; end if;
@@ -66,12 +87,19 @@ begin
   if position(v_residual_anchor in v_definition) = 0 then
     raise exception 'it_delete_tenant_cascade_residual_guard_drift';
   end if;
+  if position(v_receipt_anchor in v_definition) = 0 then
+    raise exception 'it_delete_tenant_cascade_audit_anchor_drift';
+  end if;
 
   -- Communications cleanup is a deliberately retained post-delete journal.
   -- It must not be mistaken for leftover tenant business data by the
   -- existing transactional residual-table detector.
   execute replace(
-    replace(v_definition, v_anchor, v_replacement),
+    replace(
+      replace(v_definition, v_anchor, v_replacement),
+      v_receipt_anchor,
+      v_receipt_replacement
+    ),
     v_residual_anchor,
     v_residual_replacement
   );
@@ -170,3 +198,36 @@ drop trigger if exists trg_reject_tenant_mdm_commands_after_approval
 create trigger trg_reject_tenant_mdm_commands_after_approval
 before insert on public.mdm_commands
 for each row execute function app.reject_commands_for_approved_tenant_deletion();
+
+-- Do not permit immediate POS device state mutations once an approved
+-- tenant deletion is locked. This closes the gap between the route's
+-- branch_devices UPDATE and its later device_commands INSERT.
+create or replace function app.block_device_state_change_during_approved_deletion()
+returns trigger
+language plpgsql security definer set search_path = ''
+as $guard$
+begin
+  if (new.status is distinct from old.status
+     or new.is_locked is distinct from old.is_locked
+     or new.is_active is distinct from old.is_active)
+     and exists (
+       select 1 from public.tenant_lifecycle_deletion_reviews r
+        where r.tenant_id = new.tenant_id
+          and r.confirmed_at is not null
+          and r.review_status in ('mdm_release_pending', 'ready_to_delete')
+     )
+  then
+    raise exception 'tenant_offboarding_device_mutation_blocked';
+  end if;
+  return new;
+end;
+$guard$;
+
+revoke all on function app.block_device_state_change_during_approved_deletion()
+  from public, anon, authenticated;
+
+drop trigger if exists trg_block_device_state_change_during_approved_deletion
+  on public.branch_devices;
+create trigger trg_block_device_state_change_during_approved_deletion
+before update of status, is_active, is_locked on public.branch_devices
+for each row execute function app.block_device_state_change_during_approved_deletion();
