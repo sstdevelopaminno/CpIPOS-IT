@@ -71,10 +71,16 @@ describe("IT dashboard store-presence contract", () => {
     expect(service).toContain("presence: devicePayload?.store_presence ?? null");
   });
 
-  it("opens device-specific popup with filter, store links and unavailable state", () => {
+  it("opens device-specific popup with store presence, filters, and no duplicate store detail links", () => {
     expect(dashboard).toContain('onClick={() => setModal("devices")}');
     expect(dashboard).toContain("data.stores.presence === null");
     expect(dashboard).toContain("store.online_devices > 0");
-    expect(dashboard).toContain('href={"/it-admin/tenants/" + store.tenant_id}');
+    expect(dashboard).toContain("text.presenceSearch");
+    expect(dashboard).toContain("text.presenceStatus");
+    expect(dashboard).toContain("text.presenceDeviceCount");
+    expect(dashboard).toContain("store.latest_seen_at");
+    expect(dashboard).not.toContain("presenceViewStore");
+    expect(dashboard).not.toContain("presenceStoreLink");
+    expect(dashboard).not.toContain('href={"/it-admin/tenants/" + store.tenant_id}');
   });
 });

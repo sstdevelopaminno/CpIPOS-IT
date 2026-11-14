@@ -159,7 +159,6 @@ const copy = {
     presenceOffline: "ออฟไลน์",
     presenceStatus: "สถานะ",
     presenceDeviceCount: "อุปกรณ์ออนไลน์ / ทั้งหมด",
-    presenceViewStore: "เปิดรายละเอียดร้าน",
     presenceUnavailable: "ยังไม่สามารถโหลดรายชื่อร้านได้ กรุณารีเฟรชเพื่อตรวจสอบอีกครั้ง",
     presenceNoMatches: "ไม่พบร้านค้าตามตัวกรองที่เลือก",
     presenceNoDevices: "ยังไม่มีอุปกรณ์ลงทะเบียน",
@@ -237,7 +236,6 @@ const copy = {
     presenceOffline: "Offline",
     presenceStatus: "Status",
     presenceDeviceCount: "Online / all devices",
-    presenceViewStore: "View store",
     presenceUnavailable: "Store directory is unavailable; refresh to try again",
     presenceNoMatches: "No stores match the selected filter",
     presenceNoDevices: "No registered devices",
@@ -614,7 +612,6 @@ export function ItAdminDashboard({ language }: { language: Language }) {
                             <th scope="col">{text.presenceStatus}</th>
                             <th scope="col">{text.presenceDeviceCount}</th>
                             <th scope="col">{text.latestSeen}</th>
-                            <th scope="col">{text.view}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -636,11 +633,6 @@ export function ItAdminDashboard({ language }: { language: Language }) {
                                 {store.total_devices === 0 ? <small className={styles.presenceSubtext}>{text.presenceNoDevices}</small> : null}
                               </td>
                               <td><span>{formatDate(store.latest_seen_at, language)}</span></td>
-                              <td>
-                                <Link className={styles.presenceStoreLink} href={"/it-admin/tenants/" + store.tenant_id}>
-                                  {text.presenceViewStore}
-                                </Link>
-                              </td>
                             </tr>
                           ))}
                         </tbody>
