@@ -1731,6 +1731,62 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (tenant.is_active) {
       throw new ItAdminGuardError("tenant_must_be_inactive", "Deactivate the store before permanent deletion.", 409);
     }
+    if (context.auth.platformRole !== "it_support") {
+      throw new ItAdminGuardError("tenant_delete_it_support_required", "Only IT Support may finalize a permanent deletion.", 403);
+    }
+
+    // This action is also exposed through Store Control. It MUST NOT bypass
+    // the retention-window and Device Owner release review queue. The Primary
+    // database RPC independently enforces the same checks in one transaction.
+    const [reviewLookup, lifecycleLookup] = await Promise.all([
+      context.supabase.from("tenant_lifecycle_deletion_reviews")
+        .select("review_status,confirmed_at,confirmed_by,service_ended_at,access_grace_until,deletion_review_at,mdm_release_required,mdm_release_completed_at")
+        .eq("tenant_id", tenantId).maybeSingle<{
+          review_status: string;
+          confirmed_at: string | null;
+          confirmed_by: string | null;
+          service_ended_at: string;
+          access_grace_until: string;
+          deletion_review_at: string;
+          mdm_release_required: boolean;
+          mdm_release_completed_at: string | null;
+        }>(),
+      context.supabase.from("tenant_data_lifecycle")
+        .select("access_locked,lock_reason,first_package_started_at,trial_expires_at,subscription_expires_at")
+        .eq("tenant_id", tenantId).maybeSingle<{
+          access_locked: boolean;
+          lock_reason: string | null;
+          first_package_started_at: string | null;
+          trial_expires_at: string | null;
+          subscription_expires_at: string | null;
+        }>()
+    ]);
+    if (reviewLookup.error || lifecycleLookup.error) {
+      throw new ItAdminGuardError("tenant_delete_review_unavailable", "Unable to verify deletion approval.", 503);
+    }
+    const review = reviewLookup.data;
+    const lifecycle = lifecycleLookup.data;
+    if (!review || review.review_status !== "ready_to_delete" || !review.confirmed_at || !review.confirmed_by) {
+      throw new ItAdminGuardError("tenant_delete_review_required", "Approve the deletion in IT > Deletion Reviews first.", 409);
+    }
+    if (review.mdm_release_required && !review.mdm_release_completed_at) {
+      throw new ItAdminGuardError("tenant_delete_mdm_release_required", "Release managed Device Owners before deletion.", 409);
+    }
+    const nowMs = Date.now();
+    if (!Number.isFinite(Date.parse(review.deletion_review_at)) ||
+        Date.parse(review.deletion_review_at) > nowMs ||
+        !Number.isFinite(Date.parse(review.access_grace_until)) ||
+        Date.parse(review.access_grace_until) > nowMs) {
+      throw new ItAdminGuardError("tenant_delete_retention_active", "The retention or paid grace window is still active.", 409);
+    }
+    const currentEnd = lifecycle?.first_package_started_at
+      ? lifecycle.subscription_expires_at
+      : lifecycle?.trial_expires_at;
+    if (!lifecycle || lifecycle.access_locked !== true ||
+        lifecycle.lock_reason !== "tenant_deletion_confirmed" ||
+        !currentEnd || Date.parse(currentEnd) !== Date.parse(review.service_ended_at)) {
+      throw new ItAdminGuardError("tenant_delete_lifecycle_changed", "Store lifecycle changed after approval. Review again.", 409);
+    }
 
     // The database transaction removes all current tenant-scoped primary rows and
     // journals Storage/Auth cleanup. Storage is removed through the Storage API
