@@ -17,3 +17,51 @@ aside[aria-label="IT Admin navigation"] ~ div > main {
   scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
 }
+
+
+/* Shared IT workspace readability rules. These do not hide existing actions,
+ * force all data into dialogs, or touch the POS customer-facing shell.
+ * Detailed text uses the explicit ItOverflowText component where suitable. */
+main[data-it-content] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+main[data-it-content] :is(h1, h2, h3, h4) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+main[data-it-content] :is(section, article, form) {
+  min-width: 0;
+}
+main[data-it-content] :is(input, textarea, select) {
+  max-width: 100%;
+}
+main[data-it-content] :is(td, th) {
+  overflow-wrap: anywhere;
+}
+main[data-it-content] :is([role="dialog"]) {
+  max-width: calc(100vw - 20px);
+}
+main[data-it-content] :is([role="dialog"]) :is(h2, h3) {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
+  main[data-it-content] :is(section, article) > header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+@media (max-width: 680px) {
+  main[data-it-content] {
+    --it-detail-gap: 12px;
+  }
+  main[data-it-content] :is(h1, h2, h3) {
+    line-height: 1.35;
+  }
+  main[data-it-content] :is(section, article) > header > :first-child {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
