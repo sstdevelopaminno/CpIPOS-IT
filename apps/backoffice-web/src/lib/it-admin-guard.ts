@@ -105,7 +105,7 @@ export async function requireItAdmin(): Promise<ItAdminContext> {
 
 export async function requireItSupport(): Promise<ItAdminContext> {
   const context = await requireItAdmin();
-  if (context.auth.platformRole !== "it_support") {
+  if (context.auth.platformRole !== "it_support" || context.profile.platform_role !== "it_support") {
     throw new ItAdminGuardError(
       "it_support_required",
       "รายการนี้อนุญาตเฉพาะ IT Support ซึ่งมีสิทธิ์เต็มเท่านั้น",
@@ -116,7 +116,7 @@ export async function requireItSupport(): Promise<ItAdminContext> {
 }
 
 export function assertItSupportAction(context: ItAdminContext, message = "รายการนี้อนุญาตเฉพาะ IT Support ซึ่งมีสิทธิ์เต็มเท่านั้น") {
-  if (context.auth.platformRole !== "it_support") {
+  if (context.auth.platformRole !== "it_support" || context.profile.platform_role !== "it_support") {
     throw new ItAdminGuardError("it_support_required", message, 403);
   }
 }
