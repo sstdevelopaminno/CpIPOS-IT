@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const gate = read("../../supabase/migrations/20261114160000_it_tenant_delete_review_gate_and_command_fence.sql");
 const commMigration = read("../../supabase/migrations/20261114161000_it_tenant_communications_cleanup_journal.sql");
+const refreshMigration = read("../../supabase/migrations/20261114161500_preserve_confirmed_offboarding_lock_during_billing.sql");
+const deviceCommandsRoute = read("src/app/api/it-admin/v1/device-commands/route.ts");
 const service = read("src/lib/services/it-admin/tenant-control-service.ts");
 const deletionRoute = read("src/app/api/it-admin/v1/deletion-reviews/route.ts");
 const directControl = read("src/app/api/it-admin/v1/tenants/[tenantId]/control/route.ts");
@@ -63,6 +65,31 @@ describe("IT Support-controlled offboarding and complete tenant disconnect", () 
     expect(gate).toContain("command_type <> 'release_device_owner'");
     expect(gate).toContain("new.command_type = 'release_device_owner'");
     expect(gate).toContain("raise exception 'tenant_offboarding_commands_blocked'");
+  });
+
+  it("keeps the approved deletion lock through billing refresh and invoice synchronization", () => {
+    expect(refreshMigration).toContain("refresh_subscription_billing_lifecycle");
+    expect(refreshMigration).toContain("ensure_tenant_subscription_billing_cycle");
+    expect(refreshMigration).toContain("tenant_deletion_confirmed");
+    expect(refreshMigration).toContain("subscription_billing_refresh_provisional_guard_drift");
+  });
+
+  it("issues a durable audit receipt in the same transaction as the destructive purge", () => {
+    expect(gate).toContain("v_receipt_anchor");
+    expect(gate).toContain("insert into public.audit_logs(");
+    expect(gate).toContain("'atomic_deletion_receipt',true");
+    expect(gate).toContain("'tenant_permanently_deleted'");
+    expect(cleanupRoute).toContain('if (!audit.data) return fail("tenant_deletion_unverified"');
+  });
+
+  it("checks tenant offboarding BEFORE immediate device mutation and blocks race at database trigger", () => {
+    const lookup = deviceCommandsRoute.indexOf('from("tenant_lifecycle_deletion_reviews")');
+    const update = deviceCommandsRoute.indexOf('.from("branch_devices")\n        .update');
+    expect(lookup).toBeGreaterThan(0);
+    expect(update).toBeGreaterThan(lookup);
+    expect(gate).toContain("block_device_state_change_during_approved_deletion");
+    expect(gate).toContain("before update of status, is_active, is_locked");
+    expect(gate).toContain("tenant_offboarding_device_mutation_blocked");
   });
 
   it("journals Communications cleanup in the same database transaction as deletion", () => {
