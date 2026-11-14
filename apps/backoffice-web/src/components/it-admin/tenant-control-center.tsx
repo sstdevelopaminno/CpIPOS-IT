@@ -1252,7 +1252,10 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                         ไปตรวจสอบและยืนยันการลบถาวร
                       </Link>
                     </div>
-                  </section>
+                  </section> : <section className={styles.controlSection}>
+                    <div className={styles.controlSectionHeader}><div><span>DELETE PERMISSION</span><h4>การลบร้านถาวร</h4></div><strong>IT Support เท่านั้น</strong></div>
+                    <p className={styles.sectionCopy}>IT Admin สามารถจัดการร้านและระงับการใช้งานได้ แต่การลบถาวรต้องผ่านคิวอนุมัติและ IT Support ผู้มีสิทธิ์เต็มเท่านั้น</p>
+                  </section>}
                 </div>
               ) : null}
             </div>
