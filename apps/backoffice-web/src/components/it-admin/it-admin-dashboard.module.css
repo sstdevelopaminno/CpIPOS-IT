@@ -798,8 +798,7 @@
 }
 
 .presenceSearch:focus-visible,
-.presenceFilters button:focus-visible,
-.presenceStoreLink:focus-visible {
+.presenceFilters button:focus-visible {
   outline: 2px solid #376fdd;
   outline-offset: 2px;
 }
@@ -832,7 +831,7 @@
 
 .presenceTable {
   width: 100%;
-  min-width: 680px;
+  min-width: 560px;
   border-collapse: collapse;
   text-align: left;
   font-size: 11.5px;
@@ -901,15 +900,6 @@
 .presenceSubtext {
   display: block;
   margin-top: 4px;
-}
-
-.presenceStoreLink {
-  color: #245bb0;
-  font-size: 11px;
-  font-weight: 750;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  white-space: nowrap;
 }
 
 @media (max-width: 720px) {
