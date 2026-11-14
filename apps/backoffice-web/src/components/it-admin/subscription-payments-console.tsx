@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SubscriptionBusinessProfile } from "@/components/it-admin/subscription-business-profile";
+import { ItOverflowText } from "@/components/it-admin/it-overflow-text";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Row = {
@@ -172,7 +173,7 @@ export function SubscriptionPaymentsConsole() {
       {notice ? <p role="status" className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">{notice}</p> : null}
       {contactsOpen ? <div className="rounded-xl border border-blue-200 bg-white p-5 shadow-sm">
         <h2 className="font-bold text-slate-900">ช่องทางอีเมล (แก้ไขได้เมื่อบริษัทเปลี่ยนอีเมล)</h2>
-        <p className="my-2 text-sm text-slate-600">ข้อมูลติดต่อใช้เป็น Reply-To ส่วนการส่งจริงใช้ Gmail / Apps Script bridge ที่ตั้งค่าเป็น Secret ฝั่งเซิร์ฟเวอร์</p>
+        <div className="my-2 text-sm text-slate-600"><ItOverflowText title="รายละเอียดช่องทางอีเมล" text="ข้อมูลติดต่อใช้เป็น Reply-To ส่วนการส่งจริงใช้ Gmail / Apps Script bridge ที่ตั้งค่าเป็น Secret ฝั่งเซิร์ฟเวอร์" maxLength={68} /></div>
         <div className="grid gap-3 md:grid-cols-2">
           {([
             ["billing_email", "อีเมลฝ่ายบัญชี / บริษัท"],
@@ -259,9 +260,9 @@ export function SubscriptionPaymentsConsole() {
                     }
                   }}
                   className="cursor-pointer align-top outline-none transition hover:bg-blue-50/60 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-300">
-                <td className="px-4 py-4"><strong className="block text-slate-900">{row.store_name}</strong>
+                <td className="px-4 py-4"><strong className="block text-slate-900"><ItOverflowText title="ชื่อร้านค้า" text={row.store_name} maxLength={48} /></strong>
                   <span className="text-xs text-slate-500">{row.store_code}</span></td>
-                <td className="px-4 py-4"><strong className="block">{row.package_name}</strong>
+                <td className="px-4 py-4"><strong className="block"><ItOverflowText title="ชื่อแพ็กเกจ" text={row.package_name} maxLength={46} /></strong>
                   <span className="text-xs text-slate-500">{row.package_code || "—"}</span></td>
                 <td className="px-4 py-4"><span className={row.billing_interval === "yearly" ?
                     "rounded-full bg-violet-50 px-2 py-1 text-violet-700" :
