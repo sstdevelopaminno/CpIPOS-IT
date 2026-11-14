@@ -7,6 +7,8 @@ do $approval_gate$
 declare
   v_definition text;
   v_anchor text := $anchor$  if v_tenant.is_active then raise exception 'tenant_must_be_inactive'; end if;$anchor$;
+  v_residual_anchor text := $anchor$      and cols.table_name <> 'it_tenant_deletion_cleanup'$anchor$;
+  v_residual_replacement text := $anchor$      and cols.table_name <> all(array['it_tenant_deletion_cleanup','it_tenant_communications_cleanup'])$anchor$;
   v_replacement text := $replacement$  if v_tenant.is_active then raise exception 'tenant_must_be_inactive'; end if;
 
   -- Every deletion path, including direct Store Control calls to this RPC,
@@ -61,7 +63,18 @@ begin
     raise exception 'it_delete_tenant_cascade_signature_drift';
   end if;
 
-  execute replace(v_definition, v_anchor, v_replacement);
+  if position(v_residual_anchor in v_definition) = 0 then
+    raise exception 'it_delete_tenant_cascade_residual_guard_drift';
+  end if;
+
+  -- Communications cleanup is a deliberately retained post-delete journal.
+  -- It must not be mistaken for leftover tenant business data by the
+  -- existing transactional residual-table detector.
+  execute replace(
+    replace(v_definition, v_anchor, v_replacement),
+    v_residual_anchor,
+    v_residual_replacement
+  );
 end
 $approval_gate$;
 
