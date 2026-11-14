@@ -48,6 +48,7 @@ describe("paid subscription grace and email safety",()=>{
     expect(mail).toContain('input.triggerMode === "automatic"');
     expect(mail).toContain("automaticEmailBudgetProblem");
     expect(mail).toContain("suspensionNotice");
+    expect(mail).toContain("ระบบระงับการขายหลังครบช่วงผ่อนผัน 2 เดือน");
     expect(reminderWorker).toContain('row.milestone==="paid_suspended_notice"');
     expect(bridge).toContain("MailApp.getRemainingDailyQuota()");
     expect(bridge).toContain("CPIPOS_MAIL_MIN_REMAINING_QUOTA");
