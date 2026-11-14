@@ -30,6 +30,16 @@ export type DatabaseMetrics = {
   checked_at: string | null;
 };
 
+export type DashboardStorePresence = {
+  tenant_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  total_devices: number;
+  online_devices: number;
+  latest_seen_at: string | null;
+};
+
 export type SourceState<T> = {
   enabled: boolean;
   ready: boolean;
@@ -59,6 +69,7 @@ export type DashboardOverview = {
     open: number | null;
     closed: number | null;
     online: number | null;
+    presence: DashboardStorePresence[] | null;
   };
   devices: {
     total: number | null;
@@ -110,6 +121,7 @@ type PrimaryBridgePayload = {
     stores_online: number;
     online_window_minutes: number;
     latest_seen_at: string | null;
+    store_presence?: DashboardStorePresence[] | null;
   };
   operations?: {
     open_incidents: number;
@@ -380,7 +392,8 @@ export async function loadDashboardOverview(accessToken: string): Promise<Dashbo
       total: primaryPayload?.stores.total ?? null,
       open: primaryPayload?.stores.open ?? null,
       closed: primaryPayload?.stores.closed ?? null,
-      online: devicePayload?.stores_online ?? null
+      online: devicePayload?.stores_online ?? null,
+      presence: devicePayload?.store_presence ?? null
     },
     devices: {
       total: devicePayload?.total ?? null,
