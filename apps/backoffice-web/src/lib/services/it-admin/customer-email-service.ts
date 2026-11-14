@@ -451,7 +451,7 @@ export function buildTenantDeletionWarningEmail(input: {
     ? `แจ้งเตือนครั้งสุดท้ายก่อนตรวจลบร้าน | ${text(input.storeName, 100)} | CpIPOS`
     : `แจ้งเตือนการรักษาข้อมูลร้าน | ${text(input.storeName, 100)} | CpIPOS`;
   const timing = input.suspensionNotice
-    ? `ระบบระงับการขายหลังครบช่วงผ่อนผัน 1 เดือน ข้อมูลร้านยังเก็บต่อถึง ${reviewDate} เพื่อให้ติดต่อ IT และแจ้งชำระได้`
+    ? `ระบบระงับการขายหลังครบช่วงผ่อนผัน 2 เดือน ข้อมูลร้านยังเก็บต่อถึง ${reviewDate} เพื่อให้ติดต่อ IT และแจ้งชำระได้`
     : input.finalNotice
     ? "ครบกำหนดรักษาข้อมูลแล้ว วันนี้ระบบจะส่งรายการให้ IT ตรวจสอบก่อนลบถาวร"
     : `เหลือ ${Math.max(0, input.daysRemaining)} วันก่อนครบกำหนดรักษาข้อมูล`;
