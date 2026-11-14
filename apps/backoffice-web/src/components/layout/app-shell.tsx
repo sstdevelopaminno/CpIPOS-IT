@@ -637,7 +637,7 @@ export function AppShell({
           </div>
         </header>
 
-        <main className={styles.content}>
+        <main className={styles.content} data-it-content>
           {navigationRestricted ? (
             <section className={styles.accessDenied}>
               <span>ACCESS RESTRICTED</span>
