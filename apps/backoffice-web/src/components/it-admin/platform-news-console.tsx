@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ItOverflowText } from "./it-overflow-text";
 import { useEffect, useState, type FormEvent } from "react";
 
 export type NewsRow = {
@@ -191,8 +192,8 @@ export function ItPlatformNewsConsole() {
             {items.map(item => (
               <div key={item.id} className="flex flex-wrap items-center gap-4 p-4 hover:bg-slate-50">
                 <div className="min-w-0 flex-1">
-                  <Link href={"/it-admin/news/" + item.id} className="block truncate text-base font-extrabold text-blue-700 hover:underline">{item.title}</Link>
-                  <p className="mt-1 line-clamp-1 text-sm text-slate-500">{item.body}</p>
+                  <Link href={"/it-admin/news/" + item.id} className="block break-words text-base font-extrabold leading-6 text-blue-700 hover:underline">{item.title}</Link>
+                  <div className="mt-1 text-sm text-slate-500"><ItOverflowText title={item.title} text={item.body} maxLength={105} /></div>
                   <p className="mt-1 text-xs text-slate-400">{new Date(item.published_at || item.created_at).toLocaleString("th-TH")} · {item.target_tenant_id ? "เฉพาะร้าน" : "ทุกร้านค้า"}</p>
                 </div>
                 <Status status={item.status} />

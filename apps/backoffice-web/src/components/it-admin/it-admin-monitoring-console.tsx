@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Language } from "@/lib/i18n";
 import { ItDataCleanupControls } from "@/components/it-admin/it-data-cleanup-controls";
+import { ItOverflowText } from "./it-overflow-text";
 
 type Row={id:string;tenant_id?:string;branch_id?:string;store:string;branch:string;level:string;queued_orders:number;stale_orders:number;print_queue:number;dead_letters:number;api_errors:number;api_5xx:number};
 type Payload={checked_at:string;summary:Record<string,number|string>;rows:Row[];note:string|null};
@@ -67,7 +68,7 @@ export function ItAdminMonitoringConsole({language}:{language:Language}){
         <select value={level} onChange={e=>setLevel(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2"><option value="">{t.all}</option><option value="ok">{t.ok}</option><option value="warning">{t.warning}</option><option value="critical">{t.critical}</option></select>
       </div>
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left"><tr>{[t.store,t.branch,t.status,t.queued,t.stale,t.print,t.dead,t.api,t.five,""].map((h,i)=><th key={i} className="px-3 py-3">{h}</th>)}</tr></thead><tbody>
-        {rows.map(row=><tr key={row.id} className="border-t border-slate-100"><td className="px-3 py-3 font-semibold">{row.store}</td><td className="px-3 py-3">{row.branch}</td><td className="px-3 py-3">{levelLabel(row.level,language)}</td><td className="px-3 py-3">{row.queued_orders}</td><td className="px-3 py-3">{row.stale_orders}</td><td className="px-3 py-3">{row.print_queue}</td><td className="px-3 py-3">{row.dead_letters}</td><td className="px-3 py-3">{row.api_errors}</td><td className="px-3 py-3">{row.api_5xx}</td><td className="px-3 py-3">{row.level!=="OK"?<button onClick={()=>void createIncident(row)} className="rounded-lg border border-blue-300 px-3 py-1.5 font-bold text-blue-700">{t.create}</button>:null}</td></tr>)}
+        {rows.map(row=><tr key={row.id} className="border-t border-slate-100"><td className="px-3 py-3 font-semibold"><ItOverflowText title={t.store} text={row.store} language={language} maxLength={44} /></td><td className="px-3 py-3"><ItOverflowText title={t.branch} text={row.branch} language={language} maxLength={48} /></td><td className="px-3 py-3">{levelLabel(row.level,language)}</td><td className="px-3 py-3">{row.queued_orders}</td><td className="px-3 py-3">{row.stale_orders}</td><td className="px-3 py-3">{row.print_queue}</td><td className="px-3 py-3">{row.dead_letters}</td><td className="px-3 py-3">{row.api_errors}</td><td className="px-3 py-3">{row.api_5xx}</td><td className="px-3 py-3">{row.level!=="OK"?<button onClick={()=>void createIncident(row)} className="rounded-lg border border-blue-300 px-3 py-1.5 font-bold text-blue-700">{t.create}</button>:null}</td></tr>)}
         {!loading&&!rows.length?<tr><td colSpan={10} className="p-8 text-center text-slate-500">{t.empty}</td></tr>:null}
         {loading?<tr><td colSpan={10} className="p-8 text-center text-slate-500">{t.loading}</td></tr>:null}
       </tbody></table></div>

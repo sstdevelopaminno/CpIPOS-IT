@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useItAccess } from "@/components/layout/app-shell";
 import { TenantControlCenter } from "./tenant-control-center";
+import { ItOverflowText } from "./it-overflow-text";
 import { ConnectedStoreProvisioning } from "./connected-store-provisioning";
 import type { Language } from "@/lib/i18n";
 import styles from "./tenant-directory-console.module.css";
@@ -254,7 +255,7 @@ export function TenantDirectoryConsole({ language }: { language: Language }) {
                 return (
                   <tr key={row.id}>
                     <td><span className={styles.code}>{row.store_code || "—"}</span></td>
-                    <td><div className={styles.storeCell}><strong>{row.name || "—"}</strong><span>{row.internal_code || "—"}{row.owner_name && row.owner_name !== "—" ? ` · ${row.owner_name}` : ""}</span></div></td>
+                    <td><div className={styles.storeCell}><strong><ItOverflowText title="ชื่อร้านค้า" text={row.name || "—"} maxLength={45} /></strong><ItOverflowText title="รหัสภายในและผู้ติดต่อร้าน" text={`${row.internal_code || "—"}${row.owner_name && row.owner_name !== "—" ? ` · ${row.owner_name}` : ""}`} maxLength={60} /></div></td>
                     <td><div className={styles.packageCell}><strong>{row.package || "—"}</strong><span className={`${styles.contractBadge} ${contract === "trial" ? styles.contractTrial : contract === "active" ? styles.contractActive : styles.contractMuted}`}>{contractLabel(row.contract_status)}</span></div></td>
                     <td><strong className={styles.ratio}>{numberValue(row.active_branches)}</strong> / {numberValue(row.branches)}</td>
                     <td><strong className={styles.ratio}>{numberValue(row.active_devices)}</strong> / {numberValue(row.devices)}</td>

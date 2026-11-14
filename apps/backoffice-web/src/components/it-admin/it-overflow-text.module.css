@@ -1,0 +1,109 @@
+.summary {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  gap: 5px;
+  vertical-align: top;
+}
+.excerpt {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+.readMore {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 7px;
+  border: 1px solid #cad9f1;
+  border-radius: 7px;
+  color: #2656aa;
+  background: #f3f7ff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.readMore:hover { background: #e7efff; border-color: #9cbaf0; }
+.readMore:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(11, 24, 42, 0.55);
+}
+.dialog {
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100dvh - 36px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  background: #fff;
+  color: #20314c;
+  box-shadow: 0 24px 70px rgba(10, 27, 51, .24);
+}
+.dialogHeader {
+  flex: 0 0 auto;
+  min-height: 68px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 17px 19px;
+  border-bottom: 1px solid #e7edf5;
+  background: #f9fbff;
+}
+.dialogHeader h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: #182c49;
+  font-size: clamp(16px, 2vw, 20px);
+  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.dialogHeader button {
+  flex: 0 0 34px;
+  min-height: 34px;
+  border: 1px solid #d7e0eb;
+  border-radius: 9px;
+  background: #fff;
+  color: #596c85;
+  font: inherit;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dialogHeader button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.dialogBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px 24px;
+}
+.dialogBody p {
+  margin: 0;
+  color: #374860;
+  font-size: 14px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .backdrop { padding: 10px; }
+  .dialog { max-height: calc(100dvh - 20px); }
+  .dialogHeader { padding: 14px; }
+  .dialogBody { padding: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .readMore { transition: none; }
+}
