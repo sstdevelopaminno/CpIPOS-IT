@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ItOverflowText } from "./it-overflow-text";
 
 type ItRole = "it_admin" | "it_support";
 
@@ -287,7 +288,7 @@ export function ItSystemUsersConsole() {
                 <tr key={user.id} className="border-t border-slate-100 align-top">
                   <td className="px-5 py-4"><strong className="block text-slate-900">{user.full_name || "—"}</strong><span className="mt-1 block text-xs text-slate-500">{user.email}</span></td>
                   <td className="px-5 py-4"><RoleBadge role={user.platform_role} /></td>
-                  <td className="max-w-sm px-5 py-4 text-xs leading-5 text-slate-600">{roleDescription(user.platform_role)}</td>
+                  <td className="max-w-sm px-5 py-4 text-xs leading-5 text-slate-600"><ItOverflowText title="รายละเอียดสิทธิ์ผู้ใช้ IT" text={roleDescription(user.platform_role)} maxLength={96} /></td>
                   <td className="px-5 py-4">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${user.is_active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
                       {user.is_active ? "เปิดใช้งาน" : "ปิดใช้งาน"}
