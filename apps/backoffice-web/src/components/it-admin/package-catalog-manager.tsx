@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ItOverflowText } from "./it-overflow-text";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./package-catalog-manager.module.css";
 
@@ -299,7 +300,7 @@ export function PackageCatalogManager() {
           <thead><tr><th>แพ็กเกจ</th><th>รายเดือน</th><th>รายปี</th><th>โควตา</th><th>สินค้า / บิล</th><th>AI / โหมดขาย</th><th>เก็บยอดขาย</th><th>สถานะ</th><th /></tr></thead>
           <tbody>
             {rows.map((row) => <tr key={row.id}>
-              <td><strong>{row.name}</strong><small>{row.code}{row.custom_per_store ? " · รายร้าน" : ""}</small></td>
+              <td><strong><ItOverflowText title="ชื่อแพ็กเกจ" text={row.name} maxLength={48} /></strong><small><ItOverflowText title="รหัสแพ็กเกจ" text={`${row.code}${row.custom_per_store ? " · รายร้าน" : ""}`} maxLength={55} /></small></td>
               <td>
                 {row.custom_per_store ? <strong>กำหนดรายร้าน</strong> : <>
                   <strong>{money(row.effective_monthly_price)}</strong>
