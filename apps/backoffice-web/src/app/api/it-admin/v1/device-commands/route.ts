@@ -71,6 +71,22 @@ export async function POST(req: Request) {
     if (deviceError) throw new Error(`primary_device_query_failed:${deviceError.message}`);
     if (!device) return fail("device_not_found", "Device was not found for this tenant/branch.", 404);
 
+    // Check offboarding BEFORE the immediate enable/disable UPDATE, not only
+    // at device_commands INSERT. The database also independently fences both
+    // the insert and the device-state UPDATE against approval races.
+    const deletionReview = await supabase.from("tenant_lifecycle_deletion_reviews")
+      .select("review_status,confirmed_at")
+      .eq("tenant_id", tenantId)
+      .maybeSingle<{ review_status: string; confirmed_at: string | null }>();
+    if (deletionReview.error) {
+      return fail("tenant_offboarding_lookup_failed", "Unable to verify the store's offboarding status.", 503);
+    }
+    if (deletionReview.data?.confirmed_at &&
+        ["mdm_release_pending", "ready_to_delete"].includes(deletionReview.data.review_status)) {
+      return fail("tenant_offboarding_commands_blocked",
+        "Permanent tenant deletion was approved. Device commands are disabled.", 409);
+    }
+
     const now = new Date();
     const isImmediate = isImmediateDeviceCommand(commandType);
 
