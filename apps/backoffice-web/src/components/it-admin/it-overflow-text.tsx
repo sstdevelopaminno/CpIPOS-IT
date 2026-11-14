@@ -62,6 +62,7 @@ export function ItOverflowText({
             event.stopPropagation();
             setOpen(true);
           }}
+          onKeyDown={(event) => event.stopPropagation()}
         >
           {detailLabel}
         </button>
