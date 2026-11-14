@@ -496,13 +496,13 @@
 
 .headingBlock h1 {
   margin: 0;
-  overflow: hidden;
   color: #172033;
   font-size: clamp(17px, 1.7vw, 22px);
   font-weight: 780;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-wrap: pretty;
 }
 
 .breadcrumbs {
@@ -813,11 +813,29 @@
 @media (max-width: 720px) {
   .topbar {
     min-height: 68px;
+    align-items: flex-start;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 10px 14px;
   }
 
+  .topbarLeft {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .headingBlock {
+    width: 100%;
+  }
+
+  .breadcrumbs {
+    max-width: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
   .topbarActions {
+    margin-left: auto;
     gap: 8px;
   }
 
@@ -845,11 +863,11 @@
   }
 
   .headingBlock h1 {
-    max-width: 42vw;
+    max-width: 100%;
   }
 
   .breadcrumbs {
-    max-width: 42vw;
+    max-width: 100%;
   }
 }
 
@@ -875,7 +893,7 @@
   }
 
   .headingBlock h1 {
-    max-width: 46vw;
+    max-width: 100%;
     font-size: 16px;
   }
 }
