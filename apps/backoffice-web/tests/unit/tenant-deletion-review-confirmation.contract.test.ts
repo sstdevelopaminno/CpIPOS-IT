@@ -7,6 +7,7 @@ const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf
 const route = source("src/app/api/it-admin/v1/deletion-reviews/route.ts");
 const consoleUi = source("src/components/it-admin/tenant-deletion-review-console.tsx");
 const styles = source("src/components/it-admin/tenant-deletion-review-console.module.css");
+const communications = source("src/lib/services/it-admin/tenant-communications-cleanup.ts");
 
 describe("tenant deletion review: confirmation safety and table UX", () => {
   it("prevents direct API deletion without store-code confirmation and an audit reason", () => {
@@ -41,10 +42,10 @@ describe("tenant deletion review: confirmation safety and table UX", () => {
     expect(consoleUi).toContain('confirmation_code: confirmationCode');
   });
   it("routes cross-plane cleanup through the authenticated Communications gateway without a Vercel service-role dependency", () => {
-    expect(route).toContain("CPIPOS_COMMUNICATIONS_EDGE_URL");
-    expect(route).toContain("getVerifiedSupabaseAccessToken");
-    expect(route).toContain('action: "delete_tenant_communications"');
-    expect(route).toContain("communications_cleanup_deferred");
+    expect(communications).toContain("CPIPOS_COMMUNICATIONS_EDGE_URL");
+    expect(communications).toContain("getVerifiedSupabaseAccessToken");
+    expect(communications).toContain('action: "delete_tenant_communications"');
+    expect(communications).toContain("communications_cleanup_deferred");
     expect(route).not.toContain('admin.itSupabase.rpc("it_delete_tenant_communications"');
     expect(route).not.toContain("admin.itSupabase.storage");
   });
