@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getTenantNotificationLanguage } from "@/lib/server/tenant-notification-language";
 import { localizeCustomerSystemEmail } from "./localized-customer-email";
+import { customerEmailMailboxCategory, selectCustomerMailBridge } from "./customer-email-routing";
 
 export type CustomerEmailEventType = "store_activation" | "payment_confirmation" | "subscription_due_reminder" | "trial_expiry_reminder" | "tenant_deletion_warning" | "sales_retention_export" | "daily_sales_summary" | "daily_sales_summary_test";
 export type CustomerEmailTriggerMode = "automatic" | "manual";
@@ -647,7 +648,8 @@ export async function prepareCustomerEmailPreview(input: {
   const settings = await loadSettings(input.db);
   return {
     message: brandMessage(input.message, settings, input.eventType),
-    companyTestEmail: settings.support_email.trim().toLowerCase()
+    companyTestEmail: (customerEmailMailboxCategory(input.eventType) === "billing"
+      ? settings.billing_email : settings.support_email).trim().toLowerCase()
   };
 }
 
@@ -754,16 +756,55 @@ export async function deliverCustomerEmail(input: {
     return { status: "blocked", delivery_id: delivery.id, message: problem };
   }
 
-  const bridgeUrl = process.env.CPIPOS_MAIL_BRIDGE_URL?.trim();
-  const bridgeSecret = process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
-  if (!bridgeUrl || !bridgeSecret) {
-    const message = "ยังไม่ได้ตั้งค่า CPIPOS_MAIL_BRIDGE_URL / CPIPOS_MAIL_BRIDGE_SECRET จึงยังส่งอีเมลจริงไม่ได้";
+
+  const bridge = selectCustomerMailBridge(input.eventType, {
+    strict: process.env.CPIPOS_STRICT_MAIL_ROUTING === "true",
+    legacyUrl: process.env.CPIPOS_MAIL_BRIDGE_URL,
+    legacySecret: process.env.CPIPOS_MAIL_BRIDGE_SECRET,
+    billingUrl: process.env.CPIPOS_BILLING_MAIL_BRIDGE_URL,
+    billingSecret: process.env.CPIPOS_BILLING_MAIL_BRIDGE_SECRET,
+    supportUrl: process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_URL,
+    supportSecret: process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET,
+    billingMailbox: settings.billing_email,
+    supportMailbox: settings.support_email
+  });
+  if (!bridge.ok) {
     await updateDelivery(input.db, delivery.id, {
       status: "blocked",
-      last_error: message,
+      last_error: bridge.error,
       last_attempt_at: new Date().toISOString()
     });
-    return { status: "blocked", delivery_id: delivery.id, message };
+    return { status: "blocked", delivery_id: delivery.id, message: bridge.error };
+  }
+
+  // A no-send authenticated preflight verifies the effective Google account
+  // BEFORE any customer email is sent, preventing cross-account impersonation.
+  // Mailbox identity is not inferred from Reply-To or the sender display name.
+  if (bridge.verifySender) {
+    try {
+      const check = await fetch(bridge.url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ secret: bridge.secret, action: "status" }),
+        signal: AbortSignal.timeout(8000),
+        cache: "no-store"
+      });
+      const status = await check.json().catch(() => null) as { ok?: boolean; mailbox?: string; error?: string } | null;
+      if (!check.ok || status?.ok !== true) {
+        throw new Error(text(status?.error || "bridge_preflight_failed", 150));
+      }
+      if (status.mailbox?.trim().toLowerCase() !== bridge.expectedMailbox) {
+        throw new Error("bridge_sender_mismatch");
+      }
+    } catch (error) {
+      const message = text(error instanceof Error ? error.message : "bridge_preflight_failed", 300);
+      await updateDelivery(input.db, delivery.id, {
+        status: "blocked",
+        last_error: message,
+        last_attempt_at: new Date().toISOString()
+      });
+      return { status: "blocked", delivery_id: delivery.id, message };
+    }
   }
 
   let claimStatus = delivery.status;
@@ -793,11 +834,11 @@ export async function deliverCustomerEmail(input: {
   }
 
   try {
-    const response = await fetch(bridgeUrl, {
+    const response = await fetch(bridge.url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        secret: bridgeSecret,
+        secret: bridge.secret,
         idempotencyKey: delivery.event_key,
         to,
         subject: brandedMessage.subject,
@@ -811,11 +852,16 @@ export async function deliverCustomerEmail(input: {
       signal: AbortSignal.timeout(8000)
     });
 
-    const payload = await response.json().catch(() => null) as { ok?: boolean; messageId?: string; error?: string } | null;
+    const payload = await response.json().catch(() => null) as { ok?: boolean; messageId?: string; error?: string; mailbox?: string } | null;
     if (!response.ok || payload?.ok !== true) {
       throw new Error(text(payload?.error || `mail_bridge_http_${response.status}`, 300));
     }
 
+    // MailApp acknowledgement means the provider accepted the message, not that it reached Inbox.
+    // If a response reports the wrong sender despite preflight, flag it for investigation.
+    if (bridge.verifySender && payload?.mailbox?.trim().toLowerCase() !== bridge.expectedMailbox) {
+      throw new Error("bridge_sender_response_mismatch");
+    }
     await updateDelivery(input.db, delivery.id, {
       status: "sent",
       sent_at: new Date().toISOString(),
