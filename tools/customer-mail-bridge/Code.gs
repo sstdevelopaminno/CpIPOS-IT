@@ -13,7 +13,7 @@
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-14.1";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-15.1";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -30,6 +30,24 @@ var SUPPORT_MAIL_CAPABILITIES = [
   "trash",
   "trash_many"
 ];
+
+/**
+ * One-time no-send authorization check: run from the Apps Script editor as the
+ * Web App deployment owner after publishing or changing OAuth scopes.
+ * Does not send email or modify any Gmail threads.
+ */
+function authorizeMailBridge() {
+  var expected = supportMailbox_();
+  var effective = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();
+  if (!effective || effective !== expected) {
+    throw new Error("wrong_mailbox: deploy and authorize as the configured support mailbox");
+  }
+  // Exercise both required mail scopes without sending anything.
+  GmailApp.getAliases();
+  var remaining = MailApp.getRemainingDailyQuota();
+  Logger.log("CpIPOS mail bridge authorization OK; mail quota remaining: " + remaining);
+  return { ok: true, mailbox: effective, remainingDailyQuota: remaining, bridge_version: SUPPORT_MAIL_BRIDGE_VERSION };
+}
 
 function doPost(e) {
   try {
