@@ -74,6 +74,7 @@ describe("customer email account separation", () => {
     expect(billing).toContain('BILLING_MAILBOX = "cuttingpointtech@gmail.com"');
     expect(billing).toContain("billing_event_not_allowed");
     expect(billing).toContain("MailApp.sendEmail");
+    expect(billing).toContain(String.raw`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`);
     expect(billing).not.toContain("GmailApp");
     expect(billing).not.toContain("list_threads");
     expect(manifest.oauthScopes).toContain("https://www.googleapis.com/auth/userinfo.email");
