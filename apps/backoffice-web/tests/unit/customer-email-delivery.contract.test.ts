@@ -85,6 +85,20 @@ describe("transactional customer email delivery", () => {
     expect(reminderMigration).toContain("not in ('prepaid','pending','under_review','not_payable')");
   });
 
+  it("requires explicit Apps Script OAuth scopes and a safe no-send preflight", () => {
+    const manifest = JSON.parse(src("../../tools/customer-mail-bridge/appsscript.json")) as { oauthScopes: string[] };
+    const bridge = src("../../tools/customer-mail-bridge/Code.gs");
+
+    expect(manifest.oauthScopes).toContain("https://www.googleapis.com/auth/userinfo.email");
+    expect(manifest.oauthScopes).toContain("https://www.googleapis.com/auth/script.send_mail");
+    expect(manifest.oauthScopes).toContain("https://mail.google.com/");
+    expect(bridge).toContain("function authorizeMailBridge()");
+    expect(bridge).toContain("Session.getEffectiveUser().getEmail()");
+    expect(bridge).toContain("GmailApp.getAliases()");
+    expect(bridge).toContain("MailApp.getRemainingDailyQuota()");
+    expect(bridge).toContain("function sendTransactional_(body, mailbox)");
+  });
+
   it("requires an authorized server-side bridge", () => {
     expect(service).toContain("CPIPOS_MAIL_BRIDGE_URL");
     expect(service).toContain("CPIPOS_MAIL_BRIDGE_SECRET");
