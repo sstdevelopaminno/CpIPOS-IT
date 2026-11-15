@@ -858,19 +858,21 @@ export async function deliverCustomerEmail(input: {
       throw new Error(text(payload?.error || `mail_bridge_http_${response.status}`, 300));
     }
 
-    // MailApp acknowledgement means the provider accepted the message, not that it reached Inbox.
-    // If a response reports the wrong sender despite preflight, flag it for investigation.
-    if (bridge.verifySender && payload?.mailbox?.trim().toLowerCase() !== bridge.expectedMailbox) {
-      throw new Error("bridge_sender_response_mismatch");
-    }
+    // Provider acknowledgement does not prove Inbox placement. If the bridge
+    // reports a sender mismatch AFTER accepting a send, record the incident as
+    // sent rather than retrying and risking a duplicate customer notification.
+    const senderMismatch = bridge.verifySender &&
+      payload?.mailbox?.trim().toLowerCase() !== bridge.expectedMailbox;
     await updateDelivery(input.db, delivery.id, {
       status: "sent",
       sent_at: new Date().toISOString(),
-      last_error: null,
+      last_error: senderMismatch ? "bridge_sender_response_mismatch" : null,
       provider: "google_apps_script_mailapp",
       provider_message_id: text(payload?.messageId, 300) || null
     });
-    return { status: "sent", delivery_id: delivery.id, message: "ส่งอีเมลสำเร็จ" };
+    return { status: "sent", delivery_id: delivery.id, message: senderMismatch
+      ? "อีเมลถูกผู้ให้บริการรับแล้ว แต่บัญชีผู้ส่งไม่ตรง กรุณาตรวจสอบ Mail Bridge"
+      : "ส่งอีเมลสำเร็จ" };
   } catch (error) {
     const message = text(error instanceof Error ? error.message : "mail_delivery_failed", 500);
     await updateDelivery(input.db, delivery.id, { status: "failed", last_error: message });
