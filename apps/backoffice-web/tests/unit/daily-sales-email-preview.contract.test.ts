@@ -33,7 +33,10 @@ describe("daily sales email preview and company test send", () => {
     expect(route).toContain('eventType: "daily_sales_summary_test"');
     expect(route).toContain("customer_email_used: false");
     expect(route).toContain("SEND_DAILY_SALES_TEST");
-    expect(mail).toContain("companyTestEmail: settings.support_email.trim().toLowerCase()");
+    const routing = src("src/lib/services/it-admin/customer-email-routing.ts");
+    expect(routing).toContain('case "daily_sales_summary_test":');
+    expect(mail).toContain('customerEmailMailboxCategory(input.eventType) === "billing"');
+    expect(mail).toContain("settings.billing_email : settings.support_email");
   });
 
   it("separates test delivery events from real customer daily summary events", () => {
