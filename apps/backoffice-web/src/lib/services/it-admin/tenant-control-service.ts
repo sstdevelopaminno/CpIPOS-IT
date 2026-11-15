@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { appendAuditLog } from "@/lib/audit-log";
 import { invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
 import { POS_SALES_MODE_KEYS, normalizePosSalesModes, toPosSalesModeViews, type PosSalesModeMap } from "@/lib/pos-sales-modes";
+import { getSalesModeSelectionError, normalizeRequestedPosSalesModes } from "@/lib/pos-sales-mode-entitlements";
 import { ItAdminGuardError, type ItAdminContext } from "@/lib/it-admin-guard";
 import { getItQaMode } from "@/lib/server/internal-it-test-store";
 
@@ -1371,6 +1372,16 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (selected.error) throw selected.error;
     if (!selected.data) throw new ItAdminGuardError("package_not_found", "Package not found.", 404);
     const previous = await loadCurrentContract(context, tenantId);
+    // Package downgrades must not silently hide a previously approved mode.
+    // IT must first choose the modes that fit the destination tier.
+    const previousModes = normalizeRequestedPosSalesModes(asRecord(previous?.metadata).sales_modes);
+    const previousModeCount = Object.values(previousModes).filter(Boolean).length;
+    const previousModeIssue = getSalesModeSelectionError(previousModes, selected.data.code, selected.data.metadata);
+    if (previousModeCount > 0 &&
+        (previousModeIssue === "sales_mode_limit_exceeded" || previousModeIssue === "optical_mode_requires_custom")) {
+      throw new ItAdminGuardError(previousModeIssue,
+        "โหมดขายเดิมไม่รองรับแพ็กเกจใหม่ กรุณาปรับโหมดที่เปิดใช้งานก่อนเปลี่ยนแพ็กเกจ", 422);
+    }
     const metadata = {
       it_internal_test_contract: true, package_change_by: context.auth.userId,
       package_change_at: now, simulated_package_code: selected.data.code,
@@ -1567,18 +1578,25 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (contract.status === "cancelled" || effectiveContractStatus(contract) === "expired") {
       throw new ItAdminGuardError("subscription_closed", "Closed contracts cannot update POS sales modes.", 409);
     }
-    const nextModes = normalizePosSalesModes(input.sales_modes);
-    if (nextModes.optical_retail && !await getItQaMode(context, tenantId)) {
-      const pkg = await context.supabase.from("subscription_packages")
-        .select("code").eq("id", contract.package_id).maybeSingle<{ code: string }>();
-      if (pkg.error) throw pkg.error;
-      if (String(pkg.data?.code ?? "").toLowerCase() !== "custom") {
-        throw new ItAdminGuardError("optical_custom_only",
-          "โหมดร้านแว่นตาเปิดได้เฉพาะ CUSTOM หรือร้านทดสอบ IT", 403);
-      }
+    // Only exact IT selections are grants. The old fallback enabled five
+    // unrelated modes when a partial payload was posted.
+    const nextModes = normalizeRequestedPosSalesModes(input.sales_modes);
+    const pkg = await context.supabase.from("subscription_packages")
+      .select("code,metadata").eq("id", contract.package_id)
+      .maybeSingle<{ code: string; metadata: Record<string, unknown> | null }>();
+    if (pkg.error) throw pkg.error;
+    if (!pkg.data) throw new ItAdminGuardError("package_not_found", "ไม่พบแพ็กเกจปัจจุบัน", 409);
+    const validation = getSalesModeSelectionError(nextModes, pkg.data.code, pkg.data.metadata);
+    if (validation === "sales_mode_required") {
+      throw new ItAdminGuardError(validation, "กรุณาเปิดใช้งานโหมดขายอย่างน้อยหนึ่งโหมด", 422);
     }
-    if (!Object.values(nextModes).some(Boolean)) {
-      throw new ItAdminGuardError("sales_mode_required", "At least one POS sales mode must stay enabled.", 422);
+    if (validation === "sales_mode_limit_exceeded") {
+      throw new ItAdminGuardError(validation,
+        "จำนวนโหมดขายเกินสิทธิ์ของแพ็กเกจ กรุณาเลือกโหมดให้ตรงกับแพ็กเกจก่อนบันทึก", 422);
+    }
+    if (validation === "optical_mode_requires_custom" && !await getItQaMode(context, tenantId)) {
+      throw new ItAdminGuardError("optical_custom_only",
+        "โหมดร้านแว่นตาเปิดได้เฉพาะ CUSTOM หรือร้านทดสอบ IT", 403);
     }
     const beforeMeta = asRecord(contract.metadata);
     const reason = optionalText(input.admin_reason, 600);
