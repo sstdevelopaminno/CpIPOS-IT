@@ -1376,10 +1376,11 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     // IT must first choose the modes that fit the destination tier.
     const previousModes = normalizeRequestedPosSalesModes(asRecord(previous?.metadata).sales_modes);
     const previousModeCount = Object.values(previousModes).filter(Boolean).length;
+    const previousModeIssue = getSalesModeSelectionError(previousModes, selected.data.code, selected.data.metadata);
     if (previousModeCount > 0 &&
-        getSalesModeSelectionError(previousModes, selected.data.code, selected.data.metadata) === "sales_mode_limit_exceeded") {
-      throw new ItAdminGuardError("sales_mode_limit_exceeded",
-        "โหมดเดิมเกินจำนวนของแพ็กเกจใหม่ กรุณาลดโหมดที่เปิดใช้งานก่อนเปลี่ยนแพ็กเกจ", 422);
+        (previousModeIssue === "sales_mode_limit_exceeded" || previousModeIssue === "optical_mode_requires_custom")) {
+      throw new ItAdminGuardError(previousModeIssue,
+        "โหมดขายเดิมไม่รองรับแพ็กเกจใหม่ กรุณาปรับโหมดที่เปิดใช้งานก่อนเปลี่ยนแพ็กเกจ", 422);
     }
     const metadata = {
       it_internal_test_contract: true, package_change_by: context.auth.userId,
