@@ -18,9 +18,9 @@ describe("CUSTOM Optical registration approval", () => {
     expect(ui).toContain('optical_retail: custom ? prev.sales_modes.optical_retail : false');
   });
   it("enforces CUSTOM-only Optical at both edit and activation, not just the UI", () => {
-    expect(route).toContain("patch.sales_modes.optical_retail");
-    expect(route).toContain('proposed.data.code !== "custom" && proposed.data.quota_mode !== "custom"');
-    expect(route).toContain("normalizePosSalesModes(row.sales_modes).optical_retail && !isCustom");
+    expect(route).toContain("getSalesModeSelectionError(patch.sales_modes, proposed.data.code, proposed.data.metadata)");
+    expect(route).toContain('modeProblem === "optical_mode_requires_custom"');
+    expect(route).toContain("getSalesModeSelectionError(selectedModes, pkg.data.code, pkg.data.metadata)");
     expect(route.match(/optical_mode_requires_custom/g)?.length).toBe(2);
     expect(route).toContain('status: "processing"');
   });
