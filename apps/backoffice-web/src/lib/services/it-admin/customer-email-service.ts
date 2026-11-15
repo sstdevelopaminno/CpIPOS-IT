@@ -840,6 +840,7 @@ export async function deliverCustomerEmail(input: {
       body: JSON.stringify({
         secret: bridge.secret,
         idempotencyKey: delivery.event_key,
+        eventType: input.eventType,
         to,
         subject: brandedMessage.subject,
         textBody: brandedMessage.textBody,
