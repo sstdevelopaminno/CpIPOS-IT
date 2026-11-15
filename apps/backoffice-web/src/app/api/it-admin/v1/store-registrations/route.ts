@@ -4,7 +4,8 @@ import { assertItSupportAction, guardItAdminError, ItAdminGuardError, requireItA
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { provisionStore, StoreProvisioningError } from "@/lib/services/it-admin/store-provisioning-service";
 import { appendAuditLog } from "@/lib/audit-log";
-import { normalizePosSalesModes, type PosSalesModeMap } from "@/lib/pos-sales-modes";
+import type { PosSalesModeMap } from "@/lib/pos-sales-modes";
+import { getSalesModeSelectionError, normalizeRequestedPosSalesModes } from "@/lib/pos-sales-mode-entitlements";
 import { resolveCustomRegistrationBilling } from "@/lib/custom-registration-billing";
 import { buildStoreActivationEmail, customerEmailProblem, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
 
@@ -114,7 +115,7 @@ function validateEdit(input: RecordInput) {
     owner_email: clean(input.owner_email, 254).toLowerCase(),
     owner_phone: clean(input.owner_phone, 40),
     package_id: input.package_id,
-    sales_modes: normalizePosSalesModes(input.sales_modes),
+    sales_modes: normalizeRequestedPosSalesModes(input.sales_modes),
     custom_requirements: clean(input.custom_requirements, 1500) || null
   };
   if (row.store_name.length < 2 || row.business_type.length < 2 || row.owner_name.length < 2 ||
@@ -177,13 +178,17 @@ export async function POST(req: Request) {
         if (prior.data?.length) return fail("edit_after_provision_started", "เริ่มสร้างร้านแล้ว แก้คำขอไม่ได้ กรุณาติดต่อผู้ดูแลเพื่อกู้คืน", 409);
       }
       const patch = validateEdit(input);
-      if (patch.sales_modes.optical_retail) {
-        const proposed = await ctx.supabase.from("subscription_packages")
-          .select("id,code,quota_mode").eq("id", patch.package_id).maybeSingle();
-        if (proposed.error) throw proposed.error;
-        if (!proposed.data || (proposed.data.code !== "custom" && proposed.data.quota_mode !== "custom")) {
-          return fail("optical_mode_requires_custom", "โหมดร้านแว่นตาเปิดได้เฉพาะแพ็กเกจ CUSTOM", 422);
-        }
+      const proposed = await ctx.supabase.from("subscription_packages")
+        .select("id,code,quota_mode,metadata").eq("id", patch.package_id).maybeSingle();
+      if (proposed.error) throw proposed.error;
+      if (!proposed.data) return fail("package_not_found", "ไม่พบแพ็กเกจที่เลือก", 422);
+      const modeProblem = getSalesModeSelectionError(patch.sales_modes, proposed.data.code, proposed.data.metadata);
+      if (modeProblem) {
+        return fail(modeProblem, modeProblem === "sales_mode_limit_exceeded"
+          ? "จำนวนโหมดที่เลือกเกินสิทธิ์ของแพ็กเกจ"
+          : modeProblem === "optical_mode_requires_custom"
+            ? "โหมดร้านแว่นตาเปิดได้เฉพาะแพ็กเกจ CUSTOM"
+            : "กรุณาเลือกโหมดขายอย่างน้อยหนึ่งโหมด", 422);
       }
       const { data, error } = await ctx.supabase.from("store_registration_requests")
         .update({ ...patch, status: "pending", last_error: null, updated_at: new Date().toISOString() })
@@ -217,7 +222,7 @@ export async function POST(req: Request) {
     const ownerEmailIssue = customerEmailProblem(row.owner_email);
     if (ownerEmailIssue) return fail("invalid_owner_email", ownerEmailIssue, 422);
     const pkg = await ctx.supabase.from("subscription_packages")
-      .select("id,code,is_active,status,quota_mode,monthly_price,max_devices")
+      .select("id,code,is_active,status,quota_mode,monthly_price,max_devices,metadata")
       .eq("id", row.package_id).maybeSingle();
     if (pkg.error) throw pkg.error;
     const isCustom = pkg.data?.quota_mode === "custom" || pkg.data?.code === "custom";
@@ -226,9 +231,16 @@ export async function POST(req: Request) {
         (!isCustom && (Number(pkg.data.monthly_price) <= 0 || Number(pkg.data.max_devices ?? 0) < 1))) {
       return fail("package_unavailable", "แพ็กเกจไม่พร้อมเปิดทดลองใช้ กรุณาแก้ไขคำขอ", 409);
     }
-    // A stale or crafted non-CUSTOM registration must never enable Optical Retail.
-    if (normalizePosSalesModes(row.sales_modes).optical_retail && !isCustom) {
-      return fail("optical_mode_requires_custom", "โหมดร้านแว่นตาเปิดได้เฉพาะแพ็กเกจ CUSTOM", 422);
+    // Revalidate the authoritative package quota before provisioning any
+    // tenant/Owner rows. A stale website request must not silently lose modes.
+    const selectedModes = normalizeRequestedPosSalesModes(row.sales_modes);
+    const modeProblem = getSalesModeSelectionError(selectedModes, pkg.data.code, pkg.data.metadata);
+    if (modeProblem) {
+      return fail(modeProblem, modeProblem === "sales_mode_limit_exceeded"
+        ? "จำนวนโหมดที่ขอเปิดเกินสิทธิ์ของแพ็กเกจ กรุณาแก้คำขอก่อนเปิดร้าน"
+        : modeProblem === "optical_mode_requires_custom"
+          ? "โหมดร้านแว่นตาเปิดได้เฉพาะแพ็กเกจ CUSTOM"
+          : "กรุณาเลือกโหมดขายอย่างน้อยหนึ่งโหมด", 422);
     }
     const approvedCustomTerms = isCustom ? sanitizeCustomTerms(input.custom_terms) : null;
     const customBilling = approvedCustomTerms ? resolveCustomRegistrationBilling(approvedCustomTerms) : null;
@@ -247,7 +259,7 @@ export async function POST(req: Request) {
         initial_branch: { code: "001", name: "สาขาหลัก" },
         owner: { name: row.owner_name, email: row.owner_email, phone: row.owner_phone, employee_code: ownerCode, pin }
       });
-      const modes = normalizePosSalesModes(row.sales_modes);
+      const modes = selectedModes;
       const contractRow = await ctx.supabase.from("tenant_subscription_contracts")
         .select("id,metadata").eq("id", result.contract.id).eq("tenant_id", result.tenant.id).single();
       if (contractRow.error) throw contractRow.error;
