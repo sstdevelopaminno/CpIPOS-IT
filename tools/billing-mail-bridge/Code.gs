@@ -55,7 +55,7 @@ function sendBillingTransactional_(body, mailbox) {
   var textBody = String(body.textBody || "").trim();
   var htmlBody = String(body.htmlBody || "");
   var key = String(body.idempotencyKey || "").trim();
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(to) || !subject || !textBody || !key) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) || !subject || !textBody || !key) {
     return billingJson_({ ok: false, error: "invalid_payload", mailbox: mailbox });
   }
 
