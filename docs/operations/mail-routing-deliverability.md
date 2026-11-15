@@ -51,3 +51,7 @@ For a real end-to-end transactional check **after production cutover**, first ru
 - Keep the company and support Google accounts distinct; do not grant Support Mail inbox access to the billing bridge.
 - Ensure billing email templates contain no marketing material. Sensitive access PINs must never be included in emails.
 - For domain-branded mail at scale, separately evaluate a dedicated transactional email provider with verified sending domain; Gmail's authentication and deliverability can vary with recipient reputation and message characteristics.
+
+### Before marking incident resolved
+
+Check each recipient mailbox's spam-filter and blocked-senders settings (read-only first). The three Support-to-main messages are currently in the main Inbox, but their earlier SPAM labels do not identify Google's classification reason. Mail headers passing SPF/DKIM/DMARC are authentication evidence only. Document actual Inbox/Spam results of the owner's two accounts separately from `customer_email_deliveries`. A customer's Inbox cannot be inferred from sender-side Gmail Sent.
