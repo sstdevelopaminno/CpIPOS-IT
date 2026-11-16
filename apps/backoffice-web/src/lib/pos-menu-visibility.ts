@@ -6,6 +6,7 @@ export const POS_MENU_GROUPS = [
   { key: "sales_list", label: "รายการขาย", href: "/preview/pos/sales-list", children: [] },
   { key: "kitchen", label: "ครัว", href: "/preview/pos/kitchen", children: [] },
   { key: "shift", label: "เปิด/ปิดกะ", href: "/preview/pos/shift", children: [] },
+  { key: "finance", label: "การเงิน", href: "/preview/pos/finance", children: [] },
   { key: "optical_customers", label: "ลูกค้าแว่นตา", href: "/preview/pos/optical/customers", children: [] },
   { key: "optical_work_orders", label: "ใบสั่งงาน", href: "/preview/pos/optical/work-orders", children: [] },
   { key: "ai_assistant", label: "CpiPOS AI", href: "/preview/pos/ai-assistant", children: [] },

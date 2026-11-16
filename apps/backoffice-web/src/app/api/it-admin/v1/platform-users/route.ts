@@ -7,7 +7,7 @@ import { assertItSupportAction, guardItAdminError, ItAdminGuardError, requireItA
 export const dynamic = "force-dynamic";
 
 type PlatformRole = "it_admin" | "it_support" | "tenant_user";
-type BranchRole = "owner" | "manager" | "staff";
+type BranchRole = "owner" | "manager" | "staff" | "accountant";
 
 type ProfileRow = {
   id: string;
@@ -35,7 +35,7 @@ type PosProfileRow = { tenant_id: string; user_id: string; employee_code: string
 type SessionRow = { id: string; tenant_id: string; branch_id: string; user_id: string; device_code: string | null; status: string | null; issued_at: string | null; expires_at: string | null };
 type DeviceRow = { id: string; tenant_id: string; branch_id: string; device_code: string | null; device_name: string | null; status: string | null; last_seen_at: string | null };
 
-const BRANCH_ROLES: BranchRole[] = ["owner", "manager", "staff"];
+const BRANCH_ROLES: BranchRole[] = ["owner", "manager", "staff", "accountant"];
 const PIN_PATTERN = /^\d{4,8}$/;
 const PASSWORD_PATTERN = /^.{8,128}$/;
 const EMPLOYEE_CODE_PATTERN = /^[A-Z0-9][A-Z0-9._-]{1,31}$/;
@@ -208,6 +208,47 @@ async function bindUserToBranch(supabase: any, input: { userId: string; tenantId
   return roleResult.data;
 }
 
+/** Explicit IT provisioning for an accountant across all active branches of ONE tenant.
+ * Prevents accidental owner/manager role mutation; never authorizes other tenants.
+ */
+async function bindAccountantToAllActiveBranches(supabase: any, input: {
+  userId: string; tenantId: string; branchId: string;
+  employeeCode: string; positionTitle: string;
+}) {
+  const branches = await supabase.from("branches").select("id")
+    .eq("tenant_id", input.tenantId).eq("is_active", true);
+  if (branches.error) throw new Error(branches.error.message);
+  const branchIds = ((branches.data ?? []) as { id: string }[]).map(branch => branch.id);
+  if (!branchIds.length) throw new Error("ต้องมีสาขาที่เปิดใช้งานอย่างน้อยหนึ่งสาขาก่อนเพิ่มบัญชี");
+
+  const existing = await supabase.from("user_branch_roles").select("branch_id,role")
+    .eq("tenant_id", input.tenantId).eq("user_id", input.userId);
+  if (existing.error) throw new Error(existing.error.message);
+  if ((existing.data ?? []).some((row: { role: string }) => row.role === "owner" || row.role === "manager")) {
+    throw new Error("บัญชีนี้มีสิทธิ์ Owner/Manager อยู่ กรุณาใช้บัญชีผู้ใช้งานแยกสำหรับฝ่ายบัญชี");
+  }
+
+  const defaultId = branchIds.includes(input.branchId) ? input.branchId : branchIds[0];
+  const upsert = await supabase.from("user_branch_roles").upsert(
+    branchIds.map(id => ({
+      tenant_id: input.tenantId, user_id: input.userId, branch_id: id,
+      role: "accountant", is_default: id === defaultId
+    })),
+    { onConflict: "user_id,tenant_id,branch_id" }
+  );
+  if (upsert.error) throw new Error(upsert.error.message);
+  const profile = await supabase.from("pos_user_profiles").upsert({
+    tenant_id: input.tenantId,
+    user_id: input.userId,
+    employee_code: input.employeeCode,
+    position_title: input.positionTitle || null,
+    permission_role: "accountant",
+    updated_at: new Date().toISOString()
+  }, { onConflict: "tenant_id,user_id" });
+  if (profile.error) throw new Error(profile.error.message);
+  return branchIds.length;
+}
+
 export async function GET(request: Request) {
   const startedAt = Date.now();
   try {
@@ -339,6 +380,7 @@ export async function POST(request: Request) {
     const tenantId = text(body.tenant_id, 80);
     const branchId = text(body.branch_id, 80);
     const branchRole = parseRole(body.branch_role, BRANCH_ROLES, "staff");
+    const accountantAllBranches = body.accountant_all_branches === true;
     const employeeCode = normalizeEmployeeCode(body.employee_code);
     const posPin = text(body.pos_pin, 12);
 
@@ -347,7 +389,25 @@ export async function POST(request: Request) {
     if (!PASSWORD_PATTERN.test(password)) return fail("user_password_invalid", "Password must be at least 8 characters.", 422);
     if (employeeCode && !EMPLOYEE_CODE_PATTERN.test(employeeCode)) return fail("employee_code_invalid", "Employee code is invalid.", 422);
     if (posPin && !PIN_PATTERN.test(posPin)) return fail("pos_pin_invalid", "POS PIN must contain 4 to 8 digits.", 422);
+    if (accountantAllBranches && branchRole !== "accountant") {
+      return fail("invalid_accountant_assignment", "All-branches assignment requires Accountant role.", 422);
+    }
+    if (branchRole === "accountant" && (!tenantId || !/^\d{1,32}$/.test(employeeCode))) {
+      return fail("accountant_code_required", "Accountant requires a tenant and explicit numeric employee code.", 422);
+    }
+    if (branchRole === "accountant" && !accountantAllBranches && !branchId) {
+      return fail("accountant_branch_required", "Choose a branch or enable all active branches.", 422);
+    }
 
+    if (branchRole === "accountant" && !posPin) {
+      return fail("accountant_pin_required", "Set a 4-8 digit PIN before enabling Accountant.", 422);
+    }
+    if (branchRole === "accountant" && accountantAllBranches) {
+      const preflight = await context.supabase.from("branches")
+        .select("id").eq("tenant_id", tenantId).eq("is_active", true).limit(1);
+      if (preflight.error) throw preflight.error;
+      if (!preflight.data?.length) return fail("accountant_branches_missing", "No active branches in this tenant.", 422);
+    }
     const created = await context.supabase.auth.admin.createUser({
       email: normalizedEmail,
       password,
@@ -362,7 +422,12 @@ export async function POST(request: Request) {
     const profileResult = await context.supabase.from("users_profiles").upsert(profile, { onConflict: "id" }).select("id,email,full_name,platform_role,is_active,created_at,updated_at").single();
     if (profileResult.error) throw new Error(profileResult.error.message);
 
-    if (tenantId && branchId) {
+    if (branchRole === "accountant" && accountantAllBranches) {
+      await bindAccountantToAllActiveBranches(context.supabase, {
+        userId, tenantId, branchId, employeeCode,
+        positionTitle: text(body.position_title, 120)
+      });
+    } else if (tenantId && branchId) {
       await bindUserToBranch(context.supabase, {
         userId,
         tenantId,
@@ -371,7 +436,7 @@ export async function POST(request: Request) {
         isDefault: parseBool(body.is_default, true),
         employeeCode,
         positionTitle: text(body.position_title, 120),
-        permissionRole: text(body.permission_role, 80) || branchRole
+        permissionRole: branchRole === "accountant" ? "accountant" : text(body.permission_role, 80) || branchRole
       });
     }
 
@@ -421,6 +486,7 @@ export async function PATCH(request: Request) {
     const tenantId = text(body.tenant_id, 80);
     const branchId = text(body.branch_id, 80);
     const branchRole = parseRole(body.branch_role, BRANCH_ROLES, "staff");
+    const accountantAllBranches = body.accountant_all_branches === true;
     const employeeCode = normalizeEmployeeCode(body.employee_code);
 
     if (fullName && fullName.length < 2) return fail("user_name_required", "User name is required.", 422);
@@ -428,6 +494,22 @@ export async function PATCH(request: Request) {
     if (password && !PASSWORD_PATTERN.test(password)) return fail("user_password_invalid", "Password must be at least 8 characters.", 422);
     if (employeeCode && !EMPLOYEE_CODE_PATTERN.test(employeeCode)) return fail("employee_code_invalid", "Employee code is invalid.", 422);
     if (posPin && !PIN_PATTERN.test(posPin)) return fail("pos_pin_invalid", "POS PIN must contain 4 to 8 digits.", 422);
+    if (accountantAllBranches && branchRole !== "accountant") {
+      return fail("invalid_accountant_assignment", "All-branches assignment requires Accountant role.", 422);
+    }
+    if (branchRole === "accountant" && (!tenantId || !/^\d{1,32}$/.test(employeeCode))) {
+      return fail("accountant_code_required", "Accountant requires a tenant and explicit numeric employee code.", 422);
+    }
+    if (branchRole === "accountant" && !accountantAllBranches && !branchId) {
+      return fail("accountant_branch_required", "Choose a branch or enable all active branches.", 422);
+    }
+
+    if (branchRole === "accountant" && !posPin) {
+      const existingPin = await context.supabase.from("users_profiles")
+        .select("pin_hash").eq("id", userId).maybeSingle<{ pin_hash: string | null }>();
+      if (existingPin.error) throw existingPin.error;
+      if (!existingPin.data?.pin_hash) return fail("accountant_pin_required", "Set a 4-8 digit PIN before enabling Accountant.", 422);
+    }
 
     const patch: Record<string, unknown> = {};
     if (fullName) patch.full_name = fullName;
@@ -444,7 +526,12 @@ export async function PATCH(request: Request) {
       updated = updateResult.data;
     }
 
-    if (tenantId && branchId) {
+    if (branchRole === "accountant" && accountantAllBranches) {
+      await bindAccountantToAllActiveBranches(context.supabase, {
+        userId, tenantId, branchId, employeeCode,
+        positionTitle: text(body.position_title, 120)
+      });
+    } else if (tenantId && branchId) {
       await bindUserToBranch(context.supabase, {
         userId,
         tenantId,
@@ -453,7 +540,7 @@ export async function PATCH(request: Request) {
         isDefault: parseBool(body.is_default, true),
         employeeCode,
         positionTitle: text(body.position_title, 120),
-        permissionRole: text(body.permission_role, 80) || branchRole
+        permissionRole: branchRole === "accountant" ? "accountant" : text(body.permission_role, 80) || branchRole
       });
     }
 

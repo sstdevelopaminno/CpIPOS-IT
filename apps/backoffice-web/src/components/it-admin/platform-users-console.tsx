@@ -6,7 +6,7 @@ import { useItAccess } from "@/components/layout/app-shell";
 import styles from "./platform-users-console.module.css";
 
 type PlatformRole = "it_admin" | "it_support" | "tenant_user";
-type BranchRole = "owner" | "manager" | "staff";
+type BranchRole = "owner" | "manager" | "staff" | "accountant";
 type Tenant = { id: string; code: string | null; name: string | null };
 type Branch = { id: string; tenant_id: string; code: string | null; name: string | null; is_active?: boolean | null };
 type Assignment = {
@@ -47,6 +47,7 @@ type FormState = {
   tenant_id: string;
   branch_id: string;
   branch_role: BranchRole;
+  accountant_all_branches: boolean;
   employee_code: string;
   position_title: string;
   permission_role: string;
@@ -66,6 +67,7 @@ const emptyForm: FormState = {
   tenant_id: "",
   branch_id: "",
   branch_role: "staff",
+  accountant_all_branches: false,
   employee_code: "",
   position_title: "",
   permission_role: "staff",
@@ -86,6 +88,7 @@ function roleLabel(role: string | null | undefined) {
   if (role === "owner") return "Owner";
   if (role === "manager") return "Manager";
   if (role === "staff") return "Staff";
+  if (role === "accountant") return "บัญชี / Accountant";
   return "ผู้ใช้ร้าน";
 }
 
@@ -113,7 +116,8 @@ function formFromUser(user: UserRow): FormState {
     is_active: user.is_active,
     tenant_id: primary?.tenant_id ?? "",
     branch_id: primary?.branch_id ?? "",
-    branch_role: (primary?.role === "owner" || primary?.role === "manager" || primary?.role === "staff" ? primary.role : "staff") as BranchRole,
+    branch_role: (primary?.role === "owner" || primary?.role === "manager" || primary?.role === "staff" || primary?.role === "accountant" ? primary.role : "staff") as BranchRole,
+    accountant_all_branches: primary?.role === "accountant",
     employee_code: primary?.employee_code ?? "",
     position_title: primary?.position_title ?? "",
     permission_role: primary?.permission_role ?? primary?.role ?? "staff"
@@ -312,7 +316,12 @@ export function PlatformUsersConsole() {
             <label>สถานะ<select value={form.is_active ? "active" : "inactive"} onChange={(event) => setForm({ ...form, is_active: event.target.value === "active" })}><option value="active">เปิดใช้งาน</option><option value="inactive">ปิดใช้งาน</option></select></label>
             <label>ร้าน<select value={form.tenant_id} onChange={(event) => setForm({ ...form, tenant_id: event.target.value, branch_id: "" })}><option value="">ไม่ผูกร้าน</option>{data?.tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name || tenant.code || tenant.id}</option>)}</select></label>
             <label>สาขา<select value={form.branch_id} onChange={(event) => setForm({ ...form, branch_id: event.target.value })}><option value="">ไม่ผูกสาขา</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name || branch.code || branch.id}</option>)}</select></label>
-            <label>บทบาทสาขา<select value={form.branch_role} onChange={(event) => setForm({ ...form, branch_role: event.target.value as BranchRole, permission_role: event.target.value })}><option value="staff">Staff</option><option value="manager">Manager</option><option value="owner">Owner</option></select></label>
+            <label>บทบาทสาขา<select value={form.branch_role} onChange={(event) => setForm({ ...form, branch_role: event.target.value as BranchRole, permission_role: event.target.value, accountant_all_branches: event.target.value === "accountant" })}><option value="staff">Staff</option><option value="manager">Manager</option><option value="owner">Owner</option><option value="accountant">บัญชี / Accountant</option></select></label>
+            {form.branch_role === "accountant" ? <label className={styles.fullField}>
+              <input type="checkbox" checked={form.accountant_all_branches} onChange={(event) => setForm({ ...form, accountant_all_branches: event.target.checked })} />
+              {" "}กำหนดสิทธิ์บัญชีครบทุกสาขาที่เปิดใช้งานในร้านนี้
+              <small>รหัสพนักงานต้องเป็นตัวเลข และต้องกำหนด PIN 4–8 หลัก • ไม่ใช้เครื่องแคชเชียร์หรือสิทธิ์หน้าขาย • หากมีบทบาท Owner/Manager เดิมในร้าน ต้องแยกบัญชีผู้ใช้งาน</small>
+            </label> : null}
             <label>รหัสพนักงาน POS<input value={form.employee_code} onChange={(event) => setForm({ ...form, employee_code: event.target.value.toUpperCase() })} /></label>
             <label>ตำแหน่ง<input value={form.position_title} onChange={(event) => setForm({ ...form, position_title: event.target.value })} /></label>
             <label>Permission Role<input value={form.permission_role} onChange={(event) => setForm({ ...form, permission_role: event.target.value })} /></label>
@@ -353,7 +362,7 @@ export function PlatformUsersConsole() {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <div><span>POS IDENTITY & ACCESS</span><h2>ผู้ใช้งาน / สิทธิ์ POS</h2><p>จัดการเฉพาะผู้ใช้งานร้านค้าและ POS: Owner / Manager / Staff, สาขา, สิทธิ์, PIN, รหัสพนักงาน และ Login เท่านั้น — ไม่แสดงบัญชี IT Admin หรือ IT Support</p></div>
+        <div><span>POS IDENTITY & ACCESS</span><h2>ผู้ใช้งาน / สิทธิ์ POS</h2><p>จัดการเฉพาะผู้ใช้งานร้านค้าและ POS: Owner / Manager / Staff / Accountant, สาขา, สิทธิ์, PIN, รหัสพนักงาน และ Login เท่านั้น — ไม่แสดงบัญชี IT Admin หรือ IT Support</p></div>
         <button type="button" className={styles.primary} onClick={openCreate}>เพิ่มผู้ใช้ POS</button>
       </header>
 
