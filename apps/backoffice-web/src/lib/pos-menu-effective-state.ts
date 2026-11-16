@@ -11,6 +11,7 @@ export const POS_MENU_NAV_FEATURES: Readonly<Record<string, string | null>> = {
   "main.sales_list": "advanced_sales_reports",
   "main.kitchen": null, // POS staff sidebar does not package-gate this link.
   "main.shift": null,
+  "main.finance": null, // Finance is gated by verified Business/CUSTOM contract, not a POS feature row.
   "main.optical_customers": null, // CUSTOM Optical entitlement also checked below
   "main.optical_work_orders": null,
   "main.ai_assistant": null,
@@ -78,6 +79,7 @@ export function resolvePosMenuAvailability(args: {
   overrides: Record<string, boolean>;
   is_custom?: boolean;
   internal_test_full?: boolean;
+  finance_package_allowed?: boolean;
   contract: ContractStatus;
   plan: PlanFlag[];
   feature_overrides: FeatureFlag[];
@@ -101,8 +103,10 @@ export function resolvePosMenuAvailability(args: {
 
   return Object.fromEntries(POS_MENU_CATALOG.map(menu => {
     const feature = POS_MENU_NAV_FEATURES[menu.key] ?? null;
+    const isFinance = menu.key === "main.finance";
+    const eligibleContract = isFinance ? args.finance_package_allowed === true : contractActive;
     let available = 0;
-    if (contractActive) {
+    if (eligibleContract) {
       for (const branch of active_branch_ids) {
         let enabled = args.internal_test_full === true || (feature ? (planMap.get(feature) ?? false) : true);
         if (!args.internal_test_full && feature && tenantMap.has(feature)) enabled = tenantMap.get(feature)!;
@@ -112,13 +116,15 @@ export function resolvePosMenuAvailability(args: {
         if (feature === "core_pos_sales" && opticalAllowed &&
             !tenantMap.has(feature) && !branchMap.has(branch + ":" + feature)) enabled = true;
         if (feature && dineInEnabled(contract) && DINE_IN_LINKED_FEATURES.has(feature)) enabled = true;
+        if (isFinance) enabled = args.finance_package_allowed === true;
         if((menu.key==="main.optical_customers"||menu.key==="main.optical_work_orders")&&!opticalAllowed)enabled=false;
         if (enabled) available += 1;
       }
     }
-    const featureAllowed = contractActive && total > 0 && available === total;
+    const featureAllowed = eligibleContract && total > 0 && available === total;
     const itEnabled = isPosMenuAlwaysEnabled(menu.key) || isCustomPosMenuVisible(menu.key, overrides, args.is_custom === true);
     const reason: MenuAvailability["reason"] = !itEnabled ? "it_locked"
+      : !eligibleContract && isFinance ? "package"
       : !contractActive ? "contract_inactive"
       : total === 0 ? "no_active_branch"
       : available === total ? "available"
