@@ -1490,8 +1490,9 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
           max_users: previous.max_users, metadata: previous.metadata
         })
         .eq("tenant_id", tenantId).eq("id", previous.id).eq("status", "trial")
-        .eq("package_id", requestedPackageId);
-      if (rollback.error) {
+        .eq("package_id", requestedPackageId)
+        .select("id").maybeSingle<{ id: string }>();
+      if (rollback.error || !rollback.data) {
         console.error("[trial-package] urgent manual reconciliation required", {
           tenantId, contractId: previous.id, message: rollback.error.message
         });
