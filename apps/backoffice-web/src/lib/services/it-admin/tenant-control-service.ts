@@ -800,6 +800,12 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       throw new ItAdminGuardError("subscription_closed", "Cancelled contracts must be reactivated through the package workflow before editing.", 409);
     }
 
+    const lifecycleBeforeContractEdit = await loadLifecycle(context, tenantId);
+    if (contract.status === "trial" &&
+        asRecord(lifecycleBeforeContractEdit?.metadata).prepaid_activation_state === "pending_trial_completion") {
+      throw new ItAdminGuardError("prepaid_trial_contract_protected",
+        "สัญญา Trial นี้มีแพ็กเกจที่ชำระล่วงหน้ารอเปิดใช้งาน กรุณาตรวจสอบการชำระกับ IT ก่อนแก้วันสัญญา", 409);
+    }
     const paidActiveContract = ["active", "expired"].includes(contract.status) && Number(contract.amount_per_cycle ?? 0) > 0;
     const currentBillingCycle: "monthly" | "yearly" = contract.billing_interval === "yearly" ? "yearly" : "monthly";
     const contractMetadata = asRecord(contract.metadata);
