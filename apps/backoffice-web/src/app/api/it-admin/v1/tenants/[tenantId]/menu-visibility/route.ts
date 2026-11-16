@@ -14,7 +14,7 @@ type RequestBody = { visibility?: Record<string, unknown>; expected_updated_at?:
 type PolicyRow = { menu_key: string; is_enabled: boolean; updated_at: string };
 const COMPAT_KEYS: Record<string, string> = {
   sales: "main.sales", sales_list: "main.sales_list",
-  kitchen: "main.kitchen", shift: "main.shift",
+  kitchen: "main.kitchen", shift: "main.shift", finance: "main.finance",
   optical_customers: "main.optical_customers", optical_work_orders: "main.optical_work_orders",
   ai_assistant: "main.ai_assistant", more: "main.more", package_payment: "main.package_payment", settings: "main.settings",
   sales_summary: "more.sales_summary", receipts: "more.receipts",
