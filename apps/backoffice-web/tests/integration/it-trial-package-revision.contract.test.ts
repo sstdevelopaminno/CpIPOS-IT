@@ -17,6 +17,7 @@ describe("CpIPOS IT repeatable unpaid Trial package changes", () => {
     expect(service).toContain('hasSettledTrialPayment:');
     expect(service).toContain('prepaidActivationPending:');
     expect(service).toContain('tenant.package_id !== previous.package_id');
+    expect(service).toContain('if (rollback.error || !rollback.data)');
     expect(service).toContain('.eq("status", "trial")');
     expect(service).toContain('status_unchanged: "trial"');
     expect(service).toContain('payment_facts_unchanged: true');
