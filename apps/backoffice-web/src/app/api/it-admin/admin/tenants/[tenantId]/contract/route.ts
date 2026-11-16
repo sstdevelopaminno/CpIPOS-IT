@@ -139,6 +139,18 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
         "ต้องตรวจสอบและสิ้นสุดสัญญาปัจจุบันโดยฝ่าย IT ก่อนเปิดสัญญาใหม่", 409);
     }
 
+    // This legacy route is still reachable from the per-tenant admin screen.
+    // It may correct trial dates and sales modes, but must not bypass settlement
+    // with active -> trial downgrade or direct trial package reassignment.
+    if (latestContract && body.status === "trial" && latestContract.status !== "trial") {
+      return fail("trial_reactivation_requires_review",
+        "ไม่สามารถเปลี่ยนสัญญาชำระเงินจริงกลับเป็น Trial เพื่อข้ามการชำระ กรุณาใช้เมนูสัญญาหรือ Settlement ที่ได้รับอนุมัติ", 409);
+    }
+    if (latestContract?.status === "trial" && body.plan_id &&
+        body.plan_id !== latestContract.package_id) {
+      return fail("trial_package_use_store_control",
+        "แก้แพ็กเกจระหว่างทดลองได้ที่ ร้านค้า / Tenants → แพ็กเกจและสิทธิ์ → เปลี่ยนแพ็กเกจระหว่างทดลองใช้ เพื่อบันทึกเหตุผลและตรวจสถานะการชำระ", 409);
+    }
     const nowIso = new Date().toISOString();
     const patch: Record<string, unknown> = {};
 
