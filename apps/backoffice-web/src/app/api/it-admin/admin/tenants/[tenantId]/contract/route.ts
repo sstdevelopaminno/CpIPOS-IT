@@ -146,6 +146,11 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       return fail("trial_reactivation_requires_review",
         "ไม่สามารถเปลี่ยนสัญญาชำระเงินจริงกลับเป็น Trial เพื่อข้ามการชำระ กรุณาใช้เมนูสัญญาหรือ Settlement ที่ได้รับอนุมัติ", 409);
     }
+    if (latestContract && body.plan_id && body.plan_id !== latestContract.package_id &&
+        latestContract.status !== "trial") {
+      return fail("paid_plan_change_requires_settlement",
+        "การเปลี่ยนแพ็กเกจของสัญญาที่ไม่ใช่ Trial ต้องสร้างรายการชำระและตรวจรับเงินจริงก่อน ห้ามเปลี่ยนผ่านหน้าบันทึกสัญญา", 409);
+    }
     if (latestContract?.status === "trial" && body.plan_id &&
         body.plan_id !== latestContract.package_id) {
       return fail("trial_package_use_store_control",
