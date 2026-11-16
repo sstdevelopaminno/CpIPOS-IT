@@ -1494,7 +1494,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
         .select("id").maybeSingle<{ id: string }>();
       if (rollback.error || !rollback.data) {
         console.error("[trial-package] urgent manual reconciliation required", {
-          tenantId, contractId: previous.id, message: rollback.error.message
+          tenantId, contractId: previous.id, message: rollback.error?.message ?? "rollback_row_not_found"
         });
         throw new ItAdminGuardError("trial_package_reconciliation_required",
           "พบข้อมูลแพ็กเกจไม่ตรงกัน กรุณาให้ฝ่าย IT ตรวจสอบก่อนทำรายการซ้ำ", 503);
