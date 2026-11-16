@@ -6,6 +6,8 @@ import { POS_MENU_CATALOG, isPosMenuAlwaysEnabled, isValidPosMenuKey } from "@/l
 import { resolvePosMenuAvailability, type FeatureFlag, type PlanFlag, type ContractStatus } from "@/lib/pos-menu-effective-state";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { getItQaMode } from "@/lib/server/internal-it-test-store";
+import { isFinancePackageAllowed, type FinancePackageRuntime } from "@/lib/finance-package-policy";
+import { ACCOUNTANT_MAIN_MENU_KEYS, ACCOUNTANT_MORE_MENU_KEYS, ACCOUNTANT_SETTINGS_MENU_KEYS } from "@/lib/accountant-menu-policy";
 import { DEFAULT_POS_SALES_MODES, POS_SALES_MODE_KEYS, normalizePosSalesModes, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +48,18 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
         .eq("id", contract.data.package_id).maybeSingle<{ code: string; metadata: Record<string, unknown> | null }>()
       : { data: null, error: null };
     if (packageResult.error) throw packageResult.error;
+    // IT displays the same actual Finance package eligibility as the POS server;
+    // internal QA full mode never upgrades a Growth/Starter package into Finance.
+    const runtimeResult = await admin.supabase.from("tenant_subscription_runtime")
+      .select("lifecycle_status,access_locked,lock_reason,expires_at")
+      .eq("tenant_id", tenantId)
+      .maybeSingle<FinancePackageRuntime>();
+    const financePackageAllowed = !runtimeResult.error && isFinancePackageAllowed({
+      packageCode: packageResult.data?.code,
+      contractStatus: contract.data?.status,
+      endedAt: contract.data?.ended_at,
+      runtime: runtimeResult.data ?? null
+    });
     const internalMode = await getItQaMode(admin, tenantId);
     const isFull = internalMode === "full";
     const isCustom = isFull || String(packageResult.data?.code ?? "").toLowerCase() === "custom";
@@ -55,6 +69,7 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
       : rawOverrides;
     const availability = resolvePosMenuAvailability({
       overrides, is_custom: isCustom, internal_test_full: isFull,
+      finance_package_allowed: financePackageAllowed,
       contract: (contract.data ?? null) as ContractStatus,
       plan: plan.data ?? [],
       feature_overrides: featureOverrides.data ?? [],
@@ -108,10 +123,17 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
       (salesModes as Record<string, unknown>).optical_retail === true;
     const response = ok({
       tenant_id: tenantId, is_custom: isCustom, is_optical_custom: Boolean(opticalAuthorized), internal_test_full: isFull, catalog: POS_MENU_CATALOG, overrides, availability,
+      finance_package_allowed: financePackageAllowed,
+      accountant_navigation: {
+        main: ACCOUNTANT_MAIN_MENU_KEYS,
+        more: ACCOUNTANT_MORE_MENU_KEYS,
+        settings: ACCOUNTANT_SETTINGS_MENU_KEYS,
+        restricted: ["settings.users"],
+      },
       sales_modes: effectiveSalesModes,
       sales_modes_source: explicitSalesModes && typeof explicitSalesModes === "object" ? "contract_override" : "package_default",
       total: POS_MENU_CATALOG.length,
-      disabled: POS_MENU_CATALOG.filter(item => item.key !== "main.shift" && (isCustom ? overrides[item.key] !== true : overrides[item.key] === false)).length,
+      disabled: POS_MENU_CATALOG.filter(item => item.key !== "main.shift" && (isCustom && item.key !== "main.finance" ? overrides[item.key] !== true : overrides[item.key] === false)).length,
       unavailable: POS_MENU_CATALOG.filter(item => availability[item.key]?.reason !== "available").length
     });
     response.headers.set("cache-control", "private, no-store");
