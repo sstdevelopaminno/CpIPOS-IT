@@ -3,12 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { isPosMenuAlwaysEnabled, type PosMenuDefinition } from "@/lib/pos-menu-policy";
 import type { MenuAvailability } from "@/lib/pos-menu-effective-state";
 import styles from "./tenant-pos-menu-policies.module.css";
+import { ACCOUNTANT_MORE_MENU_KEYS, ACCOUNTANT_SETTINGS_MENU_KEYS } from "@/lib/accountant-menu-policy";
 
 type Data = { catalog: PosMenuDefinition[]; overrides: Record<string, boolean>; is_custom: boolean; is_optical_custom?: boolean;
   availability: Record<string, MenuAvailability>;
   sales_modes?: Record<string, boolean>;
   sales_modes_source?: "contract_override" | "package_default";
-  disabled: number; unavailable: number; total: number };
+  disabled: number; unavailable: number; total: number; finance_package_allowed?: boolean; accountant_navigation?: { main: readonly string[]; more: readonly string[]; settings: readonly string[]; restricted: readonly string[] } };
 type ResponseBody<T> = { data?: T | null; error?: { message?: string } | null };
 
 export function TenantPosMenuPolicies({ tenantId, storeName }: {
@@ -59,7 +60,7 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
       setError("เมนูเปิด/ปิดกะเป็นเมนูหลักของ POS และเปิดใช้งานเสมอ");
       return;
     }
-    const enabled = data.is_custom ? data.overrides[item.key] === true : data.overrides[item.key] !== false;
+    const enabled = data.is_custom && item.key !== "main.finance" ? data.overrides[item.key] === true : data.overrides[item.key] !== false;
     const availability = data.availability?.[item.key];
     // The main switch shows actual POS availability, not an IT command that
     // cannot override package/branch access. Avoid a no-op toggle.
@@ -91,13 +92,15 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
   }
   function menuRow(item: PosMenuDefinition, child: boolean) {
     const alwaysEnabled = isPosMenuAlwaysEnabled(item.key);
-    const configured = alwaysEnabled || (data?.is_custom ? data.overrides[item.key] === true : data?.overrides[item.key] !== false);
+    const configured = alwaysEnabled || (data?.is_custom && item.key !== "main.finance" ? data.overrides[item.key] === true : data?.overrides[item.key] !== false);
     const entitlement = data?.availability?.[item.key];
     const allowed = entitlement?.feature_allowed === true;
     const effective = configured && allowed && entitlement?.reason === "available";
     const blockedByAccess = configured && !allowed;
     const featureLabel = entitlement?.feature_code;
-    const message = !configured
+    const message = item.key === "main.finance" && !allowed
+      ? "เฉพาะ Business / CUSTOM ที่สัญญาใช้งานได้"
+      : !configured
       ? (data?.is_custom ? "CUSTOM: ยังไม่ได้เปิดโดย IT" : "ปิดด้วยคำสั่ง IT")
       : data?.is_custom && entitlement?.reason === "it_locked"
         ? "CUSTOM: ต้องเปิดเมนูแม่จาก IT ก่อน"
@@ -155,6 +158,13 @@ export function TenantPosMenuPolicies({ tenantId, storeName }: {
     {loading ? <p className={styles.empty}>กำลังโหลดนโยบายเมนู…</p> : !data ? <p className={styles.empty}>ยังยืนยันสถานะเมนูไม่ได้ กรุณารีเฟรช</p> :
       main.map(item => <section className={styles.group} key={item.key}>
         {menuRow(item, false)}
+        {item.key === "main.finance" ? <div className={styles.note}>
+          <strong>ACCOUNTANT ROLE PROFILE · เฉพาะ Business / CUSTOM</strong>
+          <p>ฝ่ายบัญชีเห็น การเงิน, เพิ่มเติม, ตั้งค่า และชำระแพ็กเกจ โดยไม่เห็นหน้าขาย / เปิดปิดกะ / จัดการผู้ใช้งาน</p>
+          <p>เพิ่มเติม ({ACCOUNTANT_MORE_MENU_KEYS.length}): {ACCOUNTANT_MORE_MENU_KEYS.map(key => data?.catalog.find(menu => menu.key === key)?.label ?? key).join(" · ")}</p>
+          <p>ตั้งค่า: ทุกเมนูย่อยยกเว้น ผู้ใช้งาน ({ACCOUNTANT_SETTINGS_MENU_KEYS.length} รายการ) และต้องใช้สิทธิ์ของร้าน/แพ็กเกจที่ถูกต้อง</p>
+          <p>IT ปิดเมนูรายร้านได้ แต่สวิตช์ไม่สามารถเพิ่มสิทธิ์หน้าขายหรือข้ามการยืนยันตัวตนบัญชีได้</p>
+        </div> : null}
         {(byParent.get(item.key)?.length ?? 0) > 0 ? <div className={styles.children}>
           {byParent.get(item.key)?.map(child => menuRow(child, true))}
         </div> : null}
