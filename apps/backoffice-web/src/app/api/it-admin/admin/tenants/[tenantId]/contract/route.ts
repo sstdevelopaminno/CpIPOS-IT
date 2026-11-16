@@ -142,6 +142,10 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
     // This legacy route is still reachable from the per-tenant admin screen.
     // It may correct trial dates and sales modes, but must not bypass settlement
     // with active -> trial downgrade or direct trial package reassignment.
+    if (!latestContract && body.status === "active") {
+      return fail("first_paid_activation_requires_settlement",
+        "สัญญาใหม่ที่มีสถานะใช้งานต้องผ่านการตรวจรับเงินก่อนเปิดแพ็กเกจจริง กรุณาสร้าง Trial หรือใช้ขั้นตอนชำระแพ็กเกจ", 409);
+    }
     if (latestContract && body.status === "trial" && latestContract.status !== "trial") {
       return fail("trial_reactivation_requires_review",
         "ไม่สามารถเปลี่ยนสัญญาชำระเงินจริงกลับเป็น Trial เพื่อข้ามการชำระ กรุณาใช้เมนูสัญญาหรือ Settlement ที่ได้รับอนุมัติ", 409);
