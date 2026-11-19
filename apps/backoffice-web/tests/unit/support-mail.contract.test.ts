@@ -36,6 +36,8 @@ describe("IT Support Mail integration", () => {
     expect(service).toContain("support_mailbox_config_mismatch");
     expect(bridge).toContain('if (configured !== company && configured !== support)');
     expect(service).toContain("getCompanyMailHealth");
+    expect(bridge).toContain('"unsupported_role_action"');
+    expect(bridge).toContain('action === "list_threads" && String(body.folder || "").toLowerCase() === "sent"');
     expect(api).toContain('url.searchParams.get("health") === "1"');
     expect(api).toContain("await getSupportMailHealth()");
   });
