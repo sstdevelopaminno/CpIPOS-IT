@@ -7,7 +7,7 @@ import { appendAuditLog } from "@/lib/audit-log";
 import type { PosSalesModeMap } from "@/lib/pos-sales-modes";
 import { getSalesModeSelectionError, normalizeRequestedPosSalesModes } from "@/lib/pos-sales-mode-entitlements";
 import { resolveCustomRegistrationBilling } from "@/lib/custom-registration-billing";
-import { buildStoreActivationEmail, customerEmailProblem, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
+import { buildStoreActivationEmail, customerEmailFailureMessage, customerEmailProblem, deliverCustomerEmail } from "@/lib/services/it-admin/customer-email-service";
 
 export const dynamic = "force-dynamic";
 
@@ -146,7 +146,42 @@ export async function GET() {
     ]);
     if (requests.error) throw requests.error;
     if (packages.error) throw packages.error;
-    const response = ok({ requests: requests.data ?? [], packages: packages.data ?? [], truncated: (requests.data?.length ?? 0) === 200 });
+
+    // Display the persisted mail state, not just the one-off activation toast.
+    // Failures must remain visible on refresh so IT can repair the mail bridge
+    // and retry the same event safely without opening a second store.
+    const activatedIds = (requests.data ?? [])
+      .filter((row) => row.status === "activated" && row.id)
+      .map((row) => row.id as string);
+    const deliveryByRequest = new Map<string, { status: string; last_error: string | null; sent_at: string | null }>();
+    if (activatedIds.length) {
+      const deliveries = await ctx.supabase.from("customer_email_deliveries")
+        .select("source_id,status,last_error,sent_at,created_at")
+        .eq("event_type", "store_activation")
+        .in("source_id", activatedIds)
+        .order("created_at", { ascending: false })
+        .limit(400);
+      if (deliveries.error) throw deliveries.error;
+      for (const delivery of deliveries.data ?? []) {
+        const sourceId = String(delivery.source_id ?? "");
+        const previous = deliveryByRequest.get(sourceId);
+        // Correction emails may have a separate event key; never mask any
+        // successfully delivered activation with a more recent failed attempt.
+        if (!sourceId || previous?.status === "sent") continue;
+        if (!previous || delivery.status === "sent") {
+          deliveryByRequest.set(sourceId, {
+            status: delivery.status,
+            sent_at: delivery.sent_at,
+            last_error: delivery.last_error ? customerEmailFailureMessage(delivery.last_error) : null
+          });
+        }
+      }
+    }
+    const rows = (requests.data ?? []).map((request) => ({
+      ...request,
+      email_delivery: deliveryByRequest.get(request.id) ?? null
+    }));
+    const response = ok({ requests: rows, packages: packages.data ?? [], truncated: (requests.data?.length ?? 0) === 200 });
     response.headers.set("cache-control", "private, no-store");
     return response;
   } catch (error) { return safely(error); }
