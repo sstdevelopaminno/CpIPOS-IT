@@ -7,6 +7,8 @@ const src = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8")
 describe("transactional customer email delivery", () => {
   const service = src("src/lib/services/it-admin/customer-email-service.ts");
   const manual = src("src/app/api/it-admin/v1/customer-emails/send/route.ts");
+  const sentVerification = src("src/app/api/it-admin/v1/customer-emails/verify-sent/route.ts");
+  const supportConsole = src("src/components/it-admin/support-mail-console.tsx");
   const activation = src("src/app/api/it-admin/v1/store-registrations/route.ts");
   const settlement = src("src/app/api/it-admin/v1/subscription-payments/settle/[requestId]/route.ts");
   const settings = src("src/app/api/it-admin/v1/subscription-payments/settings/route.ts");
@@ -94,6 +96,29 @@ describe("transactional customer email delivery", () => {
     expect(service).toContain("customerEmailFailureMessage");
     expect(service).toContain("authorizeSupportMailBridge");
     expect(service).not.toContain("owner_pin:");
+  });
+
+  it("shows recipient, subject and attempt history without claiming Gmail confirmation from a DB status", () => {
+    expect(activation).toContain("recipient_email,subject,created_at");
+    expect(activation).toContain("attempt_count");
+    expect(registrationUi).toContain("ดู Gmail ส่งแล้ว");
+    expect(registrationUi).toContain("ยืนยันใน Gmail Sent");
+    expect(registrationUi).toContain("checkSent(row)");
+    expect(registrationUi).toContain("sentEvidence[r.id].found");
+    expect(supportConsole).toContain('params.get("folder") === "sent"');
+    expect(supportConsole).toContain('setActiveQuery(query)');
+  });
+
+  it("verifies actual sent-mail evidence with IT authorization and no second send", () => {
+    expect(sentVerification).toContain("requireItAdmin()");
+    expect(sentVerification).toContain("enforceRateLimit");
+    expect(sentVerification).toContain('folder: "sent"');
+    expect(sentVerification).toContain("listSupportMailThreads");
+    expect(sentVerification).toContain("thread.subject.trim().toLowerCase() === subject.toLowerCase()");
+    expect(sentVerification).toContain("thread.to.toLowerCase().includes(recipient)");
+    expect(sentVerification).toContain("Math.abs(sentAt - attemptAt)");
+    expect(sentVerification).not.toContain("deliverCustomerEmail(");
+    expect(sentVerification).not.toContain("sendSupportMail(");
   });
 
   it("requires an authorized server-side bridge", () => {

@@ -832,10 +832,10 @@ export async function deliverCustomerEmail(input: {
       status: "sent",
       sent_at: new Date().toISOString(),
       last_error: null,
-      provider: "google_apps_script_mailapp",
+      provider: "google_apps_script_gmailapp",
       provider_message_id: text(payload?.messageId, 300) || null
     });
-    return { status: "sent", delivery_id: delivery.id, message: "ส่งอีเมลสำเร็จ" };
+    return { status: "sent", delivery_id: delivery.id, message: "Gmail รับคำสั่งส่งอีเมลแล้ว กรุณาตรวจสอบข้อความใน Gmail Sent" };
   } catch (error) {
     const message = customerEmailFailureMessage(error);
     await updateDelivery(input.db, delivery.id, { status: "failed", last_error: message });

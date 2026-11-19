@@ -274,6 +274,18 @@ export function SupportMailConsole() {
     }
   }, []);
 
+  // Store registration links can open the exact Support "Sent" folder
+  // already filtered to the recipient, without requiring a second search.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("folder") === "sent") setFolder("sent");
+    const query = (params.get("q") ?? "").trim().slice(0, 180);
+    if (query) {
+      setSearchInput(query);
+      setActiveQuery(query);
+    }
+  }, []);
+
   useEffect(() => {
     void loadInbox(false);
   }, [loadInbox]);

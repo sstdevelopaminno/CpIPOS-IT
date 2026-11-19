@@ -80,9 +80,12 @@ describe("IT Support Mail integration", () => {
       expect(api).toContain(folder);
     }
     expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
-    expect(bridge).toContain("2026-11-19.3");
+    expect(bridge).toContain("2026-11-20.1");
     expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
+    expect(bridge).toContain("GmailApp.sendEmail(to, subject, textBody");
+    expect(bridge).not.toContain("MailApp.sendEmail({");
+    expect(bridge).toContain('folder === "sent"');
     expect(api).toContain("listSupportMailThreads");
     expect(api).toContain("getSupportMailThread");
     expect(api).toContain("replySupportMail");

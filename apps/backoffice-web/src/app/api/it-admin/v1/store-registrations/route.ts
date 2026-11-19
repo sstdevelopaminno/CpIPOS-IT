@@ -153,10 +153,14 @@ export async function GET() {
     const activatedIds = (requests.data ?? [])
       .filter((row) => row.status === "activated" && row.id)
       .map((row) => row.id as string);
-    const deliveryByRequest = new Map<string, { status: string; last_error: string | null; sent_at: string | null }>();
+    const deliveryByRequest = new Map<string, {
+      status: string; last_error: string | null; sent_at: string | null;
+      last_attempt_at: string | null; attempt_count: number;
+      recipient_email: string; subject: string;
+    }>();
     if (activatedIds.length) {
       const deliveries = await ctx.supabase.from("customer_email_deliveries")
-        .select("source_id,status,last_error,sent_at,created_at")
+        .select("source_id,status,last_error,sent_at,last_attempt_at,attempt_count,recipient_email,subject,created_at")
         .eq("event_type", "store_activation")
         .in("source_id", activatedIds)
         .order("created_at", { ascending: false })
@@ -172,6 +176,10 @@ export async function GET() {
           deliveryByRequest.set(sourceId, {
             status: delivery.status,
             sent_at: delivery.sent_at,
+            last_attempt_at: delivery.last_attempt_at,
+            attempt_count: delivery.attempt_count ?? 0,
+            recipient_email: delivery.recipient_email ?? "",
+            subject: delivery.subject ?? "",
             last_error: delivery.last_error ? customerEmailFailureMessage(delivery.last_error) : null
           });
         }
