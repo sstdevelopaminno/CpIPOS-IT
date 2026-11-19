@@ -148,6 +148,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const [selectedId, setSelectedId] = useState("");
   const selectedIdRef = useRef(selectedId);
   const detailRequestRef = useRef(0);
+  const detailInFlightRef = useRef<{ id: string; requestId: number } | null>(null);
   const detailRefreshTimerRef = useRef<number | null>(null);
   const incomingPreviewTimerRef = useRef<number | null>(null);
   const detailLoadedIdRef = useRef("");
@@ -176,6 +177,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
   const clearGoneConversation = useCallback((id: string) => {
     detailRequestRef.current += 1;
+    detailInFlightRef.current = null;
     setDetailLoading(false);
     setDetailError("");
     setRows((current) => current.filter((row) => row.conversation_id !== id));
@@ -217,7 +219,12 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
   const loadConversation = useCallback(async (id: string) => {
     if (!id) return;
+    // Realtime heads can fire every few hundred milliseconds while a new room
+    // is being auto-claimed. Do not start another GET and invalidate the first
+    // response: doing so used to starve the mobile chat behind its placeholder.
+    if (detailInFlightRef.current?.id === id) return;
     const requestId = ++detailRequestRef.current;
+    detailInFlightRef.current = { id, requestId };
     const initialLoad = detailLoadedIdRef.current !== id;
     // Background confirmations must never block the message composer or
     // flash a loading state while the customer is still typing.
@@ -271,6 +278,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
           : cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
       }
     } finally {
+      if (detailInFlightRef.current?.requestId === requestId) detailInFlightRef.current = null;
       if (initialLoad && requestId === detailRequestRef.current && selectedIdRef.current === id) {
         setDetailLoading(false);
       }
@@ -280,6 +288,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   function openSelectedConversation(id: string) {
     // Make tapping the same room a valid retry, not a no-op React state update.
     detailRequestRef.current += 1;
+    detailInFlightRef.current = null;
     detailLoadedIdRef.current = "";
     selectedIdRef.current = id;
     setDetailError("");
