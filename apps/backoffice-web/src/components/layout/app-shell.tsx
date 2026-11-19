@@ -280,6 +280,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const isSupportChatWorkspace = pathname === "/it-admin/support-chat" || pathname === "/it-admin/support-chat/history";
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedTrees, setExpandedTrees] = useState<Record<string, boolean>>({});
@@ -579,7 +580,7 @@ export function AppShell({
       </aside>
 
       <div className={styles.workspace}>
-        <header className={styles.topbar}>
+        <header className={styles.topbar + (isSupportChatWorkspace ? ` ${styles.topbarChatMobile}` : "")}>
           <div className={styles.topbarLeft}>
             <button
               type="button"
@@ -637,7 +638,7 @@ export function AppShell({
           </div>
         </header>
 
-        <main className={styles.content} data-it-content>
+        <main className={styles.content + (isSupportChatWorkspace ? ` ${styles.contentChatMobile}` : "")} data-it-content>
           {navigationRestricted ? (
             <section className={styles.accessDenied}>
               <span>ACCESS RESTRICTED</span>

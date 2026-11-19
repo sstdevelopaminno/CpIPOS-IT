@@ -56,7 +56,8 @@ describe("Support Chat bidirectional low-latency path", () => {
 
   it("keeps IT composer usable while a background history refresh is running", () => {
     expect(itUi).toContain("const initialLoad = detailLoadedIdRef.current !== id");
-    expect(itUi).toContain('if (initialLoad) {\n      setBusy("conversation");');
+    expect(itUi).toContain('if (initialLoad) {\n      setDetailLoading(true);');
+    expect(itUi).not.toContain('setBusy("conversation")');
     expect(itUi).toContain("if (initialLoad && requestId === detailRequestRef.current");
   });
 
