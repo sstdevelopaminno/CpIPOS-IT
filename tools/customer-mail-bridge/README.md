@@ -37,6 +37,35 @@ The Support Mailbox must be:
 
 The browser never receives the shared secret or Gmail credentials.
 
+## Incident recovery: missing `Session.getEffectiveUser` OAuth grant (2026-11-19)
+
+Production delivery records confirm a missing `userinfo.email` authorization in
+the **deployed Apps Script**, even though the version-controlled
+`appsscript.json` already contains that scope. Editing GitHub, rerunning
+Vercel or retrying the same email **cannot grant Google consent**.
+
+The signed-in owner of `cuttingpointtech.support@gmail.com` must:
+
+1. Open the **existing** Apps Script Web App project (not a new script).
+2. Compare its `Code.gs` and `appsscript.json` with this folder; ensure
+   `oauthScopes` includes `userinfo.email`, `script.send_mail`, and
+   `mail.google.com/`.
+3. From the editor, run `authorizeSupportMailBridge` interactively and grant
+   all required permissions. Confirm it returns the expected Support address.
+4. Go to **Deploy → Manage deployments → Edit**, choose **New version**,
+   confirm **Execute as Me**, and deploy to the *existing Web App URL*.
+5. Verify using the existing IT Support Mail status/health action without
+   emailing a customer. Only after the bridge is healthy, press
+   **ส่งอีเมลเปิดระบบ** on one affected activated registration.
+6. Confirm `customer_email_deliveries.status = 'sent'` and the Gmail Sent
+   message. Repeat individually for remaining failed records, respecting
+   the service's cooldown and event-key duplicate protection.
+
+Never replay store provisioning or create another Owner to fix email delivery.
+A failed activation email does **not** mean store activation failed. Initial
+Owner employee codes may be emailed, but PINs must be provided through a
+separate authenticated channel; the mail bridge deliberately excludes them.
+
 ## Support Mail actions
 
 The bridge accepts server-authenticated actions:
