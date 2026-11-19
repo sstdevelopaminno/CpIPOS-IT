@@ -9,6 +9,7 @@ describe("LINE Support OTP sender and authorization hardening", () => {
   const route = source("src/app/api/support/line/auth/route.ts");
   const mail = source("src/lib/services/it-admin/support-mail-service.ts");
   const script = source("../../tools/customer-mail-bridge/Code.gs");
+  const manifest = JSON.parse(source("../../tools/customer-mail-bridge/appsscript.json"));
 
   it("sends OTP only to the current primary owner and never returns the plaintext code to LINE", () => {
     expect(auth).toContain("primary_owner_user_id");
@@ -27,6 +28,15 @@ describe("LINE Support OTP sender and authorization hardening", () => {
     expect(script).toContain("sent: true");
     expect(auth).toContain('console.error("[line-support-otp-email]"');
     expect(auth).toContain('.delete().eq("id", challengeId)');
+  });
+
+  it("explicitly authorizes the Support Google account before Web App deployment", () => {
+    expect(manifest.oauthScopes).toContain("https://www.googleapis.com/auth/userinfo.email");
+    expect(manifest.oauthScopes).toContain("https://mail.google.com/");
+    expect(manifest.oauthScopes).toContain("https://www.googleapis.com/auth/script.send_mail");
+    expect(script).toContain("authorizeSupportMailBridge");
+    expect(script).toContain("GmailApp.getAliases()");
+    expect(script).toContain("!mailbox || !effective || mailbox !== effective");
   });
 
   it("rejects an existing LINE binding after primary owner changes", () => {
