@@ -13,7 +13,7 @@
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-14.1";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-19.3";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -41,7 +41,7 @@ function doPost(e) {
 
     var action = String(body.action || "send_transactional").trim();
     var mailbox = supportMailbox_();
-    var effective = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();
+    var effective = authorizedSupportExecutor_(mailbox);
     if (!mailbox || !effective || mailbox !== effective) {
       // Fail closed: a missing OAuth identity must never bypass mailbox verification.
       return json_({ ok: false, error: "wrong_mailbox", mailbox: effective || null });
@@ -76,7 +76,41 @@ function authorizeSupportMailBridge() {
   if (!effective || expected !== effective) throw new Error("wrong_mailbox");
   var quota = MailApp.getRemainingDailyQuota();
   GmailApp.getAliases(); // Explicitly exercise the existing Support Inbox scope.
+  // Only the editor-side, user-authorized preflight can establish this
+  // short-lived proof of the authorized executor's identity.
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty("CPIPOS_VERIFIED_SUPPORT_MAILBOX", effective);
+  props.setProperty("CPIPOS_VERIFIED_SUPPORT_MAILBOX_AT", new Date().toISOString());
+  Logger.log("Support mailbox authorization successful: " + effective);
   return { mailbox: effective, remainingDailyQuota: quota };
+}
+
+/**
+ * Web App execute-as-Me requests can encounter a missing userinfo.email grant
+ * even after the script owner has authorized the editor. Keep the live
+ * Session identity check whenever it succeeds. Fallback ONLY after a
+ * successful owner-verified, time-bounded editor preflight; never infer the
+ * executor from a caller-supplied request or an unverified mailbox property.
+ */
+function authorizedSupportExecutor_(expectedMailbox) {
+  var runtimeEmail = "";
+  try {
+    runtimeEmail = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();
+  } catch (error) {
+    var message = String(error && error.message || error || "");
+    if (!/Session\\.getEffectiveUser|userinfo\\.email/i.test(message)) throw error;
+  }
+  if (runtimeEmail) return runtimeEmail;
+
+  var props = PropertiesService.getScriptProperties();
+  var verified = String(props.getProperty("CPIPOS_VERIFIED_SUPPORT_MAILBOX") || "").trim().toLowerCase();
+  var timestamp = Date.parse(String(props.getProperty("CPIPOS_VERIFIED_SUPPORT_MAILBOX_AT") || ""));
+  var age = Date.now() - timestamp;
+  if (expectedMailbox && verified === expectedMailbox &&
+      isFinite(timestamp) && age >= 0 && age < 90 * 24 * 60 * 60 * 1000) {
+    return verified;
+  }
+  throw new Error("support_mailbox_authorization_required");
 }
 
 function supportMailbox_() {
