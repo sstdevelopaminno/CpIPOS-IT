@@ -13,7 +13,11 @@ type Row = {
   custom_requirements: string | null; custom_terms: Record<string,unknown> | null;
   trial_days: number; status: "pending" | "processing" | "failed" | "activated";
   tenant_id: string | null; created_at: string; activated_at: string | null; last_error: string | null;
-  email_delivery?: { status: string; last_error: string | null; sent_at: string | null } | null;
+  email_delivery?: {
+    status: string; last_error: string | null; sent_at: string | null;
+    last_attempt_at: string | null; attempt_count: number;
+    recipient_email: string; subject: string;
+  } | null;
 };
 type Pkg = { id: string; code: string; name: string; monthly_price: number; max_branches: number; max_devices: number; quota_mode?: string };
 type Payload = { requests: Row[]; packages: Pkg[]; truncated: boolean };
@@ -56,6 +60,8 @@ export function StoreRegistrationsConsole() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [sentEvidence, setSentEvidence] = useState<Record<string, { found: boolean; message: string }>>({});
+  const [verifyingId, setVerifyingId] = useState("");
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState<Row | null>(null);
   const [form, setForm] = useState<Form | null>(null);
@@ -93,6 +99,38 @@ export function StoreRegistrationsConsole() {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [reload]);
+
+  // A mail bridge ACK is not proof that a message exists in Gmail Sent.
+  // Check the real Support mailbox, without sending or repeating an event.
+  async function checkSent(row: Row) {
+    setVerifyingId(row.id);
+    try {
+      const response = await fetch(
+        `/api/it-admin/v1/customer-emails/verify-sent?source_id=${encodeURIComponent(row.id)}`,
+        { credentials: "include", cache: "no-store" }
+      );
+      const json = await response.json().catch(() => null) as
+        Envelope<{ found: boolean; message: string }> | null;
+      if (!response.ok || !json?.data) throw new Error(json?.error?.message || "ตรวจสอบ Gmail Sent ไม่สำเร็จ");
+      setSentEvidence((current) => ({ ...current, [row.id]: json.data! }));
+    } catch (cause) {
+      setSentEvidence((current) => ({
+        ...current,
+        [row.id]: {
+          found: false,
+          message: "ยังตรวจสอบ Gmail Sent ไม่ได้: " +
+            (cause instanceof Error ? cause.message : "ไม่ทราบสาเหตุ")
+        }
+      }));
+    } finally {
+      setVerifyingId("");
+    }
+  }
+
+  function sentFolderHref(row: Row) {
+    const recipient = row.email_delivery?.recipient_email || row.owner_email;
+    return `/it-admin/support-mail?folder=sent&q=${encodeURIComponent("to:" + recipient)}`;
+  }
 
   function open(row: Row, mode: "edit" | "activate") {
     setSelected(row); setForm(draft(row)); setIntent(mode); setPin(""); setError(""); setSuccess("");
@@ -170,8 +208,8 @@ export function StoreRegistrationsConsole() {
       if (action === "activate") {
         const base = `เปิดร้านสำเร็จ · Store Code ${result.result?.store_code ?? "—"} · ทดลองใช้ 7 วัน`;
         const mail = result.email_delivery;
-        if (mail?.status === "sent") setSuccess(base + " · ส่งอีเมลเปิดระบบแล้ว");
-        else if (mail?.status === "already_sent") setSuccess(base + " · อีเมลเปิดระบบเคยส่งแล้ว");
+        if (mail?.status === "sent") setSuccess(base + " · ระบบรับคำสั่งส่งอีเมลแล้ว กรุณาตรวจ Gmail Sent");
+        else if (mail?.status === "already_sent") setSuccess(base + " · ระบบเคยรับคำสั่งส่งอีเมลแล้ว กรุณาตรวจ Gmail Sent");
         else if (mail?.status === "automatic_disabled") setSuccess(base + " · ปิดการส่งอีเมลอัตโนมัติ");
         else {
           setSuccess(base);
@@ -182,6 +220,10 @@ export function StoreRegistrationsConsole() {
       }
       setSelected(null); setForm(null); setIntent(null); setPin("");
       await reload(true); // Preserve any email delivery warning after successful store activation.
+      if (action === "activate" && (result.email_delivery?.status === "sent" ||
+          result.email_delivery?.status === "already_sent")) {
+        await checkSent(selected);
+      }
     } catch (e) { setError(e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ"); }
     finally { setBusy(false); }
   }
@@ -212,10 +254,11 @@ export function StoreRegistrationsConsole() {
         throw new Error(json?.error?.message || "ส่งอีเมลเปิดระบบไม่สำเร็จ");
       }
       const delivery = json.data.delivery;
-      if (delivery.status === "sent") setSuccess("ส่งอีเมลเปิดระบบให้ลูกค้าแล้ว");
-      else if (delivery.status === "already_sent") setSuccess("อีเมลเปิดระบบของร้านนี้เคยส่งสำเร็จแล้ว ระบบจึงไม่ส่งซ้ำ");
+      if (delivery.status === "sent") setSuccess("ระบบรับคำสั่งส่งอีเมลแล้ว กำลังตรวจสอบ Gmail Sent");
+      else if (delivery.status === "already_sent") setSuccess("ระบบเคยรับคำสั่งส่งอีเมลของร้านนี้แล้ว ไม่ส่งซ้ำ กำลังตรวจ Gmail Sent");
       else setError(delivery.message || "ระบบยังไม่สามารถส่งอีเมลเปิดระบบได้");
       await reload(true);
+      if (delivery.status === "sent" || delivery.status === "already_sent") await checkSent(row);
     } catch (e) {
       setError(e instanceof Error ? e.message : "ส่งอีเมลเปิดระบบไม่สำเร็จ");
     } finally { setBusy(false); }
@@ -267,12 +310,27 @@ export function StoreRegistrationsConsole() {
               r.email_delivery?.status === "failed" || r.email_delivery?.status === "blocked" ? "ส่งไม่สำเร็จ" :
               r.email_delivery?.status === "pending" ? "รอส่ง" : "ยังไม่พบประวัติการส่ง"}
           </small> : null}
-          {r.status === "activated" && r.email_delivery?.last_error ? <small>{r.email_delivery.last_error}</small> : null}
+          {r.status === "activated" && r.email_delivery ? <>
+            <small>ถึง: {r.email_delivery.recipient_email || r.owner_email}</small>
+            {r.email_delivery.subject ? <small>หัวข้อ: {r.email_delivery.subject}</small> : null}
+            <small>พยายามส่ง {r.email_delivery.attempt_count} ครั้ง · ล่าสุด {
+              dateTime(r.email_delivery.sent_at || r.email_delivery.last_attempt_at)
+            }</small>
+          </> : null}
+          {r.status === "activated" && r.email_delivery?.last_error ? <small className={styles.mailError}>{r.email_delivery.last_error}</small> : null}
+          {r.status === "activated" && sentEvidence[r.id] ? <small className={
+            sentEvidence[r.id].found ? styles.mailConfirmed : styles.mailUnconfirmed
+          }>{sentEvidence[r.id].found ? "✓ " : "! "}{sentEvidence[r.id].message}</small> : null}
         </td>
         <td><div className={styles.actions}>
           {r.status === "activated" && r.tenant_id ? <>
             <Link href="/it-admin/tenants">ดูร้าน →</Link>
             <button disabled={busy} onClick={() => void sendActivationEmail(r)}>ส่งอีเมลเปิดระบบ</button>
+            <Link href={sentFolderHref(r)}>ดู Gmail ส่งแล้ว</Link>
+            {r.email_delivery ? <button disabled={busy || Boolean(verifyingId)}
+              onClick={() => void checkSent(r)}>{
+                verifyingId === r.id ? "กำลังตรวจ Sent…" : "ยืนยันใน Gmail Sent"
+              }</button> : null}
           </> : null}
           {r.status === "pending" || r.status === "failed" ? <>
             <button disabled={busy} onClick={() => open(r,"edit")}>แก้ไข</button>
