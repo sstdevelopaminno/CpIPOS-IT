@@ -85,6 +85,17 @@ describe("transactional customer email delivery", () => {
     expect(reminderMigration).toContain("not in ('prepaid','pending','under_review','not_payable')");
   });
 
+  it("exposes persistent activation mail failures and actionable OAuth remediation to IT", () => {
+    expect(activation).toContain('from("customer_email_deliveries")');
+    expect(activation).toContain("deliveryByRequest");
+    expect(activation).toContain("customerEmailFailureMessage");
+    expect(registrationUi).toContain("email_delivery?.status");
+    expect(registrationUi).toContain("await reload(true); // Preserve any email delivery warning");
+    expect(service).toContain("customerEmailFailureMessage");
+    expect(service).toContain("authorizeSupportMailBridge");
+    expect(service).not.toContain("owner_pin:");
+  });
+
   it("requires an authorized server-side bridge", () => {
     expect(service).toContain("CPIPOS_MAIL_BRIDGE_URL");
     expect(service).toContain("CPIPOS_MAIL_BRIDGE_SECRET");
