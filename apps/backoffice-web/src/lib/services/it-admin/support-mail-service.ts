@@ -131,7 +131,7 @@ async function callBridge<T extends BridgeBase>(payload: Record<string, unknown>
               ? "Apps Script ยังตั้ง CPIPOS_SUPPORT_MAILBOX ไม่ใช่ cuttingpointtech@gmail.com กรุณาแก้ Script Properties และอนุญาต OAuth ด้วยบัญชีใหม่"
             : code === "support_mailbox_authorization_required" ||
               /userinfo\.email|Session\.getEffectiveUser|authorization is required/i.test(code)
-              ? "Google Apps Script ยังไม่ผ่านการอนุญาต OAuth ของบัญชี Support กรุณารัน authorizeSupportMailBridge ใน Apps Script เดิม แล้ว Deploy Web App เป็น New version ก่อนตรวจอีกครั้ง"
+              ? "Google Apps Script ยังไม่ได้รับ OAuth สำหรับ cuttingpointtech@gmail.com กรุณารัน authorizeSupportMailBridge ในโปรเจกต์ที่ Deploy ภายใต้บัญชีนี้ แล้วเผยแพร่ New version ก่อนตรวจอีกครั้ง"
               : "Gmail Support ทำรายการนี้ไม่สำเร็จชั่วคราว กรุณาลองใหม่";
     throw new SupportMailBridgeError(code, message, code === "thread_not_found" ? 404 : 502);
   }
@@ -217,6 +217,9 @@ export async function getSupportMailThread(threadId: string) {
 }
 
 export async function sendSupportMail(input: { to: string; subject: string; body: string }) {
+  // A support message (including LINE OTP) must not be sent from the retired
+  // Google account while the Apps Script ownership is being migrated.
+  await getSupportMailHealth();
   const receipt = await callBridge<BridgeBase & { sent?: boolean }>({
     action: "send_new",
     to: input.to,
@@ -236,6 +239,7 @@ export async function sendSupportMail(input: { to: string; subject: string; body
 }
 
 export async function replySupportMail(input: { threadId: string; body: string }) {
+  await getSupportMailHealth();
   return callBridge<BridgeBase & { sent?: boolean; thread_id?: string }>({
     action: "reply",
     thread_id: input.threadId,
