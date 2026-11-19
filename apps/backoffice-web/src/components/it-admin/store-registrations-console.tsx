@@ -13,6 +13,7 @@ type Row = {
   custom_requirements: string | null; custom_terms: Record<string,unknown> | null;
   trial_days: number; status: "pending" | "processing" | "failed" | "activated";
   tenant_id: string | null; created_at: string; activated_at: string | null; last_error: string | null;
+  email_delivery?: { status: string; last_error: string | null; sent_at: string | null } | null;
 };
 type Pkg = { id: string; code: string; name: string; monthly_price: number; max_branches: number; max_devices: number; quota_mode?: string };
 type Payload = { requests: Row[]; packages: Pkg[]; truncated: boolean };
@@ -180,7 +181,7 @@ export function StoreRegistrationsConsole() {
         setSuccess("บันทึกข้อมูลคำขอแล้ว");
       }
       setSelected(null); setForm(null); setIntent(null); setPin("");
-      await reload();
+      await reload(true); // Preserve any email delivery warning after successful store activation.
     } catch (e) { setError(e instanceof Error ? e.message : "ดำเนินการไม่สำเร็จ"); }
     finally { setBusy(false); }
   }
@@ -214,6 +215,7 @@ export function StoreRegistrationsConsole() {
       if (delivery.status === "sent") setSuccess("ส่งอีเมลเปิดระบบให้ลูกค้าแล้ว");
       else if (delivery.status === "already_sent") setSuccess("อีเมลเปิดระบบของร้านนี้เคยส่งสำเร็จแล้ว ระบบจึงไม่ส่งซ้ำ");
       else setError(delivery.message || "ระบบยังไม่สามารถส่งอีเมลเปิดระบบได้");
+      await reload(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "ส่งอีเมลเปิดระบบไม่สำเร็จ");
     } finally { setBusy(false); }
@@ -258,7 +260,15 @@ export function StoreRegistrationsConsole() {
         <td>{modes.filter((m) => r.sales_modes?.[m.key]).map((m) => m.label).join(" / ") || "—"}</td>
         <td><span className={styles.pill} data-status={r.status}>{{
           pending:"รอเปิดร้าน",processing:"กำลังเปิดร้าน",failed:"ต้องตรวจสอบ",activated:"เปิดใช้งาน"
-        }[r.status]}</span>{r.last_error ? <small title={r.last_error}>{r.last_error}</small> : null}</td>
+        }[r.status]}</span>{r.last_error ? <small title={r.last_error}>{r.last_error}</small> : null}
+          {r.status === "activated" ? <small role="status" title={r.email_delivery?.last_error ?? undefined}>
+            อีเมลเปิดระบบ: {r.email_delivery?.status === "sent" ? "ส่งสำเร็จ" :
+              r.email_delivery?.status === "sending" ? "กำลังส่ง" :
+              r.email_delivery?.status === "failed" || r.email_delivery?.status === "blocked" ? "ส่งไม่สำเร็จ" :
+              r.email_delivery?.status === "pending" ? "รอส่ง" : "ยังไม่พบประวัติการส่ง"}
+          </small> : null}
+          {r.status === "activated" && r.email_delivery?.last_error ? <small>{r.email_delivery.last_error}</small> : null}
+        </td>
         <td><div className={styles.actions}>
           {r.status === "activated" && r.tenant_id ? <>
             <Link href="/it-admin/tenants">ดูร้าน →</Link>
