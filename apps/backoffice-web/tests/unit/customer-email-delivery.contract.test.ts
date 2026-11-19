@@ -105,6 +105,9 @@ describe("transactional customer email delivery", () => {
     expect(registrationUi).toContain("ยืนยันใน Gmail Sent");
     expect(registrationUi).toContain("checkSent(row)");
     expect(registrationUi).toContain("sentEvidence[r.id].found");
+    expect(registrationUi).toContain("sentEvidence[r.id].sent_at");
+    expect(registrationUi).toContain("ตรวจสอบการเชื่อมต่อ Gmail");
+    expect(registrationUi).toContain("mailHealth?.ok === false");
     expect(supportConsole).toContain('params.get("folder") === "sent"');
     expect(supportConsole).toContain('setActiveQuery(query)');
   });
