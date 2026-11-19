@@ -33,7 +33,12 @@ describe("IT Admin password recovery", () => {
 
   it("sends a short-lived temporary password without logging it", () => {
     expect(service).toContain("generateItTemporaryPassword");
-    expect(service).toContain("CPIPOS_MAIL_BRIDGE_URL");
+    expect(service).toContain("CPIPOS_SUPPORT_MAIL_BRIDGE_URL");
+    expect(service).toContain("CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET");
+    expect(service).not.toContain("process.env.CPIPOS_MAIL_BRIDGE_URL");
+    expect(service).toContain('action: "send_it_password"');
+    expect(service).toContain("await getSupportMailHealth()");
+    expect(service).toContain("it_support_mail_delivery_unconfirmed");
     expect(service).toContain("รหัสผ่านชั่วคราว");
     expect(forgotApi).toContain("30 * 60 * 1000");
     expect(forgotApi).not.toContain("console.log");
