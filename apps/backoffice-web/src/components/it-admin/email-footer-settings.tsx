@@ -23,7 +23,7 @@ type Envelope = {
 
 const defaults: EmailSettings = {
   billing_email: "cuttingpointtech@gmail.com",
-  support_email: "cuttingpointtech@gmail.com",
+  support_email: "cuttingpointtech.support@gmail.com",
   billing_sender_name: "CUTTING POINTTECH",
   support_sender_name: "Cutting Point Tech Support",
   auto_send_store_activation: true,
