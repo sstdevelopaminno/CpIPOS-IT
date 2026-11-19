@@ -173,7 +173,7 @@ export function SupportMailConsole() {
   const [selectedId, setSelectedId] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<ThreadData | null>(null);
-  const [mailbox, setMailbox] = useState("cuttingpointtech.support@gmail.com");
+  const [mailbox, setMailbox] = useState("cuttingpointtech@gmail.com");
   const [folder, setFolder] = useState<MailFolder>("inbox");
   const [searchInput, setSearchInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
