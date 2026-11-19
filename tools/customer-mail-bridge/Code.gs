@@ -6,14 +6,18 @@
  *
  * Script Properties:
  *   CPIPOS_MAIL_BRIDGE_SECRET = same secret as Vercel
- *   CPIPOS_SUPPORT_MAILBOX = cuttingpointtech@gmail.com
+ *   CPIPOS_SUPPORT_MAILBOX = cuttingpointtech@gmail.com (company sender)
+ *   OR CPIPOS_SUPPORT_MAILBOX = cuttingpointtech.support@gmail.com (IT Support)
+ *
+ * Deploy independently under EACH account with the corresponding Script
+ * Property, OAuth consent and distinct Web App URL/secret.
  *
  * Execute as: Me
  * Who has access: Anyone (the shared secret is still required)
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.2";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.3";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -114,15 +118,18 @@ function authorizedSupportExecutor_(expectedMailbox) {
 }
 
 function supportMailbox_() {
-  // Never allow an old Script Property to silently keep sending from the
-  // retired Support Gmail account after the IT mailbox cutover.
-  var canonical = "cuttingpointtech@gmail.com";
+  // This Code.gs is shared by two independent Google projects/deployments.
+  // A script may claim ONLY its explicitly configured account, and OAuth
+  // verifies the real executor. No implicit fallback to another mailbox.
+  var company = "cuttingpointtech@gmail.com";
+  var support = "cuttingpointtech.support@gmail.com";
   var configured = String(
-    PropertiesService.getScriptProperties().getProperty("CPIPOS_SUPPORT_MAILBOX") ||
-    canonical
+    PropertiesService.getScriptProperties().getProperty("CPIPOS_SUPPORT_MAILBOX") || ""
   ).trim().toLowerCase();
-  if (configured !== canonical) throw new Error("wrong_mailbox_configuration");
-  return canonical;
+  if (configured !== company && configured !== support) {
+    throw new Error("wrong_mailbox_configuration");
+  }
+  return configured;
 }
 
 function boundedInt_(value, fallback, min, max) {
