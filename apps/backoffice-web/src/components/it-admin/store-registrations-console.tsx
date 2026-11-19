@@ -104,13 +104,13 @@ export function StoreRegistrationsConsole() {
     };
   }, [reload]);
 
-  // Read-only preflight: check OAuth, exact Support mailbox and bridge version
+  // Read-only preflight: check the corporate sender (not IT Support) OAuth and bridge version
   // without consuming a customer notification or changing delivery records.
   async function checkMailBridge() {
     if (checkingMail) return;
     setCheckingMail(true);
     try {
-      const response = await fetch("/api/it-admin/v1/support-mail?health=1", {
+      const response = await fetch("/api/it-admin/v1/customer-emails/verify-sent?health=1", {
         credentials: "include", cache: "no-store"
       });
       const json = await response.json().catch(() => null) as
@@ -120,7 +120,7 @@ export function StoreRegistrationsConsole() {
       }
       const health = json.data.health;
       setMailHealth({
-        ok: true, message: `Gmail Support พร้อมใช้งาน · ${health.mailbox} · Bridge ${health.bridge_version}`
+        ok: true, message: `Gmail บริษัทพร้อมใช้งาน · ${health.mailbox} · Bridge ${health.bridge_version}`
       });
     } catch (cause) {
       setMailHealth({
@@ -132,7 +132,7 @@ export function StoreRegistrationsConsole() {
   }
 
   // A mail bridge ACK is not proof that a message exists in Gmail Sent.
-  // Check the real Support mailbox, without sending or repeating an event.
+  // Check the real company Gmail Sent mailbox, without sending or repeating an event.
   async function checkSent(row: Row) {
     setVerifyingId(row.id);
     try {
@@ -158,9 +158,10 @@ export function StoreRegistrationsConsole() {
     }
   }
 
-  function sentFolderHref(row: Row) {
-    const recipient = row.email_delivery?.recipient_email || row.owner_email;
-    return `/it-admin/support-mail?folder=sent&q=${encodeURIComponent("to:" + recipient)}`;
+  function sentFolderHref(_row: Row) {
+    // The IT Support Mail console is a separate Gmail account.
+    // Only the company Gmail can contain transactional customer Sent evidence.
+    return "https://mail.google.com/mail/u/?authuser=cuttingpointtech@gmail.com#sent";
   }
 
   function open(row: Row, mode: "edit" | "activate") {
@@ -368,7 +369,7 @@ export function StoreRegistrationsConsole() {
             <button disabled={busy || mailHealth?.ok === false}
               title={mailHealth?.ok === false ? "ตรวจสอบการเชื่อมต่อ Gmail ให้ผ่านก่อนส่ง" : undefined}
               onClick={() => void sendActivationEmail(r)}>ส่งอีเมลเปิดระบบ</button>
-            <Link href={sentFolderHref(r)}>ดู Gmail ส่งแล้ว</Link>
+            <Link href={sentFolderHref(r)}>ดู Gmail ส่งแล้ว (บริษัท)</Link>
             {r.email_delivery ? <button disabled={busy || Boolean(verifyingId)}
               onClick={() => void checkSent(r)}>{
                 verifyingId === r.id ? "กำลังตรวจ Sent…" : "ยืนยันใน Gmail Sent"
