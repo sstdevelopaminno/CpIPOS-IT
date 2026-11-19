@@ -36,10 +36,15 @@ describe("IT Support Mail integration", () => {
     expect(service).toContain("support_mailbox_config_mismatch");
     expect(bridge).toContain('if (configured !== company && configured !== support)');
     expect(service).toContain("getCompanyMailHealth");
+    expect(service).toContain("renderSupportMailHtml");
+    expect(service).toContain("htmlBody: renderSupportMailHtml(input.subject, input.body)");
+    expect(service).toContain("&amp;");
+    expect(service).toContain("รหัสยืนยัน OTP");
+    expect(bridge).toContain("htmlBody: htmlBody || undefined");
     expect(bridge).toContain('"unsupported_role_action"');
     expect(bridge).toContain('action === "send_it_password"');
     expect(bridge).toContain("return sendTransactional_(body, mailbox)");
-    expect(bridge).toContain("2026-11-20.4");
+    expect(bridge).toContain("2026-11-20.5");
     expect(bridge).toContain('action === "list_threads" && String(body.folder || "").toLowerCase() === "sent"');
     expect(api).toContain('url.searchParams.get("health") === "1"');
     expect(api).toContain("await getSupportMailHealth()");
