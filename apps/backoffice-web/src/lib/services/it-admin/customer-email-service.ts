@@ -72,7 +72,7 @@ const TYPO_DOMAINS = new Map([
 
 const DEFAULT_SETTINGS: CommunicationSettings = {
   billing_email: "cuttingpointtech@gmail.com",
-  support_email: "cuttingpointtech.support@gmail.com",
+  support_email: "cuttingpointtech@gmail.com",
   billing_sender_name: "CUTTING POINT INNOVATION",
   support_sender_name: "Cutting Point Innovation Support",
   auto_send_store_activation: true,
@@ -95,6 +95,9 @@ function text(value: unknown, max = 500) {
 /** Translate provider authorization failures into a safe, actionable IT diagnostic. */
 export function customerEmailFailureMessage(value: unknown) {
   const raw = text(value instanceof Error ? value.message : value, 500);
+  if (/mail_bridge_wrong_sender|wrong_mailbox_configuration|support_mailbox_config_mismatch/i.test(raw)) {
+    return "Mail Bridge ยังไม่ได้สลับเป็น cuttingpointtech@gmail.com กรุณาตรวจบัญชี Google ที่ Deploy Apps Script, Script Properties และค่า Vercel ก่อนส่งซ้ำ";
+  }
   if (/support_mailbox_authorization_required/i.test(raw)) {
     return "Google Apps Script ต้องยืนยันบัญชี Support อีกครั้ง: เปิด Apps Script เดิม แล้วรัน authorizeSupportMailBridge ให้สำเร็จก่อน Deploy Web App เวอร์ชันล่าสุด โดยไม่ต้องสร้างร้านซ้ำ";
   }
@@ -778,6 +781,26 @@ export async function deliverCustomerEmail(input: {
     return { status: "blocked", delivery_id: delivery.id, message };
   }
 
+  // Verify the authenticated sending identity before consuming a customer
+  // email. Deploying new IT code must never send through the old Support Gmail.
+  // This is intentionally a no-send request to the same bridge URL and secret.
+  async function verifySenderMailbox() {
+    const statusResponse = await fetch(bridgeUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "status", secret: bridgeSecret }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const statusPayload = await statusResponse.json().catch(() => null) as
+      { ok?: boolean; mailbox?: string; error?: string } | null;
+    if (!statusResponse.ok || statusPayload?.ok !== true) {
+      throw new Error(text(statusPayload?.error || `mail_bridge_status_http_${statusResponse.status}`, 300));
+    }
+    if (statusPayload.mailbox?.trim().toLowerCase() !== "cuttingpointtech@gmail.com") {
+      throw new Error("mail_bridge_wrong_sender");
+    }
+  }
+
   let claimStatus = delivery.status;
   if (delivery.status === "sending" && lastAttempt && now - lastAttempt >= STALE_SENDING_MS) {
     await updateDelivery(input.db, delivery.id, {
@@ -805,6 +828,7 @@ export async function deliverCustomerEmail(input: {
   }
 
   try {
+    await verifySenderMailbox();
     const response = await fetch(bridgeUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -823,9 +847,12 @@ export async function deliverCustomerEmail(input: {
       signal: AbortSignal.timeout(8000)
     });
 
-    const payload = await response.json().catch(() => null) as { ok?: boolean; messageId?: string; error?: string } | null;
+    const payload = await response.json().catch(() => null) as { ok?: boolean; messageId?: string; mailbox?: string; error?: string } | null;
     if (!response.ok || payload?.ok !== true) {
       throw new Error(text(payload?.error || `mail_bridge_http_${response.status}`, 300));
+    }
+    if (payload.mailbox?.trim().toLowerCase() !== "cuttingpointtech@gmail.com") {
+      throw new Error("mail_bridge_wrong_sender");
     }
 
     await updateDelivery(input.db, delivery.id, {
