@@ -20,6 +20,17 @@ describe("IT Support Mail integration", () => {
     expect(bridge).toContain("wrong_mailbox");
   });
 
+  it("uses exactly the same configured Apps Script deployment for transactional mail and Gmail Sent evidence", () => {
+    expect(service).toContain("CPIPOS_MAIL_BRIDGE_URL");
+    expect(service).toContain("CPIPOS_MAIL_BRIDGE_SECRET");
+    expect(service).toContain("support_mail_bridge_config_mismatch");
+    expect(service).not.toContain("DEFAULT_SUPPORT_MAIL_BRIDGE_URL");
+    expect(service).toContain('action: "status"');
+    expect(service).toContain("getSupportMailHealth");
+    expect(api).toContain('url.searchParams.get("health") === "1"');
+    expect(api).toContain("await getSupportMailHealth()");
+  });
+
   it("retains mailbox verification but supports OAuth-constrained Web App execution only after editor attestation", () => {
     expect(bridge).toContain('authorizedSupportExecutor_(mailbox)');
     expect(bridge).toContain('Session.getEffectiveUser().getEmail()');
