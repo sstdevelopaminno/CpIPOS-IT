@@ -19,6 +19,19 @@ describe("IT Support Mail integration", () => {
     expect(bridge).toContain("wrong_mailbox");
   });
 
+  it("retains mailbox verification but supports OAuth-constrained Web App execution only after editor attestation", () => {
+    expect(bridge).toContain('authorizedSupportExecutor_(mailbox)');
+    expect(bridge).toContain('Session.getEffectiveUser().getEmail()');
+    expect(bridge).toContain('props.setProperty("CPIPOS_VERIFIED_SUPPORT_MAILBOX", effective)');
+    expect(bridge).toContain('props.setProperty("CPIPOS_VERIFIED_SUPPORT_MAILBOX_AT", new Date().toISOString())');
+    expect(bridge).toContain('throw new Error("support_mailbox_authorization_required")');
+    expect(bridge).toContain('age < 90 * 24 * 60 * 60 * 1000');
+    expect(bridge).toContain('if (runtimeEmail) return runtimeEmail');
+    expect(bridge).toContain('if (!mailbox || !effective || mailbox !== effective)');
+    expect(bridge.indexOf('var expected = PropertiesService.getScriptProperties().getProperty("CPIPOS_MAIL_BRIDGE_SECRET")'))
+      .toBeLessThan(bridge.indexOf('var effective = authorizedSupportExecutor_(mailbox)'));
+  });
+
   it("supports Gmail-style folders, thread read, reply, send, mark-read and archive", () => {
     for (const action of ["list_threads", "get_thread", "send_new", "reply", "mark_read", "archive", "trash", "trash_many"]) {
       expect(bridge).toContain(action);
@@ -28,7 +41,7 @@ describe("IT Support Mail integration", () => {
       expect(api).toContain(folder);
     }
     expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
-    expect(bridge).toContain("2026-11-14.1");
+    expect(bridge).toContain("2026-11-19.3");
     expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
     expect(api).toContain("listSupportMailThreads");
