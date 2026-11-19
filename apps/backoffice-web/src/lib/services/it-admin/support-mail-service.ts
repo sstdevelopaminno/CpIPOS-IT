@@ -91,7 +91,9 @@ function bridgeConfig(role: BridgeRole) {
   const otherUrl = (isSupport
     ? process.env.CPIPOS_MAIL_BRIDGE_URL
     : process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_URL)?.trim();
-  if (otherUrl && otherUrl === url) {
+  // Do not interrupt customer transactional mail during Support's separate
+  // cutover: only Support access fails if its URL still points to company.
+  if (isSupport && otherUrl && otherUrl === url) {
     throw new SupportMailBridgeError(
       "mail_bridge_identity_overlap",
       "อีเมลบริษัทและ Support ใช้ Apps Script URL เดียวกันไม่ได้ กรุณาแยกเป็น Web App ของ Google คนละบัญชี",
