@@ -11,7 +11,9 @@ describe("IT Support Chat responsive mobile PWA", () => {
     expect(itConsole).toContain('mobilePane === "conversation" ? "flex" : "hidden xl:flex"');
     expect(itConsole).toContain("xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]");
     expect(itConsole).not.toContain('min-h-[560px]');
-    expect(itConsole).toContain("100dvh-7.25rem-env(safe-area-inset-bottom)");
+    expect(itConsole).toContain("data-support-chat-console");
+    expect(itConsole).toContain("h-full min-h-0");
+    expect(itConsole).not.toContain("100dvh-7.25rem-env(safe-area-inset-bottom)");
   });
 
   it("opens a conversation only after tapping on mobile and always offers a return path", () => {
