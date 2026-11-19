@@ -171,8 +171,13 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   const headSignalRef = useRef("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
 
   const clearGoneConversation = useCallback((id: string) => {
+    detailRequestRef.current += 1;
+    setDetailLoading(false);
+    setDetailError("");
     setRows((current) => current.filter((row) => row.conversation_id !== id));
     setSelectedId((current) => current === id ? "" : current);
     setMobilePane("inbox");
@@ -217,11 +222,16 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
     // Background confirmations must never block the message composer or
     // flash a loading state while the customer is still typing.
     if (initialLoad) {
-      setBusy("conversation");
-      setError("");
+      setDetailLoading(true);
+      setDetailError("");
     }
     try {
-      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${id}`, { cache: "no-store" });
+      // Keep the first mobile room load bounded. Never leave a full-screen
+      // "opening conversation" placeholder indefinitely when the API stalls.
+      const response = await fetch(`/api/it-admin/v1/support-chat/conversations/${id}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000)
+      });
       const json = await response.json().catch(() => null) as Envelope<DetailResponse> | null;
       if (requestId !== detailRequestRef.current || selectedIdRef.current !== id) return;
       if (response.status === 404) {
@@ -231,6 +241,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       }
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "เปิดแชทไม่สำเร็จ");
       setConversation(json.data.conversation);
+      setDetailError("");
       setNoteDraft(json.data.conversation.internal_note ?? "");
       setMessages((current) => {
         const confirmed = json.data!.messages;
@@ -253,12 +264,32 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
       detailLoadedIdRef.current = id;
     } catch (cause) {
       if (initialLoad && requestId === detailRequestRef.current && selectedIdRef.current === id) {
-        setError(cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
+        const timedOut = cause instanceof Error &&
+          (cause.name === "TimeoutError" || cause.name === "AbortError");
+        setDetailError(timedOut
+          ? "เปิดห้องสนทนานานเกิน 20 วินาที กรุณาลองโหลดใหม่"
+          : cause instanceof Error ? cause.message : "เปิดแชทไม่สำเร็จ");
       }
     } finally {
-      if (initialLoad && requestId === detailRequestRef.current && selectedIdRef.current === id) setBusy("");
+      if (initialLoad && requestId === detailRequestRef.current && selectedIdRef.current === id) {
+        setDetailLoading(false);
+      }
     }
   }, [clearGoneConversation]);
+
+  function openSelectedConversation(id: string) {
+    // Make tapping the same room a valid retry, not a no-op React state update.
+    detailRequestRef.current += 1;
+    detailLoadedIdRef.current = "";
+    selectedIdRef.current = id;
+    setDetailError("");
+    setSelectedId(id);
+    setConversation(null);
+    setMessages([]);
+    setMobilePane("conversation");
+    setMobileNotesOpen(false);
+    if (selectedId === id) void loadConversation(id);
+  }
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -678,7 +709,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
   }, []);
 
   return (
-    <main className="flex h-[calc(100dvh-7.25rem-env(safe-area-inset-bottom))] min-h-0 min-w-0 flex-col gap-2 overflow-hidden xl:h-[calc(100dvh-8rem)] xl:gap-4">
+    <main data-support-chat-console className="flex h-full min-h-0 min-w-0 w-full flex-col gap-2 overflow-hidden xl:gap-4">
       <header className={"shrink-0 items-center gap-2 sm:gap-3 " + (mobilePane === "conversation" ? "hidden xl:flex" : "flex")}>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-black text-slate-950 sm:text-2xl">{historyOnly ? "สมุดบันทึกแชท" : "Support Chat"}</h2>
@@ -717,7 +748,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {filtered.length ? filtered.map((row) => (
-              <button key={row.conversation_id} type="button" onClick={() => { setSelectedId(row.conversation_id); setConversation(null); setMessages([]); setMobilePane("conversation"); setMobileNotesOpen(false); }}
+              <button key={row.conversation_id} type="button" onClick={() => openSelectedConversation(row.conversation_id)}
                 className={"flex w-full gap-3 border-b border-slate-100 p-3 text-left transition " +
                   (selectedId === row.conversation_id ? "bg-blue-50" : "bg-white hover:bg-slate-50")}>
                 <StoreAvatar src={row.store_logo_url} name={row.store_name} />
@@ -926,15 +957,27 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
               </div>
             </>
           ) : (
-            <div className="relative grid min-h-0 flex-1 place-items-center p-4 text-center sm:p-8">
+            <div className="relative grid min-h-0 flex-1 place-items-center overflow-y-auto p-4 text-center sm:p-8">
               <button type="button" onClick={() => setMobilePane("inbox")}
                 className="absolute left-3 top-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 xl:hidden">
                 ← กลับรายการแชท
               </button>
               <div>
                 <Image src="/brand/cpipos-symbol-sidebar.png" alt="" width={72} height={72} className="mx-auto h-16 w-16 object-contain opacity-80" />
-                <h3 className="mt-3 text-lg font-black text-slate-900">{selectedId ? "กำลังเปิดห้องสนทนา" : "เลือกแชทจากรายการด้านซ้าย"}</h3>
-                <p className="mt-1 text-sm text-slate-500">{selectedId ? "หากยังไม่แสดงข้อความ สามารถย้อนกลับไปเลือกรายการใหม่ได้" : "เมื่อเปิดแชทใหม่ ระบบจะรับเรื่องให้พนักงานที่เปิดโดยอัตโนมัติ"}</p>
+                <h3 className="mt-3 text-lg font-black text-slate-900">{detailError ? "ไม่สามารถเปิดห้องสนทนาได้" : selectedId ? "กำลังเปิดห้องสนทนา" : "เลือกแชทจากรายการด้านซ้าย"}</h3>
+                {detailError ? (
+                  <div role="alert" className="mt-3 max-w-sm rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
+                    {detailError}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-500">{selectedId ? "กำลังดึงประวัติข้อความ กรุณารอสักครู่" : "เมื่อเปิดแชทใหม่ ระบบจะรับเรื่องให้พนักงานที่เปิดโดยอัตโนมัติ"}</p>
+                )}
+                {selectedId && (detailError || !detailLoading) ? (
+                  <button type="button" onClick={() => void loadConversation(selectedId)}
+                    className="mt-4 rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white">
+                    ลองเปิดห้องสนทนาอีกครั้ง
+                  </button>
+                ) : null}
               </div>
             </div>
           )}
