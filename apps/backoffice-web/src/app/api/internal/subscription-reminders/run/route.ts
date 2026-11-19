@@ -13,6 +13,7 @@ function response(ok:boolean,status:number,payload:Record<string,unknown>){
   return NextResponse.json({ok,...payload},{status,headers:{"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
 }
 function num(v:unknown){const n=Number(v??0);return Number.isFinite(n)?n:0;}
+type DueStateRow = { tenant_id: string; state: Record<string, unknown> };
 
 export async function POST(request:Request){
   const db=getPrimarySupabaseServiceClient();
@@ -26,10 +27,47 @@ export async function POST(request:Request){
     const query=await db.rpc("subscription_reminder_candidates",{});
     if(query.error)return response(false,500,{error:"subscription_reminder_candidates_failed",detail:query.error.message});
     const rows=(query.data??[]) as Candidate[];
+    // Candidate amount_due is the cycle face value. Always read the canonical
+    // outstanding balance before representing it as a debt in HTML email.
+    // This also stops an overdue reminder if payment was accepted meanwhile.
+    const subscriptionTenantIds = Array.from(new Set(rows
+      .filter((row) => row.reminder_type === "subscription_due_reminder")
+      .map((row) => row.tenant_id)));
+    const dueByTenant = new Map<string, Record<string, unknown>>();
+    if (subscriptionTenantIds.length) {
+      const dueStates = await db.rpc("subscription_billing_due_states", {
+        p_tenant_ids: subscriptionTenantIds
+      });
+      if (dueStates.error) return response(false,503,{
+        error:"subscription_reminder_balance_check_failed"
+      });
+      for (const row of (dueStates.data??[]) as DueStateRow[]) {
+        if (row.tenant_id && row.state) dueByTenant.set(row.tenant_id, row.state);
+      }
+    }
+
     const results:Array<Record<string,unknown>>=[];
     let sent=0,alreadySent=0,blocked=0,failed=0;
     for(const row of rows){
-      const days=num(row.days_remaining),amount=num(row.amount_due);
+      const days=num(row.days_remaining);
+      let amount=num(row.amount_due);
+      if (row.reminder_type === "subscription_due_reminder") {
+        const state=dueByTenant.get(row.tenant_id);
+        const status=String(state?.status??"");
+        const outstanding=Number(state?.outstanding);
+        const candidateDueAt=Date.parse(row.due_at);
+        const currentDueAt=Date.parse(String(state?.due_at??""));
+        if (!state || !["upcoming","open","due","overdue"].includes(status) ||
+            !Number.isFinite(outstanding) || outstanding <= 0 ||
+            !Number.isFinite(candidateDueAt) || !Number.isFinite(currentDueAt) ||
+            candidateDueAt !== currentDueAt) {
+          blocked++;
+          results.push({tenant_id:row.tenant_id,reminder_type:row.reminder_type,
+            milestone:row.milestone,status:"skipped_balance_or_payment_changed"});
+          continue;
+        }
+        amount=outstanding;
+      }
       const message=row.reminder_type==="trial_expiry_reminder"
         ? buildTrialExpiryReminderEmail({storeName:row.store_name,ownerName:row.owner_name,packageName:row.package_name,dueAt:row.due_at,daysRemaining:days,amountDue:amount,currency:row.currency})
         : row.reminder_type==="tenant_deletion_warning"

@@ -17,7 +17,7 @@
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.4";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.5";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -292,13 +292,17 @@ function sendNew_(body, mailbox) {
   var to = safeText_(body.to, 1000).toLowerCase();
   var subject = safeText_(body.subject, 500);
   var textBody = String(body.body || "").trim().slice(0, 30000);
+  // HTML is generated and escaped by authenticated CpIPOS IT server-side code.
+  // Retain textBody for clients that prefer a plain-text email.
+  var htmlBody = String(body.htmlBody || "").slice(0, 60000);
   if (!to || !subject || !textBody) throw new Error("invalid_send_payload");
 
   var budget = checkMailQuota_(to.split(",").length);
   if (!budget.ok) return json_(budget);
 
   GmailApp.sendEmail(to, subject, textBody, {
-    name: "CpIPOS Support",
+    htmlBody: htmlBody || undefined,
+    name: "CpIPOS IT Support",
     replyTo: mailbox || undefined
   });
 

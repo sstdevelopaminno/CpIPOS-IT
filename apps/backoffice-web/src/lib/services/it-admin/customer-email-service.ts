@@ -170,10 +170,18 @@ function brandMessage(
   settings: CommunicationSettings,
   eventType: CustomerEmailEventType
 ): CustomerEmailMessage {
+  const isOverdue = eventType === "subscription_due_reminder" &&
+    message.subject.startsWith("แจ้งยอดค้างชำระ");
+  const statusIcon = eventType === "payment_confirmation" || eventType === "store_activation"
+    ? "✓" : isOverdue ? "!" : "i";
+  const statusColor = isOverdue ? "#b45309" :
+    statusIcon === "✓" ? "#176fe8" : "#345c91";
+  const statusBackground = isOverdue ? "#fff8e8" :
+    statusIcon === "✓" ? "#eaf3ff" : "#f1f5fb";
   const title = eventType === "payment_confirmation"
     ? "ยืนยันการรับชำระเงินเรียบร้อย"
     : eventType === "subscription_due_reminder"
-      ? "แจ้งเตือนรอบชำระแพ็กเกจ CpIPOS"
+      ? isOverdue ? "แจ้งยอดค้างชำระแพ็กเกจ CpIPOS" : "แจ้งเตือนรอบชำระแพ็กเกจ CpIPOS"
       : eventType === "trial_expiry_reminder"
         ? "ช่วงทดลองใช้ CpIPOS ใกล้สิ้นสุด"
         : eventType === "tenant_deletion_warning"
@@ -188,7 +196,9 @@ function brandMessage(
   const subtitle = eventType === "payment_confirmation"
     ? "บริษัทได้รับและตรวจสอบการชำระเงินเรียบร้อยแล้ว ระบบได้เปิด/ต่ออายุแพ็กเกจ CpIPOS ให้แล้ว"
     : eventType === "subscription_due_reminder"
-      ? "แจ้งข้อมูลรอบชำระแพ็กเกจและระยะผ่อนผัน เพื่อให้ร้านวางแผนต่ออายุได้"
+      ? isOverdue
+        ? "รอบบริการนี้เลยกำหนดชำระแล้ว กรุณาตรวจสอบยอดคงค้างและแจ้งชำระผ่านช่องทางของ CpIPOS"
+        : "แจ้งข้อมูลรอบชำระแพ็กเกจและระยะผ่อนผัน เพื่อให้ร้านวางแผนต่ออายุได้"
       : eventType === "trial_expiry_reminder"
         ? "แจ้งเตือนก่อนสิ้นสุดสิทธิ์ทดลองใช้ เพื่อให้เจ้าของร้านเลือกแพ็กเกจและชำระก่อนสิทธิ์หมด"
         : eventType === "tenant_deletion_warning"
@@ -215,7 +225,7 @@ function brandMessage(
     '</tr></table></td></tr>',
     '<tr><td class="cp-content-pad" style="padding:34px 34px 28px;font-family:Arial,\'Noto Sans Thai\',sans-serif;color:#142946">',
     '<div style="text-align:center">',
-    '<div style="width:64px;height:64px;line-height:64px;margin:0 auto 16px;border-radius:50%;background:#eaf3ff;color:#176fe8;font-size:36px;font-weight:900">✓</div>',
+    `<div style="width:64px;height:64px;line-height:64px;margin:0 auto 16px;border-radius:50%;background:${statusBackground};color:${statusColor};font-size:36px;font-weight:900">${statusIcon}</div>`,
     `<div class="cp-brand-title" style="font-size:27px;font-weight:900;line-height:1.3;color:#102a50">${escapeHtml(title)}</div>`,
     `<div style="max-width:500px;margin:10px auto 0;font-size:14px;line-height:1.7;color:#66758b">${escapeHtml(subtitle)}</div>`,
     '</div>',
@@ -396,17 +406,20 @@ export function buildSubscriptionDueReminderEmail(input: {
 }): CustomerEmailMessage {
   const due=thaiDate(input.dueAt);
   const interval=input.billingInterval==="yearly"?"รายปี":"รายเดือน";
-  const subject=`แจ้งเตือนต่อแพ็กเกจ CpIPOS | ${text(input.storeName,100)} | ครบกำหนด ${due}`;
-  const owner=text(input.ownerName,120)||text(input.storeName,120);
   const overdue=input.daysRemaining<0;
-  const timing=overdue?`เลยกำหนด ${Math.abs(input.daysRemaining)} วัน · อยู่ระหว่างช่วงผ่อนผันชำระ`:`เหลือ ${Math.max(0,input.daysRemaining)} วัน`;
-  const note=overdue?"กรุณาตรวจสอบยอดและแจ้งชำระผ่าน CpIPOS หรือ Customer Portal หากส่งหลักฐานแล้วทีมงานจะตรวจสอบก่อนส่งเตือนเพิ่มเติม":"กรุณาตรวจสอบรอบบิลและแจ้งชำระผ่าน CpIPOS หรือ Customer Portal ภายในกำหนด";
+  const subject=`${overdue ? "แจ้งยอดค้างชำระแพ็กเกจ CpIPOS" : "แจ้งเตือนต่อแพ็กเกจ CpIPOS"} | ${text(input.storeName,100)} | ครบกำหนด ${due}`;
+  const owner=text(input.ownerName,120)||text(input.storeName,120);
+  const timing=overdue?`ค้างชำระ ${Math.abs(input.daysRemaining)} วัน · อยู่ในช่วงผ่อนผันตามสิทธิ์แพ็กเกจ`:`เหลือ ${Math.max(0,input.daysRemaining)} วัน`;
+  const chargeLabel=overdue?"ยอดค้างชำระสำหรับรอบบิลนี้":"ค่าบริการรอบถัดไป";
+  const note=overdue
+    ? "กรุณาตรวจสอบยอดค้างของรอบบิลนี้และแจ้งชำระผ่าน CpIPOS หรือ Customer Portal หากส่งหลักฐานแล้ว กรุณารอผลตรวจสอบจาก IT โดยยังไม่ถือว่าเป็นการรับชำระสำเร็จ"
+    : "กรุณาตรวจสอบรอบบิลและแจ้งชำระผ่าน CpIPOS หรือ Customer Portal ภายในกำหนด";
   const lines=[
     `เรียน ${owner}`,"",
     overdue?`แจ้งยอดค่าบริการแพ็กเกจ ${text(input.packageName,120)} ของร้าน`:`แพ็กเกจ ${text(input.packageName,120)} ของร้านใกล้สิ้นสุดรอบบริการ`,
     `ครบกำหนด: ${due}`,
     `สถานะกำหนดชำระ: ${timing}`,
-    `ค่าบริการ${overdue?"รอบที่ครบกำหนด":"รอบถัดไป"}: ${money(input.amountDue,input.currency||"THB")} (${interval})`,"",
+    `${chargeLabel}: ${money(input.amountDue,input.currency||"THB")} (${interval})`,"",
     note,
     "อีเมลฉบับนี้เป็นการแจ้งเตือน ไม่ใช่ใบเสร็จหรือหลักฐานรับชำระเงิน"
   ];
@@ -416,7 +429,7 @@ export function buildSubscriptionDueReminderEmail(input: {
     `<tr><td style="padding:13px 16px;font-size:12px;color:#64748b">ร้านค้า</td><td style="padding:13px 16px;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.storeName)}</td></tr>`,
     `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">แพ็กเกจ</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:800;color:#102a50">${escapeHtml(input.packageName)} · ${escapeHtml(interval)}</td></tr>`,
     `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ครบกำหนด</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#b45309">${escapeHtml(due)} · ${escapeHtml(timing)}</td></tr>`,
-    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">ค่าบริการแพ็กเกจ</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</td></tr>`,
+    `<tr><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:12px;color:#64748b">${escapeHtml(chargeLabel)}</td><td style="padding:13px 16px;border-top:1px solid #e3ebf5;font-size:14px;font-weight:900;color:#176fe8">${escapeHtml(money(input.amountDue,input.currency||"THB"))}</td></tr>`,
     '</table>',
     `<div style="margin-top:18px;padding:13px 15px;border-radius:10px;background:#fff8e8;color:#7a5512;font-size:12px;line-height:1.65">${escapeHtml(note)} · อีเมลนี้ไม่ใช่หลักฐานรับชำระเงิน</div>`
   ].join("");

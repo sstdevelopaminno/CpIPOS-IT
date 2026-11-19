@@ -264,6 +264,56 @@ export async function getSupportMailThread(threadId: string) {
   };
 }
 
+/**
+ * Reuse the blue CpIPOS email identity for operational Support messages.
+ * Source content is always escaped; the same plain-text message remains
+ * available for accessibility and clients that do not render HTML.
+ */
+export function renderSupportMailHtml(subject: string, body: string) {
+  const escape = (value: string) => value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+  const lines = body.split(/\r?\n/).slice(0, 200);
+  const details = lines.map((line) => {
+    const value = line.trim();
+    if (!value) return '<div style="height:12px;line-height:12px">&nbsp;</div>';
+    const otp = /^รหัส OTP:\s*(\d{6})$/.exec(value);
+    if (otp) {
+      return '<div style="margin:16px 0;padding:18px 12px;border:1px solid #bcd8fc;border-radius:12px;background:#ecf5ff;text-align:center">' +
+        '<div style="font-size:12px;color:#52657f">รหัสยืนยัน OTP</div>' +
+        '<div style="margin-top:6px;font-size:30px;font-weight:900;letter-spacing:7px;color:#123f86">' +
+        escape(otp[1] || "") + '</div></div>';
+    }
+    const idx = value.indexOf(":");
+    if (idx > 0 && idx < 44 && !value.startsWith("http")) {
+      return '<div style="margin:4px 0;font-size:14px;line-height:1.8;color:#263d5a"><strong style="color:#102a50">' +
+        escape(value.slice(0, idx + 1)) + '</strong> ' + escape(value.slice(idx + 1).trim()) + '</div>';
+    }
+    return '<div style="margin:4px 0;font-size:14px;line-height:1.8;color:#263d5a">' + escape(value) + '</div>';
+  }).join("");
+  return [
+    '<!doctype html><html lang="th"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>',
+    '<body style="margin:0;padding:0;background:#f3f6fb">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;border-collapse:collapse"><tr><td align="center" style="padding:26px 12px">',
+    '<table role="presentation" width="620" cellspacing="0" cellpadding="0" style="width:100%;max-width:620px;background:#ffffff;border:1px solid #dbe5f3;border-radius:16px;overflow:hidden">',
+    '<tr><td style="padding:22px 26px;background:#165bc4;color:#ffffff;font-family:Arial,sans-serif">',
+    '<div style="font-size:25px;font-weight:900">CpIPOS</div><div style="font-size:12px;color:#e5efff;margin-top:5px">IT SUPPORT CONTROL PLANE</div>',
+    '</td></tr><tr><td style="padding:30px 26px;font-family:Arial,\'Noto Sans Thai\',sans-serif;color:#142946">',
+    '<div style="font-size:21px;font-weight:900;line-height:1.5;color:#102a50">' + escape(subject.slice(0, 300)) + '</div>',
+    '<div style="margin-top:20px;padding:16px;border-radius:12px;background:#f8fbff;border:1px solid #e2eaf5">',
+    details,
+    '</div>',
+    '<div style="margin-top:23px;border-top:1px solid #e2eaf5;padding-top:18px;font-size:12px;line-height:1.8;color:#66758b">',
+    'CpIPOS IT Support<br><a href="mailto:cuttingpointtech.support@gmail.com" style="color:#176fe8;text-decoration:none">cuttingpointtech.support@gmail.com</a>',
+    '</div></td></tr></table>',
+    '<div style="padding:12px;font-family:Arial,sans-serif;font-size:11px;color:#94a3b8">อีเมลแจ้งเตือนจากระบบ IT Support ของ CpIPOS</div>',
+    '</td></tr></table></body></html>'
+  ].join("");
+}
+
 export async function sendSupportMail(input: { to: string; subject: string; body: string }) {
   // A Support/IT OTP and registration alert must originate only from the
   // dedicated Support Google account, never the customer notification mailbox.
@@ -272,7 +322,8 @@ export async function sendSupportMail(input: { to: string; subject: string; body
     action: "send_new",
     to: input.to,
     subject: input.subject,
-    body: input.body
+    body: input.body,
+    htmlBody: renderSupportMailHtml(input.subject, input.body)
   });
   // The OTP caller must never issue a challenge as "emailed" on a generic
   // HTTP-200/ok receipt. Require the exact sender and positive send ACK.

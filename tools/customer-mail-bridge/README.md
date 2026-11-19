@@ -11,7 +11,7 @@ Two **independent Gmail accounts** are required. Do not use one Google Apps Scri
 
 ## Deployment checklist
 
-This folder contains one `Code.gs` and one `appsscript.json`. Deploy the **same code version `2026-11-20.4`** in two separate Google Apps Script **projects**, with different Google executors and Script Properties.
+This folder contains one `Code.gs` and one `appsscript.json`. Deploy the **same code version `2026-11-20.5`** in two separate Google Apps Script **projects**, with different Google executors and Script Properties.
 
 **1. Company Web App**
 
@@ -46,6 +46,14 @@ Never paste either secret into GitHub, the browser, logs or a customer email. A 
 ## Database contact settings
 
 In CpiPOS-001 `it_communication_settings`, `billing_email` must be `cuttingpointtech@gmail.com`, while `support_email` must be `cuttingpointtech.support@gmail.com`. These are **contact/reply-to defaults**; the actual Gmail sender is determined by the Google Web App executor.
+
+## Billing and responsive HTML notifications
+
+- The company's `cuttingpointtech@gmail.com` continues sending **all existing customer-facing billing events**: package renewal / expiry reminders, overdue-cycle amounts, verified payment confirmations, receipt reference, and daily sales reports. It continues using CpIPOS's blue, responsive, branded HTML template and the matching plain-text alternative.
+- The `subscription_due_reminder` worker now looks up canonical `outstanding` from `subscription_billing_due_states` before labeling any reminder as an overdue balance, and skips any payment-status or billing-cycle change instead of sending an obsolete demand. **No change to the two-month arrears/grace policy.**
+- The Support `send_new` action renders blue, responsive HTML for IT registration alerts, LINE Support OTP, and other Support notices, retaining a matching plain-text body. IT temporary-password reset continues using its existing HTML template through `send_it_password`.
+- The company mailbox does **not** send IT temporary passwords, Support OTP, or internal IT new-registration alerts; the Support mailbox does **not** send customer bills or sales summaries.
+- Update **both** Apps Script projects to Code.gs v2026-11-20.5 to get the new branded Support HTML. This is separate from updating the Next.js deployment.
 
 ## Cutover safety
 

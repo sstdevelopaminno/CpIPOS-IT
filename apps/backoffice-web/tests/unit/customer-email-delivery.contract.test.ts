@@ -66,6 +66,13 @@ describe("transactional customer email delivery", () => {
     expect(service).toContain("website_url");
     expect(service).toContain("email_footer_note");
     expect(service).toContain("ยืนยันการรับชำระเงินเรียบร้อย");
+    expect(service).toContain("แจ้งยอดค้างชำระแพ็กเกจ CpIPOS");
+    expect(service).toContain("ยอดค้างชำระสำหรับรอบบิลนี้");
+    expect(service).toContain("statusIcon");
+    expect(service).toContain("statusBackground");
+    expect(reminderWorker).toContain('db.rpc("subscription_billing_due_states"');
+    expect(reminderWorker).toContain("outstanding <= 0");
+    expect(reminderWorker).toContain("skipped_balance_or_payment_changed");
     expect(service).toContain("เปิดใช้งานระบบสำเร็จแล้ว");
     expect(settings).toContain("company_thai_name");
     expect(settings).toContain("email_footer_note");
