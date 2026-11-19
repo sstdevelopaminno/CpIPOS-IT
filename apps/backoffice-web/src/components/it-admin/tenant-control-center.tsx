@@ -549,7 +549,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
         })()
     : 0;
   const visibleSalesModes = data?.sales_modes.filter((mode) =>
-    mode.key !== "optical_retail" || data.current_package?.code === "custom"
+    !["optical_retail", "recycling"].includes(mode.key) || data.current_package?.code === "custom"
       || Boolean(data.internal_it_test_mode)
   ) ?? [];
   const salesModeEnabledCount = visibleSalesModes.filter((mode) => mode.enabled).length;
