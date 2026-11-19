@@ -878,7 +878,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
                     element.scrollHeight - element.scrollTop - element.clientHeight < 130;
                 }}
                 className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f7faff] p-3 pb-5 sm:p-4 sm:pb-6 [scrollbar-gutter:stable]">
-                {busy === "conversation" && !messages.length ? <div className="text-center text-xs text-slate-500">กำลังโหลด...</div> : null}
+                {detailLoading && !messages.length ? <div role="status" className="text-center text-xs text-slate-500">กำลังโหลด...</div> : null}
                 {messages.map((message) => {
                   if (message.sender_type === "system") {
                     const voiceAudit = message.message_body.startsWith("📞") || message.message_body.startsWith("☎");
@@ -957,7 +957,7 @@ export function SupportChatConsole({ historyOnly = false }: { historyOnly?: bool
               </div>
             </>
           ) : (
-            <div className="relative grid min-h-0 flex-1 place-items-center overflow-y-auto p-4 text-center sm:p-8">
+            <div aria-busy={Boolean(selectedId && detailLoading)} className="relative grid min-h-0 flex-1 place-items-center overflow-y-auto p-4 text-center sm:p-8">
               <button type="button" onClick={() => setMobilePane("inbox")}
                 className="absolute left-3 top-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 xl:hidden">
                 ← กลับรายการแชท
