@@ -16,14 +16,21 @@ The Support Mailbox must be:
 1. Sign in to **cuttingpointtech.support@gmail.com**.
 2. Open the existing Google Apps Script project used by CpIPOS transactional mail.
 3. Replace `Code.gs` with the current file from this folder.
-4. In **Project Settings → Script Properties**, configure:
+4. In **Project Settings**, enable **Show "appsscript.json" manifest file**
+   and use the `appsscript.json` file in this folder. It explicitly declares
+   `userinfo.email`, `script.send_mail`, and `mail.google.com/` scopes.
+   While signed into the **Support** Google account, run
+   `authorizeSupportMailBridge` directly in the Apps Script editor and
+   grant the scopes in the Google OAuth dialog. Confirm the returned mailbox
+   is exactly `cuttingpointtech.support@gmail.com` before deploying.
+5. In **Project Settings → Script Properties**, configure:
    - `CPIPOS_MAIL_BRIDGE_SECRET` = the same server secret configured in Vercel.
    - `CPIPOS_SUPPORT_MAILBOX` = `cuttingpointtech.support@gmail.com`.
-5. Deploy as **Web app**:
+6. Deploy as **Web app**:
    - Execute as: **Me**
    - Who has access: **Anyone**
-6. If an existing deployment is already used by Production, edit that deployment and publish a new version so the Web App URL remains unchanged.
-7. In Vercel keep:
+7. If an existing deployment is already used by Production, edit that deployment and publish a new version so the Web App URL remains unchanged.
+8. In Vercel keep:
    - `CPIPOS_MAIL_BRIDGE_URL`
    - `CPIPOS_MAIL_BRIDGE_SECRET`
    - optional `CPIPOS_SUPPORT_MAILBOX=cuttingpointtech.support@gmail.com`
@@ -64,3 +71,31 @@ The database keeps one unique `event_key` per transactional business event. Fail
 - Known mistyped recipient domains remain blocked by CpIPOS-IT.
 - Gmail credentials are not stored in Supabase.
 - `cuttingpointtech@gmail.com` is intentionally excluded from the Support Mail console.
+
+## LINE Support OTP production verification
+
+The first-time LINE Support verification flow uses `sendSupportMail` and
+requires a positive `sent:true` acknowledgement from this exact Support
+mailbox. The operational prerequisites above are mandatory.
+
+To verify safely, use a **designated test store/Owner and a fresh test LINE
+identity**. Do not send an unsolicited OTP to a real customer.
+
+1. In the authorized Support Apps Script editor run
+   `authorizeSupportMailBridge` with the correct account; inspect remaining
+   Gmail quota and grant any requested permissions.
+2. Update the existing Web App **deployment version** to use the new code
+   and manifest. Do not publish an alternative URL unless Vercel config is updated.
+3. Confirm the IT deployment's `CPIPOS_SUPPORT_MAIL_BRIDGE_URL` and
+   `CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET` (or the documented default/fallback)
+   refer to that **same** Support script and secret.
+4. From a fresh test LINE account request one OTP for the test Owner,
+   check the actual Gmail From and whether the 6-digit code arrives.
+5. Verify the code once, check that the chat appears in IT, and confirm
+   reuse, expiry, and a changed Owner cannot bypass verification.
+6. Do not include the plaintext OTP, hashed challenge or recipient email
+   in logs or GitHub issues. If Google asks for consent, only the Google
+   account owner can approve that permission.
+
+A GitHub commit alone cannot grant Google OAuth consent, update a bound
+Apps Script Web App deployment or prove that a real OTP was delivered.
