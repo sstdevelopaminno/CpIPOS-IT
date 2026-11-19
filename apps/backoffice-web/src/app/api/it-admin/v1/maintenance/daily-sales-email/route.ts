@@ -141,7 +141,7 @@ function businessDateFromEventKey(eventKey: string) {
 }
 
 async function loadOverview(context: Awaited<ReturnType<typeof requireItAdmin>>) {
-  const [tenantsResult, settingsResult, deliveriesResult] = await Promise.all([
+  const [tenantsResult, settingsResult, deliveriesResult, senderResult] = await Promise.all([
     context.supabase
       .from("tenants")
       .select("id,name,display_name,primary_owner_user_id,is_active")
@@ -159,12 +159,18 @@ async function loadOverview(context: Awaited<ReturnType<typeof requireItAdmin>>)
       .eq("event_type", "daily_sales_summary")
       .order("created_at", { ascending: false })
       .limit(1000)
-      .returns<DeliveryRow[]>()
+      .returns<DeliveryRow[]>(),
+    context.supabase
+      .from("it_communication_settings")
+      .select("billing_email")
+      .eq("id", "default")
+      .maybeSingle<{ billing_email: string }>()
   ]);
 
   if (tenantsResult.error) throw new Error("daily_sales_email_tenants_failed:" + tenantsResult.error.message);
   if (settingsResult.error) throw new Error("daily_sales_email_settings_failed:" + settingsResult.error.message);
   if (deliveriesResult.error) throw new Error("daily_sales_email_deliveries_failed:" + deliveriesResult.error.message);
+  if (senderResult.error) throw new Error("daily_sales_email_sender_settings_failed:" + senderResult.error.message);
 
   const tenants = tenantsResult.data ?? [];
   const settings = new Map((settingsResult.data ?? []).map((row) => [row.tenant_id, row]));
@@ -241,6 +247,13 @@ async function loadOverview(context: Awaited<ReturnType<typeof requireItAdmin>>)
   };
 
   return {
+    sender: {
+      email: String(senderResult.data?.billing_email ?? "").trim().toLowerCase(),
+      bridge_configured: Boolean(
+        process.env.CPIPOS_DAILY_SALES_MAIL_BRIDGE_URL?.trim()
+        && process.env.CPIPOS_DAILY_SALES_MAIL_BRIDGE_SECRET?.trim()
+      )
+    },
     timezone: "Asia/Bangkok",
     cutoff: "00:00",
     send_at: "00:15",

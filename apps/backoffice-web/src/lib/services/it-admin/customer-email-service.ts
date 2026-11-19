@@ -754,10 +754,29 @@ export async function deliverCustomerEmail(input: {
     return { status: "blocked", delivery_id: delivery.id, message: problem };
   }
 
-  const bridgeUrl = process.env.CPIPOS_MAIL_BRIDGE_URL?.trim();
-  const bridgeSecret = process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
+  // Daily sales summaries use a dedicated sender owned by the company.
+  // Never silently fall back to the Support mailbox for a store's sales report.
+  const isDailySalesSummary = input.eventType === "daily_sales_summary" || input.eventType === "daily_sales_summary_test";
+  const expectedSenderEmail = isDailySalesSummary ? settings.billing_email.trim().toLowerCase() : null;
+  const bridgeUrl = (isDailySalesSummary
+    ? process.env.CPIPOS_DAILY_SALES_MAIL_BRIDGE_URL
+    : process.env.CPIPOS_MAIL_BRIDGE_URL)?.trim();
+  const bridgeSecret = (isDailySalesSummary
+    ? process.env.CPIPOS_DAILY_SALES_MAIL_BRIDGE_SECRET
+    : process.env.CPIPOS_MAIL_BRIDGE_SECRET)?.trim();
   if (!bridgeUrl || !bridgeSecret) {
-    const message = "ยังไม่ได้ตั้งค่า CPIPOS_MAIL_BRIDGE_URL / CPIPOS_MAIL_BRIDGE_SECRET จึงยังส่งอีเมลจริงไม่ได้";
+    const message = isDailySalesSummary
+      ? "ยังไม่ได้ตั้งค่า Mail Bridge อีเมลบริษัทสำหรับสรุปยอด (CPIPOS_DAILY_SALES_MAIL_BRIDGE_URL / CPIPOS_DAILY_SALES_MAIL_BRIDGE_SECRET)"
+      : "ยังไม่ได้ตั้งค่า CPIPOS_MAIL_BRIDGE_URL / CPIPOS_MAIL_BRIDGE_SECRET จึงยังส่งอีเมลจริงไม่ได้";
+    await updateDelivery(input.db, delivery.id, {
+      status: "blocked",
+      last_error: message,
+      last_attempt_at: new Date().toISOString()
+    });
+    return { status: "blocked", delivery_id: delivery.id, message };
+  }
+  if (isDailySalesSummary && (!expectedSenderEmail || customerEmailProblem(expectedSenderEmail))) {
+    const message = "ยังไม่ได้ตั้งค่าอีเมลบริษัทที่ถูกต้องใน IT Communication Settings (billing_email)";
     await updateDelivery(input.db, delivery.id, {
       status: "blocked",
       last_error: message,
@@ -798,6 +817,9 @@ export async function deliverCustomerEmail(input: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         secret: bridgeSecret,
+        action: "send_transactional",
+        // Company-only bridge must reject mismatched accounts before sending.
+        expectedSenderEmail: expectedSenderEmail ?? undefined,
         idempotencyKey: delivery.event_key,
         to,
         subject: brandedMessage.subject,
@@ -811,9 +833,12 @@ export async function deliverCustomerEmail(input: {
       signal: AbortSignal.timeout(8000)
     });
 
-    const payload = await response.json().catch(() => null) as { ok?: boolean; messageId?: string; error?: string } | null;
+    const payload = await response.json().catch(() => null) as { ok?: boolean; messageId?: string; error?: string; mailbox?: string } | null;
     if (!response.ok || payload?.ok !== true) {
       throw new Error(text(payload?.error || `mail_bridge_http_${response.status}`, 300));
+    }
+    if (isDailySalesSummary && String(payload.mailbox ?? "").trim().toLowerCase() !== expectedSenderEmail) {
+      throw new Error("daily_sales_sender_mismatch");
     }
 
     await updateDelivery(input.db, delivery.id, {

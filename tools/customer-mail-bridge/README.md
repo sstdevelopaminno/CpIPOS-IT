@@ -16,14 +16,19 @@ The Support Mailbox must be:
 1. Sign in to **cuttingpointtech.support@gmail.com**.
 2. Open the existing Google Apps Script project used by CpIPOS transactional mail.
 3. Replace `Code.gs` with the current file from this folder.
-4. In **Project Settings → Script Properties**, configure:
+4. In **Project Settings**, enable **Show "appsscript.json" manifest file** and
+   replace that manifest with `tools/customer-mail-bridge/appsscript.json`.
+   This explicitly lists `userinfo.email`, `script.send_mail`, and Gmail scopes.
+   Run `authorizeSupportMailBridge` manually once and grant Google's OAuth
+   permissions under the Support account before updating the Web App deployment.
+5. In **Project Settings → Script Properties**, configure:
    - `CPIPOS_MAIL_BRIDGE_SECRET` = the same server secret configured in Vercel.
    - `CPIPOS_SUPPORT_MAILBOX` = `cuttingpointtech.support@gmail.com`.
-5. Deploy as **Web app**:
+6. Deploy as **Web app**:
    - Execute as: **Me**
    - Who has access: **Anyone**
-6. If an existing deployment is already used by Production, edit that deployment and publish a new version so the Web App URL remains unchanged.
-7. In Vercel keep:
+7. If an existing deployment is already used by Production, edit that deployment and publish a new version so the Web App URL remains unchanged.
+8. In Vercel keep:
    - `CPIPOS_MAIL_BRIDGE_URL`
    - `CPIPOS_MAIL_BRIDGE_SECRET`
    - optional `CPIPOS_SUPPORT_MAILBOX=cuttingpointtech.support@gmail.com`
@@ -64,3 +69,12 @@ The database keeps one unique `event_key` per transactional business event. Fail
 - Known mistyped recipient domains remain blocked by CpIPOS-IT.
 - Gmail credentials are not stored in Supabase.
 - `cuttingpointtech@gmail.com` is intentionally excluded from the Support Mail console.
+
+## Daily sales summaries from a company sender
+
+This Support mailbox remains separate from the **company sender** of Daily Sales Email.
+Use the send-only bridge in `tools/daily-sales-mail-bridge/`, using the
+approved company Google account and a separate secret (see its README).
+
+Changing the display name or Reply-To does **not** change the actual Gmail From
+address; the Google account authorizing the Web App determines the sender.
