@@ -11,7 +11,7 @@ Two **independent Gmail accounts** are required. Do not use one Google Apps Scri
 
 ## Deployment checklist
 
-This folder contains one `Code.gs` and one `appsscript.json`. Deploy the **same code version `2026-11-20.3`** in two separate Google Apps Script **projects**, with different Google executors and Script Properties.
+This folder contains one `Code.gs` and one `appsscript.json`. Deploy the **same code version `2026-11-20.4`** in two separate Google Apps Script **projects**, with different Google executors and Script Properties.
 
 **1. Company Web App**
 
