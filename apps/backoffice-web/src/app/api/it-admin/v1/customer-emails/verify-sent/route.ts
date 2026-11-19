@@ -65,7 +65,7 @@ export async function GET(request: Request) {
       return thread.subject.trim().toLowerCase() === subject.toLowerCase()
         && thread.to.toLowerCase().includes(recipient)
         && Number.isFinite(attemptAt) && Number.isFinite(sentAt)
-        && Math.abs(sentAt - attemptAt) <= 60 * 60 * 1000;
+        && Math.abs(sentAt - attemptAt) <= 10 * 60 * 1000;
     });
     return ok({
       found: Boolean(match),
