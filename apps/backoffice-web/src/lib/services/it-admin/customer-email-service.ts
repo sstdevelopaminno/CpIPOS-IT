@@ -781,14 +781,16 @@ export async function deliverCustomerEmail(input: {
     return { status: "blocked", delivery_id: delivery.id, message };
   }
 
+  const verifiedBridgeUrl = bridgeUrl;
+  const verifiedBridgeSecret = bridgeSecret;
   // Verify the authenticated sending identity before consuming a customer
   // email. Deploying new IT code must never send through the old Support Gmail.
   // This is intentionally a no-send request to the same bridge URL and secret.
   async function verifySenderMailbox() {
-    const statusResponse = await fetch(bridgeUrl, {
+    const statusResponse = await fetch(verifiedBridgeUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "status", secret: bridgeSecret }),
+      body: JSON.stringify({ action: "status", secret: verifiedBridgeSecret }),
       signal: AbortSignal.timeout(8000)
     });
     const statusPayload = await statusResponse.json().catch(() => null) as
