@@ -42,8 +42,9 @@ function doPost(e) {
     var action = String(body.action || "send_transactional").trim();
     var mailbox = supportMailbox_();
     var effective = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();
-    if (mailbox && effective && mailbox !== effective) {
-      return json_({ ok: false, error: "wrong_mailbox", mailbox: effective });
+    if (!mailbox || !effective || mailbox !== effective) {
+      // Fail closed: a missing OAuth identity must never bypass mailbox verification.
+      return json_({ ok: false, error: "wrong_mailbox", mailbox: effective || null });
     }
 
     if (action === "status") return json_({ ok: true, mailbox: mailbox || effective });
@@ -63,6 +64,19 @@ function doPost(e) {
   } catch (error) {
     return json_({ ok: false, error: String(error && error.message || error || "mail_bridge_failed") });
   }
+}
+
+/**
+ * Run manually after updating appsscript.json. Grants Gmail/Mail/identity
+ * scopes and confirms the Web App owner is the configured Support mailbox.
+ */
+function authorizeSupportMailBridge() {
+  var expected = supportMailbox_();
+  var effective = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();
+  if (!effective || expected !== effective) throw new Error("wrong_mailbox");
+  var quota = MailApp.getRemainingDailyQuota();
+  GmailApp.getAliases(); // Explicitly exercise the existing Support Inbox scope.
+  return { mailbox: effective, remainingDailyQuota: quota };
 }
 
 function supportMailbox_() {

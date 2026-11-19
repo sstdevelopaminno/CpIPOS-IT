@@ -187,12 +187,22 @@ export async function getSupportMailThread(threadId: string) {
 }
 
 export async function sendSupportMail(input: { to: string; subject: string; body: string }) {
-  return callBridge<BridgeBase & { sent?: boolean }>({
+  const receipt = await callBridge<BridgeBase & { sent?: boolean }>({
     action: "send_new",
     to: input.to,
     subject: input.subject,
     body: input.body
   });
+  // The OTP caller must never issue a challenge as "emailed" on a generic
+  // HTTP-200/ok receipt. Require the exact sender and positive send ACK.
+  if (receipt.sent !== true || normalizeMailbox(receipt.mailbox) !== SUPPORT_MAILBOX) {
+    throw new SupportMailBridgeError(
+      "support_mail_send_unconfirmed",
+      "Mail Bridge ยังไม่ยืนยันการส่งอีเมลจากบัญชี Support",
+      502
+    );
+  }
+  return receipt;
 }
 
 export async function replySupportMail(input: { threadId: string; body: string }) {

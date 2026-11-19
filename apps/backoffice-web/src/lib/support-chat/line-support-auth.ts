@@ -3,7 +3,7 @@ import "server-only";
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
-import { sendSupportMail } from "@/lib/services/it-admin/support-mail-service";
+import { sendSupportMail, SupportMailBridgeError } from "@/lib/services/it-admin/support-mail-service";
 
 const LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 const DEFAULT_LINE_LOGIN_CHANNEL_ID = "2011852850";
@@ -41,6 +41,7 @@ export type LineSupportBinding = {
   line_user_id: string;
   line_display_name: string | null;
   line_avatar_url: string | null;
+  verified_owner_user_id: string | null;
 };
 
 export type LineSupportSession = {
@@ -267,14 +268,16 @@ export async function resolveLineSupportStore(rawStoreCode: unknown): Promise<Li
 export async function findActiveLineSupportBinding(identity: VerifiedLineIdentity, store: LineSupportStore) {
   const db = getPrimarySupabaseServiceClient();
   const result = await db.from("line_support_bindings")
-    .select("id,tenant_id,line_user_id,line_display_name,line_avatar_url")
+    .select("id,tenant_id,line_user_id,line_display_name,line_avatar_url,verified_owner_user_id")
     .eq("line_user_id", identity.userId)
     .eq("tenant_id", store.tenantId)
     .eq("is_active", true)
     .maybeSingle<LineSupportBinding>();
 
   if (result.error) throw new LineSupportError("line_binding_lookup_failed", "ตรวจสอบสิทธิ์ Support ไม่สำเร็จ", 503);
-  if (!result.data) return null;
+  // Owner transfers invalidate previously approved LINE identities.
+  // Do not silently inherit a former owner's Support Chat authorization.
+  if (!result.data || result.data.verified_owner_user_id !== store.ownerUserId) return null;
 
   await db.from("line_support_bindings")
     .update({
@@ -335,6 +338,8 @@ export async function requestLineSupportOtp(identity: VerifiedLineIdentity, stor
       ].join("\n")
     });
   } catch (error) {
+    // Never log the recipient address, OTP, or challenge hash.
+    console.error("[line-support-otp-email]", error instanceof SupportMailBridgeError ? error.code : "otp_delivery_failed");
     await db.from("line_support_verification_challenges").delete().eq("id", challengeId);
     throw error;
   }
@@ -385,6 +390,23 @@ export async function verifyLineSupportOtp(input: {
   }
 
   const now = new Date().toISOString();
+  // Atomically consume the valid challenge BEFORE issuing an access binding.
+  // Without this compare-and-set two concurrent verifies can reuse one OTP.
+  const consumed = await db.from("line_support_verification_challenges")
+    .update({ attempt_count: nextAttempts, consumed_at: now })
+    .eq("id", challengeId)
+    .eq("line_user_id", input.identity.userId)
+    .eq("tenant_id", input.store.tenantId)
+    .eq("owner_user_id", input.store.ownerUserId)
+    .eq("attempt_count", Number(challenge.attempt_count ?? 0))
+    .is("consumed_at", null)
+    .gt("expires_at", now)
+    .select("id")
+    .maybeSingle<{ id: string }>();
+  if (consumed.error || !consumed.data) {
+    throw new LineSupportError("otp_expired", "รหัส OTP หมดอายุหรือมีการยืนยันแล้ว กรุณาขอรหัสใหม่", 401);
+  }
+
   const bindingId = randomUUID();
   const binding = await db.from("line_support_bindings").upsert({
     id: bindingId,
@@ -398,17 +420,13 @@ export async function verifyLineSupportOtp(input: {
     last_used_at: now,
     updated_at: now
   }, { onConflict: "line_user_id,tenant_id", ignoreDuplicates: false })
-    .select("id,tenant_id,line_user_id,line_display_name,line_avatar_url")
+    .select("id,tenant_id,line_user_id,line_display_name,line_avatar_url,verified_owner_user_id")
     .single<LineSupportBinding>();
 
   if (binding.error || !binding.data) {
-    throw new LineSupportError("line_binding_failed", "ผูก LINE กับร้านค้าไม่สำเร็จ กรุณาลองใหม่", 503);
+    // OTP is already single-use; the customer must request a new one on failure.
+    throw new LineSupportError("line_binding_failed", "ผูก LINE กับร้านค้าไม่สำเร็จ กรุณาขอ OTP ใหม่", 503);
   }
-
-  await db.from("line_support_verification_challenges")
-    .update({ attempt_count: nextAttempts, consumed_at: now })
-    .eq("id", challengeId);
-
   return binding.data;
 }
 
@@ -462,16 +480,26 @@ export async function requireLineSupportSession(): Promise<LineSupportSession> {
   }
 
   const db = getPrimarySupabaseServiceClient();
-  const binding = await db.from("line_support_bindings")
-    .select("id,tenant_id,is_active")
-    .eq("id", session.bindingId)
-    .eq("tenant_id", session.tenantId)
-    .eq("is_active", true)
-    .maybeSingle();
+  const [binding, tenant] = await Promise.all([
+    db.from("line_support_bindings")
+      .select("id,tenant_id,is_active,verified_owner_user_id")
+      .eq("id", session.bindingId)
+      .eq("tenant_id", session.tenantId)
+      .eq("is_active", true)
+      .maybeSingle(),
+    db.from("tenants")
+      .select("id,is_active,primary_owner_user_id")
+      .eq("id", session.tenantId)
+      .maybeSingle()
+  ]);
 
-  if (binding.error || !binding.data) {
+  // Reject stale cookies immediately when the tenant is disabled or the
+  // designated Owner changes, rather than trusting a 30-minute old session.
+  if (binding.error || tenant.error || !binding.data || !tenant.data?.is_active ||
+      !tenant.data.primary_owner_user_id ||
+      binding.data.verified_owner_user_id !== tenant.data.primary_owner_user_id) {
     await clearLineSupportSession();
-    throw new LineSupportError("line_support_binding_revoked", "สิทธิ์ LINE Support ถูกยกเลิก กรุณายืนยันใหม่", 401);
+    throw new LineSupportError("line_support_binding_revoked", "สิทธิ์ LINE Support ถูกเปลี่ยน กรุณายืนยัน Owner อีกครั้ง", 401);
   }
 
   return session;
