@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -30,6 +31,44 @@ describe("IT Support Mail integration", () => {
     expect(bridge).toContain('if (!mailbox || !effective || mailbox !== effective)');
     expect(bridge.indexOf('var expected = PropertiesService.getScriptProperties().getProperty("CPIPOS_MAIL_BRIDGE_SECRET")'))
       .toBeLessThan(bridge.indexOf('var effective = authorizedSupportExecutor_(mailbox)'));
+  });
+
+  it("accepts only recent editor-attested Support mailbox when Web App Session OAuth fails", () => {
+    const props = new Map<string, string>([
+      ["CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech.support@gmail.com"]
+    ]);
+    let sessionError = false;
+    let account = "cuttingpointtech.support@gmail.com";
+    const context = {
+      PropertiesService: { getScriptProperties: () => ({
+        getProperty: (key: string) => props.get(key) ?? null,
+        setProperty: (key: string, value: string) => { props.set(key, value); }
+      }) },
+      Session: { getEffectiveUser: () => {
+        if (sessionError) throw new Error("You do not have permission to call Session.getEffectiveUser");
+        return { getEmail: () => account };
+      } },
+      GmailApp: { getAliases: () => [] },
+      MailApp: { getRemainingDailyQuota: () => 50 },
+      Logger: { log: () => undefined }
+    };
+    const api = runInNewContext(bridge + "; ({authorizeSupportMailBridge, authorizedSupportExecutor_})", context) as {
+      authorizeSupportMailBridge: () => {mailbox: string};
+      authorizedSupportExecutor_: (mailbox: string) => string;
+    };
+    const expected = "cuttingpointtech.support@gmail.com";
+    sessionError = true;
+    expect(() => api.authorizedSupportExecutor_(expected)).toThrow("support_mailbox_authorization_required");
+    sessionError = false;
+    expect(api.authorizeSupportMailBridge().mailbox).toBe(expected);
+    sessionError = true;
+    expect(api.authorizedSupportExecutor_(expected)).toBe(expected);
+    props.set("CPIPOS_VERIFIED_SUPPORT_MAILBOX_AT", "2000-01-01T00:00:00.000Z");
+    expect(() => api.authorizedSupportExecutor_(expected)).toThrow("support_mailbox_authorization_required");
+    sessionError = false;
+    account = "cuttingpointtech@gmail.com";
+    expect(() => api.authorizeSupportMailBridge()).toThrow("wrong_mailbox");
+    expect(api.authorizedSupportExecutor_(expected)).toBe(account);
   });
 
   it("supports Gmail-style folders, thread read, reply, send, mark-read and archive", () => {
