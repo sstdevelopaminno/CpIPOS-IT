@@ -79,7 +79,8 @@ function doPost(e) {
     if (cache.get(key)) {
       return companyJson_({ ok: true, deduplicated: true, messageId: "cached", mailbox: effective });
     }
-    var reserve = Math.max(10, Math.min(90, Number(props.getProperty("CPIPOS_MAIL_MIN_REMAINING_QUOTA") || 30)));
+    var reserveSetting = Number(props.getProperty("CPIPOS_MAIL_MIN_REMAINING_QUOTA") || 30);
+    var reserve = isFinite(reserveSetting) ? Math.max(10, Math.min(90, Math.floor(reserveSetting))) : 30;
     var remaining = MailApp.getRemainingDailyQuota();
     if (remaining < reserve + 1) {
       return companyJson_({ ok: false, error: "mail_daily_quota_reserved", mailbox: effective, remaining: remaining });
