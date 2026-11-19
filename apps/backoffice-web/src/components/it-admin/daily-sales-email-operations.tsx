@@ -36,6 +36,7 @@ type StoreRow = {
 };
 
 type Overview = {
+  sender: { email: string; bridge_configured: boolean };
   timezone: string;
   cutoff: string;
   send_at: string;
@@ -100,6 +101,9 @@ const COPY = {
     loadFailed: "โหลดสถานะ Daily Sales Email ไม่สำเร็จ",
     retryFailed: "Retry ไม่สำเร็จ",
     schedule: "ตัดวัน 00:00 · ส่ง 00:15 น. · Asia/Bangkok",
+    sender: "อีเมลบริษัทที่ใช้ส่งสรุปยอด",
+    senderConfigured: "ตั้งค่า Mail Bridge ใน Vercel แล้ว (ยังต้องตรวจสิทธิ์ Google และส่งทดสอบ)",
+    senderMissing: "ยังไม่ได้เชื่อม Mail Bridge ของอีเมลบริษัท การส่งจริงจะถูกบล็อก",
     noRows: "ไม่พบร้านตามตัวกรอง",
     previous: "ก่อนหน้า",
     next: "ถัดไป",
@@ -147,6 +151,9 @@ const COPY = {
     loadFailed: "Unable to load Daily Sales Email status",
     retryFailed: "Retry failed",
     schedule: "00:00 cutoff · 00:15 delivery · Asia/Bangkok",
+    sender: "Company sender for sales reports",
+    senderConfigured: "Mail Bridge configured in Vercel (Google permissions and test still required)",
+    senderMissing: "Company Mail Bridge is not configured. Actual sending will be blocked.",
     noRows: "No stores match this filter",
     previous: "Previous",
     next: "Next",
@@ -314,6 +321,14 @@ export function DailySalesEmailOperations({ language }: { language: Language }) 
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       {message ? <div className="mx-4 mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">{message}</div> : null}
       {error ? <div className="mx-4 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
+      {data?.sender ? (
+        <div className="mx-4 mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+          <strong className="text-slate-800">{t.sender}: {data.sender.email || "—"}</strong>
+          <div className={"mt-1 text-xs font-semibold " + (data.sender.bridge_configured ? "text-slate-600" : "text-amber-800")}>
+            {data.sender.bridge_configured ? t.senderConfigured : t.senderMissing}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
         <input
