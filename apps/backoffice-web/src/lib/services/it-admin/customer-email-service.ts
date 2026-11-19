@@ -92,6 +92,15 @@ function text(value: unknown, max = 500) {
   return String(value ?? "").trim().slice(0, max);
 }
 
+/** Translate provider authorization failures into a safe, actionable IT diagnostic. */
+export function customerEmailFailureMessage(value: unknown) {
+  const raw = text(value instanceof Error ? value.message : value, 500);
+  if (/Session\.getEffectiveUser|userinfo\.email|authorization is required/i.test(raw)) {
+    return "Google Apps Script ยังไม่ได้รับสิทธิ์ OAuth (userinfo.email) กรุณาให้เจ้าของบัญชี Support เปิด Apps Script, เรียก authorizeSupportMailBridge เพื่ออนุญาตสิทธิ์ และ Deploy Web App เวอร์ชันใหม่ ก่อนกดส่งอีเมลอีกครั้ง";
+  }
+  return raw || "mail_delivery_failed";
+}
+
 function escapeHtml(value: unknown) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -825,7 +834,7 @@ export async function deliverCustomerEmail(input: {
     });
     return { status: "sent", delivery_id: delivery.id, message: "ส่งอีเมลสำเร็จ" };
   } catch (error) {
-    const message = text(error instanceof Error ? error.message : "mail_delivery_failed", 500);
+    const message = customerEmailFailureMessage(error);
     await updateDelivery(input.db, delivery.id, { status: "failed", last_error: message });
     return { status: "failed", delivery_id: delivery.id, message };
   }
