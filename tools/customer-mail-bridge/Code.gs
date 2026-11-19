@@ -17,7 +17,7 @@
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.3";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.4";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -28,6 +28,7 @@ var SUPPORT_MAIL_CAPABILITIES = [
   "list_threads",
   "get_thread",
   "send_new",
+  "send_it_password",
   "reply",
   "mark_read",
   "archive_thread",
@@ -62,6 +63,15 @@ function doPost(e) {
     } else if (mailbox === "cuttingpointtech.support@gmail.com" &&
                action === "send_transactional") {
       return json_({ ok: false, error: "unsupported_role_action", mailbox: mailbox });
+    }
+    // IT password recovery is the only template-preserving transactional
+    // action allowed on the dedicated Support account. The company script
+    // rejects it as an unsupported role action.
+    if (action === "send_it_password") {
+      if (mailbox !== "cuttingpointtech.support@gmail.com") {
+        return json_({ ok: false, error: "unsupported_role_action", mailbox: mailbox });
+      }
+      return sendTransactional_(body, mailbox);
     }
 
     if (action === "status") return json_({ ok: true, mailbox: mailbox || effective });
@@ -369,7 +379,8 @@ function sendTransactional_(body, mailbox) {
   var budget = checkMailQuota_(1);
   if (!budget.ok) return json_(budget);
 
-  // Transactional mail must also be visible in Support's Gmail Sent folder.
+  // Transactional and IT password mail should be visible in the authenticated
+  // executor's own Gmail Sent folder.
   // MailApp acceptance alone is not the same as Gmail Sent evidence.
   GmailApp.sendEmail(to, subject, textBody, {
     htmlBody: htmlBody || undefined,
