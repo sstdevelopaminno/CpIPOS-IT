@@ -17,7 +17,7 @@
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.4";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.5";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
