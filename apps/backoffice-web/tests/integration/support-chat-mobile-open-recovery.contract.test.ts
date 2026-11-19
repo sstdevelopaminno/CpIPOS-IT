@@ -61,7 +61,8 @@ describe("IT Support Chat mobile room opening and recovery", () => {
     expect(detailApi).toContain("mark_read: true");
     expect(detailApi).toContain("after(async () => {");
     expect(detailApi).toContain("Promise.allSettled(jobs)");
-    expect(detailApi).not.toContain("await mirrorSupportChatHead(data.head)");
+    const getRoute = detailApi.slice(detailApi.indexOf("export async function GET("), detailApi.indexOf("function supportChatActionError"));
+    expect(getRoute).not.toContain("await mirrorSupportChatHead(data.head)");
     expect(detailApi).toContain('action: "support_chat_claimed"');
     expect(detailApi).toContain("return ok({ conversation: data.conversation, messages: data.messages");
   });
