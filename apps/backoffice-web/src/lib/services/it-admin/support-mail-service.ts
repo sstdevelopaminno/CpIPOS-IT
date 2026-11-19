@@ -276,11 +276,11 @@ export function renderSupportMailHtml(subject: string, body: string) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-  const lines = body.split(/\\r?\\n/).slice(0, 200);
+  const lines = body.split(/\r?\n/).slice(0, 200);
   const details = lines.map((line) => {
     const value = line.trim();
     if (!value) return '<div style="height:12px;line-height:12px">&nbsp;</div>';
-    const otp = /^รหัส OTP:\\s*(\\d{6})$/.exec(value);
+    const otp = /^รหัส OTP:\s*(\d{6})$/.exec(value);
     if (otp) {
       return '<div style="margin:16px 0;padding:18px 12px;border:1px solid #bcd8fc;border-radius:12px;background:#ecf5ff;text-align:center">' +
         '<div style="font-size:12px;color:#52657f">รหัสยืนยัน OTP</div>' +
