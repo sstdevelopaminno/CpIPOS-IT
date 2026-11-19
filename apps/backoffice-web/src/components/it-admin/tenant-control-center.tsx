@@ -531,6 +531,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
   const canEditBillingCycle = canEditContract;
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
   const latestBillingRequest = data?.billing.latest_request ?? null;
+  const pendingRequestedPackage = data?.packages.find((pkg) => pkg.id === latestBillingRequest?.requested_package_id) ?? null;
+  const hasPendingPackageChange = Boolean(pendingRequestedPackage && data?.current_package && pendingRequestedPackage.id !== data.current_package.id);
   const latestReceipt = data?.billing.latest_receipt ?? null;
   const currentDue = data?.billing.current_due ?? null;
   const customPackageDefinition = data?.packages.find((pkg) => pkg.code === "custom") ?? null;
@@ -1177,7 +1179,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                     </div> : null}
 
                     {hasOpenBillingRequest ? <div className={styles.securityNote} role="status" style={{ display: "grid", gap: 6 }}>
-                      <strong>มีรายการชำระรอตรวจสอบแล้ว · {latestBillingRequest?.status === "under_review" ? "กำลังตรวจสอบ" : "รอตรวจสอบ"}</strong>
+                      <strong>{hasPendingPackageChange ? `ส่งคำขอเปลี่ยนแพ็กเกจ ${data.current_package?.name} → ${pendingRequestedPackage?.name} แล้ว` : "มีรายการชำระรอตรวจสอบแล้ว"} · {latestBillingRequest?.status === "under_review" ? "กำลังตรวจสอบ" : "รอตรวจสอบ"}</strong>
+                      {hasPendingPackageChange ? <small>แพ็กเกจปัจจุบันยังเป็น {data.current_package?.name} จนกว่าจะตรวจรับเงินและอนุมัติการเปลี่ยนแพ็กเกจ</small> : null}
                       <span>ยอดตามแพ็กเกจ {money(latestBillingRequest?.expected_amount ?? 0)} · {latestBillingRequest?.billing_interval === "yearly" ? "รายปี" : "รายเดือน"}</span>
                       <small>ยังไม่ออกใบเสร็จจนกว่า IT จะตรวจรายการธนาคารและกดอนุมัติ</small>
                       <div className={styles.sectionActions}>
