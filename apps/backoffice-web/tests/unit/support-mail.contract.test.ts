@@ -13,8 +13,9 @@ describe("IT Support Mail integration", () => {
   const consoleUi = read("src/components/it-admin/support-mail-console.tsx");
 
   it("pins the operational mailbox to the Support account and keeps secrets server-side", () => {
-    expect(service).toContain("cuttingpointtech.support@gmail.com");
+    expect(service).toContain("cuttingpointtech@gmail.com");
     expect(service).toContain("CPIPOS_MAIL_BRIDGE_SECRET");
+    expect(service).toContain("support_mailbox_config_mismatch");
     expect(service).not.toContain("NEXT_PUBLIC_CPIPOS_MAIL_BRIDGE");
     expect(bridge).toContain("CPIPOS_SUPPORT_MAILBOX");
     expect(bridge).toContain("wrong_mailbox");
@@ -46,10 +47,10 @@ describe("IT Support Mail integration", () => {
 
   it("accepts only recent editor-attested Support mailbox when Web App Session OAuth fails", () => {
     const props = new Map<string, string>([
-      ["CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech.support@gmail.com"]
+      ["CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech@gmail.com"]
     ]);
     let sessionError = false;
-    let account = "cuttingpointtech.support@gmail.com";
+    let account = "cuttingpointtech@gmail.com";
     const context = {
       PropertiesService: { getScriptProperties: () => ({
         getProperty: (key: string) => props.get(key) ?? null,
@@ -67,7 +68,10 @@ describe("IT Support Mail integration", () => {
       authorizeSupportMailBridge: () => {mailbox: string};
       authorizedSupportExecutor_: (mailbox: string) => string;
     };
-    const expected = "cuttingpointtech.support@gmail.com";
+    const expected = "cuttingpointtech@gmail.com";
+    props.set("CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech.support@gmail.com");
+    expect(() => api.authorizeSupportMailBridge()).toThrow("wrong_mailbox_configuration");
+    props.set("CPIPOS_SUPPORT_MAILBOX", expected);
     sessionError = true;
     expect(() => api.authorizedSupportExecutor_(expected)).toThrow("support_mailbox_authorization_required");
     sessionError = false;
@@ -77,7 +81,7 @@ describe("IT Support Mail integration", () => {
     props.set("CPIPOS_VERIFIED_SUPPORT_MAILBOX_AT", "2000-01-01T00:00:00.000Z");
     expect(() => api.authorizedSupportExecutor_(expected)).toThrow("support_mailbox_authorization_required");
     sessionError = false;
-    account = "cuttingpointtech@gmail.com";
+    account = "cuttingpointtech.support@gmail.com";
     expect(() => api.authorizeSupportMailBridge()).toThrow("wrong_mailbox");
     expect(api.authorizedSupportExecutor_(expected)).toBe(account);
   });
@@ -91,7 +95,7 @@ describe("IT Support Mail integration", () => {
       expect(api).toContain(folder);
     }
     expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
-    expect(bridge).toContain("2026-11-20.1");
+    expect(bridge).toContain("2026-11-20.2");
     expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
     expect(bridge).toContain("GmailApp.sendEmail(to, subject, textBody");
