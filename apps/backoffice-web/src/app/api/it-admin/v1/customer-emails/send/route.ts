@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     if (settingsResult.error) throw new Error("communication_settings_read_failed");
     const settings = settingsResult.data ?? {
       billing_email: "cuttingpointtech@gmail.com",
-      support_email: "cuttingpointtech@gmail.com"
+      support_email: "cuttingpointtech.support@gmail.com"
     };
 
     if (body.event_type === "store_activation") {
