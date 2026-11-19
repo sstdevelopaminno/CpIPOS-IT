@@ -95,6 +95,9 @@ function text(value: unknown, max = 500) {
 /** Translate provider authorization failures into a safe, actionable IT diagnostic. */
 export function customerEmailFailureMessage(value: unknown) {
   const raw = text(value instanceof Error ? value.message : value, 500);
+  if (/support_mailbox_authorization_required/i.test(raw)) {
+    return "Google Apps Script ต้องยืนยันบัญชี Support อีกครั้ง: เปิด Apps Script เดิม แล้วรัน authorizeSupportMailBridge ให้สำเร็จก่อน Deploy Web App เวอร์ชันล่าสุด โดยไม่ต้องสร้างร้านซ้ำ";
+  }
   if (/Session\.getEffectiveUser|userinfo\.email|authorization is required/i.test(raw)) {
     return "Google Apps Script ยังไม่ได้รับสิทธิ์ OAuth (userinfo.email) กรุณาให้เจ้าของบัญชี Support เปิด Apps Script, เรียก authorizeSupportMailBridge เพื่ออนุญาตสิทธิ์ และ Deploy Web App เวอร์ชันใหม่ ก่อนกดส่งอีเมลอีกครั้ง";
   }

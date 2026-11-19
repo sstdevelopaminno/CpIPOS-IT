@@ -66,6 +66,39 @@ A failed activation email does **not** mean store activation failed. Initial
 Owner employee codes may be emailed, but PINs must be provided through a
 separate authenticated channel; the mail bridge deliberately excludes them.
 
+## OAuth-constrained Web App fallback (2026-11-19)
+
+Some Web App execution contexts fail the live `Session.getEffectiveUser`
+identity check despite having a correctly configured Support executor. Bridge
+version `2026-11-19.3` retains that check when available and accepts a
+**90-day owner-attested fallback** only when the check throws the known OAuth
+scope error or returns no identity.
+
+**Mandatory preflight before deploying this version:**
+
+1. In the **existing** Apps Script project, open the Support Google account,
+   compare and merge current `Code.gs` with the checked-in changes. Do not
+   overwrite newer custom logic blindly.
+2. Confirm `appsscript.json` contains `userinfo.email`,
+   `script.send_mail`, and `mail.google.com/` scopes. In the editor, select
+   `authorizeSupportMailBridge`, click Run and complete the Google OAuth
+   consent. **Read the execution log** for the verified Support account.
+3. That function writes `CPIPOS_VERIFIED_SUPPORT_MAILBOX` and
+   `CPIPOS_VERIFIED_SUPPORT_MAILBOX_AT` to script properties only after
+   it successfully checks the real executor, Gmail access and MailApp quota.
+   **Never manually set or fake these attestation properties.**
+4. Update the **existing Web App deployment** to a new version with
+   **Execute as Me**. Do not change the URL or the server-side shared secret.
+5. Test a no-send Support Mail status request; then retry one failed activation
+   with the existing IT idempotent send action. Confirm `sent` in the delivery
+   ledger and the Support Gmail Sent folder before retrying any other stores.
+
+If the preflight has never succeeded, is older than 90 days, or is for the
+wrong account, the bridge fails closed with
+`support_mailbox_authorization_required`. The browser/client cannot supply
+an executor identity. To avoid repeated OAuth-related downtime, renew the
+attestation before the 90-day expiry. No change is needed to customer records.
+
 ## Support Mail actions
 
 The bridge accepts server-authenticated actions:
