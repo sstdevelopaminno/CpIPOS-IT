@@ -305,7 +305,7 @@ export function StoreRegistrationsConsole() {
           pending:"รอเปิดร้าน",processing:"กำลังเปิดร้าน",failed:"ต้องตรวจสอบ",activated:"เปิดใช้งาน"
         }[r.status]}</span>{r.last_error ? <small title={r.last_error}>{r.last_error}</small> : null}
           {r.status === "activated" ? <small role="status" title={r.email_delivery?.last_error ?? undefined}>
-            อีเมลเปิดระบบ: {r.email_delivery?.status === "sent" ? "ส่งสำเร็จ" :
+            อีเมลเปิดระบบ: {r.email_delivery?.status === "sent" ? "Gmail รับคำสั่งส่งแล้ว (ตรวจ Sent เพิ่ม)" :
               r.email_delivery?.status === "sending" ? "กำลังส่ง" :
               r.email_delivery?.status === "failed" || r.email_delivery?.status === "blocked" ? "ส่งไม่สำเร็จ" :
               r.email_delivery?.status === "pending" ? "รอส่ง" : "ยังไม่พบประวัติการส่ง"}
