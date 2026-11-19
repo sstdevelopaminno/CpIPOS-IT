@@ -1,6 +1,7 @@
 import "server-only";
 
 import crypto from "node:crypto";
+import { getSupportMailHealth } from "./support-mail-service";
 
 const SUPPORT_EMAIL = "cuttingpointtech.support@gmail.com";
 const LOGIN_URL = "https://cp-ipos-it-backoffice-web.vercel.app/it-admin/login";
@@ -42,10 +43,17 @@ export async function sendItTemporaryPasswordEmail(input: {
   expiresAt: Date;
   requestId: string;
 }) {
-  const bridgeUrl = process.env.CPIPOS_MAIL_BRIDGE_URL?.trim();
-  const bridgeSecret = process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
+  const bridgeUrl = process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_URL?.trim();
+  const bridgeSecret = process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET?.trim();
   if (!bridgeUrl || !bridgeSecret) {
-    throw new Error("mail_bridge_not_configured");
+    throw new Error("it_support_mail_bridge_not_configured");
+  }
+  // No password email may be sent from the customer/company mailbox.
+  // Verify the actual Google executor via the separate Support Web App
+  // before preparing an idempotent password-reset delivery.
+  const health = await getSupportMailHealth();
+  if (!health.ready || health.mailbox !== SUPPORT_EMAIL) {
+    throw new Error("it_support_mailbox_mismatch");
   }
 
   const expiresLabel = new Intl.DateTimeFormat("th-TH", {
@@ -88,6 +96,7 @@ export async function sendItTemporaryPasswordEmail(input: {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
+      action: "send_it_password",
       secret: bridgeSecret,
       idempotencyKey: `it-password-reset:${input.requestId}`,
       to: input.to,
@@ -101,8 +110,12 @@ export async function sendItTemporaryPasswordEmail(input: {
     cache: "no-store"
   });
 
-  const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+  const payload = await response.json().catch(() => null) as
+    { ok?: boolean; mailbox?: string; messageId?: string; error?: string } | null;
   if (!response.ok || payload?.ok !== true) {
-    throw new Error(payload?.error || `mail_bridge_http_${response.status}`);
+    throw new Error(payload?.error || `it_support_mail_http_${response.status}`);
+  }
+  if (payload.mailbox?.trim().toLowerCase() !== SUPPORT_EMAIL || !payload.messageId) {
+    throw new Error("it_support_mail_delivery_unconfirmed");
   }
 }
