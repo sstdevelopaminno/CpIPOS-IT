@@ -30,10 +30,13 @@ The Support Mailbox must be:
    - Execute as: **Me**
    - Who has access: **Anyone**
 7. If an existing deployment is already used by Production, edit that deployment and publish a new version so the Web App URL remains unchanged.
-8. In Vercel keep:
-   - `CPIPOS_MAIL_BRIDGE_URL`
-   - `CPIPOS_MAIL_BRIDGE_SECRET`
+8. In **CpIPOS IT Production** Vercel, use ONE mail bridge for transactional delivery and Gmail Sent verification:
+   - `CPIPOS_MAIL_BRIDGE_URL` = existing Support Apps Script Web App `/exec` URL
+   - `CPIPOS_MAIL_BRIDGE_SECRET` = matching Script Property secret
    - optional `CPIPOS_SUPPORT_MAILBOX=cuttingpointtech.support@gmail.com`
+   - If older `CPIPOS_SUPPORT_MAIL_BRIDGE_URL` / `CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET` variables exist, either remove them or ensure they match the canonical pair exactly. A mismatch is now reported as `support_mail_bridge_config_mismatch` rather than silently inspecting a different Gmail connection.
+
+In **IT Admin → คำขอเปิดร้าน**, use **ตรวจสอบการเชื่อมต่อ Gmail** first: it is a read-only status probe that verifies the Support owner and Bridge version, does not send a message, and does not change a store's mail attempt counter. When healthy, retry a failed activation only once; the **ยืนยันใน Gmail Sent** action separately checks the Gmail Sent folder and shows the matching send time.
 
 The browser never receives the shared secret or Gmail credentials.
 

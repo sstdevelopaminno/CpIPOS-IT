@@ -60,8 +60,12 @@ export function StoreRegistrationsConsole() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [sentEvidence, setSentEvidence] = useState<Record<string, { found: boolean; message: string }>>({});
+  const [sentEvidence, setSentEvidence] = useState<Record<string, {
+    found: boolean; message: string; sent_at?: string | null;
+  }>>({});
   const [verifyingId, setVerifyingId] = useState("");
+  const [mailHealth, setMailHealth] = useState<{ ok: boolean; message: string } | null>(null);
+  const [checkingMail, setCheckingMail] = useState(false);
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState<Row | null>(null);
   const [form, setForm] = useState<Form | null>(null);
@@ -100,6 +104,33 @@ export function StoreRegistrationsConsole() {
     };
   }, [reload]);
 
+  // Read-only preflight: check OAuth, exact Support mailbox and bridge version
+  // without consuming a customer notification or changing delivery records.
+  async function checkMailBridge() {
+    if (checkingMail) return;
+    setCheckingMail(true);
+    try {
+      const response = await fetch("/api/it-admin/v1/support-mail?health=1", {
+        credentials: "include", cache: "no-store"
+      });
+      const json = await response.json().catch(() => null) as
+        Envelope<{ health: { ready: boolean; mailbox: string; bridge_version: string } }> | null;
+      if (!response.ok || json?.data?.health?.ready !== true) {
+        throw new Error(json?.error?.message || "Mail Bridge ยังไม่พร้อมใช้งาน");
+      }
+      const health = json.data.health;
+      setMailHealth({
+        ok: true, message: `Gmail Support พร้อมใช้งาน · ${health.mailbox} · Bridge ${health.bridge_version}`
+      });
+    } catch (cause) {
+      setMailHealth({
+        ok: false, message: cause instanceof Error ? cause.message : "ตรวจสอบ Mail Bridge ไม่สำเร็จ"
+      });
+    } finally {
+      setCheckingMail(false);
+    }
+  }
+
   // A mail bridge ACK is not proof that a message exists in Gmail Sent.
   // Check the real Support mailbox, without sending or repeating an event.
   async function checkSent(row: Row) {
@@ -110,7 +141,7 @@ export function StoreRegistrationsConsole() {
         { credentials: "include", cache: "no-store" }
       );
       const json = await response.json().catch(() => null) as
-        Envelope<{ found: boolean; message: string }> | null;
+        Envelope<{ found: boolean; message: string; sent_at?: string | null }> | null;
       if (!response.ok || !json?.data) throw new Error(json?.error?.message || "ตรวจสอบ Gmail Sent ไม่สำเร็จ");
       setSentEvidence((current) => ({ ...current, [row.id]: json.data! }));
     } catch (cause) {
@@ -286,8 +317,14 @@ export function StoreRegistrationsConsole() {
         <option value="activated">เปิดแล้ว</option>
       </select></label>
       <button type="button" disabled={loading} onClick={() => void reload()}>{loading ? "กำลังโหลด…" : "รีเฟรชข้อมูล"}</button>
+      <button type="button" disabled={checkingMail} onClick={() => void checkMailBridge()}>
+        {checkingMail ? "กำลังตรวจ Gmail…" : "ตรวจสอบการเชื่อมต่อ Gmail"}
+      </button>
       <Link href="/it-admin/tenants">ไปยัง Tenants / Stores →</Link>
     </div>
+    {mailHealth ? <div role="status" className={mailHealth.ok ? styles.success : styles.error}>
+      {mailHealth.message}{!mailHealth.ok ? " · ยังไม่ส่งอีเมลทดสอบหรืออีเมลถึงลูกค้า" : ""}
+    </div> : null}
     {error ? <div role="alert" className={styles.error}>{error}</div> : null}
     {success ? <div role="status" className={styles.success}>{success}</div> : null}
     {data?.truncated ? <div className={styles.error}>แสดงคำขอสูงสุด 200 รายการล่าสุด กรุณากรอง/จัดการรายการก่อน</div> : null}
@@ -320,12 +357,17 @@ export function StoreRegistrationsConsole() {
           {r.status === "activated" && r.email_delivery?.last_error ? <small className={styles.mailError}>{r.email_delivery.last_error}</small> : null}
           {r.status === "activated" && sentEvidence[r.id] ? <small className={
             sentEvidence[r.id].found ? styles.mailConfirmed : styles.mailUnconfirmed
-          }>{sentEvidence[r.id].found ? "✓ " : "! "}{sentEvidence[r.id].message}</small> : null}
+          }>{sentEvidence[r.id].found ? "✓ " : "! "}{sentEvidence[r.id].message}
+            {sentEvidence[r.id].found && sentEvidence[r.id].sent_at
+              ? ` · เวลา ${dateTime(sentEvidence[r.id].sent_at ?? null)}` : ""}
+          </small> : null}
         </td>
         <td><div className={styles.actions}>
           {r.status === "activated" && r.tenant_id ? <>
             <Link href="/it-admin/tenants">ดูร้าน →</Link>
-            <button disabled={busy} onClick={() => void sendActivationEmail(r)}>ส่งอีเมลเปิดระบบ</button>
+            <button disabled={busy || mailHealth?.ok === false}
+              title={mailHealth?.ok === false ? "ตรวจสอบการเชื่อมต่อ Gmail ให้ผ่านก่อนส่ง" : undefined}
+              onClick={() => void sendActivationEmail(r)}>ส่งอีเมลเปิดระบบ</button>
             <Link href={sentFolderHref(r)}>ดู Gmail ส่งแล้ว</Link>
             {r.email_delivery ? <button disabled={busy || Boolean(verifyingId)}
               onClick={() => void checkSent(r)}>{

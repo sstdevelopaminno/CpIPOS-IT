@@ -4,9 +4,6 @@ const SUPPORT_MAILBOX =
   process.env.CPIPOS_SUPPORT_MAILBOX?.trim().toLowerCase() ||
   "cuttingpointtech.support@gmail.com";
 
-const DEFAULT_SUPPORT_MAIL_BRIDGE_URL =
-  "https://script.google.com/macros/s/AKfycby_5bnLmvhTgBPr7zFGOJGIHtOew2Ot2Qj3EhRuu-sKhPrXJG9ZZWqDgYdrtiNsQeMh/exec";
-
 export type SupportMailThreadSummary = {
   id: string;
   subject: string;
@@ -61,16 +58,24 @@ export class SupportMailBridgeError extends Error {
 }
 
 function bridgeConfig() {
-  const url =
-    process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_URL?.trim() ||
-    DEFAULT_SUPPORT_MAIL_BRIDGE_URL;
-  const secret =
-    process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET?.trim() ||
-    process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
+  // Transactional notifications and the Support Sent verifier MUST read
+  // the same Apps Script deployment. A stale Support-only URL otherwise
+  // makes correctly sent customer emails appear to be missing from Sent.
+  const url = process.env.CPIPOS_MAIL_BRIDGE_URL?.trim();
+  const secret = process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
+  const supportUrl = process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_URL?.trim();
+  const supportSecret = process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET?.trim();
   if (!url || !secret) {
     throw new SupportMailBridgeError(
       "support_mail_not_configured",
-      "ยังไม่ได้ตั้งค่า Secret สำหรับ Mail Bridge ของอีเมล Support",
+      "กรุณาตั้งค่า CPIPOS_MAIL_BRIDGE_URL และ CPIPOS_MAIL_BRIDGE_SECRET ใน Vercel Production ให้ครบทั้งระบบส่งและตรวจ Gmail Sent",
+      503
+    );
+  }
+  if ((supportUrl && supportUrl !== url) || (supportSecret && supportSecret !== secret)) {
+    throw new SupportMailBridgeError(
+      "support_mail_bridge_config_mismatch",
+      "พบค่า Mail Bridge สำหรับ Support ไม่ตรงกับระบบส่งอีเมล กรุณาปรับ CPIPOS_SUPPORT_MAIL_BRIDGE_URL / SECRET ให้ตรงกับ CPIPOS_MAIL_BRIDGE_URL / SECRET หรือเอาค่าที่ซ้ำซ้อนออก",
       503
     );
   }
@@ -116,7 +121,10 @@ async function callBridge<T extends BridgeBase>(payload: Record<string, unknown>
           ? "ไม่พบอีเมลหรือ Thread นี้แล้ว"
           : code === "unauthorized"
             ? "Mail Bridge secret ไม่ตรงกัน"
-            : "Gmail Support ทำรายการนี้ไม่สำเร็จชั่วคราว กรุณาลองใหม่";
+            : code === "support_mailbox_authorization_required" ||
+              /userinfo\.email|Session\.getEffectiveUser|authorization is required/i.test(code)
+              ? "Google Apps Script ยังไม่ผ่านการอนุญาต OAuth ของบัญชี Support กรุณารัน authorizeSupportMailBridge ใน Apps Script เดิม แล้ว Deploy Web App เป็น New version ก่อนตรวจอีกครั้ง"
+              : "Gmail Support ทำรายการนี้ไม่สำเร็จชั่วคราว กรุณาลองใหม่";
     throw new SupportMailBridgeError(code, message, code === "thread_not_found" ? 404 : 502);
   }
 
@@ -130,6 +138,20 @@ async function callBridge<T extends BridgeBase>(payload: Record<string, unknown>
   }
 
   return body;
+}
+
+export async function getSupportMailHealth() {
+  const body = await callBridge<BridgeBase>({ action: "status" });
+  const mailbox = normalizeMailbox(body.mailbox);
+  if (mailbox !== SUPPORT_MAILBOX || !body.bridge_version ||
+      !Array.isArray(body.capabilities) || !body.capabilities.includes("sent")) {
+    throw new SupportMailBridgeError(
+      "support_mail_bridge_upgrade_required",
+      "Mail Bridge ยังไม่พร้อมตรวจ Gmail Sent กรุณา Deploy Code.gs เวอร์ชันล่าสุดภายใต้บัญชี Support",
+      409
+    );
+  }
+  return { ready: true, mailbox, bridge_version: body.bridge_version };
 }
 
 export async function listSupportMailThreads(input?: {
