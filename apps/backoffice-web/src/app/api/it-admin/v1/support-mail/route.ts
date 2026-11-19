@@ -8,6 +8,7 @@ import {
   SupportMailBridgeError,
   archiveSupportMail,
   getSupportMailThread,
+  getSupportMailHealth,
   listSupportMailThreads,
   markSupportMailRead,
   replySupportMail,
@@ -59,6 +60,9 @@ export async function GET(request: Request) {
     if (!rate.ok) return fail("rate_limited", "เรียกดูอีเมลถี่เกินไป กรุณารอสักครู่", 429);
 
     const url = new URL(request.url);
+    if (url.searchParams.get("health") === "1") {
+      return ok({ health: await getSupportMailHealth() });
+    }
     const threadId = clean(url.searchParams.get("thread_id"), 220);
     if (threadId) {
       const result = await getSupportMailThread(threadId);
