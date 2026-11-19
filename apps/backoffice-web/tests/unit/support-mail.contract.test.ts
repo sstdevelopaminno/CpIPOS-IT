@@ -131,7 +131,7 @@ describe("IT Support Mail integration", () => {
       expect(api).toContain(folder);
     }
     expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
-    expect(bridge).toContain("2026-11-20.4");
+    expect(bridge).toContain("2026-11-20.5");
     expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
     expect(bridge).toContain("GmailApp.sendEmail(to, subject, textBody");
