@@ -898,6 +898,60 @@
   }
 }
 
+/* The IT Support Chat is a viewport-height application on phones.
+ * Keep this scoped so other admin pages retain their normal scrolling shell. */
+@media (max-width: 720px) {
+  .topbarChatMobile {
+    min-height: 60px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .topbarChatMobile .topbarLeft {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .topbarChatMobile .headingBlock {
+    min-width: 0;
+    width: auto;
+  }
+
+  .topbarChatMobile .breadcrumbs {
+    display: none;
+  }
+
+  .topbarChatMobile .topbarActions {
+    flex: 0 0 auto;
+    margin-left: 0;
+    gap: 6px;
+  }
+
+  .topbarChatMobile .topbarActions select {
+    max-width: 100px;
+  }
+
+  .contentChatMobile {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    max-width: none;
+    padding: 0 !important;
+    overflow: hidden !important;
+    overscroll-behavior: contain;
+  }
+
+  .contentChatMobile > main[data-support-chat-console] {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shell,
   .sidebar,
