@@ -51,6 +51,19 @@ function doPost(e) {
       return json_({ ok: false, error: "wrong_mailbox", mailbox: effective || null });
     }
 
+    // Role separation is enforced in Apps Script as well as in the IT
+    // server. Company Gmail can send transactional mail and verify Sent;
+    // Support Gmail handles inbox/IT notifications/OTP only.
+    if (mailbox === "cuttingpointtech@gmail.com") {
+      if (action !== "status" && action !== "send_transactional" &&
+          !(action === "list_threads" && String(body.folder || "").toLowerCase() === "sent")) {
+        return json_({ ok: false, error: "unsupported_role_action", mailbox: mailbox });
+      }
+    } else if (mailbox === "cuttingpointtech.support@gmail.com" &&
+               action === "send_transactional") {
+      return json_({ ok: false, error: "unsupported_role_action", mailbox: mailbox });
+    }
+
     if (action === "status") return json_({ ok: true, mailbox: mailbox || effective });
     if (action === "list_threads") return listThreads_(body, mailbox || effective);
     if (action === "get_thread") return getThread_(body, mailbox || effective);
