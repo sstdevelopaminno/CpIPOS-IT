@@ -111,6 +111,8 @@ describe("transactional customer email delivery", () => {
     expect(registrationUi).toContain("sentEvidence[r.id].sent_at");
     expect(registrationUi).toContain("ตรวจสอบการเชื่อมต่อ Gmail");
     expect(registrationUi).toContain("mailHealth?.ok === false");
+    expect(registrationUi).toContain('verify-sent?health=1');
+    expect(service).toContain("companyTestEmail: settings.billing_email.trim().toLowerCase()");
     expect(supportConsole).toContain('params.get("folder") === "sent"');
     expect(supportConsole).toContain('setActiveQuery(query)');
   });
@@ -118,8 +120,11 @@ describe("transactional customer email delivery", () => {
   it("verifies actual sent-mail evidence with IT authorization and no second send", () => {
     expect(sentVerification).toContain("requireItAdmin()");
     expect(sentVerification).toContain("enforceRateLimit");
-    expect(sentVerification).toContain('folder: "sent"');
-    expect(sentVerification).toContain("listSupportMailThreads");
+    expect(sentVerification).toContain("listCompanyMailSentThreads");
+    expect(sentVerification).toContain("getCompanyMailHealth");
+    expect(sentVerification).toContain("listCompanyMailSentThreads");
+    expect(sentVerification).toContain("getCompanyMailHealth");
+    expect(sentVerification).not.toContain("listSupportMailThreads");
     expect(sentVerification).toContain("thread.subject.trim().toLowerCase() === subject.toLowerCase()");
     expect(sentVerification).toContain("thread.to.toLowerCase().includes(recipient)");
     expect(sentVerification).toContain("Math.abs(sentAt - attemptAt)");

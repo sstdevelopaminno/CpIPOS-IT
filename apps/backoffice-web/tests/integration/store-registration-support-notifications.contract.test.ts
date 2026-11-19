@@ -49,8 +49,8 @@ describe("website store application → IT notification contract", () => {
     expect(paymentNotifier).toContain('payload.url?.startsWith("/it-admin/store-registrations")');
   });
 
-  it("routes each new request to both management email and existing support inbox", () => {
-    expect(service).toContain('"cuttingpointtech@gmail.com"');
+  it("routes each new request to the IT Support inbox only", () => {
+    expect(service).not.toContain('"cuttingpointtech@gmail.com"');
     expect(service).toContain('supportMailboxAddress()');
     expect(service).toContain('sendSupportMail({ to: recipientList()');
     expect(service).toContain('"[IT Support] คำขอเปิดร้านใหม่');

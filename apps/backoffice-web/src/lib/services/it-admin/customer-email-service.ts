@@ -72,7 +72,7 @@ const TYPO_DOMAINS = new Map([
 
 const DEFAULT_SETTINGS: CommunicationSettings = {
   billing_email: "cuttingpointtech@gmail.com",
-  support_email: "cuttingpointtech@gmail.com",
+  support_email: "cuttingpointtech.support@gmail.com",
   billing_sender_name: "CUTTING POINT INNOVATION",
   support_sender_name: "Cutting Point Innovation Support",
   auto_send_store_activation: true,
@@ -102,7 +102,7 @@ export function customerEmailFailureMessage(value: unknown) {
     return "Google Apps Script ต้องยืนยันบัญชี Support อีกครั้ง: เปิด Apps Script เดิม แล้วรัน authorizeSupportMailBridge ให้สำเร็จก่อน Deploy Web App เวอร์ชันล่าสุด โดยไม่ต้องสร้างร้านซ้ำ";
   }
   if (/Session\.getEffectiveUser|userinfo\.email|authorization is required/i.test(raw)) {
-    return "Google Apps Script ยังไม่ได้รับสิทธิ์ OAuth (userinfo.email) กรุณาให้เจ้าของบัญชี Support เปิด Apps Script, เรียก authorizeSupportMailBridge เพื่ออนุญาตสิทธิ์ และ Deploy Web App เวอร์ชันใหม่ ก่อนกดส่งอีเมลอีกครั้ง";
+    return "Google Apps Script ของอีเมลบริษัท cuttingpointtech@gmail.com ยังไม่ได้รับสิทธิ์ OAuth (userinfo.email) กรุณารัน authorizeSupportMailBridge ภายใต้บัญชีบริษัทและ Deploy เวอร์ชันใหม่";
   }
   return raw || "mail_delivery_failed";
 }
@@ -662,7 +662,7 @@ export async function prepareCustomerEmailPreview(input: {
   const settings = await loadSettings(input.db);
   return {
     message: brandMessage(input.message, settings, input.eventType),
-    companyTestEmail: settings.support_email.trim().toLowerCase()
+    companyTestEmail: settings.billing_email.trim().toLowerCase()
   };
 }
 

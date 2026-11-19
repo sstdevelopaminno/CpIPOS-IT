@@ -12,25 +12,35 @@ describe("IT Support Mail integration", () => {
   const api = read("src/app/api/it-admin/v1/support-mail/route.ts");
   const consoleUi = read("src/components/it-admin/support-mail-console.tsx");
 
-  it("pins the operational sender to the company Gmail and keeps secrets server-side", () => {
+  it("pins IT Support to its dedicated Gmail account and keeps secrets server-side", () => {
+    expect(service).toContain("cuttingpointtech.support@gmail.com");
     expect(service).toContain("cuttingpointtech@gmail.com");
-    expect(service).toContain("CPIPOS_MAIL_BRIDGE_SECRET");
+    expect(service).toContain("CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET");
     expect(service).toContain("support_mailbox_config_mismatch");
     expect(service).not.toContain("NEXT_PUBLIC_CPIPOS_MAIL_BRIDGE");
     expect(bridge).toContain("CPIPOS_SUPPORT_MAILBOX");
     expect(bridge).toContain("wrong_mailbox");
   });
 
-  it("uses exactly the same configured Apps Script deployment for transactional mail and Gmail Sent evidence", () => {
+  it("keeps the two App Script deployments separate and routes Gmail Sent evidence to company", () => {
     expect(service).toContain("CPIPOS_MAIL_BRIDGE_URL");
     expect(service).toContain("CPIPOS_MAIL_BRIDGE_SECRET");
-    expect(service).toContain("support_mail_bridge_config_mismatch");
+    expect(service).toContain("CPIPOS_SUPPORT_MAIL_BRIDGE_URL");
+    expect(service).toContain("CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET");
+    expect(service).toContain("mail_bridge_identity_overlap");
+    expect(service).toContain("listCompanyMailSentThreads");
     expect(service).not.toContain("DEFAULT_SUPPORT_MAIL_BRIDGE_URL");
     expect(service).toContain('action: "status"');
     expect(service).toContain("getSupportMailHealth");
     expect(service).toContain("await getSupportMailHealth()");
     expect(service).toContain("support_mailbox_config_mismatch");
-    expect(bridge).toContain('if (configured !== canonical) throw new Error("wrong_mailbox_configuration")');
+    expect(bridge).toContain('if (configured !== company && configured !== support)');
+    expect(service).toContain("getCompanyMailHealth");
+    expect(bridge).toContain('"unsupported_role_action"');
+    expect(bridge).toContain('action === "send_it_password"');
+    expect(bridge).toContain("return sendTransactional_(body, mailbox)");
+    expect(bridge).toContain("2026-11-20.4");
+    expect(bridge).toContain('action === "list_threads" && String(body.folder || "").toLowerCase() === "sent"');
     expect(api).toContain('url.searchParams.get("health") === "1"');
     expect(api).toContain("await getSupportMailHealth()");
   });
@@ -48,12 +58,12 @@ describe("IT Support Mail integration", () => {
       .toBeLessThan(bridge.indexOf('var effective = authorizedSupportExecutor_(mailbox)'));
   });
 
-  it("accepts only recent editor-attested company mailbox when Web App Session OAuth fails", () => {
+  it("accepts only recent editor-attested role mailbox when Web App Session OAuth fails", () => {
     const props = new Map<string, string>([
-      ["CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech@gmail.com"]
+      ["CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech.support@gmail.com"]
     ]);
     let sessionError = false;
-    let account = "cuttingpointtech@gmail.com";
+    let account = "cuttingpointtech.support@gmail.com";
     const context = {
       PropertiesService: { getScriptProperties: () => ({
         getProperty: (key: string) => props.get(key) ?? null,
@@ -71,8 +81,8 @@ describe("IT Support Mail integration", () => {
       authorizeSupportMailBridge: () => {mailbox: string};
       authorizedSupportExecutor_: (mailbox: string) => string;
     };
-    const expected = "cuttingpointtech@gmail.com";
-    props.set("CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech.support@gmail.com");
+    const expected = "cuttingpointtech.support@gmail.com";
+    props.set("CPIPOS_SUPPORT_MAILBOX", "unconfigured@example.com");
     expect(() => api.authorizeSupportMailBridge()).toThrow("wrong_mailbox_configuration");
     props.set("CPIPOS_SUPPORT_MAILBOX", expected);
     sessionError = true;
@@ -84,9 +94,27 @@ describe("IT Support Mail integration", () => {
     props.set("CPIPOS_VERIFIED_SUPPORT_MAILBOX_AT", "2000-01-01T00:00:00.000Z");
     expect(() => api.authorizedSupportExecutor_(expected)).toThrow("support_mailbox_authorization_required");
     sessionError = false;
-    account = "cuttingpointtech.support@gmail.com";
+    account = "cuttingpointtech@gmail.com";
     expect(() => api.authorizeSupportMailBridge()).toThrow("wrong_mailbox");
     expect(api.authorizedSupportExecutor_(expected)).toBe(account);
+  });
+
+  it("can authorize the company script independently under the company's own executor", () => {
+    const props = new Map<string, string>([["CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech@gmail.com"]]);
+    const context = {
+      PropertiesService: { getScriptProperties: () => ({
+        getProperty: (key: string) => props.get(key) ?? null,
+        setProperty: (key: string, value: string) => { props.set(key, value); }
+      }) },
+      Session: { getEffectiveUser: () => ({ getEmail: () => "cuttingpointtech@gmail.com" }) },
+      GmailApp: { getAliases: () => [] },
+      MailApp: { getRemainingDailyQuota: () => 75 },
+      Logger: { log: () => undefined }
+    };
+    const api = runInNewContext(bridge + "; ({authorizeSupportMailBridge})", context) as {
+      authorizeSupportMailBridge: () => { mailbox: string };
+    };
+    expect(api.authorizeSupportMailBridge().mailbox).toBe("cuttingpointtech@gmail.com");
   });
 
   it("supports Gmail-style folders, thread read, reply, send, mark-read and archive", () => {
@@ -98,7 +126,7 @@ describe("IT Support Mail integration", () => {
       expect(api).toContain(folder);
     }
     expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
-    expect(bridge).toContain("2026-11-20.2");
+    expect(bridge).toContain("2026-11-20.4");
     expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
     expect(bridge).toContain("GmailApp.sendEmail(to, subject, textBody");

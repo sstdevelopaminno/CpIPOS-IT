@@ -4,7 +4,6 @@ import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import { dispatchSupportPush } from "@/lib/support-chat/support-push";
 import { sendSupportMail, supportMailboxAddress } from "@/lib/services/it-admin/support-mail-service";
 
-const PRIMARY_MAILBOX = "cuttingpointtech@gmail.com";
 const RETRY_COOLDOWN_MS = 2 * 60_000;
 const STALE_CLAIM_MS = 10 * 60_000;
 
@@ -33,17 +32,16 @@ function text(value: unknown, max = 180) {
 }
 
 function recipientList() {
-  // The first address is the requested management mailbox. The second copy
-  // arrives in the same Support mailbox displayed inside CpIPOS IT.
-  return Array.from(new Set([PRIMARY_MAILBOX, supportMailboxAddress()])).join(",");
+  // Operational alerts belong exclusively to IT Support, not the
+  // customer-facing transactional Gmail account.
+  return supportMailboxAddress();
 }
 
 function message(row: Registration) {
   const subject = "[IT Support] คำขอเปิดร้านใหม่ · " + text(row.store_name, 110);
   const body = [
     "คำขอเปิดร้านค้าใหม่จากเว็บไซต์ CpiPOS",
-    "ส่งถึง: " + PRIMARY_MAILBOX,
-    "สำเนาสำหรับกล่องอีเมล Support: " + supportMailboxAddress(),
+    "ส่งถึงกล่องอีเมล IT Support: " + supportMailboxAddress(),
     "",
     "เลขที่คำขอ: " + row.id,
     "ชื่อร้าน: " + text(row.store_name),

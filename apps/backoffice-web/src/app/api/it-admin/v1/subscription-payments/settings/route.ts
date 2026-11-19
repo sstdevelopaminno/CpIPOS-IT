@@ -38,7 +38,7 @@ const SELECT = [
 
 const DEFAULTS: ContactSettings = {
   billing_email: "cuttingpointtech@gmail.com",
-  support_email: "cuttingpointtech@gmail.com",
+  support_email: "cuttingpointtech.support@gmail.com",
   billing_sender_name: "CUTTING POINT INNOVATION",
   support_sender_name: "Cutting Point Innovation Support",
   auto_send_store_activation: true,

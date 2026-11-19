@@ -6,14 +6,18 @@
  *
  * Script Properties:
  *   CPIPOS_MAIL_BRIDGE_SECRET = same secret as Vercel
- *   CPIPOS_SUPPORT_MAILBOX = cuttingpointtech@gmail.com
+ *   CPIPOS_SUPPORT_MAILBOX = cuttingpointtech@gmail.com (company sender)
+ *   OR CPIPOS_SUPPORT_MAILBOX = cuttingpointtech.support@gmail.com (IT Support)
+ *
+ * Deploy independently under EACH account with the corresponding Script
+ * Property, OAuth consent and distinct Web App URL/secret.
  *
  * Execute as: Me
  * Who has access: Anyone (the shared secret is still required)
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.2";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.4";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -24,6 +28,7 @@ var SUPPORT_MAIL_CAPABILITIES = [
   "list_threads",
   "get_thread",
   "send_new",
+  "send_it_password",
   "reply",
   "mark_read",
   "archive_thread",
@@ -45,6 +50,28 @@ function doPost(e) {
     if (!mailbox || !effective || mailbox !== effective) {
       // Fail closed: a missing OAuth identity must never bypass mailbox verification.
       return json_({ ok: false, error: "wrong_mailbox", mailbox: effective || null });
+    }
+
+    // Role separation is enforced in Apps Script as well as in the IT
+    // server. Company Gmail can send transactional mail and verify Sent;
+    // Support Gmail handles inbox/IT notifications/OTP only.
+    if (mailbox === "cuttingpointtech@gmail.com") {
+      if (action !== "status" && action !== "send_transactional" &&
+          !(action === "list_threads" && String(body.folder || "").toLowerCase() === "sent")) {
+        return json_({ ok: false, error: "unsupported_role_action", mailbox: mailbox });
+      }
+    } else if (mailbox === "cuttingpointtech.support@gmail.com" &&
+               action === "send_transactional") {
+      return json_({ ok: false, error: "unsupported_role_action", mailbox: mailbox });
+    }
+    // IT password recovery is the only template-preserving transactional
+    // action allowed on the dedicated Support account. The company script
+    // rejects it as an unsupported role action.
+    if (action === "send_it_password") {
+      if (mailbox !== "cuttingpointtech.support@gmail.com") {
+        return json_({ ok: false, error: "unsupported_role_action", mailbox: mailbox });
+      }
+      return sendTransactional_(body, mailbox);
     }
 
     if (action === "status") return json_({ ok: true, mailbox: mailbox || effective });
@@ -114,15 +141,18 @@ function authorizedSupportExecutor_(expectedMailbox) {
 }
 
 function supportMailbox_() {
-  // Never allow an old Script Property to silently keep sending from the
-  // retired Support Gmail account after the IT mailbox cutover.
-  var canonical = "cuttingpointtech@gmail.com";
+  // This Code.gs is shared by two independent Google projects/deployments.
+  // A script may claim ONLY its explicitly configured account, and OAuth
+  // verifies the real executor. No implicit fallback to another mailbox.
+  var company = "cuttingpointtech@gmail.com";
+  var support = "cuttingpointtech.support@gmail.com";
   var configured = String(
-    PropertiesService.getScriptProperties().getProperty("CPIPOS_SUPPORT_MAILBOX") ||
-    canonical
+    PropertiesService.getScriptProperties().getProperty("CPIPOS_SUPPORT_MAILBOX") || ""
   ).trim().toLowerCase();
-  if (configured !== canonical) throw new Error("wrong_mailbox_configuration");
-  return canonical;
+  if (configured !== company && configured !== support) {
+    throw new Error("wrong_mailbox_configuration");
+  }
+  return configured;
 }
 
 function boundedInt_(value, fallback, min, max) {
@@ -349,7 +379,8 @@ function sendTransactional_(body, mailbox) {
   var budget = checkMailQuota_(1);
   if (!budget.ok) return json_(budget);
 
-  // Transactional mail must also be visible in Support's Gmail Sent folder.
+  // Transactional and IT password mail should be visible in the authenticated
+  // executor's own Gmail Sent folder.
   // MailApp acceptance alone is not the same as Gmail Sent evidence.
   GmailApp.sendEmail(to, subject, textBody, {
     htmlBody: htmlBody || undefined,

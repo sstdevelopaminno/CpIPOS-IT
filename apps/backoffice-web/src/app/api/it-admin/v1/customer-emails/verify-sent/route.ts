@@ -2,7 +2,8 @@ import { fail, ok } from "@/lib/http";
 import { guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit } from "@/lib/server/rate-limit";
 import {
-  listSupportMailThreads,
+  listCompanyMailSentThreads,
+  getCompanyMailHealth,
   SupportMailBridgeError
 } from "@/lib/services/it-admin/support-mail-service";
 
@@ -14,7 +15,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
  * Read-only sent-mail evidence for an activated store's notification.
  * A mail bridge ACK is not recipient delivery; a matching Gmail Sent message
- * is independent evidence that the Support mailbox accepted a message.
+ * is independent evidence that the company sender mailbox accepted a message.
  */
 export async function GET(request: Request) {
   try {
@@ -26,7 +27,11 @@ export async function GET(request: Request) {
       windowMs: 60_000
     });
     if (!rate.ok) return fail("rate_limited", "ตรวจสอบกล่อง Sent ถี่เกินไป กรุณาลองใหม่", 429);
-    const sourceId = new URL(request.url).searchParams.get("source_id")?.trim() ?? "";
+    const url = new URL(request.url);
+    if (url.searchParams.get("health") === "1") {
+      return ok({ health: await getCompanyMailHealth() });
+    }
+    const sourceId = url.searchParams.get("source_id")?.trim() ?? "";
     if (!UUID.test(sourceId)) return fail("invalid_registration_id", "รหัสคำขอเปิดร้านไม่ถูกต้อง", 422);
 
     const registration = await ctx.supabase.from("store_registration_requests")
@@ -54,11 +59,9 @@ export async function GET(request: Request) {
       return ok({ found: false, reason: "incomplete_delivery", message: "ประวัติอีเมลไม่มีผู้รับหรือหัวข้อที่ตรวจสอบได้" });
     }
 
-    // Query the actual Support Gmail Sent folder. Never infer proof from
+    // Query the actual COMPANY Gmail Sent folder. Never infer proof from
     // database status or a provider timestamp-style "messageId" alone.
-    const sent = await listSupportMailThreads({
-      folder: "sent", query: `to:${recipient}`, limit: 30
-    });
+    const sent = await listCompanyMailSentThreads({ query: `to:${recipient}`, limit: 30 });
     const attemptAt = Date.parse(String(row.sent_at || row.last_attempt_at || ""));
     const match = sent.threads.find((thread) => {
       const sentAt = Date.parse(String(thread.last_message_at || ""));
@@ -71,7 +74,7 @@ export async function GET(request: Request) {
       found: Boolean(match),
       reason: match ? "gmail_sent_match" : "not_found_in_sent",
       message: match
-        ? "พบอีเมลในกล่องส่งแล้วของบัญชี Support"
+        ? "พบอีเมลในกล่องส่งแล้วของบัญชีบริษัท cuttingpointtech@gmail.com"
         : "ยังไม่พบอีเมลที่ตรงกันใน Gmail Sent (อาจกำลังซิงก์หรือส่งไม่สำเร็จ)",
       delivery_status: row.status,
       recipient,
