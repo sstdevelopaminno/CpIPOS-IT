@@ -48,23 +48,34 @@ export async function GET(
       mark_read: true
     });
 
-    if (data.head_changed) {
-      await mirrorSupportChatHead(data.head);
-    }
-
-    if (data.claimed) {
-      await appendAuditLog({
-        tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
-        actorUserId: auth.auth.userId,
-        actorRole: auth.auth.platformRole,
-        action: "support_chat_claimed",
-        targetTable: "support_chat_heads",
-        targetId: conversationId,
-        module: "support_chat",
-        entityType: "support_conversation",
-        entityId: conversationId,
-        ipAddress: auth.requestMeta.ipAddress ?? undefined,
-        userAgent: auth.requestMeta.userAgent ?? undefined
+    // The canonical conversation and messages are already loaded.
+    // A slow/failed notification-head mirror or audit write must never hide
+    // the chat behind a forever-loading mobile screen. Run them after the
+    // response, and record any failure instead of blocking the transcript.
+    if (data.head_changed || data.claimed) {
+      after(async () => {
+        const jobs: Promise<unknown>[] = [];
+        if (data.head_changed) jobs.push(mirrorSupportChatHead(data.head));
+        if (data.claimed) jobs.push(appendAuditLog({
+          tenantId: typeof data.conversation.tenant_id === "string" ? data.conversation.tenant_id : undefined,
+          actorUserId: auth.auth.userId,
+          actorRole: auth.auth.platformRole,
+          action: "support_chat_claimed",
+          targetTable: "support_chat_heads",
+          targetId: conversationId,
+          module: "support_chat",
+          entityType: "support_conversation",
+          entityId: conversationId,
+          ipAddress: auth.requestMeta.ipAddress ?? undefined,
+          userAgent: auth.requestMeta.userAgent ?? undefined
+        }));
+        const results = await Promise.allSettled(jobs);
+        if (results.some((result) => result.status === "rejected")) {
+          console.error("[support-chat] post-read mirror/audit failed", {
+            conversationId,
+            failed: results.filter((result) => result.status === "rejected").length
+          });
+        }
       });
     }
 
