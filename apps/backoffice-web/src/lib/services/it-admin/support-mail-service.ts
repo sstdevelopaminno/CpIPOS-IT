@@ -1,8 +1,6 @@
 import "server-only";
 
-const SUPPORT_MAILBOX =
-  process.env.CPIPOS_SUPPORT_MAILBOX?.trim().toLowerCase() ||
-  "cuttingpointtech.support@gmail.com";
+const SUPPORT_MAILBOX = "cuttingpointtech@gmail.com";
 
 export type SupportMailThreadSummary = {
   id: string;
@@ -65,10 +63,18 @@ function bridgeConfig() {
   const secret = process.env.CPIPOS_MAIL_BRIDGE_SECRET?.trim();
   const supportUrl = process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_URL?.trim();
   const supportSecret = process.env.CPIPOS_SUPPORT_MAIL_BRIDGE_SECRET?.trim();
+  const configuredMailbox = process.env.CPIPOS_SUPPORT_MAILBOX?.trim().toLowerCase();
   if (!url || !secret) {
     throw new SupportMailBridgeError(
       "support_mail_not_configured",
       "กรุณาตั้งค่า CPIPOS_MAIL_BRIDGE_URL และ CPIPOS_MAIL_BRIDGE_SECRET ใน Vercel Production ให้ครบทั้งระบบส่งและตรวจ Gmail Sent",
+      503
+    );
+  }
+  if (configuredMailbox && configuredMailbox !== SUPPORT_MAILBOX) {
+    throw new SupportMailBridgeError(
+      "support_mailbox_config_mismatch",
+      `CPIPOS_SUPPORT_MAILBOX ยังเป็น ${configuredMailbox} กรุณาเปลี่ยนเป็น ${SUPPORT_MAILBOX} ใน Vercel ก่อนเชื่อม Gmail`,
       503
     );
   }
@@ -116,14 +122,16 @@ async function callBridge<T extends BridgeBase>(payload: Record<string, unknown>
     const message = code === "unsupported_action"
       ? "Mail Bridge ยังเป็นเวอร์ชันเก่า กรุณาอัปเดต Apps Script เป็นเวอร์ชัน Support Mail"
       : code === "wrong_mailbox"
-        ? "Mail Bridge ถูก Deploy ด้วยบัญชี Gmail ที่ไม่ใช่ cuttingpointtech.support@gmail.com"
+        ? "Mail Bridge ต้องใช้งานผ่าน cuttingpointtech@gmail.com เท่านั้น กรุณาตรวจสอบเจ้าของ Web App และ Script Properties"
         : code === "thread_not_found"
           ? "ไม่พบอีเมลหรือ Thread นี้แล้ว"
           : code === "unauthorized"
             ? "Mail Bridge secret ไม่ตรงกัน"
+            : code === "wrong_mailbox_configuration"
+              ? "Apps Script ยังตั้ง CPIPOS_SUPPORT_MAILBOX ไม่ใช่ cuttingpointtech@gmail.com กรุณาแก้ Script Properties และอนุญาต OAuth ด้วยบัญชีใหม่"
             : code === "support_mailbox_authorization_required" ||
               /userinfo\.email|Session\.getEffectiveUser|authorization is required/i.test(code)
-              ? "Google Apps Script ยังไม่ผ่านการอนุญาต OAuth ของบัญชี Support กรุณารัน authorizeSupportMailBridge ใน Apps Script เดิม แล้ว Deploy Web App เป็น New version ก่อนตรวจอีกครั้ง"
+              ? "Google Apps Script ยังไม่ได้รับ OAuth สำหรับ cuttingpointtech@gmail.com กรุณารัน authorizeSupportMailBridge ในโปรเจกต์ที่ Deploy ภายใต้บัญชีนี้ แล้วเผยแพร่ New version ก่อนตรวจอีกครั้ง"
               : "Gmail Support ทำรายการนี้ไม่สำเร็จชั่วคราว กรุณาลองใหม่";
     throw new SupportMailBridgeError(code, message, code === "thread_not_found" ? 404 : 502);
   }
@@ -147,7 +155,7 @@ export async function getSupportMailHealth() {
       !Array.isArray(body.capabilities) || !body.capabilities.includes("sent")) {
     throw new SupportMailBridgeError(
       "support_mail_bridge_upgrade_required",
-      "Mail Bridge ยังไม่พร้อมตรวจ Gmail Sent กรุณา Deploy Code.gs เวอร์ชันล่าสุดภายใต้บัญชี Support",
+      "Mail Bridge ยังไม่พร้อมตรวจ Gmail Sent กรุณา Deploy Code.gs เวอร์ชันล่าสุดภายใต้ cuttingpointtech@gmail.com",
       409
     );
   }
@@ -209,6 +217,9 @@ export async function getSupportMailThread(threadId: string) {
 }
 
 export async function sendSupportMail(input: { to: string; subject: string; body: string }) {
+  // A support message (including LINE OTP) must not be sent from the retired
+  // Google account while the Apps Script ownership is being migrated.
+  await getSupportMailHealth();
   const receipt = await callBridge<BridgeBase & { sent?: boolean }>({
     action: "send_new",
     to: input.to,
@@ -228,6 +239,7 @@ export async function sendSupportMail(input: { to: string; subject: string; body
 }
 
 export async function replySupportMail(input: { threadId: string; body: string }) {
+  await getSupportMailHealth();
   return callBridge<BridgeBase & { sent?: boolean; thread_id?: string }>({
     action: "reply",
     thread_id: input.threadId,

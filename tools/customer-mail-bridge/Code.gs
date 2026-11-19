@@ -2,18 +2,18 @@
  * CpIPOS Gmail / Apps Script bridge.
  *
  * Deploy this Apps Script as a Web App owned by:
- *   cuttingpointtech.support@gmail.com
+ *   cuttingpointtech@gmail.com
  *
  * Script Properties:
  *   CPIPOS_MAIL_BRIDGE_SECRET = same secret as Vercel
- *   CPIPOS_SUPPORT_MAILBOX = cuttingpointtech.support@gmail.com
+ *   CPIPOS_SUPPORT_MAILBOX = cuttingpointtech@gmail.com
  *
  * Execute as: Me
  * Who has access: Anyone (the shared secret is still required)
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.1";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.2";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -114,10 +114,15 @@ function authorizedSupportExecutor_(expectedMailbox) {
 }
 
 function supportMailbox_() {
-  return String(
+  // Never allow an old Script Property to silently keep sending from the
+  // retired Support Gmail account after the IT mailbox cutover.
+  var canonical = "cuttingpointtech@gmail.com";
+  var configured = String(
     PropertiesService.getScriptProperties().getProperty("CPIPOS_SUPPORT_MAILBOX") ||
-    "cuttingpointtech.support@gmail.com"
+    canonical
   ).trim().toLowerCase();
+  if (configured !== canonical) throw new Error("wrong_mailbox_configuration");
+  return canonical;
 }
 
 function boundedInt_(value, fallback, min, max) {

@@ -94,6 +94,9 @@ describe("transactional customer email delivery", () => {
     expect(registrationUi).toContain("email_delivery?.status");
     expect(registrationUi).toContain("await reload(true); // Preserve any email delivery warning");
     expect(service).toContain("customerEmailFailureMessage");
+    expect(service).toContain("mail_bridge_wrong_sender");
+    expect(service).toContain('action: "status"');
+    expect(service).toContain("await verifySenderMailbox()");
     expect(service).toContain("authorizeSupportMailBridge");
     expect(service).not.toContain("owner_pin:");
   });
