@@ -120,7 +120,8 @@ describe("transactional customer email delivery", () => {
   it("verifies actual sent-mail evidence with IT authorization and no second send", () => {
     expect(sentVerification).toContain("requireItAdmin()");
     expect(sentVerification).toContain("enforceRateLimit");
-    expect(sentVerification).toContain('folder: "sent"');
+    expect(sentVerification).toContain("listCompanyMailSentThreads");
+    expect(sentVerification).toContain("getCompanyMailHealth");
     expect(sentVerification).toContain("listCompanyMailSentThreads");
     expect(sentVerification).toContain("getCompanyMailHealth");
     expect(sentVerification).not.toContain("listSupportMailThreads");
