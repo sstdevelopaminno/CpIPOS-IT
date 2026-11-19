@@ -34,6 +34,9 @@ describe("IT Support Chat mobile room opening and recovery", () => {
     expect(ui).toContain("ลองเปิดห้องสนทนาอีกครั้ง");
     expect(ui).toContain("void loadConversation(selectedId)");
     expect(ui).toContain("detailRequestRef.current += 1");
+    expect(ui).toContain("if (detailInFlightRef.current?.id === id) return");
+    expect(ui).toContain("detailInFlightRef.current = { id, requestId }");
+    expect(ui).toContain("detailInFlightRef.current?.requestId === requestId");
   });
 
   it("tapping the same row again retries and switching rooms invalidates stale responses", () => {
