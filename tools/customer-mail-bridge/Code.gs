@@ -13,7 +13,7 @@
  *
  * Backward compatible with the original transactional send payload.
  */
-var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-19.3";
+var SUPPORT_MAIL_BRIDGE_VERSION = "2026-11-20.1";
 var SUPPORT_MAIL_CAPABILITIES = [
   "all",
   "inbox",
@@ -344,17 +344,16 @@ function sendTransactional_(body, mailbox) {
   var budget = checkMailQuota_(1);
   if (!budget.ok) return json_(budget);
 
-  MailApp.sendEmail({
-    to: to,
-    subject: subject,
-    body: textBody,
+  // Transactional mail must also be visible in Support's Gmail Sent folder.
+  // MailApp acceptance alone is not the same as Gmail Sent evidence.
+  GmailApp.sendEmail(to, subject, textBody, {
     htmlBody: htmlBody || undefined,
     name: senderName || "CpIPOS",
     replyTo: replyTo || undefined
   });
 
   cache.put(cacheKey, "sent", 21600);
-  return json_({ ok: true, messageId: "mailapp:" + new Date().toISOString(), mailbox: mailbox });
+  return json_({ ok: true, messageId: "gmailapp:" + new Date().toISOString(), mailbox: mailbox });
 }
 
 function json_(value) {
