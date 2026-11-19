@@ -98,7 +98,7 @@ function authorizedSupportExecutor_(expectedMailbox) {
     runtimeEmail = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();
   } catch (error) {
     var message = String(error && error.message || error || "");
-    if (!/Session\\.getEffectiveUser|userinfo\\.email/i.test(message)) throw error;
+    if (!/Session\.getEffectiveUser|userinfo\.email/i.test(message)) throw error;
   }
   if (runtimeEmail) return runtimeEmail;
 
