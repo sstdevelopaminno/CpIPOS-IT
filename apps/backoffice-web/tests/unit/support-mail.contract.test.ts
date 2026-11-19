@@ -12,7 +12,7 @@ describe("IT Support Mail integration", () => {
   const api = read("src/app/api/it-admin/v1/support-mail/route.ts");
   const consoleUi = read("src/components/it-admin/support-mail-console.tsx");
 
-  it("pins the operational mailbox to the Support account and keeps secrets server-side", () => {
+  it("pins the operational sender to the company Gmail and keeps secrets server-side", () => {
     expect(service).toContain("cuttingpointtech@gmail.com");
     expect(service).toContain("CPIPOS_MAIL_BRIDGE_SECRET");
     expect(service).toContain("support_mailbox_config_mismatch");
@@ -28,6 +28,9 @@ describe("IT Support Mail integration", () => {
     expect(service).not.toContain("DEFAULT_SUPPORT_MAIL_BRIDGE_URL");
     expect(service).toContain('action: "status"');
     expect(service).toContain("getSupportMailHealth");
+    expect(service).toContain("await getSupportMailHealth()");
+    expect(service).toContain("support_mailbox_config_mismatch");
+    expect(bridge).toContain('if (configured !== canonical) throw new Error("wrong_mailbox_configuration")');
     expect(api).toContain('url.searchParams.get("health") === "1"');
     expect(api).toContain("await getSupportMailHealth()");
   });
@@ -45,7 +48,7 @@ describe("IT Support Mail integration", () => {
       .toBeLessThan(bridge.indexOf('var effective = authorizedSupportExecutor_(mailbox)'));
   });
 
-  it("accepts only recent editor-attested Support mailbox when Web App Session OAuth fails", () => {
+  it("accepts only recent editor-attested company mailbox when Web App Session OAuth fails", () => {
     const props = new Map<string, string>([
       ["CPIPOS_SUPPORT_MAILBOX", "cuttingpointtech@gmail.com"]
     ]);
