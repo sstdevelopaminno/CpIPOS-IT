@@ -37,6 +37,9 @@ describe("IT Support Mail integration", () => {
     expect(bridge).toContain('if (configured !== company && configured !== support)');
     expect(service).toContain("getCompanyMailHealth");
     expect(bridge).toContain('"unsupported_role_action"');
+    expect(bridge).toContain('action === "send_it_password"');
+    expect(bridge).toContain("return sendTransactional_(body, mailbox)");
+    expect(bridge).toContain("2026-11-20.4");
     expect(bridge).toContain('action === "list_threads" && String(body.folder || "").toLowerCase() === "sent"');
     expect(api).toContain('url.searchParams.get("health") === "1"');
     expect(api).toContain("await getSupportMailHealth()");
@@ -123,7 +126,7 @@ describe("IT Support Mail integration", () => {
       expect(api).toContain(folder);
     }
     expect(bridge).toContain("SUPPORT_MAIL_BRIDGE_VERSION");
-    expect(bridge).toContain("2026-11-20.3");
+    expect(bridge).toContain("2026-11-20.4");
     expect(bridge).toContain("capabilities");
     expect(bridge).toContain("getMessagesForThreads");
     expect(bridge).toContain("GmailApp.sendEmail(to, subject, textBody");
