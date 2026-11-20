@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useItAccess } from "@/components/layout/app-shell";
+import { resolvePackageChangeDraft } from "@/lib/package-change-draft";
 import { POS_SALES_MODE_KEYS, type PosSalesModeKey, type PosSalesModeView } from "@/lib/pos-sales-modes";
 import { useTenantActionConfirm } from "./tenant-action-confirm";
 import { TenantPrimaryOwnerCard } from "./tenant-primary-owner-card";
@@ -348,7 +349,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
   const [salesModeReason, setSalesModeReason] = useState("");
   const [deleteReason, setDeleteReason] = useState("");
 
-  const applyData = useCallback((next: ControlData) => {
+  const applyData = useCallback((next: ControlData, options?: { preservePackageDraft?: boolean }) => {
     setData(next);
     setProfile({
       display_name: next.tenant.display_name ?? next.tenant.name ?? "",
@@ -357,7 +358,12 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
       company_address: next.tenant.company_address ?? "",
       logo_url: next.tenant.logo_url ?? ""
     });
-    setPackageId(next.current_package?.id ?? next.packages[0]?.id ?? "");
+    setPackageId((previousSelectedId) => resolvePackageChangeDraft({
+      availablePackageIds: next.packages.map((pkg) => pkg.id),
+      currentPackageId: next.current_package?.id,
+      previousSelectedId,
+      preservePrevious: options?.preservePackageDraft === true
+    }));
 
     const cycle: ContractPeriod = next.contract?.contract_period
       ?? (next.contract?.status === "trial" ? "trial_7d" : next.contract?.billing_cycle === "yearly" ? "yearly" : "monthly");
@@ -373,13 +379,15 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
     setPromoReason("");
     setContractEditing(false);
 
-    const changeStart = todayLocal();
-    const changeCycle: BillingCycle = next.contract?.billing_cycle === "yearly" && packageAllowsYearly(next.current_package) ? "yearly" : "monthly";
-    setBillingCycle(changeCycle);
-    setChangeStartDate(changeStart);
-    setChangeEndDate(addBillingDate(changeStart, changeCycle));
-    setChangeAutoEnd(true);
-    setChangeAutoRenew(Boolean(next.contract?.auto_renew));
+    if (!options?.preservePackageDraft) {
+      const changeStart = todayLocal();
+      const changeCycle: BillingCycle = next.contract?.billing_cycle === "yearly" && packageAllowsYearly(next.current_package) ? "yearly" : "monthly";
+      setBillingCycle(changeCycle);
+      setChangeStartDate(changeStart);
+      setChangeEndDate(addBillingDate(changeStart, changeCycle));
+      setChangeAutoEnd(true);
+      setChangeAutoRenew(Boolean(next.contract?.auto_renew));
+    }
 
     const custom = next.custom_package.terms;
     setCustomDraft({
@@ -483,7 +491,10 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
         onDeleted();
         return next;
       }
-      applyData(next as ControlData);
+      applyData(next as ControlData, {
+        // An unrelated mutation must not discard an unsubmitted package selection.
+        preservePackageDraft: payload.action !== "prepare_paid_package" && payload.action !== "change_package"
+      });
       setSuccess(message);
       onChanged();
       return next;
@@ -503,6 +514,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
   }, [applyData, confirmAction, data, fallbackName, onChanged, onDeleted, tenantId]);
 
   const selectedPackage = useMemo(() => data?.packages.find((pkg) => pkg.id === packageId) ?? null, [data?.packages, packageId]);
+  const hasUnsubmittedPackageChange = Boolean(selectedPackage && data?.current_package && selectedPackage.id !== data.current_package.id);
   const storeName = data?.tenant.display_name || data?.tenant.name || fallbackName;
   const currentStatus = data?.contract?.effective_status ?? data?.contract?.status ?? "none";
   const canSuspend = currentStatus === "active" || currentStatus === "trial";
@@ -519,6 +531,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
   const canEditBillingCycle = canEditContract;
   const currentPackageYearlyAvailable = data?.contract?.billing_cycle === "yearly" || packageAllowsYearly(data?.current_package);
   const latestBillingRequest = data?.billing.latest_request ?? null;
+  const pendingRequestedPackage = data?.packages.find((pkg) => pkg.id === latestBillingRequest?.requested_package_id) ?? null;
+  const hasPendingPackageChange = Boolean(pendingRequestedPackage && data?.current_package && pendingRequestedPackage.id !== data.current_package.id);
   const latestReceipt = data?.billing.latest_receipt ?? null;
   const currentDue = data?.billing.current_due ?? null;
   const customPackageDefinition = data?.packages.find((pkg) => pkg.code === "custom") ?? null;
@@ -1144,7 +1158,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                         </div>
                       </div> : null}
                       <div className={styles.packagePreview}><strong>{contractPeriodLabel(contractCycle)}</strong><span>{contractStartDate || "—"} → {contractEndDate || "—"}</span></div>
-                      {contractEditing ? <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy} onClick={resetContractDraft}>ยกเลิกการแก้ไข</button><button className={styles.primaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate || (contractCycle === "yearly" && !currentPackageYearlyAvailable)} onClick={async () => { if (isPaidActiveContract && contractEditReason.trim().length < 4) { setError("กรุณาระบุเหตุผลการแก้ไขสัญญาอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit"); return; } await mutate({ action: "update_contract", contract_period: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew, admin_reason: contractEditReason }, "อัปเดตรอบสัญญาและสิทธิ์เรียบร้อย", true); }}>บันทึกการแก้ไขสัญญา</button></div> : null}
+                      {contractEditing ? <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy} onClick={resetContractDraft}>ยกเลิกการแก้ไข</button><button className={styles.primaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate || (contractCycle === "yearly" && !currentPackageYearlyAvailable)} onClick={async () => { if (isPaidActiveContract && contractEditReason.trim().length < 4) { setError("กรุณาระบุเหตุผลการแก้ไขสัญญาอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit"); return; } await mutate({ action: "update_contract", contract_period: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew, admin_reason: contractEditReason }, "บันทึกรอบสัญญาเรียบร้อย (ยังไม่ได้เปลี่ยนแพ็กเกจ)", true); }}>บันทึกการแก้ไขสัญญา</button></div> : null}
                     </section>
                   ) : null}
 
@@ -1165,7 +1179,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                     </div> : null}
 
                     {hasOpenBillingRequest ? <div className={styles.securityNote} role="status" style={{ display: "grid", gap: 6 }}>
-                      <strong>มีรายการชำระรอตรวจสอบแล้ว · {latestBillingRequest?.status === "under_review" ? "กำลังตรวจสอบ" : "รอตรวจสอบ"}</strong>
+                      <strong>{hasPendingPackageChange ? `ส่งคำขอเปลี่ยนแพ็กเกจ ${data.current_package?.name} → ${pendingRequestedPackage?.name} แล้ว` : "มีรายการชำระรอตรวจสอบแล้ว"} · {latestBillingRequest?.status === "under_review" ? "กำลังตรวจสอบ" : "รอตรวจสอบ"}</strong>
+                      {hasPendingPackageChange ? <small>แพ็กเกจปัจจุบันยังเป็น {data.current_package?.name} จนกว่าจะตรวจรับเงินและอนุมัติการเปลี่ยนแพ็กเกจ</small> : null}
                       <span>ยอดตามแพ็กเกจ {money(latestBillingRequest?.expected_amount ?? 0)} · {latestBillingRequest?.billing_interval === "yearly" ? "รายปี" : "รายเดือน"}</span>
                       <small>ยังไม่ออกใบเสร็จจนกว่า IT จะตรวจรายการธนาคารและกดอนุมัติ</small>
                       <div className={styles.sectionActions}>
@@ -1173,7 +1188,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       </div>
                     </div> : <>
                       <div className={styles.formGrid}>
-                        <label><span>แพ็กเกจ</span><select value={packageId} onChange={(e) => selectPackage(e.target.value)}>{data.packages.map((pkg) => <option value={pkg.id} key={pkg.id}>{pkg.name} · {pkg.code}</option>)}</select></label>
+                        <label><span>แพ็กเกจที่ต้องการเปลี่ยน / ต่ออายุ</span><select value={packageId} onChange={(e) => selectPackage(e.target.value)}>{data.packages.map((pkg) => <option value={pkg.id} key={pkg.id}>{pkg.name} · {pkg.code}</option>)}</select></label>
                         <label><span>รอบชำระ</span><select value={billingCycle} onChange={(e) => changePackageCycle(e.target.value as BillingCycle)}><option value="monthly">รายเดือน</option><option value="yearly" disabled={!selectedPackageYearlyAvailable}>รายปี{!selectedPackageYearlyAvailable ? " · ยังไม่ตั้งราคา" : ""}</option></select></label>
                         <label className={styles.span2}><span>หมายเหตุภายใน (Audit)</span><input placeholder={isTrial ? "เช่น เตรียมเปิดแพ็กเกจจริงหลังตรวจรับเงินรอบแรก" : "เช่น ลูกค้าขอต่ออายุ/เปลี่ยนแพ็กเกจ"} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} /></label>
                       </div>
@@ -1183,6 +1198,10 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       {selectedPackage ? <div className={styles.packagePreview}>
                         <strong>{selectedPackage.name}</strong>
                         <span>{billingCycle === "yearly" ? "รายปี" : "รายเดือน"} · ยอดที่ต้องตรวจรับ {money(selectedPackageAmount)} · รอบบริการจริงจะเริ่มจาก Settlement</span>
+                      </div> : null}
+                      {hasUnsubmittedPackageChange ? <div className={styles.securityNote} role="status">
+                        <strong>ยังไม่เปลี่ยนแพ็กเกจ: {data.current_package?.name} → {selectedPackage?.name}</strong>
+                        <div>การเลือกแพ็กเกจในช่องนี้เป็นเพียงร่างคำขอ กด “สร้างคำขอเปลี่ยนแพ็กเกจ” ด้านล่าง แล้วตรวจรับเงินจริงและอนุมัติในตารางชำระแพ็กเกจ การกด “บันทึกการแก้ไขสัญญา” ด้านบนจะไม่เปลี่ยนแพ็กเกจ</div>
                       </div> : null}
                       <div className={styles.sectionActions}>
                         <button className={styles.primaryButton} type="button"
@@ -1196,7 +1215,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                             auto_renew: changeAutoRenew,
                             admin_reason: changeReason
                           }, "สร้างรายการชำระแล้ว กรุณาไปตารางชำระแพ็กเกจเพื่อตรวจเงินเข้าและอนุมัติ", true)}>
-                          {isTrial ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระแพ็กเกจ"}
+                          {hasUnsubmittedPackageChange ? "สร้างคำขอเปลี่ยนแพ็กเกจ" : isTrial ? "สร้างรายการชำระรอบแรก" : "สร้างรายการชำระเพื่อต่ออายุ"}
                         </button>
                         <Link className={styles.secondaryButton} href={`/it-admin/subscription-payments/${tenantId}`}>ไปตารางชำระแพ็กเกจ</Link>
                         <Link className={styles.secondaryButton} href={`/it-admin/tenants/${tenantId}/addons`}>Add-ons เฉพาะร้าน →</Link>

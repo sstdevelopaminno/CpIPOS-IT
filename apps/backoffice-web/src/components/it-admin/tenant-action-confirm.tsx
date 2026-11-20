@@ -88,7 +88,7 @@ const actionCopy: Record<string, Copy> = {
   update_contract: {
     eyebrow: "CONTRACT UPDATE",
     title: "ยืนยันการแก้ไขสัญญา",
-    description: "วันที่เริ่ม รอบสัญญา หรือวันหมดอายุจะเปลี่ยนทันที และระบบจะบันทึก Audit Log",
+    description: "แก้ไขวันที่เริ่ม รอบสัญญา หรือวันหมดอายุพร้อมบันทึก Audit Log เท่านั้น ไม่เปลี่ยนแพ็กเกจที่ใช้งาน หากต้องการเปลี่ยนแพ็กเกจ ให้สร้างคำขอชำระและผ่านการอนุมัติแยกต่างหาก",
     confirmLabel: "ยืนยันการแก้ไข",
     tone: "info"
   },
