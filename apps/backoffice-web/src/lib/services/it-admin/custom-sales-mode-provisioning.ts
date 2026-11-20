@@ -26,7 +26,7 @@ export async function ensureCustomSalesModePrerequisites(
   if (!needsCashier) return { menus: [], features: [] };
 
   const desiredMenus = modes.recycling
-    ? ["main.sales", "main.more", "more.stock"]
+    ? ["main.sales", "main.more", "more.stock", "main.settings", "settings.store", "settings.printers"]
     : ["main.sales"];
   const desiredFeatures = modes.recycling
     ? ["core_pos_sales", "stock_management"]
