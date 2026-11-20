@@ -2,8 +2,11 @@ import { appendAuditLog } from "@/lib/audit-log";
 import { guardItAdminError, ItAdminGuardError, requireItAdmin } from "@/lib/it-admin-guard";
 import { ok } from "@/lib/http";
 import { NEWS_SELECT, UUID, validateNewsEditor } from "@/lib/platform-news-admin";
+import { dispatchNativeNewsFcm } from "@/lib/native-news-fcm-push";
+import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 type Context = { params: Promise<{ newsId: string }> };
 
 async function getId(context: Context) {
@@ -51,6 +54,9 @@ export async function PATCH(req: Request, ctx: Context) {
       afterData: { title: editor.title, status: editor.status, target_tenant_id: editor.target_tenant_id },
       ipAddress: requestMeta.ipAddress ?? undefined, userAgent: requestMeta.userAgent ?? undefined
     });
+    if (existing.data.status !== "published" && editor.status === "published") {
+      after(() => dispatchNativeNewsFcm(updated.data));
+    }
     return ok({ item: updated.data });
   } catch (error) { return guardItAdminError(error); }
 }
