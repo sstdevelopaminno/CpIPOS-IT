@@ -40,5 +40,8 @@ export function getSalesModeSelectionError(
   if (String(packageCode ?? "").trim().toLowerCase() !== "custom" && modes.optical_retail) {
     return "optical_mode_requires_custom";
   }
+  if (String(packageCode ?? "").trim().toLowerCase() !== "custom" && modes.recycling) {
+    return "recycling_mode_requires_custom";
+  }
   return null;
 }

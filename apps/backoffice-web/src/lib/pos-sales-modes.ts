@@ -1,4 +1,4 @@
-export const POS_SALES_MODE_KEYS = ["takeaway", "dine_in", "buffet_table", "delivery", "general_sale", "optical_retail"] as const;
+export const POS_SALES_MODE_KEYS = ["takeaway", "dine_in", "buffet_table", "delivery", "general_sale", "optical_retail", "recycling"] as const;
 
 export type PosSalesModeKey = (typeof POS_SALES_MODE_KEYS)[number];
 export type PosSalesModeMap = Record<PosSalesModeKey, boolean>;
@@ -17,7 +17,8 @@ export const DEFAULT_POS_SALES_MODES: PosSalesModeMap = {
   buffet_table: true,
   delivery: true,
   general_sale: true,
-  optical_retail: false
+  optical_retail: false,
+  recycling: false
 };
 
 export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">> = [
@@ -56,6 +57,12 @@ export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">
     label: "ร้านแว่นตา · IMDC OPTICAL",
     short_label: "ร้านแว่นตา",
     description: "โหมดขายกรอบและเลนส์ด้วย SKU/บาร์โค้ด ใช้ระบบขายปลีกเดิมเป็นฐาน (งานสั่งทำและค่าสายตากำลังพัฒนา)"
+  },
+  {
+    key: "recycling",
+    label: "ร้านค้าของเก่า · Recycling",
+    short_label: "รีไซเคิล",
+    description: "รับซื้อและขายออกแบบยิงบาร์โค้ด ชั่งน้ำหนักภายนอก แล้วเลือกกิโลกรัม/ขีด/กรัม/ตันหรือชิ้น (CUSTOM เท่านั้น)"
   }
 ];
 
@@ -75,7 +82,8 @@ export function normalizePosSalesModes(value: unknown): PosSalesModeMap {
     buffet_table: asBoolean(record.buffet_table, DEFAULT_POS_SALES_MODES.buffet_table),
     delivery: asBoolean(record.delivery, DEFAULT_POS_SALES_MODES.delivery),
     general_sale: asBoolean(record.general_sale, DEFAULT_POS_SALES_MODES.general_sale),
-    optical_retail: asBoolean(record.optical_retail, DEFAULT_POS_SALES_MODES.optical_retail)
+    optical_retail: asBoolean(record.optical_retail, DEFAULT_POS_SALES_MODES.optical_retail),
+    recycling: asBoolean(record.recycling, DEFAULT_POS_SALES_MODES.recycling)
   };
 }
 
