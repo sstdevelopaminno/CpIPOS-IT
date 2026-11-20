@@ -10,6 +10,7 @@ describe("CpiPOS public registration UTM persistence contract", () => {
 
   it("validates untrusted tags and writes only to marketing_attribution", () => {
     expect(route).toContain("sanitizeMarketingAttribution(body.marketing_attribution)");
+    expect(route).toContain("marketing_attribution_supported: true");
     expect(route).toContain("marketing_attribution: marketingAttribution");
     expect(route).toContain('source: isCustom ? "cpipos_website_custom" : "cpipos_website"');
     expect(route).toContain('status: "pending"');
