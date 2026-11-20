@@ -75,7 +75,8 @@ export async function GET() {
         };
       });
 
-    return json({ packages });
+    // Non-mutating deployment readiness indicator for the website's UTM rollout.
+    return json({ packages, marketing_attribution_supported: true });
   } catch (error) {
     console.error("[public-store-registration] catalog failed", error);
     return json({ error: "รายการแพ็กเกจไม่พร้อมใช้งาน", code: "catalog_unavailable" }, 503);
