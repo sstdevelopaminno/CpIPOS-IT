@@ -5,6 +5,7 @@ import { appendAuditLog } from "@/lib/audit-log";
 import { invalidateTenantFeatureGateCache } from "@/lib/feature-gate";
 import { POS_SALES_MODE_KEYS, normalizePosSalesModes, toPosSalesModeViews, type PosSalesModeMap } from "@/lib/pos-sales-modes";
 import { getSalesModeSelectionError, normalizeRequestedPosSalesModes } from "@/lib/pos-sales-mode-entitlements";
+import { ensureCustomSalesModePrerequisites } from "@/lib/services/it-admin/custom-sales-mode-provisioning";
 import { ItAdminGuardError, type ItAdminContext } from "@/lib/it-admin-guard";
 import { getItQaMode } from "@/lib/server/internal-it-test-store";
 
@@ -1598,6 +1599,15 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       throw new ItAdminGuardError("optical_custom_only",
         "โหมดร้านแว่นตาเปิดได้เฉพาะ CUSTOM หรือร้านทดสอบ IT", 403);
     }
+    if (validation === "recycling_mode_requires_custom") {
+      throw new ItAdminGuardError("recycling_custom_only",
+        "โหมด Recycling เป็นตัวเลือกที่เปิดให้ลูกค้ารายใดก็ได้ที่ใช้แพ็กเกจ CUSTOM ไม่อนุญาตในแพ็กเกจทั่วไป", 403);
+    }
+    // Install the same cashier/stock permissions for ANY selected CUSTOM
+    // tenant. Never silently unlock other sales modes or override IT denials.
+    const provisioned = pkg.data.code === "custom"
+      ? await ensureCustomSalesModePrerequisites(context.supabase, tenantId, nextModes)
+      : {menus:[],features:[]};
     const beforeMeta = asRecord(contract.metadata);
     const reason = optionalText(input.admin_reason, 600);
     const changes = {
@@ -1613,7 +1623,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     const { error } = await context.supabase.from("tenant_subscription_contracts").update(changes).eq("id", contract.id).eq("tenant_id", tenantId);
     if (error) throw new Error(`sales_modes_update_failed:${error.message}`);
     invalidateTenantFeatureGateCache(tenantId);
-    await audit(context, tenantId, "tenant_sales_modes_updated", "tenant_subscription_contracts", contract.id, asRecord(contract), asRecord(changes), { sales_modes: nextModes, admin_reason: reason });
+    await audit(context, tenantId, "tenant_sales_modes_updated", "tenant_subscription_contracts", contract.id, asRecord(contract), asRecord(changes), { sales_modes: nextModes, admin_reason: reason, provisioned_custom_dependencies: provisioned });
   }
   if (["suspend_package", "resume_package", "cancel_subscription"].includes(action)) {
     const contract = await loadCurrentContract(context, tenantId);

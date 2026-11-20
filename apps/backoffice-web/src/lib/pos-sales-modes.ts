@@ -50,7 +50,7 @@ export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">
     key: "general_sale",
     label: "ขายทั่วไป (SD)",
     short_label: "ขายทั่วไป",
-    description: "ขายสินค้าแบบ SKU/บาร์โค้ด พร้อมตารางสแกนสำหรับร้านค้าทั่วไป"
+    description: "หน้าขาย CpiPOS มาตรฐานสำหรับร้านค้าทั่วไปและแพ็กเกจ CUSTOM: สแกน SKU/บาร์โค้ดและตะกร้าตารางเดียวกัน"
   },
   {
     key: "optical_retail",
@@ -62,7 +62,7 @@ export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">
     key: "recycling",
     label: "ร้านค้าของเก่า · Recycling",
     short_label: "รีไซเคิล",
-    description: "รับซื้อและขายออกแบบยิงบาร์โค้ด ชั่งน้ำหนักภายนอก แล้วเลือกกิโลกรัม/ขีด/กรัม/ตันหรือชิ้น (CUSTOM เท่านั้น)"
+    description: "ใช้หน้าขาย CpiPOS มาตรฐานเหมือนร้านของชำ แต่เปลี่ยนเป็นรับซื้อ/ขายออก ชั่งน้ำหนัก เลือกหน่วย และตัดสต๊อกตามธุรกรรม (เปิดให้ลูกค้าทุกแห่งที่ซื้อ CUSTOM + สิทธิ์ Recycling)"
   }
 ];
 

@@ -549,8 +549,8 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
         })()
     : 0;
   const visibleSalesModes = data?.sales_modes.filter((mode) =>
-    (mode.key !== "optical_retail" && mode.key !== "recycling") || data.current_package?.code === "custom"
-      || Boolean(data.internal_it_test_mode)
+    (mode.key !== "recycling" || data.current_package?.code === "custom") &&
+    (mode.key !== "optical_retail" || data.current_package?.code === "custom" || Boolean(data.internal_it_test_mode))
   ) ?? [];
   const salesModeEnabledCount = visibleSalesModes.filter((mode) => mode.enabled).length;
   const salesModeTotal = visibleSalesModes.length || POS_SALES_MODE_KEYS.length - 1;
@@ -929,7 +929,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       <button className={styles.primaryButton} type="button" disabled={busy || !hasSalesModeEnabled} onClick={async () => { const result = await mutate({ action: "update_sales_modes", sales_modes: salesModeDrafts, admin_reason: salesModeReason }, "บันทึกโหมดขายเรียบร้อย", true); if (result) setSalesModeReason(""); }}>บันทึกโหมดขาย</button>
                     </div>
                     <div className={styles.securityNote}>{data.current_package?.code === "custom"
-                      ? "CUSTOM: โหมดขายที่ IT ไม่ได้เปิดจะถูกซ่อนจากหน้าขาย POS และต้องผ่านการตรวจสิทธิ์ฟีเจอร์/พนักงาน"
+                      ? "CUSTOM ทุกร้านใช้ UI หน้าขายมาตรฐานเดียวกัน • เลือกโหมดทั่วไป/ร้านแว่นตา/Recycling ตามสัญญาได้แยกกัน • ระบบจะจัดเตรียมเมนูหน้าขายและสิทธิ์สต๊อกที่จำเป็นเมื่ออนุมัติโหมด โดยไม่เปิดสิทธิ์ที่ IT ปิดไว้"
                       : "เมื่อปิดโหมด ระบบจะล็อกปุ่มเลือกโหมดบนหน้าขาย POS ของร้านนี้ และยังคงเคารพสิทธิ์จากแพ็กเกจ/ฟีเจอร์เดิมอีกชั้นหนึ่ง"}</div>
                   </section>
                 </div>

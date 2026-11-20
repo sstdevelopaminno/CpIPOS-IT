@@ -28,7 +28,8 @@ describe("IT tenant POS sales-mode control", () => {
     expect(consoleUi).toContain("POS Sales Modes");
     expect(consoleUi).toContain("บันทึกโหมดขาย");
     expect(consoleUi).toContain("ใช้ค่าเริ่มต้นของแพ็กเกจ");
-    expect(consoleUi).toContain("เมนู “หน้าขาย” และ Sales Mode เป็นคนละสิทธิ์กัน");
+    expect(consoleUi).toContain("ทุกแพ็กเกจใช้ UI หน้าขาย CpiPOS ชุดเดียวกัน");
+    expect(consoleUi).toContain("CUSTOM เลือกขายทั่วไป/ร้านแว่นตา/Recycling แยกกันได้");
     expect(consoleUi).toContain("sales_mode_limit");
   });
 

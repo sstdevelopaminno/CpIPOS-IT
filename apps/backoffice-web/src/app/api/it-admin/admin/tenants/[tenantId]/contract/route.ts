@@ -4,6 +4,8 @@ import { getTenantLimits, invalidateTenantFeatureGateCache } from "@/lib/feature
 import { fail, ok } from "@/lib/http";
 import { guardItAdminError, parseTenantParam, requireItAdmin } from "@/lib/it-admin-guard";
 import { POS_SALES_MODE_KEYS, type PosSalesModeKey } from "@/lib/pos-sales-modes";
+import { getSalesModeSelectionError, normalizeRequestedPosSalesModes } from "@/lib/pos-sales-mode-entitlements";
+import { ensureCustomSalesModePrerequisites } from "@/lib/services/it-admin/custom-sales-mode-provisioning";
 
 type ContractPayload = {
   plan_id?: string;
@@ -288,6 +290,32 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
         "แพ็กเกจที่มีค่าบริการต้องเปิดผ่านการยืนยันรับเงินจริง เพื่อสร้างรอบบิลและใบเสร็จทุกครั้ง",
         409
       );
+    }
+
+    // Both IT contract editors must provision the same cashier menu and stock
+    // rights for any CUSTOM tenant selected by IT. A fixed plan must never
+    // receive Optical/Recycling via an accidental partial payload.
+    if (hasSalesModesField && body.sales_modes !== null && body.sales_modes) {
+      const grantPlanId=String(patch.package_id ?? latestContract?.package_id ?? "");
+      const selected=await supabase.from("subscription_packages").select("code,metadata")
+        .eq("id",grantPlanId).maybeSingle();
+      if (selected.error || !selected.data) {
+        return fail("sales_modes_package_lookup_failed",
+          "ไม่สามารถตรวจสอบแพ็กเกจสำหรับโหมดขายได้",503);
+      }
+      const nextModes=normalizeRequestedPosSalesModes(body.sales_modes);
+      const validation=getSalesModeSelectionError(nextModes,selected.data.code,selected.data.metadata);
+      if (validation) {
+        return fail(validation,
+          validation==="recycling_mode_requires_custom"
+            ? "โหมด Recycling เปิดให้ลูกค้า CUSTOM ทุกร้านที่ซื้อสิทธิ์นี้เท่านั้น"
+            : validation==="optical_mode_requires_custom"
+              ? "โหมดร้านแว่นตาต้องเป็นแพ็กเกจ CUSTOM"
+              : "กรุณาตรวจสอบโหมดที่เปิดให้ตรงกับข้อกำหนดแพ็กเกจ",422);
+      }
+      if (String(selected.data.code).toLowerCase()==="custom") {
+        await ensureCustomSalesModePrerequisites(supabase,tenantId,nextModes);
+      }
     }
 
     let updated: ContractRow;
