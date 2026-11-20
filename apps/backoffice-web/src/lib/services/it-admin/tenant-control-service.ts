@@ -8,6 +8,8 @@ import { getSalesModeSelectionError, normalizeRequestedPosSalesModes } from "@/l
 import { ensureCustomSalesModePrerequisites } from "@/lib/services/it-admin/custom-sales-mode-provisioning";
 import { ItAdminGuardError, type ItAdminContext } from "@/lib/it-admin-guard";
 import { getItQaMode } from "@/lib/server/internal-it-test-store";
+import { decideTrialPackageRevision } from "@/lib/it-trial-package-policy";
+import { summarizeContractIntegrity } from "@/lib/contract-integrity";
 
 const ACTIVE_CONTRACT_STATUSES = ["trial", "active", "suspended"] as const;
 const BILLING_CYCLES = new Set(["monthly", "yearly"]);
@@ -171,6 +173,7 @@ export type TenantControlAction =
   | "approve_custom_package_request"
   | "prepare_paid_package"
   | "change_package"
+  | "revise_trial_package"
   | "set_it_test_mode"
   | "update_sales_modes"
   | "suspend_package"
@@ -256,6 +259,7 @@ function requireAction(raw: unknown): TenantControlAction {
     "approve_custom_package_request",
     "prepare_paid_package",
     "change_package",
+    "revise_trial_package",
     "set_it_test_mode",
     "update_sales_modes",
     "suspend_package",
@@ -797,6 +801,12 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       throw new ItAdminGuardError("subscription_closed", "Cancelled contracts must be reactivated through the package workflow before editing.", 409);
     }
 
+    const lifecycleBeforeContractEdit = await loadLifecycle(context, tenantId);
+    if (contract.status === "trial" &&
+        asRecord(lifecycleBeforeContractEdit?.metadata).prepaid_activation_state === "pending_trial_completion") {
+      throw new ItAdminGuardError("prepaid_trial_contract_protected",
+        "สัญญา Trial นี้มีแพ็กเกจที่ชำระล่วงหน้ารอเปิดใช้งาน กรุณาตรวจสอบการชำระกับ IT ก่อนแก้วันสัญญา", 409);
+    }
     const paidActiveContract = ["active", "expired"].includes(contract.status) && Number(contract.amount_per_cycle ?? 0) > 0;
     const currentBillingCycle: "monthly" | "yearly" = contract.billing_interval === "yearly" ? "yearly" : "monthly";
     const contractMetadata = asRecord(contract.metadata);
@@ -1357,6 +1367,152 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       asRecord(requestResult.data),{status:"pending",metadata:requestMetadata},{
         expected_amount:expectedAmount,billing_interval:billingCycle,custom_terms_version:terms.version
       });
+  }
+
+  if (action === "revise_trial_package") {
+    // A genuine tenant trial may be reassigned as often as IT needs, but this
+    // NEVER converts a paid plan, creates a paid cycle, or changes the receipt.
+    const requestedPackageId = cleanText(input.package_id, 80);
+    const reason = optionalText(input.admin_reason, 600);
+    const previous = await loadCurrentContract(context, tenantId);
+    if (!previous) {
+      throw new ItAdminGuardError("subscription_not_found", "ร้านยังไม่มีสัญญาสำหรับแก้ไข กรุณาสร้างสัญญาผ่านขั้นตอนที่ถูกต้อง", 409);
+    }
+    const [lifecycle, packages, requests, settled, overlaps] = await Promise.all([
+      loadLifecycle(context, tenantId),
+      context.supabase.from("subscription_packages").select(PACKAGE_SELECT)
+        .eq("id", requestedPackageId).eq("is_active", true).eq("status", "active")
+        .maybeSingle<PackageRow>(),
+      context.supabase.from("tenant_subscription_payment_requests").select("id")
+        .eq("tenant_id", tenantId).in("status", ["pending", "under_review"])
+        .limit(1),
+      context.supabase.from("tenant_subscription_receipts").select("id")
+        .eq("tenant_id", tenantId).gte("issued_at", previous.created_at).limit(1),
+      context.supabase.from("tenant_subscription_contracts").select("id,status,started_at,ended_at")
+        .eq("tenant_id", tenantId).in("status", ["trial", "active"])
+    ]);
+    if (packages.error || requests.error || settled.error || overlaps.error) {
+      throw new ItAdminGuardError("trial_package_check_unavailable",
+        "ไม่สามารถตรวจสอบแพ็กเกจ ประวัติชำระเงิน หรือสัญญาได้ กรุณาลองใหม่", 503);
+    }
+    const meta = asRecord(lifecycle?.metadata);
+    const conflict = summarizeContractIntegrity(overlaps.data ?? []);
+    const decision = decideTrialPackageRevision({
+      contractStatus: previous.status,
+      currentPackageId: previous.package_id,
+      requestedPackageId,
+      adminReason: reason,
+      hasOpenPaymentRequest: (requests.data ?? []).length > 0,
+      prepaidActivationPending: meta.prepaid_activation_state === "pending_trial_completion",
+      hasSettledTrialPayment: (settled.data ?? []).length > 0,
+      hasContractConflict: conflict.has_conflict || conflict.has_invalid_dates ||
+        (overlaps.data ?? []).some(row =>
+          row.id !== previous.id && (row.status === "active" || row.status === "trial") &&
+          (!row.ended_at || Date.parse(row.ended_at) > Date.now()))
+    });
+    if (!decision.allowed) {
+      throw new ItAdminGuardError(decision.code, decision.message, 409);
+    }
+    const selected = packages.data;
+    if (!selected) {
+      throw new ItAdminGuardError("package_not_available", "แพ็กเกจนี้ไม่ได้เปิดใช้งานในระบบ IT", 422);
+    }
+    if (tenant.package_id !== previous.package_id) {
+      throw new ItAdminGuardError("tenant_contract_package_mismatch",
+        "พบแพ็กเกจร้านไม่ตรงกับสัญญาปัจจุบัน กรุณาตรวจสอบข้อมูลก่อนเปลี่ยน", 409);
+    }
+    let customTerms: CustomTermsRow | null = null;
+    if (selected.code === "custom" || selected.quota_mode === "custom") {
+      const custom = await context.supabase.from("tenant_custom_package_terms")
+        .select("tenant_id,package_id,status,proposed_billing_interval,monthly_price,yearly_price,monthly_discount_percent,yearly_discount_percent,max_branches,max_devices,max_users,retention_months,max_products,monthly_bill_limit,storage_limit_gb,feature_overrides,notes,version,approved_by,approved_at,created_at,updated_at")
+        .eq("tenant_id", tenantId).eq("package_id", selected.id)
+        .in("status", ["approved", "active"]).maybeSingle<CustomTermsRow>();
+      if (custom.error) throw new Error("trial_custom_terms_lookup_failed:" + custom.error.message);
+      if (!custom.data) {
+        throw new ItAdminGuardError("trial_custom_terms_required",
+          "ต้องอนุมัติรายละเอียดแพ็กเกจ CUSTOM ของร้านก่อนเลือกทดลอง", 422);
+      }
+      customTerms = custom.data;
+    }
+    const isYearly = previous.billing_interval === "yearly";
+    if (isYearly && !customTerms && Number(selected.yearly_price ?? 0) <= 0) {
+      throw new ItAdminGuardError("yearly_price_not_configured",
+        "แพ็กเกจใหม่ไม่มีราคาต่อปี กรุณาแก้รอบสัญญาให้เป็นรายเดือนก่อนเปลี่ยน", 422);
+    }
+    const maxBranches = Math.max(1, Number(customTerms?.max_branches ?? selected.max_branches ?? 1));
+    const maxDevices = Math.max(1, Number(customTerms?.max_devices ?? selected.max_devices ?? 1));
+    const maxUsers = Math.max(1, Number(customTerms?.max_users ?? selected.max_users ?? 1));
+    const metadata = { ...asRecord(previous.metadata) };
+    delete metadata.sales_modes; // Never inherit modes from an unrelated package.
+    metadata.last_it_trial_package_revision = {
+      previous_package_id: previous.package_id,
+      next_package_id: requestedPackageId,
+      actor_user_id: context.auth.userId,
+      reason,
+      at: now,
+      trial_dates_unchanged: true,
+      payment_facts_unchanged: true
+    };
+    const amount = customTerms
+      ? customTermsAmount(customTerms, isYearly ? "yearly" : "monthly")
+      : packageAmount(selected, isYearly ? "yearly" : "monthly");
+    const changes = {
+      package_id: requestedPackageId,
+      amount_per_cycle: amount,
+      max_branches: maxBranches,
+      branch_limit: maxBranches,
+      max_devices: maxDevices,
+      terminal_limit_per_branch: maxDevices,
+      max_users: maxUsers,
+      metadata,
+      updated_at: now
+    };
+    // Guard against a concurrently settled or replaced contract. A failure to
+    // update the tenants pointer is compensated before returning an error.
+    const revised = await context.supabase.from("tenant_subscription_contracts")
+      .update(changes).eq("id", previous.id).eq("tenant_id", tenantId)
+      .eq("status", "trial").eq("package_id", previous.package_id)
+      .select("id").maybeSingle<{ id: string }>();
+    if (revised.error || !revised.data) {
+      throw new ItAdminGuardError("trial_contract_concurrent_change",
+        "สัญญาถูกเปลี่ยนระหว่างบันทึก กรุณารีเฟรชและตรวจสอบสถานะอีกครั้ง", 409);
+    }
+    const pointed = await context.supabase.from("tenants")
+      .update({ package_id: requestedPackageId, updated_at: now })
+      .eq("id", tenantId).eq("package_id", previous.package_id)
+      .select("id").maybeSingle<{ id: string }>();
+    if (pointed.error || !pointed.data) {
+      const rollback = await context.supabase.from("tenant_subscription_contracts")
+        .update({
+          package_id: previous.package_id,
+          amount_per_cycle: previous.amount_per_cycle,
+          max_branches: previous.max_branches, branch_limit: previous.branch_limit,
+          max_devices: previous.max_devices, terminal_limit_per_branch: previous.terminal_limit_per_branch,
+          max_users: previous.max_users, metadata: previous.metadata
+        })
+        .eq("tenant_id", tenantId).eq("id", previous.id).eq("status", "trial")
+        .eq("package_id", requestedPackageId)
+        .select("id").maybeSingle<{ id: string }>();
+      if (rollback.error || !rollback.data) {
+        console.error("[trial-package] urgent manual reconciliation required", {
+          tenantId, contractId: previous.id, message: rollback.error?.message ?? "rollback_row_not_found"
+        });
+        throw new ItAdminGuardError("trial_package_reconciliation_required",
+          "พบข้อมูลแพ็กเกจไม่ตรงกัน กรุณาให้ฝ่าย IT ตรวจสอบก่อนทำรายการซ้ำ", 503);
+      }
+      throw new ItAdminGuardError("trial_package_pointer_not_saved",
+        "บันทึกแพ็กเกจไม่สำเร็จและย้อนการเปลี่ยนแปลงแล้ว กรุณารีเฟรชข้อมูล", 409);
+    }
+    invalidateTenantFeatureGateCache(tenantId);
+    await audit(context, tenantId, "it_trial_package_revised", "tenant_subscription_contracts",
+      previous.id, asRecord(previous), asRecord(changes), {
+        old_package_id: previous.package_id,
+        new_package_id: requestedPackageId,
+        admin_reason: reason,
+        status_unchanged: "trial",
+        payment_facts_unchanged: true
+      });
+    return loadTenantControlCenter(context, tenantId);
   }
 
   if (action === "change_package") {

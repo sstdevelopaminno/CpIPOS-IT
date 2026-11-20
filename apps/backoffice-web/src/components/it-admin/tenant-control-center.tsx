@@ -539,6 +539,9 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
     ? Number(customTerms?.effective_yearly_price ?? 0) > 0
     : packageAllowsYearly(selectedPackage);
   const hasOpenBillingRequest = Boolean(latestBillingRequest && ["pending", "under_review"].includes(latestBillingRequest.status));
+  const canReviseTrialPackage = data?.contract?.status === "trial" &&
+    !isPrepaidPendingTrial && !hasOpenBillingRequest &&
+    Boolean(packageId) && packageId !== data.contract?.package_id;
   const selectedPackageAmount = selectedPackage
     ? selectedPackage.code === "custom"
       ? Number(billingCycle === "yearly" ? customTerms?.effective_yearly_price ?? 0 : customTerms?.effective_monthly_price ?? 0)
@@ -1145,6 +1148,51 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                       </div> : null}
                       <div className={styles.packagePreview}><strong>{contractPeriodLabel(contractCycle)}</strong><span>{contractStartDate || "—"} → {contractEndDate || "—"}</span></div>
                       {contractEditing ? <div className={styles.sectionActions}><button className={styles.secondaryButton} type="button" disabled={busy} onClick={resetContractDraft}>ยกเลิกการแก้ไข</button><button className={styles.primaryButton} type="button" disabled={busy || !canEditContract || !contractStartDate || !contractEndDate || (contractCycle === "yearly" && !currentPackageYearlyAvailable)} onClick={async () => { if (isPaidActiveContract && contractEditReason.trim().length < 4) { setError("กรุณาระบุเหตุผลการแก้ไขสัญญาอย่างน้อย 4 ตัวอักษร เพื่อบันทึก Audit"); return; } await mutate({ action: "update_contract", contract_period: contractCycle, start_date: contractStartDate, end_date: contractAutoEnd ? undefined : contractEndDate, auto_calculate_end: contractAutoEnd, auto_renew: contractAutoRenew, admin_reason: contractEditReason }, "อัปเดตรอบสัญญาและสิทธิ์เรียบร้อย", true); }}>บันทึกการแก้ไขสัญญา</button></div> : null}
+                    </section>
+                  ) : null}
+
+                  {data.contract?.status === "trial" ? (
+                    <section className={styles.controlSection} aria-label="แก้แพ็กเกจระหว่างทดลองใช้">
+                      <div className={styles.controlSectionHeader}>
+                        <div><span>TRIAL PACKAGE REVISION · IT ADMIN</span><h4>เปลี่ยนแพ็กเกจระหว่างทดลองใช้</h4></div>
+                        <span className={styles.controlPill}>ไม่สร้างใบเสร็จ / ไม่เปิดแพ็กเกจชำระเงินจริง</span>
+                      </div>
+                      <p className={styles.sectionCopy}>
+                        เจ้าหน้าที่ IT เปลี่ยนแพ็กเกจ Trial ได้หลายครั้งโดยใช้สัญญาเดิม คงวันทดลองและบันทึกประวัติทุกครั้ง
+                        โหมดขายเดิมที่แพ็กเกจใหม่ไม่รองรับจะกลับไปใช้ค่าเริ่มต้นของแพ็กเกจใหม่
+                      </p>
+                      <div className={styles.formGrid}>
+                        <label><span>แพ็กเกจทดลองใหม่</span>
+                          <select value={packageId} onChange={(event) => selectPackage(event.target.value)} disabled={busy}>
+                            {data.packages.map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name} · {pkg.code}</option>)}
+                          </select>
+                        </label>
+                        <label className={styles.span2}><span>เหตุผลการแก้ไข (บันทึก Audit)</span>
+                          <input value={changeReason} onChange={(event) => setChangeReason(event.target.value)}
+                            placeholder="เช่น ปรับจาก Starter เป็น Business ระหว่างทดลอง" disabled={busy}/>
+                        </label>
+                      </div>
+                      {isPrepaidPendingTrial ? (
+                        <div className={styles.securityNote}>ร้านนี้มีแพ็กเกจชำระล่วงหน้าที่รอเริ่มหลัง Trial ต้องตรวจสอบสิทธิ์ที่ชำระแล้วก่อนเปลี่ยนแพ็กเกจ</div>
+                      ) : hasOpenBillingRequest ? (
+                        <div className={styles.securityNote}>มีรายการชำระรอตรวจสอบ กรุณาจัดการรายการเดิมในตารางชำระแพ็กเกจก่อนแก้ Trial</div>
+                      ) : null}
+                      <div className={styles.sectionActions}>
+                        <button type="button" className={styles.primaryButton}
+                          disabled={busy || !canReviseTrialPackage || changeReason.trim().length < 4 ||
+                            (data.contract?.billing_cycle === "yearly" && !selectedPackageYearlyAvailable) ||
+                            (selectedPackage?.code === "custom" && customTerms?.status !== "approved" && customTerms?.status !== "active")}
+                          onClick={() => void mutate({
+                            action: "revise_trial_package",
+                            package_id: packageId,
+                            admin_reason: changeReason
+                          }, "บันทึกการเปลี่ยนแพ็กเกจ Trial แล้ว โดยไม่เปลี่ยนประวัติการชำระเงิน", true)}>
+                          บันทึกแพ็กเกจทดลองใหม่
+                        </button>
+                      </div>
+                      {data.contract?.billing_cycle === "yearly" && !selectedPackageYearlyAvailable ?
+                        <div className={styles.securityNote}>สัญญาเดิมเป็นรายปี แต่แพ็กเกจใหม่ไม่มีราคารายปี กรุณาแก้รอบสัญญาก่อน</div> : null}
+                      <small>การเปลี่ยนเป็นแพ็กเกจชำระเงินจริงต้องใช้ส่วน FIRST BILLING และตรวจหลักฐานรับเงินเท่านั้น</small>
                     </section>
                   ) : null}
 

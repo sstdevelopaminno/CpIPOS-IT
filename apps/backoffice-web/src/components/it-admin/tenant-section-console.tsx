@@ -1090,10 +1090,17 @@ function FeaturesPane({
           <input type="number" min={1} value={maxBranches} onChange={(event) => setMaxBranches(Math.max(1, Number(event.target.value || 1)))} placeholder="max branches" />
           <input type="number" min={1} value={maxDevices} onChange={(event) => setMaxDevices(Math.max(1, Number(event.target.value || 1)))} placeholder="max devices" />
           <input type="number" min={1} value={maxUsers} onChange={(event) => setMaxUsers(Math.max(1, Number(event.target.value || 1)))} placeholder="max users" />
-          <button type="button" className="pos-monitor-btn pos-monitor-btn--primary" disabled={busy || !planId} onClick={() => void saveContract()}>
+          <button type="button" className="pos-monitor-btn pos-monitor-btn--primary"
+            disabled={busy || !planId || (activeContract?.status === "trial" && planId !== activeContract.package_id)}
+            onClick={() => void saveContract()}>
             Save Contract
           </button>
         </div>
+        {activeContract?.status === "trial" && planId !== activeContract.package_id ?
+          <p role="status" style={{ color: "#92400e", fontSize: 13 }}>
+            การเปลี่ยนแพ็กเกจ Trial ต้องใช้ ร้านค้า / Tenants → แพ็กเกจและสิทธิ์ → เปลี่ยนแพ็กเกจระหว่างทดลองใช้
+            เพื่อยืนยันเหตุผล ตรวจรายการชำระ และบันทึก Audit โดยไม่เปิดแพ็กเกจชำระเงินจริง
+          </p> : null}
         <div style={{ color: "#475569", fontSize: 13 }}>
           <div>Contract status: {activeContract?.status ?? "-"}</div>
           <div>

@@ -113,6 +113,13 @@ const actionCopy: Record<string, Copy> = {
     confirmLabel: "สร้างรายการชำระ",
     tone: "info"
   },
+  revise_trial_package: {
+    eyebrow: "TRIAL PACKAGE REVISION",
+    title: "ยืนยันการเปลี่ยนแพ็กเกจทดลองใช้?",
+    description: "ปรับแพ็กเกจของสัญญา Trial เดิมโดยคงวันทดลองและไม่สร้างใบเสร็จหรือ Settlement บันทึกผู้แก้ไขและเหตุผลใน Audit",
+    confirmLabel: "ยืนยันเปลี่ยนแพ็กเกจทดลอง",
+    tone: "warning"
+  },
   change_package: {
     eyebrow: "PACKAGE CHANGE",
     title: "ไม่อนุญาตให้เปิดแพ็กเกจแบบชำระเงินจริงโดยตรง",
