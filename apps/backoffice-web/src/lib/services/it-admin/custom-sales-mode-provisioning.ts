@@ -51,7 +51,7 @@ export async function ensureCustomSalesModePrerequisites(
   }
   // A deliberate denial always wins. Never overwrite an IT restriction.
   if ((menus.data??[]).some(item=>item.is_enabled === false) ||
-      (features.data??[]).some(item=>item.is_enabled === false && item.branch_id === null)) {
+      (features.data??[]).some(item=>item.is_enabled === false)) {
     throw new ItAdminGuardError("custom_mode_dependency_explicitly_disabled",
       "ร้านนี้มีเมนูหน้าขายหรือฟีเจอร์ที่ IT ปิดไว้โดยตั้งใจ กรุณาปรับสิทธิ์ดังกล่าวก่อนเปิดโหมด CUSTOM", 409);
   }
