@@ -14,6 +14,7 @@ describe("CUSTOM Recycling is a reusable tenant entitlement, not a one-store cod
  it("provisions only selected CUSTOM tenant id with standard cashier and recycling stock",()=>{
    expect(provision).toContain("tenantId: string, modes: PosSalesModeMap");
    expect(provision).toContain('"main.sales", "main.more", "more.stock"');
+   expect(provision).toContain('"main.settings", "settings.store", "settings.printers"');
    expect(provision).toContain('"core_pos_sales", "stock_management"');
    expect(provision).toContain('"tenant_pos_menu_policies"');
    expect(provision).toContain('"tenant_feature_subscriptions"');
