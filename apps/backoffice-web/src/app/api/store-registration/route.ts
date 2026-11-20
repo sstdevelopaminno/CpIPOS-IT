@@ -4,6 +4,7 @@ import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
 import { customerEmailProblem } from "@/lib/services/it-admin/customer-email-service";
 import { deliverStoreRegistrationSupportEmail, pushStoreRegistrationAlert } from "@/lib/services/it-admin/store-registration-support-alerts";
+import { sanitizeMarketingAttribution } from "@/lib/server/marketing-attribution";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -30,6 +31,7 @@ type Application = {
   custom_requirements?: unknown;
   website?: unknown;
   consent?: unknown;
+  marketing_attribution?: unknown;
 };
 
 function reject(code: string, error: string, field?: string) {
@@ -73,7 +75,8 @@ export async function GET() {
         };
       });
 
-    return json({ packages });
+    // Non-mutating deployment readiness indicator for the website's UTM rollout.
+    return json({ packages, marketing_attribution_supported: true });
   } catch (error) {
     console.error("[public-store-registration] catalog failed", error);
     return json({ error: "รายการแพ็กเกจไม่พร้อมใช้งาน", code: "catalog_unavailable" }, 503);
@@ -111,6 +114,7 @@ export async function POST(req: Request) {
   const ownerPhone = str(body.owner_phone, 40);
   const ownerEmail = str(body.owner_email, 254).toLowerCase();
   const customRequirements = str(body.custom_requirements, 1500);
+  const marketingAttribution = sanitizeMarketingAttribution(body.marketing_attribution);
   const rawModes =
     body.sales_modes && typeof body.sales_modes === "object" && !Array.isArray(body.sales_modes)
       ? body.sales_modes as Record<string, unknown>
@@ -258,6 +262,7 @@ export async function POST(req: Request) {
         consent_at: new Date().toISOString(),
         custom_requirements: isCustom ? customRequirements : null,
         source: isCustom ? "cpipos_website_custom" : "cpipos_website",
+        marketing_attribution: marketingAttribution,
         status: "pending"
       })
       .select("id,status")
