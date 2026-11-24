@@ -257,7 +257,8 @@ export async function getLinePackagePaymentSnapshot(
   // self-service payment in the canonical due state. Allow submitting evidence
   // to that SAME pending request only when the current billing cycle, package,
   // interval and amount all match exactly. Never apply this to CUSTOM quotes.
-  const payableRenewalIntent=Boolean(openRow && packageRow?.code!=="custom" &&
+  const payableRenewalIntent=Boolean(openRow && packageRow && packageRow.code!=="custom" &&
+    rawDue.package_id===packageId && dueStatus!=="not_payable" &&
     openRow.status==="pending" && !openRow.evidence_url && openRow.amount_reported==null &&
     openRow.metadata?.kind==="renewal_intent" &&
     openRow.metadata?.source==="pos_subscription_center" &&
