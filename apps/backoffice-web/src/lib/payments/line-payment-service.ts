@@ -253,6 +253,22 @@ export async function getLinePackagePaymentSnapshot(
     String(rawDue.currency??"THB")==="THB" &&
     String(openRow.metadata?.billing_interval||"")===String(contract?.billing_interval||"") &&
     !supportRequired);
+  // A pending renewal intent from the POS can legitimately freeze ordinary
+  // self-service payment in the canonical due state. Allow submitting evidence
+  // to that SAME pending request only when the current billing cycle, package,
+  // interval and amount all match exactly. Never apply this to CUSTOM quotes.
+  const payableRenewalIntent=Boolean(openRow && packageRow?.code!=="custom" &&
+    openRow.status==="pending" && !openRow.evidence_url && openRow.amount_reported==null &&
+    openRow.metadata?.kind==="renewal_intent" &&
+    openRow.metadata?.source==="pos_subscription_center" &&
+    openRow.requested_package_id===packageId &&
+    rawDue.open_request_id===openRow.id && rawDue.open_request_status==="pending" &&
+    typeof rawDue.billing_cycle_id==="string" && !!rawDue.billing_cycle_id &&
+    String(openRow.metadata?.billing_interval||"")===String(contract?.billing_interval||"") &&
+    String(rawDue.currency??"THB")==="THB" &&
+    Number(openRow.metadata?.expected_amount)===outstanding &&
+    Number.isFinite(outstanding) && outstanding>0 && !supportRequired);
+  const canAttachEvidence=prepared||payableRenewalIntent;
   let due: LinePackagePaymentSnapshot["due"] = null;
   let qrUrl: string | null = null;
   let qrPageUrl: string | null = null;
@@ -273,7 +289,8 @@ export async function getLinePackagePaymentSnapshot(
       self_service_payment_allowed:selfService,
       support_required:supportRequired
     };
-    if(account.promptpay_ready && (!openRow || prepared) && (selfService || prepared) && !supportRequired){
+    if(account.promptpay_ready && (!openRow || canAttachEvidence) &&
+       (selfService || canAttachEvidence) && !supportRequired){
       const urls=buildPromptPayUrls(account.promptpay_id,due.outstanding_amount);
       qrUrl=urls.qrUrl;
       qrPageUrl=urls.pageUrl;
@@ -290,7 +307,7 @@ export async function getLinePackagePaymentSnapshot(
       service_end:contract?.ended_at??null
     },
     due,
-    open_request:openRow?{...paymentSummary(openRow)!,can_attach_evidence:prepared}:null,
+    open_request:openRow?{...paymentSummary(openRow)!,can_attach_evidence:canAttachEvidence}:null,
     latest_request:paymentSummary(latestRow),
     payment_account:account,
     qr_url:qrUrl,
