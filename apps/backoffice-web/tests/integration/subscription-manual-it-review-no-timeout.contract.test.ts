@@ -23,12 +23,12 @@ describe("POS + LINE verified subscription payment while IT review pending",()=>
  it("lets LINE reuse an IT-prepared unpaid invoice without duplicate billing",()=>{
   const service=src("lib/payments/line-payment-slip-service.ts");
   const snap=src("lib/payments/line-payment-service.ts");
-  expect(service).toContain("requestId = prepared ?");
+  expect(service).toContain("requestId = (prepared || renewalIntent) ?");
   expect(service).toContain("open.data.metadata?.source===\"it_tenant_control\"");
   expect(service).toContain('.eq("tenant_id",input.session.tenantId)');
   expect(service).toContain('.is("evidence_url",null).is("amount_reported",null)');
   expect(service).toContain('scan.model !== "mock"');
-  expect(snap).toContain("can_attach_evidence:prepared");
+  expect(snap).toContain("can_attach_evidence:canAttachEvidence");
  });
  it("keeps IT rejection flow and customer runtime lock",()=>{
   const review=src("app/api/it-admin/v1/subscription-payments/review/[requestId]/route.ts");
