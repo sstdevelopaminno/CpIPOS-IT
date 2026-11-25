@@ -33,14 +33,16 @@ describe("LINE Payment Center", () => {
     expect(service).toContain("self_service_payment_allowed");
     expect(service).toContain("support_required");
     expect(service).toContain("let qrUrl: string | null = null");
-    expect(service).toContain("(!openRow || prepared) && (selfService || prepared) && !supportRequired");
+    expect(service).toContain("(!openRow || canAttachEvidence)");
+    expect(service).toContain("(selfService || canAttachEvidence) && !supportRequired");
+    expect(service).toContain('open_request:openRow?{...paymentSummary(openRow)!,can_attach_evidence:canAttachEvidence}:null');
     expect(paymentClient).toContain("ยังไม่มียอดชำระ");
     expect(paymentClient).toContain("ร้านยังไม่ถึงวันครบกำหนดชำระ");
   });
 
   it("suppresses a new QR while a payment request is pending review", () => {
     expect(service).toContain('row.status === "pending" || row.status === "under_review"');
-    expect(service).toContain("open_request:openRow?{...paymentSummary(openRow)!,can_attach_evidence:prepared}:null");
+    expect(service).toContain("open_request:openRow?{...paymentSummary(openRow)!,can_attach_evidence:canAttachEvidence}:null");
     expect(service).toContain("!openRow");
     expect(paymentClient).toContain("ตรวจสอบสลิปผ่าน · POS เปิดใช้งานได้แล้ว");
   });

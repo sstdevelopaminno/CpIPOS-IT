@@ -9,12 +9,20 @@ import {
   verifyLineSupportOtp
 } from "@/lib/support-chat/line-support-auth";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
+import { SupportMailBridgeError } from "@/lib/services/it-admin/support-mail-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function errorResponse(error: unknown) {
   if (error instanceof LineSupportError) return fail(error.code, error.message, error.status);
+  if (error instanceof SupportMailBridgeError) {
+    // Never fall back to the company mail identity for Owner's OTP.
+    // Report mail configuration/availability separately from LINE login errors.
+    console.error("[line-payment-auth] support OTP mail unavailable", { code: error.code });
+    return fail("line_payment_otp_mail_unavailable",
+      "ส่งรหัส OTP ผ่านอีเมลฝ่าย Support ไม่สำเร็จ กรุณาติดต่อฝ่าย IT ให้ตรวจสอบระบบอีเมลก่อนชำระเงิน", 503);
+  }
   console.error("[line-payment-auth]", error instanceof Error ? error.message : "unknown_error");
   return fail("line_payment_unavailable", "ระบบชำระเงินผ่าน LINE ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่", 503);
 }
@@ -48,6 +56,8 @@ export async function POST(request: Request) {
           windowMs: 10 * 60_000,
           failClosedOnBackendError: true
         });
+        if (rate.source === "backend_unavailable")
+          return fail("payment_rate_limit_service_unavailable", "ระบบตรวจสอบความปลอดภัยไม่พร้อม กรุณาลองใหม่", 503);
         if (!rate.ok) return fail("payment_open_rate_limited", "เปิดข้อมูลชำระเงินถี่เกินไป กรุณารอสักครู่", 429);
 
         await establishLineSupportSession({ binding, store, identity });
@@ -64,6 +74,8 @@ export async function POST(request: Request) {
         windowMs: 10 * 60_000,
         failClosedOnBackendError: true
       });
+      if (rate.source === "backend_unavailable")
+        return fail("payment_rate_limit_service_unavailable", "ระบบตรวจสอบความปลอดภัยไม่พร้อม กรุณาลองใหม่", 503);
       if (!rate.ok) return fail("otp_rate_limited", "ขอรหัส OTP ถี่เกินไป กรุณารอสักครู่", 429);
 
       const challenge = await requestLineSupportOtp(identity, store);
@@ -83,6 +95,8 @@ export async function POST(request: Request) {
       windowMs: 10 * 60_000,
       failClosedOnBackendError: true
     });
+    if (rate.source === "backend_unavailable")
+      return fail("payment_rate_limit_service_unavailable", "ระบบตรวจสอบความปลอดภัยไม่พร้อม กรุณาลองใหม่", 503);
     if (!rate.ok) return fail("otp_verify_rate_limited", "ลองยืนยัน OTP หลายครั้งเกินไป กรุณารอสักครู่", 429);
 
     const binding = await verifyLineSupportOtp({

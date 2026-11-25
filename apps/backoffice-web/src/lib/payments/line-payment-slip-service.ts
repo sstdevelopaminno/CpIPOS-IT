@@ -98,16 +98,27 @@ export async function submitLinePackagePaymentSlip(input: {
     snapshot.due.currency==="THB" &&
     Number(open.data.metadata?.expected_amount)===snapshot.due.outstanding_amount &&
     snapshot.due.outstanding_amount>0);
+  const renewalIntent=Boolean(open.data && snapshot.package.code!=="custom" &&
+    open.data.status==="pending" && !open.data.evidence_url && open.data.amount_reported==null &&
+    open.data.metadata?.kind==="renewal_intent" &&
+    open.data.metadata?.source==="pos_subscription_center" &&
+    open.data.requested_package_id===snapshot.package.id &&
+    String(open.data.metadata?.billing_interval||"")===String(snapshot.package.billing_interval||"") &&
+    snapshot.open_request?.id===open.data.id &&
+    snapshot.open_request?.can_attach_evidence===true &&
+    snapshot.due.currency==="THB" &&
+    Number(open.data.metadata?.expected_amount)===snapshot.due.outstanding_amount &&
+    snapshot.due.outstanding_amount>0);
   if(open.data?.metadata?.kind==="custom_quote_request")
     throw new LinePaymentSlipError("custom_quote_not_approved",
       "แพ็กเกจ CUSTOM ยังรอ IT ตกลงราคา กรุณาติดต่อ Support ก่อนชำระเงิน",409);
-  if(open.data && !prepared)
+  if(open.data && !prepared && !renewalIntent)
     throw new LinePaymentSlipError("payment_request_exists",
       open.data.evidence_url?"รายการเดิมส่งสลิปแล้ว กรุณาติดต่อ Support":"คำขอยังไม่พร้อมชำระหรือยอดไม่ตรงกับรอบบิล กรุณาติดต่อ Support",409);
-  if(!snapshot.due.self_service_payment_allowed && !prepared)
+  if(!snapshot.due.self_service_payment_allowed && !prepared && !renewalIntent)
     throw new LinePaymentSlipError("payment_support_required","รอบนี้ยังไม่เปิดให้ส่งสลิปผ่านระบบ",409);
 
-  const requestId = prepared ? open.data!.id : crypto.randomUUID();
+  const requestId = (prepared || renewalIntent) ? open.data!.id : crypto.randomUUID();
   const filePath = input.session.tenantId + "/" + requestId + "/slip." + FILE_TYPES[detectedMime];
 
   const upload = await db.storage.from(SUBSCRIPTION_SLIP_BUCKET).upload(filePath, buffer, {
@@ -137,12 +148,14 @@ export async function submitLinePackagePaymentSlip(input: {
       : null;
 
   const metadata = {
-    ...(prepared?open.data!.metadata??{}:{}),
+    ...((prepared||renewalIntent)?open.data!.metadata??{}:{}),
     kind: "payment_notice",
     billing_interval: snapshot.package.billing_interval === "yearly" ? "yearly" : "monthly",
     expected_amount: snapshot.due.outstanding_amount,
-    source: prepared?"it_tenant_control":"line_payment_center",
-    ...(prepared?{checkout_source:"line_payment_center"}:{}),
+    source: prepared?(open.data!.metadata?.source==="it_custom_agreement"
+      ?"it_custom_agreement":"it_tenant_control"):"line_payment_center",
+    ...((prepared||renewalIntent)?{checkout_source:"line_payment_center"}:{}),
+    ...(renewalIntent?{upgraded_from_renewal_intent:true}:{}),
     line_binding_id: input.session.bindingId,
     store_code: input.session.storeCode,
     due_source: snapshot.due.source,
@@ -164,11 +177,12 @@ export async function submitLinePackagePaymentSlip(input: {
     note: String(input.note ?? "").trim().slice(0, 500)
   };
 
-  const inserted = prepared
+  const inserted = (prepared||renewalIntent)
     ?await db.from("tenant_subscription_payment_requests").update({
       amount_reported:amountReported,evidence_url:filePath,metadata,updated_at:new Date().toISOString()
     }).eq("id",requestId).eq("tenant_id",input.session.tenantId)
       .eq("status","pending").is("evidence_url",null).is("amount_reported",null)
+      .contains("metadata",{kind:renewalIntent?"renewal_intent":"payment_notice"})
       .select("id,status,submitted_at").maybeSingle<{id:string;status:string;submitted_at:string}>()
     :await db.from("tenant_subscription_payment_requests").insert({
       id:requestId,tenant_id:input.session.tenantId,requested_package_id:snapshot.package.id,
