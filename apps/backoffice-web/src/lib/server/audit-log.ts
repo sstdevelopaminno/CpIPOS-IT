@@ -37,7 +37,7 @@ export type AuditLogPayload = {
 
 export async function writeLoginAttempt(payload: LoginAttemptPayload) {
   const supabase = getSupabaseServiceClient();
-  await supabase.from("login_attempts").insert({
+  const { error } = await supabase.from("login_attempts").insert({
     tenant_id: payload.tenantId ?? null,
     branch_id: payload.branchId ?? null,
     device_code: payload.deviceCode ?? null,
@@ -50,9 +50,15 @@ export async function writeLoginAttempt(payload: LoginAttemptPayload) {
     user_agent: payload.userAgent ?? null,
     metadata: payload.metadata ?? {}
   });
+  if (error) console.error("[audit-log] login attempt insert failed", { code: error.code });
 }
 
 export async function writeAuditLog(payload: AuditLogPayload) {
+  // An unauthenticated login failure is a system event, never a fabricated human actor.
+  if (!payload.actorRole || (!payload.actorUserId && payload.actorRole !== "system")) {
+    console.error("[audit-log] invalid actor", { action: payload.action });
+    return;
+  }
   const supabase = getSupabaseServiceClient();
   const { error } = await supabase.from("audit_logs").insert({
     tenant_id: payload.tenantId ?? null,
