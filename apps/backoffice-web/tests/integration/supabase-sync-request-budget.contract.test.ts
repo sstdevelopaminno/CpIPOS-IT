@@ -31,7 +31,7 @@ describe("Supabase sync request safeguards", () => {
     expect(audit).toContain("actor_user_id: payload.actorUserId ?? null");
   });
   it("keeps human actor attribution mandatory and restricts system events to privileged server writers", () => {
-    const migration = src("../../supabase/migrations/20261125063000_audit_system_actor_integrity.sql");
+    const migration = src("../../supabase/migrations/20261125063155_audit_system_actor_integrity.sql");
     expect(migration).toContain("CHECK (actor_user_id IS NOT NULL OR actor_role = 'system')");
     expect(migration).toContain("AS RESTRICTIVE");
     expect(migration).toContain("FOR INSERT");
