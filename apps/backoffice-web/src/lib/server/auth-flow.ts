@@ -361,7 +361,8 @@ export async function handleMethodVerification(
           deviceCode: validated.deviceCode,
           action: "pos_login_rate_limited",
           targetType: "device",
-          targetId: validated.deviceCode,
+          // Device codes are text, not UUIDs; deviceCode already preserves the identifier.
+          targetId: null,
           ipAddress,
           userAgent,
           metadata: {
