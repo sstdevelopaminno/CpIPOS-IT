@@ -54,7 +54,7 @@ export async function writeLoginAttempt(payload: LoginAttemptPayload) {
 
 export async function writeAuditLog(payload: AuditLogPayload) {
   const supabase = getSupabaseServiceClient();
-  await supabase.from("audit_logs").insert({
+  const { error } = await supabase.from("audit_logs").insert({
     tenant_id: payload.tenantId ?? null,
     branch_id: payload.branchId ?? null,
     actor_user_id: payload.actorUserId ?? null,
@@ -72,6 +72,11 @@ export async function writeAuditLog(payload: AuditLogPayload) {
     user_agent: payload.userAgent ?? null,
     metadata: payload.metadata ?? {}
   });
+  if (error) {
+    // Do not silently report an unsuccessful audit write as successful.
+    // Existing callers retain their control-flow; never log sensitive row contents.
+    console.error("[audit-log] audit insert failed", { action: payload.action, code: error.code });
+  }
 }
 
 export function getRequestMeta(request: Request): { ipAddress: string | null; userAgent: string | null } {
