@@ -56,6 +56,7 @@ export function SupportChatNotifier() {
     let realtimeHealthy = false;
     let snapshotInFlight = false;
     let toastTimer: number | null = null;
+    let reconnectTimer: number | null = null;
     const supabase = getSupabaseBrowserClient();
 
     const unlockNotificationSound = () => {
@@ -148,6 +149,7 @@ export function SupportChatNotifier() {
     };
 
     const refreshSnapshot = async (allowToast: boolean) => {
+      if (!alive || !navigator.onLine) return;
       if (snapshotInFlight) return;
       snapshotInFlight = true;
       const requestStartedAt = Date.now();
@@ -209,7 +211,10 @@ export function SupportChatNotifier() {
         }
       )
       .subscribe((status) => {
+        if (!alive) return;
         if (status === "SUBSCRIBED") {
+          if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+          reconnectTimer = null;
           realtimeHealthy = true;
           initialized.current = true;
           void refreshSnapshot(false).catch(() => null);
@@ -217,8 +222,12 @@ export function SupportChatNotifier() {
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           realtimeHealthy = false;
-          window.setTimeout(() => {
-            void refreshSnapshot(true).catch(() => null);
+          if (reconnectTimer !== null) return;
+          reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null;
+            if (alive && !realtimeHealthy && document.visibilityState !== "hidden") {
+              void refreshSnapshot(true).catch(() => null);
+            }
           }, 1200);
         }
       });
@@ -256,6 +265,7 @@ export function SupportChatNotifier() {
       notificationAudioRef.current = null;
       if (ctx) void ctx.close().catch(() => null);
       if (toastTimer !== null) window.clearTimeout(toastTimer);
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       window.clearInterval(fallbackPoll);
       window.removeEventListener("focus", refreshOnFocus);
       window.removeEventListener("online", refreshOnFocus);

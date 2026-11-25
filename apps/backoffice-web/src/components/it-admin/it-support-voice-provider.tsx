@@ -88,11 +88,13 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
   const lastCallIdRef = useRef("");
   const refreshEpochRef = useRef(0);
   const controlInFlightRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
   const autoStartTransferRef = useRef(false);
   const autoMinimizedCallIdRef = useRef("");
 
   const refresh = useCallback(async () => {
-    if (controlInFlightRef.current) return;
+    if (controlInFlightRef.current || refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     const epoch = ++refreshEpochRef.current;
     try {
       const response = await fetch("/api/it-admin/v1/support-chat/active-call", { cache: "no-store" });
@@ -117,6 +119,8 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
       setQueue(nextCall?.status === "requested" ? json.data.queue ?? null : null);
     } catch {
       // Recovery polling must never interrupt an active WebRTC media session.
+    } finally {
+      refreshInFlightRef.current = false;
     }
   }, []);
 
@@ -330,7 +334,9 @@ export function ItSupportVoiceProvider({ children }: { children: ReactNode }) {
     };
 
     void refresh().finally(schedule);
-    const onFocus = () => void refresh();
+    const onFocus = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
     const onPush = (event: Event) => {
       const payload = (event as CustomEvent<{ kind?: string; title?: string; tag?: string }>).detail;
       // A push delivered while the IT interface is open can wake the call
