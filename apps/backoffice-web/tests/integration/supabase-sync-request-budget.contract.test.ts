@@ -30,4 +30,23 @@ describe("Supabase sync request safeguards", () => {
     expect(audit).toContain('console.error("[audit-log] audit insert failed", { action: payload.action, code: error.code })');
     expect(audit).toContain("actor_user_id: payload.actorUserId ?? null");
   });
+  it("keeps human actor attribution mandatory and restricts system events to privileged server writers", () => {
+    const migration = src("../../supabase/migrations/20261125063000_audit_system_actor_integrity.sql");
+    expect(migration).toContain("CHECK (actor_user_id IS NOT NULL OR actor_role = 'system')");
+    expect(migration).toContain("AS RESTRICTIVE");
+    expect(migration).toContain("FOR INSERT");
+    expect(migration).toContain("TO PUBLIC");
+    expect(migration).toContain("WITH CHECK (actor_user_id IS NOT NULL)");
+    expect(migration).not.toMatch(/DISABLE ROW LEVEL SECURITY/i);
+    expect(audit).toContain('(!payload.actorUserId && payload.actorRole !== "system")');
+  });
+
+  it("preserves text device codes without putting them in the UUID target column", () => {
+    const auth = src("src/lib/server/auth-flow.ts");
+    expect(auth).not.toContain("targetId: validated.deviceCode");
+    expect(auth).toContain('targetType: "device"');
+    expect(auth).toContain("deviceCode: validated.deviceCode");
+    expect(audit).toContain('login attempt insert failed');
+  });
+
 });
