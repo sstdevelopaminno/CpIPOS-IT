@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { WindowsPrintReadiness } from "@/lib/windows-print-health";
 import { ItDataCleanupControls } from "@/components/it-admin/it-data-cleanup-controls";
 
 type Language="th"|"en";
@@ -11,6 +12,7 @@ type Row={
   brand?:string|null;model?:string|null;connection?:string|null;paper_width_mm?:number|null;
   runtime_device_code?:string|null;device_code?:string|null;app_version?:string|null;
   remote_device_id?:string|null;remote_device_name?:string|null;print_agent_bound?:boolean;
+  windows_print_health?:{state:WindowsPrintReadiness;agent_age_ms:number|null;device_age_ms:number|null;runtime_version:string|null;native_app_version:string|null;pending_sample:number;oldest_pending_sample_ms:number|null;sampled_jobs:number;assigned_profiles:number}|null;
 };
 type Snapshot={
   checked_at:string;
@@ -67,6 +69,11 @@ function statusLabel(row:Row,t:typeof COPY.th|typeof COPY.en){
  if(row.status==="checking")return t.checking;
  if(row.status==="agent_missing")return t.agentMissing;
  return row.status||t.unknown;
+}
+function windowsReadinessLabel(state:WindowsPrintReadiness,language:Language){
+ const th:Record<WindowsPrintReadiness,string>={ready:"พร้อมรับงาน",agent_stale:"Agent ขาดช่วง",device_health_stale:"ข้อมูลสุขภาพเครื่องหมดอายุ",printer_unverified:"ยังไม่ยืนยันเครื่องพิมพ์",inactive:"ไม่ได้เปิดใช้งาน"};
+ const en:Record<WindowsPrintReadiness,string>={ready:"Ready",agent_stale:"Agent heartbeat delayed",device_health_stale:"Device health stale",printer_unverified:"Printer unverified",inactive:"Inactive"};
+ return (language==="th"?th:en)[state];
 }
 function sourceLabel(source:string,language:Language){
  const th:Record<string,string>={android_mdm:"Android MDM",browser:"เว็บแอป / Browser",windows_runtime:"Windows Runtime",registered:"ลงทะเบียนในระบบ"};
@@ -287,7 +294,11 @@ export function ItAdminPrinterConsole({language}:{language:Language}){
      <td className="px-4 py-3"><div className="font-bold text-slate-900">{row.name}</div><div className="text-[11px] text-slate-500">{sourceLabel(row.source,language)}</div></td>
      <td className="px-4 py-3">{row.resource_type==="printer"?([row.brand,row.model].filter(Boolean).join(" ")||"—"):(row.device_code||"—")}</td>
      <td className="px-4 py-3">{row.resource_type==="printer"?`${row.connection||"—"} · ${row.paper_width_mm??"—"} mm`:row.resource_type==="agent"?(row.app_version||"—"):(row.print_agent_bound?(language==="th"?"Agent เชื่อมแล้ว":"Agent bound"):(language==="th"?"รอ Print Agent":"Print Agent missing"))}</td>
-     <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${row.online?"bg-emerald-100 text-emerald-700":row.status==="blocked"?"bg-red-100 text-red-700":"bg-slate-100 text-slate-700"}`}>{statusLabel(row,t)}</span></td>
+     <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${row.online?"bg-emerald-100 text-emerald-700":row.status==="blocked"?"bg-red-100 text-red-700":"bg-slate-100 text-slate-700"}`}>{row.windows_print_health?windowsReadinessLabel(row.windows_print_health.state,language):statusLabel(row,t)}</span>{row.windows_print_health?<div className="mt-2 space-y-1 text-[11px] leading-4 text-slate-600">
+        <div>Agent: {duration(row.windows_print_health.agent_age_ms)} · MDM: {duration(row.windows_print_health.device_age_ms)}</div>
+        <div>Windows {row.windows_print_health.native_app_version??"—"} · {language==="th"?"คิวรอ (ตัวอย่าง)":"Waiting (sample)"} {row.windows_print_health.pending_sample} · {language==="th"?"เก่าสุด":"Oldest"} {duration(row.windows_print_health.oldest_pending_sample_ms)}</div>
+        <div>{language==="th"?"ข้อมูลจากตัวอย่างงานล่าสุด ไม่ใช่ยอดคิวทั้งหมด":"Recent job sample, not the full queue"} · {row.windows_print_health.sampled_jobs}</div>
+      </div>:null}</td>
      <td className="whitespace-nowrap px-4 py-3">{fmt(row.last_seen_at,language)}</td>
      <td className="px-4 py-3"><div className="flex gap-1.5">
       {row.resource_type!=="runtime"?<button onClick={()=>openEdit(row)} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-bold">{t.edit}</button>:null}
