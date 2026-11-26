@@ -2,6 +2,7 @@ import { appendAuditLog } from "@/lib/audit-log";
 import { fail, ok } from "@/lib/http";
 import { assertItSupportAction, guardItAdminError, requireItAdmin } from "@/lib/it-admin-guard";
 import { enforceRateLimit, getClientIpAddress } from "@/lib/server/rate-limit";
+import { observedAgeMs, windowsPrintReadiness } from "@/lib/windows-print-health";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +25,11 @@ type DeviceRow = {
   device_type:string;status:string;is_active:boolean;last_seen_at:string|null;metadata:JsonRecord|null;
 };
 type HealthRow = {
-  pos_device_id:string|null;status:string;last_seen_at:string;metadata:JsonRecord|null;
+  pos_device_id:string|null;tenant_id:string;branch_id:string;status:string;last_seen_at:string;metadata:JsonRecord|null;
+  runtime_version:string|null;app_version:string|null;peripheral_health:JsonRecord|null;
 };
 type PrintJobMetricRow = {
-  id:string;status:string;created_at:string;claimed_at:string|null;claim_expires_at:string|null;printed_at:string|null;failed_at:string|null;
+  id:string;tenant_id:string;branch_id:string;printer_id:string|null;status:string;created_at:string;claimed_at:string|null;claim_expires_at:string|null;printed_at:string|null;failed_at:string|null;
   retry_count:number;last_error:string|null;agent_error_code:string|null;connection_type:string|null;printer_role:string|null;
 };
 
@@ -85,10 +87,10 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
     db.from("tenants").select("id,name").limit(500),
     db.from("branches").select("id,name").limit(500),
     db.from("branch_devices").select("id,tenant_id,branch_id,device_code,device_name,device_type,status,is_active,last_seen_at,metadata").eq("is_active",true).limit(500).returns<DeviceRow[]>(),
-    db.from("pos_device_health_latest").select("pos_device_id,status,last_seen_at,metadata").order("last_seen_at",{ascending:false}).limit(1000).returns<HealthRow[]>(),
-    db.from("printer_profiles").select("id,printer_name,printer_role,connection_type,paper_width_mm,enabled,metadata").limit(500),
+    db.from("pos_device_health_latest").select("pos_device_id,tenant_id,branch_id,status,last_seen_at,metadata,runtime_version,app_version,peripheral_health").order("last_seen_at",{ascending:false}).limit(1000).returns<HealthRow[]>(),
+    db.from("printer_profiles").select("id,tenant_id,branch_id,printer_name,printer_role,connection_type,paper_width_mm,enabled,metadata").limit(500),
     db.from("device_commands").select("id,pos_device_id,command_type,status,issued_at,delivered_at,result").in("command_type",["request_diagnostics","test_printer"]).order("issued_at",{ascending:false}).limit(300),
-    db.from("print_jobs").select("id,status,created_at,claimed_at,claim_expires_at,printed_at,failed_at,retry_count,last_error,agent_error_code,connection_type,printer_role").order("created_at",{ascending:false}).limit(1000).returns<PrintJobMetricRow[]>()
+    db.from("print_jobs").select("id,tenant_id,branch_id,printer_id,status,created_at,claimed_at,claim_expires_at,printed_at,failed_at,retry_count,last_error,agent_error_code,connection_type,printer_role").order("created_at",{ascending:false}).limit(1000).returns<PrintJobMetricRow[]>()
   ]);
   for(const result of [printers,agents,tenants,branches,devices,health,profiles,commands,printJobs]){
     if(result.error) throw new Error(result.error.message);
@@ -97,9 +99,15 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
   const tenantName=new Map((tenants.data??[]).map(row=>[String(row.id),String(row.name)]));
   const branchName=new Map((branches.data??[]).map(row=>[String(row.id),String(row.name)]));
   const profileById=new Map((profiles.data??[]).map(row=>[String(row.id),row]));
+  const snapshotNow=Date.now();
   const latestHealth=new Map<string,HealthRow>();
+  const latestWindowsHealth=new Map<string,HealthRow>();
   for(const row of health.data??[]){
     if(row.pos_device_id && !latestHealth.has(String(row.pos_device_id))) latestHealth.set(String(row.pos_device_id),row);
+    if(row.pos_device_id && row.runtime_version?.startsWith("cpipos-windows")){
+      const key=`${row.tenant_id}:${row.branch_id}:${row.pos_device_id}`;
+      if(!latestWindowsHealth.has(key)) latestWindowsHealth.set(key,row);
+    }
   }
   const latestCommand=new Map<string,Record<string,unknown>>();
   for(const row of commands.data??[]){
@@ -140,6 +148,26 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
   const agentRows=(agents.data??[]).map(row=>{
     const runtime=row.device_id ? (devices.data??[]).find(device=>device.id===row.device_id) :
       deviceByCode.get(`${row.tenant_id}:${row.branch_id}:${row.device_code.toUpperCase()}`);
+    const isWindows=asRecord(row.metadata).runtime==="windows_native_print_agent_v1";
+    const deviceId=runtime?.id??row.device_id;
+    const windowsHealth=deviceId?latestWindowsHealth.get(`${row.tenant_id}:${row.branch_id}:${deviceId}`):undefined;
+    const assignedProfiles=isWindows ? new Set((profiles.data??[]).filter(profile=>
+      profile.tenant_id===row.tenant_id && profile.branch_id===row.branch_id && profile.enabled===true &&
+      asRecord(profile.metadata).target_runtime==="windows_native" &&
+      text(asRecord(profile.metadata).windows_device_code).toUpperCase()===row.device_code.toUpperCase()
+    ).map(profile=>String(profile.id))) : new Set<string>();
+    const sampledJobs=isWindows?(printJobs.data??[]).filter(job=>
+      job.tenant_id===row.tenant_id && job.branch_id===row.branch_id &&
+      job.printer_id!==null && assignedProfiles.has(job.printer_id)):[];
+    const waiting=sampledJobs.filter(job=>["pending","retrying"].includes(job.status));
+    const ages=waiting.map(job=>observedAgeMs(job.created_at,snapshotNow)).filter((age):age is number=>age!==null);
+    const ready=isWindows?windowsPrintReadiness({status:row.status,agentSeenAt:row.last_seen_at,
+      deviceSeenAt:windowsHealth?.last_seen_at??null,printerValid:asRecord(windowsHealth?.peripheral_health).selected_printer_valid===true && assignedProfiles.size>0,
+      now:snapshotNow}):null;
+    const windowsPrintHealth=ready?{...ready,runtime_version:windowsHealth?.runtime_version??null,
+      native_app_version:windowsHealth?.app_version??null,pending_sample:waiting.length,
+      oldest_pending_sample_ms:ages.length?Math.max(...ages):null,
+      sampled_jobs:sampledJobs.length,assigned_profiles:assignedProfiles.size}:null;
     return {
       resource_type:"agent" as const,
       id:row.id,tenant_id:row.tenant_id,branch_id:row.branch_id,
@@ -149,7 +177,8 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
       device_code:row.device_code,
       status:row.status,
       active:row.status==="active",
-      online:isOnline(row.last_seen_at,row.status),
+      online:ready?ready.state==="ready":isOnline(row.last_seen_at,row.status),
+      windows_print_health:windowsPrintHealth,
       last_seen_at:row.last_seen_at,
       last_claim_at:row.last_claim_at,
       app_version:row.app_version,
@@ -196,7 +225,7 @@ async function loadSnapshot(context:Awaited<ReturnType<typeof requireItAdmin>>){
     active:true,
     online:target.online,
     last_seen_at:target.last_seen_at,
-    source:target.surface==="android"||target.surface==="CpiposMdm" ? "android_mdm" : target.surface==="browser" ? "browser" : "registered",
+    source:target.surface==="android"||target.surface==="CpiposMdm" ? "android_mdm" : target.surface==="windows_runtime" ? "windows_runtime" : target.surface==="browser" ? "browser" : "registered",
     app_version:null,
     remote_device_id:target.id,
     remote_device_name:target.device_name,
