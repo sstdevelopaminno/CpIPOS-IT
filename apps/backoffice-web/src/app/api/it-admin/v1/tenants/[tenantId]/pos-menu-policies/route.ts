@@ -94,6 +94,8 @@ export async function GET(_request: Request, context: { params: Promise<{ tenant
       effectiveSalesModes = normalizePosSalesModes(explicitSalesModes);
     }
 
+    if (!isCustom) effectiveSalesModes.retail_wholesale = false;
+    else if (effectiveSalesModes.retail_wholesale) effectiveSalesModes.general_sale = false;
     const rawSalesModeLimit = Number(packageResult.data?.metadata?.sales_mode_limit ?? 0);
     const salesModeLimit = Number.isFinite(rawSalesModeLimit) && rawSalesModeLimit > 0
       ? Math.min(POS_SALES_MODE_KEYS.length, Math.trunc(rawSalesModeLimit))

@@ -14,3 +14,11 @@ describe("RW independent IT control",()=>{
     expect(read("lib/services/it-admin/custom-sales-mode-provisioning.ts")).toContain("|| modes.retail_wholesale");
   });
 });
+
+it("preserves negotiated terms in a pure RW mode-only edit",()=>{
+  const api=read("app/api/it-admin/admin/tenants/[tenantId]/contract/route.ts");
+  expect(api).toContain('Object.keys(patch).every(key => key === "metadata")');
+  for(const field of ["amount_per_cycle","max_branches","max_devices","max_users"]) {
+    expect(api).toContain("!rwModeOnlyChange && patch."+field+" === undefined");
+  }
+});

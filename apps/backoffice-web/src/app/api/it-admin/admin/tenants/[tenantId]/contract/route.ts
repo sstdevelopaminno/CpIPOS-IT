@@ -221,6 +221,12 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       return fail("empty_patch", "No contract update fields provided.", 422);
     }
 
+    // A pure RW mode switch must never reset the negotiated CUSTOM price,
+    // billing interval or branch/device/user quotas to plan defaults.
+    const rwModeOnlyChange = Boolean(latestContract && hasSalesModesField &&
+      Object.keys(patch).every(key => key === "metadata") &&
+      (normalizeRequestedPosSalesModes(latestContract.metadata?.sales_modes).retail_wholesale ||
+        normalizeRequestedPosSalesModes(body.sales_modes).retail_wholesale));
     const pricePackageId = String(patch.package_id ?? latestContract?.package_id ?? "");
     if ((patch.package_id || patch.billing_interval || hasSalesModesField) && pricePackageId) {
       const billingInterval = String(patch.billing_interval ?? latestContract?.billing_interval ?? "monthly");
@@ -238,9 +244,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
           const salesModeLimit = Number.isFinite(rawLimit) && rawLimit > 0
             ? Math.min(POS_SALES_MODE_KEYS.length, Math.trunc(rawLimit))
             : null;
-          const enabledCount = POS_SALES_MODE_KEYS.filter(
-            (key) => body.sales_modes?.[key] === true
-          ).length;
+          const selectedModes = normalizeRequestedPosSalesModes(body.sales_modes);
+          const enabledCount = POS_SALES_MODE_KEYS.filter((key) => selectedModes[key]).length;
           if (salesModeLimit !== null && enabledCount > salesModeLimit) {
             return fail(
               "sales_mode_limit_exceeded",
@@ -249,7 +254,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
             );
           }
         }
-        if (patch.amount_per_cycle === undefined) {
+        if (!rwModeOnlyChange && patch.amount_per_cycle === undefined) {
           patch.amount_per_cycle = billingInterval === "yearly" ? planPrice.yearly_price ?? planPrice.monthly_price ?? 0 : planPrice.monthly_price ?? 0;
           patch.currency = patch.currency ?? "THB";
         }
@@ -259,15 +264,15 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
           String(packageMetadata.branch_selection ?? "").toLowerCase() === "hidden" ||
           packageMetadata.no_branch_mode === true ||
           packageMetadata.single_device_mode === true;
-        if (patch.max_branches === undefined) {
+        if (!rwModeOnlyChange && patch.max_branches === undefined) {
           patch.max_branches = singleRegister ? 1 : Math.max(1, Math.trunc(Number(planPrice.max_branches ?? 1)));
           patch.branch_limit = patch.max_branches;
         }
-        if (patch.max_devices === undefined) {
+        if (!rwModeOnlyChange && patch.max_devices === undefined) {
           patch.max_devices = singleRegister ? 1 : Math.max(1, Math.trunc(Number(planPrice.max_devices ?? 1)));
           patch.terminal_limit_per_branch = patch.max_devices;
         }
-        if (patch.max_users === undefined && planPrice.max_users != null) {
+        if (!rwModeOnlyChange && patch.max_users === undefined && planPrice.max_users != null) {
           patch.max_users = Math.max(1, Math.trunc(Number(planPrice.max_users)));
         }
       }
