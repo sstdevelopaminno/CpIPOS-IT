@@ -1603,9 +1603,9 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
       throw new ItAdminGuardError("recycling_custom_only",
         "โหมด Recycling เป็นตัวเลือกที่เปิดให้ลูกค้ารายใดก็ได้ที่ใช้แพ็กเกจ CUSTOM ไม่อนุญาตในแพ็กเกจทั่วไป", 403);
     }
-    if (validation === "retail_wholesale_requires_custom" || validation === "retail_wholesale_requires_isolated_sd_engine") {
+    if (validation === "retail_wholesale_requires_custom" || validation === "retail_wholesale_requires_exclusive_mode") {
       throw new ItAdminGuardError(validation,
-        "RW เปิดได้เฉพาะ CUSTOM ที่เลือก SD เป็นแกนระบบเดิม และไม่เปิดโหมดขายอื่นร่วมกัน", 422);
+        "RW เปิดได้เฉพาะ CUSTOM และต้องเลือกเป็นโหมดขายเดียว", 422);
     }
     // Install the same cashier/stock permissions for ANY selected CUSTOM
     // tenant. Never silently unlock other sales modes or override IT denials.

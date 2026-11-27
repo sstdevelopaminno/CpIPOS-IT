@@ -11,9 +11,9 @@ describe("IT tenant POS sales-mode control", () => {
 
   it("persists tenant sales modes in the canonical subscription contract metadata", () => {
     expect(contractApi).toContain("sales_modes?: Partial<Record<PosSalesModeKey, boolean>> | null");
-    expect(contractApi).toContain('metadata.sales_modes = Object.fromEntries');
+    expect(contractApi).toContain('metadata.sales_modes = normalizeRequestedPosSalesModes(raw)');
     expect(contractApi).toContain('delete metadata.sales_modes');
-    expect(contractApi).toContain("POS_SALES_MODE_KEYS.map");
+    expect(contractApi).toContain("POS_SALES_MODE_KEYS as readonly string[]");
     expect(contractApi).toContain("sales_mode_limit_exceeded");
     expect(contractApi).toContain("enabledCount > salesModeLimit");
   });

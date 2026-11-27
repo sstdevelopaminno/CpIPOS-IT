@@ -146,9 +146,11 @@ function contractSalesModes(contract: ContractRow | null, plan: PlanRow | undefi
   const raw = contract?.metadata?.sales_modes;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const record = raw as Record<string, unknown>;
-    return Object.fromEntries(
+    const selected = Object.fromEntries(
       POS_SALES_MODE_KEYS.map((key) => [key, record[key] === true])
     ) as PosSalesModeMap;
+    if (selected.retail_wholesale) selected.general_sale = false;
+    return selected;
   }
   return packageSalesModeDefaults(plan);
 }
@@ -1043,8 +1045,7 @@ function FeaturesPane({
       return;
     }
     setError(null);
-    if (key === "general_sale" && salesModes.retail_wholesale) return;
-    setSalesModes((current) => ({ ...current, [key]: !current[key], ...(key === "retail_wholesale" && enabling ? { general_sale: true } : {}) }));
+    setSalesModes((current) => ({ ...current, [key]: !current[key], ...(key === "retail_wholesale" && enabling ? { general_sale: false } : {}), ...(key === "general_sale" && enabling ? { retail_wholesale: false } : {}) }));
   }
 
   async function saveSalesModes(resetToPackageDefaults = false) {
@@ -1117,7 +1118,7 @@ function FeaturesPane({
                 type="button"
                 className="pos-monitor-btn"
                 aria-pressed={salesModes[mode.key]}
-                disabled={busy || !planId || (mode.key === "general_sale" && salesModes.retail_wholesale)}
+                disabled={busy || !planId}
                 onClick={() => toggleSalesMode(mode.key)}
                 style={{
                   borderColor: salesModes[mode.key] ? "#16a34a" : "#cbd5e1",

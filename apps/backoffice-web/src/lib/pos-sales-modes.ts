@@ -63,7 +63,7 @@ export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">
     key: "retail_wholesale",
     label: "ค้าปลีก–ค้าส่ง (RW) · CUSTOM",
     short_label: "ค้าปลีก–ค้าส่ง",
-    description: "โหมดเฉพาะทาง CUSTOM โดยใช้ระบบคิดเงิน SD เดิมเป็นฐาน ระยะแรกต้องเปิด SD เป็นตัวรองรับทางเทคนิค ไม่เปิดโหมดอื่นร่วมกัน"
+    description: "โหมดเฉพาะทาง CUSTOM สำหรับค้าปลีกและค้าส่ง ใช้ระบบคิดเงินเดิมภายใน เลือก RW เพียงโหมดเดียวได้โดยไม่ต้องเปิด SD"
   },
   {
     key: "recycling",
@@ -97,6 +97,7 @@ export function normalizePosSalesModes(value: unknown): PosSalesModeMap {
 
 export function toPosSalesModeViews(value: unknown): PosSalesModeView[] {
   const modes = normalizePosSalesModes(value);
+  if (modes.retail_wholesale) modes.general_sale = false;
   return POS_SALES_MODE_DEFINITIONS.map((definition) => ({
     ...definition,
     enabled: modes[definition.key]
