@@ -37,3 +37,14 @@ describe("CUSTOM agreement LINE and IT source contract",()=>{
     expect(doc).toContain("private, no-store");
   });
 });
+
+
+describe("CUSTOM agreement v2 retention lifecycle",()=>{
+  it("matches the existing paid grace and manual IT review policy",()=>{
+    expect(line).toContain('CUSTOM-TH-2026-11-v2');
+    expect(line).toContain('ระยะผ่อนผัน 2 เดือนปฏิทิน');
+    expect(line).toContain('เก็บรักษาข้อมูลเพิ่มเติมอีก 30 วัน');
+    expect(line).toContain('ฝ่าย IT ตรวจสอบก่อนดำเนินการ');
+    expect(line).toContain('ไม่ถือว่าเป็นการลบข้อมูลอัตโนมัติทันที');
+  });
+});
