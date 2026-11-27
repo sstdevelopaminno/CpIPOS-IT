@@ -9,9 +9,12 @@ function asRecord(value: unknown): Record<string, unknown> {
  * Never turn all modes on when a partial admin payload is received. */
 export function normalizeRequestedPosSalesModes(value: unknown): PosSalesModeMap {
   const record = asRecord(value);
-  return Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [
+  const modes = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [
     key, record[key] === true || (key === "takeaway" && record.takeaway === undefined && record.home === true)
   ])) as PosSalesModeMap;
+  // Legacy RW writers sent both flags. Persist only the explicit RW licence.
+  if (modes.retail_wholesale) modes.general_sale = false;
+  return modes;
 }
 
 export function getPackageSalesModeLimit(packageCode: unknown, metadata: unknown): number | null {
@@ -35,8 +38,8 @@ export function getSalesModeSelectionError(
 ): string | null {
   if (modes.retail_wholesale === true) {
     if (String(packageCode ?? "").trim().toLowerCase() !== "custom") return "retail_wholesale_requires_custom";
-    if (!modes.general_sale || modes.takeaway || modes.dine_in || modes.buffet_table ||
-      modes.delivery || modes.optical_retail || modes.recycling) return "retail_wholesale_requires_isolated_sd_engine";
+    if (modes.general_sale || modes.takeaway || modes.dine_in || modes.buffet_table ||
+      modes.delivery || modes.optical_retail || modes.recycling) return "retail_wholesale_requires_exclusive_mode";
   }
   const selected = getSelectedSalesModeCount(modes);
   if (selected < 1) return "sales_mode_required";

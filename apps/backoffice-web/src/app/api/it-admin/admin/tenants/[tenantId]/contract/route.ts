@@ -197,9 +197,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
             Object.values(raw).some((value) => typeof value !== "boolean")) {
           return fail("invalid_sales_modes", "Sales mode keys and values are invalid.", 422);
         }
-        metadata.sales_modes = Object.fromEntries(
-          POS_SALES_MODE_KEYS.map((key) => [key, raw[key] === true])
-        );
+        metadata.sales_modes = normalizeRequestedPosSalesModes(raw);
       }
       patch.metadata = metadata;
     }
@@ -307,8 +305,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       const validation=getSalesModeSelectionError(nextModes,selected.data.code,selected.data.metadata);
       if (validation) {
         return fail(validation,
-          validation==="retail_wholesale_requires_custom" || validation==="retail_wholesale_requires_isolated_sd_engine"
-            ? "RW เปิดเฉพาะ CUSTOM ที่เลือก SD เป็นแกนระบบและไม่มีโหมดอื่นร่วม"
+          validation==="retail_wholesale_requires_custom" || validation==="retail_wholesale_requires_exclusive_mode"
+            ? "RW เปิดเฉพาะ CUSTOM และต้องเลือกเป็นโหมดขายเดียว"
             : validation==="recycling_mode_requires_custom"
             ? "โหมด Recycling เปิดให้ลูกค้า CUSTOM ทุกร้านที่ซื้อสิทธิ์นี้เท่านั้น"
             : validation==="optical_mode_requires_custom"

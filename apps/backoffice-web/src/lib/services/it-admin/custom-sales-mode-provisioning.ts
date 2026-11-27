@@ -22,7 +22,7 @@ export type CustomSalesModeProvisioned = {
 export async function ensureCustomSalesModePrerequisites(
   db: ServiceDb, tenantId: string, modes: PosSalesModeMap
 ): Promise<CustomSalesModeProvisioned> {
-  const needsCashier = modes.general_sale || modes.optical_retail || modes.recycling;
+  const needsCashier = modes.general_sale || modes.optical_retail || modes.recycling || modes.retail_wholesale;
   if (!needsCashier) return { menus: [], features: [] };
 
   const desiredMenus = modes.recycling
