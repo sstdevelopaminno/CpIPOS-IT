@@ -78,6 +78,7 @@ export function CustomAgreementAcceptance({requestId}:{requestId:string|null}) {
       {activation?<div className="rounded-lg bg-slate-50 p-3">
         <p>เริ่มสัญญา: {date(activation.starts_at)}</p><p>สิ้นสุดสัญญา: {date(activation.ends_at)}</p>
         <p>เลขอ้างอิงรับเงินจริง: {activation.settlement_id}</p>
+        <a href={endpoint+"/documents/"+encodeURIComponent(activation.acceptance_id)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex rounded-lg border border-blue-200 bg-white px-3 py-2 font-bold text-blue-700">เปิดสัญญา / พิมพ์ PDF</a>
       </div>:evidence?.accepted_at?<p role="status">ยอมรับแล้ว {date(evidence.accepted_at)} · รอการยืนยันรับเงินจริง</p>:null}
       {evidence?.id?<p>เลขอ้างอิงการยอมรับ: {evidence.id}</p>:null}
       {!evidence?.accepted_at&&requestId&&!activation?<div className="space-y-3">
