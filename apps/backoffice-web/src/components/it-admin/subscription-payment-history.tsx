@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import {CustomAgreementHistory} from "./custom-agreement-history";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useItAccess } from "@/components/layout/app-shell";
 
@@ -735,6 +736,7 @@ export function SubscriptionPaymentHistory({ tenantId }: { tenantId: string }) {
       {notice ? <p role="status" className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">{notice}</p> : null}
 
       {history ? <>
+        {(history.packages.some(pkg=>pkg.id===history.contract?.package_id && pkg.code==="custom") || history.payment_requests.some(row=>row.requested_package_code==="custom")) ? <CustomAgreementHistory tenantId={tenantId} refreshKey={history.receipts.map(row=>row.id).join(",")} /> : null}
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold text-slate-500">แพ็กเกจปัจจุบัน</p>

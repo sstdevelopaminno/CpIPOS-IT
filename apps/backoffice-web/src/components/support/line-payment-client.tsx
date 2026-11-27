@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { CustomAgreementAcceptance } from "./custom-agreement-acceptance";
 import Script from "next/script";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
@@ -518,6 +519,8 @@ export function LinePaymentClient() {
                 <div className="mt-1 text-lg font-black">{packagePayment.store.name}</div>
                 <div className="mt-1 text-xs text-slate-500">รหัสร้าน {packagePayment.store.code} · {packagePayment.package.name}</div>
               </div>
+
+              {packagePayment.package.code === "custom" ? <CustomAgreementAcceptance key={packagePayment.store.code} requestId={packagePayment.open_request?.id ?? null} /> : null}
 
               {packagePayment.latest_request?.status === "rejected" && packagePayment.due ? (
                 <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
