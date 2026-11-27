@@ -25,7 +25,7 @@ export function getPackageSalesModeLimit(packageCode: unknown, metadata: unknown
 }
 
 export function getSelectedSalesModeCount(value: PosSalesModeMap): number {
-  return POS_SALES_MODE_KEYS.filter((key) => value[key] === true).length;
+  return POS_SALES_MODE_KEYS.filter((key) => value[key] === true && !(key === "general_sale" && value.retail_wholesale === true)).length;
 }
 
 export function getSalesModeSelectionError(
@@ -33,6 +33,11 @@ export function getSalesModeSelectionError(
   packageCode: unknown,
   packageMetadata: unknown
 ): string | null {
+  if (modes.retail_wholesale === true) {
+    if (String(packageCode ?? "").trim().toLowerCase() !== "custom") return "retail_wholesale_requires_custom";
+    if (!modes.general_sale || modes.takeaway || modes.dine_in || modes.buffet_table ||
+      modes.delivery || modes.optical_retail || modes.recycling) return "retail_wholesale_requires_isolated_sd_engine";
+  }
   const selected = getSelectedSalesModeCount(modes);
   if (selected < 1) return "sales_mode_required";
   const limit = getPackageSalesModeLimit(packageCode, packageMetadata);

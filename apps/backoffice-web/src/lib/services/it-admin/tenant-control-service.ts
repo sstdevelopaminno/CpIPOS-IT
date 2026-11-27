@@ -1379,7 +1379,7 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     const previousModeCount = Object.values(previousModes).filter(Boolean).length;
     const previousModeIssue = getSalesModeSelectionError(previousModes, selected.data.code, selected.data.metadata);
     if (previousModeCount > 0 &&
-        (previousModeIssue === "sales_mode_limit_exceeded" || previousModeIssue === "optical_mode_requires_custom")) {
+        (previousModeIssue === "sales_mode_limit_exceeded" || previousModeIssue === "optical_mode_requires_custom" || previousModeIssue === "retail_wholesale_requires_custom")) {
       throw new ItAdminGuardError(previousModeIssue,
         "โหมดขายเดิมไม่รองรับแพ็กเกจใหม่ กรุณาปรับโหมดที่เปิดใช้งานก่อนเปลี่ยนแพ็กเกจ", 422);
     }
@@ -1602,6 +1602,10 @@ export async function applyTenantControlAction(context: ItAdminContext, tenantId
     if (validation === "recycling_mode_requires_custom") {
       throw new ItAdminGuardError("recycling_custom_only",
         "โหมด Recycling เป็นตัวเลือกที่เปิดให้ลูกค้ารายใดก็ได้ที่ใช้แพ็กเกจ CUSTOM ไม่อนุญาตในแพ็กเกจทั่วไป", 403);
+    }
+    if (validation === "retail_wholesale_requires_custom" || validation === "retail_wholesale_requires_isolated_sd_engine") {
+      throw new ItAdminGuardError(validation,
+        "RW เปิดได้เฉพาะ CUSTOM ที่เลือก SD เป็นแกนระบบเดิม และไม่เปิดโหมดขายอื่นร่วมกัน", 422);
     }
     // Install the same cashier/stock permissions for ANY selected CUSTOM
     // tenant. Never silently unlock other sales modes or override IT denials.

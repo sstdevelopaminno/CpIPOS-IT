@@ -1043,7 +1043,8 @@ function FeaturesPane({
       return;
     }
     setError(null);
-    setSalesModes((current) => ({ ...current, [key]: !current[key] }));
+    if (key === "general_sale" && salesModes.retail_wholesale) return;
+    setSalesModes((current) => ({ ...current, [key]: !current[key], ...(key === "retail_wholesale" && enabling ? { general_sale: true } : {}) }));
   }
 
   async function saveSalesModes(resetToPackageDefaults = false) {
@@ -1110,13 +1111,13 @@ function FeaturesPane({
             </div>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {POS_SALES_MODE_DEFINITIONS.map((mode) => (
+            {POS_SALES_MODE_DEFINITIONS.filter(mode => mode.key !== "retail_wholesale" || selectedPlan?.code === "custom").map((mode) => (
               <button
                 key={mode.key}
                 type="button"
                 className="pos-monitor-btn"
                 aria-pressed={salesModes[mode.key]}
-                disabled={busy || !planId}
+                disabled={busy || !planId || (mode.key === "general_sale" && salesModes.retail_wholesale)}
                 onClick={() => toggleSalesMode(mode.key)}
                 style={{
                   borderColor: salesModes[mode.key] ? "#16a34a" : "#cbd5e1",

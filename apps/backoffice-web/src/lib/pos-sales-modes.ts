@@ -1,4 +1,4 @@
-export const POS_SALES_MODE_KEYS = ["takeaway", "dine_in", "buffet_table", "delivery", "general_sale", "optical_retail", "recycling"] as const;
+export const POS_SALES_MODE_KEYS = ["takeaway", "dine_in", "buffet_table", "delivery", "general_sale", "optical_retail", "recycling", "retail_wholesale"] as const;
 
 export type PosSalesModeKey = (typeof POS_SALES_MODE_KEYS)[number];
 export type PosSalesModeMap = Record<PosSalesModeKey, boolean>;
@@ -18,7 +18,8 @@ export const DEFAULT_POS_SALES_MODES: PosSalesModeMap = {
   delivery: true,
   general_sale: true,
   optical_retail: false,
-  recycling: false
+  recycling: false,
+  retail_wholesale: false
 };
 
 export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">> = [
@@ -59,6 +60,12 @@ export const POS_SALES_MODE_DEFINITIONS: Array<Omit<PosSalesModeView, "enabled">
     description: "โหมดขายกรอบและเลนส์ด้วย SKU/บาร์โค้ด ใช้ระบบขายปลีกเดิมเป็นฐาน (งานสั่งทำและค่าสายตากำลังพัฒนา)"
   },
   {
+    key: "retail_wholesale",
+    label: "ค้าปลีก–ค้าส่ง (RW) · CUSTOM",
+    short_label: "ค้าปลีก–ค้าส่ง",
+    description: "โหมดเฉพาะทาง CUSTOM โดยใช้ระบบคิดเงิน SD เดิมเป็นฐาน ระยะแรกต้องเปิด SD เป็นตัวรองรับทางเทคนิค ไม่เปิดโหมดอื่นร่วมกัน"
+  },
+  {
     key: "recycling",
     label: "ร้านค้าของเก่า · Recycling",
     short_label: "รีไซเคิล",
@@ -83,7 +90,8 @@ export function normalizePosSalesModes(value: unknown): PosSalesModeMap {
     delivery: asBoolean(record.delivery, DEFAULT_POS_SALES_MODES.delivery),
     general_sale: asBoolean(record.general_sale, DEFAULT_POS_SALES_MODES.general_sale),
     optical_retail: asBoolean(record.optical_retail, DEFAULT_POS_SALES_MODES.optical_retail),
-    recycling: asBoolean(record.recycling, DEFAULT_POS_SALES_MODES.recycling)
+    recycling: asBoolean(record.recycling, DEFAULT_POS_SALES_MODES.recycling),
+    retail_wholesale: record.retail_wholesale === true
   };
 }
 

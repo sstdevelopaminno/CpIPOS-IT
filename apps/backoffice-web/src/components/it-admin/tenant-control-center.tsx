@@ -168,10 +168,10 @@ type Tab = "overview" | "profile" | "branches" | "cashiers" | "menuPolicies" | "
 type BillingCycle = "monthly" | "yearly";
 type ContractPeriod = "trial_7d" | "monthly" | "yearly";
 
-const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, true])) as Record<PosSalesModeKey, boolean>;
+const DEFAULT_SALES_MODE_DRAFTS = Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, key !== "retail_wholesale"])) as Record<PosSalesModeKey, boolean>;
 
 function salesModeDraftFromViews(views: PosSalesModeView[] | undefined): Record<PosSalesModeKey, boolean> {
-  return Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, views?.find((mode) => mode.key === key)?.enabled ?? true])) as Record<PosSalesModeKey, boolean>;
+  return Object.fromEntries(POS_SALES_MODE_KEYS.map((key) => [key, views?.find((mode) => mode.key === key)?.enabled ?? (key !== "retail_wholesale")])) as Record<PosSalesModeKey, boolean>;
 }
 type Props = {
   tenantId: string;
@@ -549,10 +549,11 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
         })()
     : 0;
   const visibleSalesModes = data?.sales_modes.filter((mode) =>
+    (mode.key !== "retail_wholesale" || data.current_package?.code === "custom") &&
     (mode.key !== "recycling" || data.current_package?.code === "custom") &&
     (mode.key !== "optical_retail" || data.current_package?.code === "custom" || Boolean(data.internal_it_test_mode))
   ) ?? [];
-  const salesModeEnabledCount = visibleSalesModes.filter((mode) => mode.enabled).length;
+  const salesModeEnabledCount = visibleSalesModes.filter((mode) => mode.enabled && !(mode.key === "general_sale" && data?.sales_modes.some(m => m.key === "retail_wholesale" && m.enabled))).length;
   const salesModeTotal = visibleSalesModes.length || POS_SALES_MODE_KEYS.length - 1;
   const hasSalesModeEnabled = Object.values(salesModeDrafts).some(Boolean);
 
@@ -910,7 +911,7 @@ export function TenantControlCenter({ tenantId, fallbackName, fallbackStoreCode,
                         const enabled = salesModeDrafts[mode.key];
                         return (
                           <label className={`${dashboardStyles.salesModeCard} ${enabled ? dashboardStyles.salesModeCardOn : dashboardStyles.salesModeCardOff}`} key={mode.key}>
-                            <input type="checkbox" checked={enabled} onChange={(event) => setSalesModeDrafts((current) => ({ ...current, [mode.key]: event.target.checked }))} />
+                            <input type="checkbox" checked={enabled} disabled={mode.key === "general_sale" && salesModeDrafts.retail_wholesale} onChange={(event) => setSalesModeDrafts((current) => ({ ...current, [mode.key]: event.target.checked, ...(mode.key === "retail_wholesale" && event.target.checked ? { general_sale: true } : {}) }))} />
                             <span className={dashboardStyles.salesModeToggle} aria-hidden="true" />
                             <span className={dashboardStyles.salesModeCopy}>
                               <strong>{mode.label}</strong>
