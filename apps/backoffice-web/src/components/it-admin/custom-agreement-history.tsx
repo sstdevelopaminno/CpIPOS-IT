@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 type Agreement={id:string;payment_request_id:string;actor_user_id:string;accepted_at:string;version:string;acceptance_channel:"pos"|"line";amount_per_cycle:number;currency:string;billing_interval:string;activation:null|{settlement_id:string;starts_at:string;ends_at:string}};
-export function CustomAgreementHistory({tenantId}:{tenantId:string}){
+export function CustomAgreementHistory({tenantId,refreshKey}:{tenantId:string;refreshKey:string}){
   const [state,setState]=useState<{enabled:boolean;agreements:Agreement[]}|null>(null);
   const [error,setError]=useState("");
   useEffect(()=>{
@@ -15,7 +15,7 @@ export function CustomAgreementHistory({tenantId}:{tenantId:string}){
       }catch(e){if(!abort.signal.aborted)setError(e instanceof Error?e.message:"โหลดสัญญาไม่สำเร็จ");}
     })();
     return()=>abort.abort();
-  },[tenantId]);
+  },[tenantId,refreshKey]);
   const date=(v:string)=>new Date(v).toLocaleString("th-TH",{timeZone:"Asia/Bangkok"});
   return <section className="rounded-2xl border border-slate-200 bg-white p-4">
     <h3 className="text-base font-black">หลักฐานสัญญา CUSTOM</h3>
@@ -28,7 +28,7 @@ export function CustomAgreementHistory({tenantId}:{tenantId:string}){
       <p>เลขที่หลักฐาน: {row.id}</p><p>คำขอชำระ: {row.payment_request_id}</p>
       <p>ยอมรับทาง {row.acceptance_channel.toUpperCase()} · {date(row.accepted_at)}</p>
       <p>รหัสเจ้าของร้าน: {row.actor_user_id}</p><p>{new Intl.NumberFormat("th-TH",{style:"currency",currency:row.currency}).format(row.amount_per_cycle)} / {row.billing_interval==="yearly"?"ปี":"เดือน"}</p>
-      {row.activation?<><p>เริ่ม {date(row.activation.starts_at)} · สิ้นสุด {date(row.activation.ends_at)}</p><p>Settlement: {row.activation.settlement_id}</p></>:null}
+      {row.activation?<><p>เริ่ม {date(row.activation.starts_at)} · สิ้นสุด {date(row.activation.ends_at)}</p><p>Settlement: {row.activation.settlement_id}</p><a href={"/api/it-admin/v1/subscription-payments/custom-agreements/"+encodeURIComponent(tenantId)+"/documents/"+encodeURIComponent(row.id)} target="_blank" rel="noopener noreferrer" className="inline-flex rounded-lg border border-blue-200 bg-white px-3 py-2 font-bold text-blue-700">เปิดสัญญา / พิมพ์ PDF</a></>:null}
     </article>)}
   </section>;
 }
