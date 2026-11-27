@@ -5,7 +5,7 @@ import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const VERSION = "CUSTOM-TH-2026-11-v1-draft";
+const VERSION = "CUSTOM-TH-2026-11-v1";
 const CLAUSES = [
   "ระยะเวลาสัญญา 12 เดือน นับจากวันที่รับชำระค่าบริการรอบแรกสำเร็จตามหลักฐานที่บริษัทตรวจสอบ ไม่เริ่มนับใหม่ทุกเดือน",
   "ชำระค่าบริการตามรอบและอัตราที่ IT อนุมัติ ผ่าน CpiPOS หรือ LINE ทางการ โดยใช้บัญชีบริษัทหรือบัญชีฉุกเฉินที่ประกาศรับรองเท่านั้น",
@@ -22,8 +22,12 @@ async function handle(request: Request, accept: boolean) {
     if (accept && (!request.headers.get("content-type")?.startsWith("application/json") || request.headers.get("origin") !== new URL(request.url).origin)) return fail("invalid_origin","คำขอไม่ถูกต้อง",403);
     // Fail closed until the schema, issuer, signed terms and retention policy are approved.
     const director = process.env.CUSTOM_AGREEMENT_AUTHORIZED_DIRECTOR?.trim();
-    if (process.env.CUSTOM_AGREEMENT_ENABLED !== "true" || !director ||
-        VERSION.endsWith("-draft")) {
+    const signature = process.env.CUSTOM_AGREEMENT_SIGNATURE_PNG_BASE64?.trim();
+    const signatureValid = Boolean(signature && signature.length <= 60000 &&
+      /^[A-Za-z0-9+/]+={0,2}$/.test(signature) &&
+      Buffer.from(signature,"base64").subarray(0,8).equals(Buffer.from("89504e470d0a1a0a","hex")));
+    if (process.env.CUSTOM_AGREEMENT_ENABLED !== "true" ||
+        process.env.CUSTOM_AGREEMENT_APPROVED_VERSION !== VERSION || !director || !signature || !signatureValid) {
       return fail("agreement_not_enabled","ยังไม่เปิดใช้งานสัญญาอิเล็กทรอนิกส์",503);
     }
     const input: unknown = accept ? await request.json().catch(() => null) : null;
@@ -61,6 +65,7 @@ async function handle(request: Request, accept: boolean) {
       p_version:VERSION,
       p_clauses:CLAUSES,
       p_director_name:director,
+      p_signature_png_base64:signature,
       p_expected_snapshot:snapshot
     });
     if (result.error) return fail("agreement_unavailable","ไม่สามารถยืนยันสัญญาได้ กรุณาโหลดข้อมูลใหม่หรือติดต่อ Support",409);
