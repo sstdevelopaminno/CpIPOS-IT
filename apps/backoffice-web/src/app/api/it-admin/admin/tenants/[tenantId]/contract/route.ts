@@ -307,7 +307,9 @@ export async function PATCH(req: Request, context: { params: Promise<{ tenantId:
       const validation=getSalesModeSelectionError(nextModes,selected.data.code,selected.data.metadata);
       if (validation) {
         return fail(validation,
-          validation==="recycling_mode_requires_custom"
+          validation==="retail_wholesale_requires_custom" || validation==="retail_wholesale_requires_isolated_sd_engine"
+            ? "RW เปิดเฉพาะ CUSTOM ที่เลือก SD เป็นแกนระบบและไม่มีโหมดอื่นร่วม"
+            : validation==="recycling_mode_requires_custom"
             ? "โหมด Recycling เปิดให้ลูกค้า CUSTOM ทุกร้านที่ซื้อสิทธิ์นี้เท่านั้น"
             : validation==="optical_mode_requires_custom"
               ? "โหมดร้านแว่นตาต้องเป็นแพ็กเกจ CUSTOM"
