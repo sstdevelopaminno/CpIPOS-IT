@@ -300,18 +300,24 @@ export async function requestLineSupportOtp(identity: VerifiedLineIdentity, stor
   const challengeId = randomUUID();
   const otp = String(randomInt(0, 1_000_000)).padStart(6, "0");
   const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60_000).toISOString();
+  // Validate signing configuration before mutating challenge state.
+  const otpHash = otpDigest(challengeId, otp);
 
-  await db.from("line_support_verification_challenges")
+  const cleared = await db.from("line_support_verification_challenges")
     .delete()
     .eq("line_user_id", identity.userId)
     .eq("tenant_id", store.tenantId);
+  if (cleared.error) {
+    console.error("[line-support-otp] challenge_cleanup_failed");
+    throw new LineSupportError("otp_create_failed", "สร้างรหัสยืนยันไม่สำเร็จ กรุณาลองใหม่", 503);
+  }
 
   const inserted = await db.from("line_support_verification_challenges").insert({
     id: challengeId,
     line_user_id: identity.userId,
     tenant_id: store.tenantId,
     owner_user_id: store.ownerUserId,
-    otp_hash: otpDigest(challengeId, otp),
+    otp_hash: otpHash,
     attempt_count: 0,
     expires_at: expiresAt
   });
@@ -340,8 +346,13 @@ export async function requestLineSupportOtp(identity: VerifiedLineIdentity, stor
   } catch (error) {
     // Never log the recipient address, OTP, or challenge hash.
     console.error("[line-support-otp-email]", error instanceof SupportMailBridgeError ? error.code : "otp_delivery_failed");
-    await db.from("line_support_verification_challenges").delete().eq("id", challengeId);
-    throw error;
+    const cleanup = await db.from("line_support_verification_challenges").delete().eq("id", challengeId);
+    if (cleanup.error) console.error("[line-support-otp] failed_delivery_cleanup_failed");
+    throw new LineSupportError(
+      "otp_delivery_unavailable",
+      "ส่ง OTP ทางอีเมลไม่สำเร็จชั่วคราว กรุณาลองใหม่ หรือติดต่อทีม Support ทางอีเมล",
+      503
+    );
   }
 
   return {
