@@ -12,14 +12,16 @@ export type NewsRow = {
   link_url: string | null;
   target_tenant_id: string | null;
   status: "draft" | "published" | "archived";
+  publish_company_web: boolean;
+  public_category: "general" | "update" | "maintenance" | "security";
   created_at: string;
   updated_at: string;
   published_at: string | null;
 };
 
-type NewsFormValue = Pick<NewsRow,"title" | "body" | "image_url" | "link_url" | "target_tenant_id"> & { status: "draft" | "published" };
+type NewsFormValue = Pick<NewsRow,"title" | "body" | "image_url" | "link_url" | "target_tenant_id" | "publish_company_web" | "public_category"> & { status: "draft" | "published" };
 type TenantChoice = { id: string; display_name?: string | null; name?: string | null; code?: string | null };
-const EMPTY: NewsFormValue = { title: "", body: "", image_url: null, link_url: null, target_tenant_id: null, status: "published" };
+const EMPTY: NewsFormValue = { title: "", body: "", image_url: null, link_url: null, target_tenant_id: null, publish_company_web: false, public_category: "general", status: "published" };
 const BASE = "/api/it-admin/v1/news";
 
 async function readData<T>(response: Response): Promise<T> {
@@ -43,6 +45,7 @@ function NewsEditor({ initial, onCancel, onSaved }: {
   const [form, setForm] = useState<NewsFormValue>(() => initial ? {
     title: initial.title, body: initial.body, image_url: initial.image_url,
     link_url: initial.link_url, target_tenant_id: initial.target_tenant_id,
+    publish_company_web: initial.publish_company_web === true, public_category: initial.public_category ?? "general",
     status: initial.status === "draft" ? "draft" : "published"
   } : EMPTY);
   const [tenants, setTenants] = useState<TenantChoice[]>([]);
@@ -110,11 +113,20 @@ function NewsEditor({ initial, onCancel, onSaved }: {
           <textarea required minLength={2} maxLength={10000} rows={6} value={form.body} onChange={event => setForm(current => ({ ...current, body: event.target.value }))} className="rounded-xl border border-slate-300 px-3 py-3 font-normal" placeholder="รายละเอียดการปรับปรุง ฟังก์ชัน หรือประกาศสำคัญ" />
         </label>
         <label className="grid gap-1 text-sm font-bold">ผู้รับข่าวสาร
-          <select value={form.target_tenant_id ?? ""} onChange={event => setForm(current => ({ ...current, target_tenant_id: event.target.value || null }))} className="rounded-xl border border-slate-300 bg-white px-3 py-3 font-normal">
+          <select value={form.target_tenant_id ?? ""} onChange={event => setForm(current => ({ ...current, target_tenant_id: event.target.value || null, publish_company_web: event.target.value ? false : current.publish_company_web }))} className="rounded-xl border border-slate-300 bg-white px-3 py-3 font-normal">
             <option value="">ทุกร้านค้า / ทุกสาขา</option>
             {form.target_tenant_id && !tenants.some(tenant => tenant.id === form.target_tenant_id) ? <option value={form.target_tenant_id}>ร้านที่เลือกไว้</option> : null}
             {tenants.map(tenant => <option value={tenant.id} key={tenant.id}>{tenant.display_name || tenant.name || tenant.code || tenant.id}</option>)}
           </select>
+        </label>
+        <label className="grid gap-1 text-sm font-bold">ประเภทข่าวสาร
+          <select value={form.public_category} onChange={event => setForm(current => ({ ...current, public_category: event.target.value as NewsRow["public_category"] }))} className="rounded-xl border border-slate-300 bg-white px-3 py-3 font-normal">
+            <option value="general">ข่าวสารทั่วไป</option><option value="update">อัปเดตระบบ</option><option value="maintenance">ปิดปรับปรุง / เหตุขัดข้อง</option><option value="security">ความปลอดภัย</option>
+          </select>
+        </label>
+        <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm">
+          <input type="checkbox" checked={form.publish_company_web} disabled={Boolean(form.target_tenant_id)} onChange={event => setForm(current => ({ ...current, publish_company_web: event.target.checked }))} className="mt-1" />
+          <span><strong>เผยแพร่บนเว็บไซต์บริษัทด้วย</strong><span className="block text-xs leading-6 text-slate-600">ผู้เข้าชมทั่วไปสามารถอ่านหัวข้อและรายละเอียดได้เมื่อเผยแพร่ ห้ามใส่ข้อมูลส่วนตัว รหัส หรือข้อมูลภายในร้าน ช่องนี้ใช้ได้เฉพาะประกาศทุกร้านค้า</span></span>
         </label>
         <label className="grid gap-1 text-sm font-bold">เพิ่มรูปภาพ (JPG / PNG / WEBP สูงสุด 2 MB)
           <input type="file" accept="image/png,image/jpeg,image/webp" disabled={saving || uploading} onChange={event => void upload(event.target.files?.[0])} className="rounded-xl border border-slate-300 px-3 py-2 font-normal" />
@@ -194,7 +206,7 @@ export function ItPlatformNewsConsole() {
                 <div className="min-w-0 flex-1">
                   <Link href={"/it-admin/news/" + item.id} className="block break-words text-base font-extrabold leading-6 text-blue-700 hover:underline">{item.title}</Link>
                   <div className="mt-1 text-sm text-slate-500"><ItOverflowText title={item.title} text={item.body} maxLength={105} /></div>
-                  <p className="mt-1 text-xs text-slate-400">{new Date(item.published_at || item.created_at).toLocaleString("th-TH")} · {item.target_tenant_id ? "เฉพาะร้าน" : "ทุกร้านค้า"}</p>
+                  <p className="mt-1 text-xs text-slate-400">{new Date(item.published_at || item.created_at).toLocaleString("th-TH")} · {item.target_tenant_id ? "เฉพาะร้าน" : "ทุกร้านค้า"}{item.publish_company_web ? " · เว็บไซต์บริษัท" : " · POS เท่านั้น"}</p>
                 </div>
                 <Status status={item.status} />
                 <Link href={"/it-admin/news/" + item.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold">รายละเอียด</Link>
@@ -251,7 +263,7 @@ export function ItPlatformNewsDetail({ id }: { id: string }) {
       ) : null}
       <p className="whitespace-pre-wrap break-words text-base leading-8">{item.body}</p>
       {item.link_url ? <p><a href={item.link_url} target="_blank" rel="noopener noreferrer" className="font-bold text-blue-700 underline">เปิดลิงก์เพิ่มเติม</a></p> : null}
-      <div className="border-t border-slate-100 pt-4 text-sm text-slate-500">ผู้รับ: {item.target_tenant_id ?? "ทุกร้านค้า"}</div>
+      <div className="border-t border-slate-100 pt-4 text-sm text-slate-500">ผู้รับ: {item.target_tenant_id ?? "ทุกร้านค้า"} · {item.publish_company_web ? "เว็บไซต์บริษัทด้วย" : "POS เท่านั้น"}</div>
     </article> : !error ? <p role="status">กำลังโหลดรายละเอียด...</p> : null}
     {item && editing ? <NewsEditor initial={item} onCancel={() => setEditing(false)} onSaved={updated => {
       setItem(updated); setEditing(false); setToast("บันทึกการแก้ไขสำเร็จ");

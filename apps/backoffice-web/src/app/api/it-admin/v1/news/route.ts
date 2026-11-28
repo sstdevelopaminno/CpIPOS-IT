@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       actorUserId: auth.userId, actorRole: auth.platformRole,
       action: "platform_news_created", module: "it_admin",
       targetTable: "platform_news_posts", targetId: result.data.id,
-      afterData: { id: result.data.id, title: editor.title, status: editor.status, target_tenant_id: editor.target_tenant_id },
+      afterData: { id: result.data.id, title: editor.title, status: editor.status, target_tenant_id: editor.target_tenant_id, publish_company_web: editor.publish_company_web, public_category: editor.public_category },
       ipAddress: requestMeta.ipAddress ?? undefined, userAgent: requestMeta.userAgent ?? undefined
     });
     const response = ok({ item: result.data }, 201);

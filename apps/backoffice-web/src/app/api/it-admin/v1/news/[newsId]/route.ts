@@ -48,7 +48,7 @@ export async function PATCH(req: Request, ctx: Context) {
       action: "platform_news_updated", module: "it_admin",
       targetTable: "platform_news_posts", targetId: id,
       beforeData: { title: existing.data.title, status: existing.data.status },
-      afterData: { title: editor.title, status: editor.status, target_tenant_id: editor.target_tenant_id },
+      afterData: { title: editor.title, status: editor.status, target_tenant_id: editor.target_tenant_id, publish_company_web: editor.publish_company_web, public_category: editor.public_category },
       ipAddress: requestMeta.ipAddress ?? undefined, userAgent: requestMeta.userAgent ?? undefined
     });
     return ok({ item: updated.data });
