@@ -67,6 +67,18 @@ describe("LINE Support Gateway", () => {
     expect(client).toContain("applyChat(result.chat)");
   });
 
+  it("reports dependency failures without bypassing OTP or logging raw errors", () => {
+    expect(auth).toContain("otp_delivery_unavailable");
+    expect(auth).toContain("const otpHash = otpDigest(challengeId, otp)");
+    expect(authRoute).toContain('stage = "otp_delivery"');
+    expect(authRoute).toContain('stage = "chat_open"');
+    expect(authRoute).toContain('source === "backend_unavailable"');
+    expect(authRoute).toContain("failClosedOnBackendError: true");
+    expect(authRoute).not.toContain("error instanceof Error ? error.message");
+    expect(client).toContain("mailto:cuttingpointtech.support@gmail.com");
+    expect(client).toContain("ห้ามส่งรหัสผ่านหรือ OTP");
+  });
+
   it("keeps close operations idempotent across network retries", () => {
     expect(communications).toContain("already_closed: true");
     expect(communications).toContain('if (nextStatus === "closed")');
