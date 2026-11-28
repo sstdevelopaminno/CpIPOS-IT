@@ -4,6 +4,7 @@ import { ItAdminGuardError } from "@/lib/it-admin-guard";
 import { getPrimarySupabaseServiceClient } from "@/lib/supabase-admin";
 
 export type NewsStatus = "draft" | "published" | "archived";
+export type NewsCategory = "general" | "update" | "maintenance" | "security";
 export type NewsEditor = {
   title: string;
   body: string;
@@ -11,9 +12,11 @@ export type NewsEditor = {
   link_url: string | null;
   target_tenant_id: string | null;
   status: NewsStatus;
+  publish_company_web: boolean;
+  public_category: NewsCategory;
 };
 
-export const NEWS_SELECT = "id,title,body,image_url,link_url,target_tenant_id,status,published_at,created_by,updated_by,created_at,updated_at";
+export const NEWS_SELECT = "id,title,body,image_url,link_url,target_tenant_id,publish_company_web,public_category,status,published_at,created_by,updated_by,created_at,updated_at";
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function safeHttps(value: unknown, max: number) {
@@ -67,8 +70,20 @@ export async function validateNewsEditor(raw: unknown): Promise<NewsEditor> {
     if (result.error) throw new Error("target_tenant_lookup_failed");
     if (!result.data) throw new ItAdminGuardError("target_tenant_not_found", "Target tenant not found.", 422);
   }
+  const publishCompanyWeb = body.publish_company_web === true;
+  if (body.publish_company_web !== undefined && typeof body.publish_company_web !== "boolean") {
+    throw new ItAdminGuardError("invalid_public_flag", "Public website publication must be a boolean.", 422);
+  }
+  if (publishCompanyWeb && target) {
+    throw new ItAdminGuardError("public_news_tenant_conflict", "ข่าวเฉพาะร้านไม่สามารถเผยแพร่บนเว็บไซต์สาธารณะได้", 422);
+  }
+  const category = body.public_category ?? "general";
+  if (category !== "general" && category !== "update" && category !== "maintenance" && category !== "security") {
+    throw new ItAdminGuardError("invalid_news_category", "Invalid announcement category.", 422);
+  }
   return {
     title, body: description,
+    publish_company_web: publishCompanyWeb, public_category: category,
     image_url: safeImageUrl(body.image_url),
     link_url: safeHttps(body.link_url, 1000),
     target_tenant_id: target || null,
