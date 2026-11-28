@@ -875,7 +875,7 @@ export function LineSupportClient() {
 
   return (
     <>
-      <Script src={LIFF_SCRIPT} strategy="afterInteractive" onLoad={() => void boot()} />
+      <Script src={LIFF_SCRIPT} strategy="afterInteractive" onLoad={() => void boot()} onError={() => { setStage("store"); setError("โหลด LINE Login ไม่สำเร็จ กรุณาเปิดใหม่หรือติดต่อ Support ทางอีเมล"); }} />
       <main className="h-[100dvh] min-h-0 w-full overflow-hidden bg-white p-0 text-slate-950 md:bg-slate-100 md:p-5">
         <section className="mx-auto flex h-full min-h-0 w-full max-w-none flex-col overflow-hidden border-0 bg-white shadow-none md:max-w-xl md:rounded-[28px] md:border md:border-slate-200 md:shadow-xl">
           <header className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-3 py-3 sm:px-5 sm:py-4">
@@ -1003,6 +1003,13 @@ export function LineSupportClient() {
                 </button>
               </form>
             </div>
+          ) : null}
+
+          {stage !== "chat" ? (
+            <footer className="shrink-0 border-t border-slate-100 px-4 py-3 text-center text-xs text-slate-600">
+              <a className="font-bold text-blue-700 underline" href="mailto:cuttingpointtech.support@gmail.com?subject=CpiPOS%20Support">ติดต่อ Support ทางอีเมล</a>
+              <p className="mt-1">หากแชทไม่พร้อมใช้งาน กรุณาระบุชื่อร้านและอาการผิดปกติ ห้ามส่งรหัสผ่านหรือ OTP</p>
+            </footer>
           ) : null}
 
           {stage === "chat" && conversation ? (
